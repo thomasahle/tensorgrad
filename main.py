@@ -1,5 +1,5 @@
 import graphviz
-from tensor import Variable, Product
+from tensor import Variable, Product, Function
 from functions import frobenius2
 from serializers.to_graphviz import to_graphviz
 from serializers.to_tikz import to_tikz
@@ -120,8 +120,28 @@ def main4(mode):
 
     print(to_pytorch(grad))
 
+
+def main5(mode):
+    # f(v(x))
+    x = Variable("x", ["x"])
+    v = Function("v", [x], ["x"], ["y"])
+    f = Function("f", [v], ["y"], [])
+
+    grad = f.grad(x).simplify()
+
+    if mode == "tikz":
+        print(grad)
+        latex_code = to_tikz(grad)
+        #print(f)
+        #latex_code = to_tikz(f)
+        for i, line in enumerate(latex_code.split("\n")):
+            print(f"{i+1:2d} {line}")
+        compile_latex(latex_code)
+
+    print(to_pytorch(grad))
+
 if __name__ == "__main__":
     import sys
 
     mode = sys.argv[1]
-    main4(mode)
+    main5(mode)

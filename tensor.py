@@ -262,6 +262,9 @@ class Function(Tensor):
             + tuple(self.edges)
         )
 
+    def __repr__(self):
+        return f"Function({self.name}, {self.tensors}, {self.edges_in}, {self.edges})"
+
 
 class Product(Tensor):
     def __init__(self, tensors: Iterable[Tensor]):
