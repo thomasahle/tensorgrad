@@ -407,21 +407,6 @@ class Sum(Tensor):
             return tensors[0]
         return Sum(tensors, weights)
 
-    def old__repr__(self):
-        parts = []
-        for w, t in zip(self.weights, self.tensors):
-            inner = []
-            if len(parts) == 0:
-                if w < 0:
-                    inner.append("-")
-            else:
-                inner.append("-" if w < 0 else "+")
-            if abs(w) != 1:
-                inner.append(str(abs(w)))
-            inner.append(repr(t))
-            parts.append(" ".join(inner))
-        return f"Sum({' '.join(parts)})"
-
     def __repr__(self):
         return f"Sum({self.tensors}, {self.weights})"
 

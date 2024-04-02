@@ -127,13 +127,13 @@ def main5(mode):
     v = Function("v", [x], ["x"], ["y"])
     f = Function("f", [v], ["y"], [])
 
-    grad = f.grad(x).simplify()
+    #grad = f.grad(x).simplify()
+    grad = f.grad(x).grad(x).simplify()
 
     if mode == "tikz":
         print(grad)
         latex_code = to_tikz(grad)
-        #print(f)
-        #latex_code = to_tikz(f)
+        print(latex_code)
         for i, line in enumerate(latex_code.split("\n")):
             print(f"{i+1:2d} {line}")
         compile_latex(latex_code)
