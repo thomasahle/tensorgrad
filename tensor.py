@@ -3,8 +3,9 @@ from typing import Iterable, Optional
 
 # TODO:
 # - Add eval: Use torch named tensors, or maybe just a wrapper around numpy arrays?
-# - How do I handle circular references? It seems simplify will just end up in an infinite loop?
-#   Can I break them somehow? Or do I need some advanced language of graph rewriting rules?
+# - Support for specific functions and their simplification rules (cross entropy, etc)
+# - Code generation? (e.g. Triton)
+# - Prettier printing
 
 
 def all_edges(tensor):
@@ -68,7 +69,6 @@ class Tensor:
         return Sum([self, other], [1, -1])
 
     def __matmul__(self, other):
-        """Contract self and other"""
         return Product([self, other])
 
     def __rmul__(self, other):
@@ -78,11 +78,7 @@ class Tensor:
         """Contract self and other, but use a 3d-identity to keep the shared edges free."""
         if isinstance(other, int) or isinstance(other, float):
             return Sum([self], [other])
-        # Two options:
-        # (1) allow contractions of higher order edges, or
-        # (2) use identity tensors.
-        # Well, the issue with (1) is that we can no longer say that any edge that's
-        # present twice gets contracted.
+        # Element-wise (Hadamard) product is easy to implement using Copy tensors
         t0, t1 = self, other
         joins = []
         for e in set(t0.edges) & set(t1.edges):
@@ -136,9 +132,7 @@ class Variable(Tensor):
         return hash(("Variable", self.name) + tuple(self.edges))
 
     def simplify(self, full=False):
-        # A bit of a hack, but ensures the free edges are shown
-        # FIXME: This should just be handled in to_tikz or to_graphviz, if they so need it.
-        return self if full else Product([self])
+        return self
 
     def rename(self, **kwargs: dict[str, str]):
         v = Variable(
@@ -210,7 +204,7 @@ class Function(Tensor):
         self.edges = list(edges_out)
 
     def copy(self):
-        return Function(self.name, self.tensors, self.edges_in, self.edges)
+        return Function(self.name, [t.copy() for t in self.tensors], self.edges_in, self.edges)
 
     def rename(self, **kwargs: dict[str, str]):
         # We only rename on the surface
@@ -286,9 +280,8 @@ class Product(Tensor):
         return Product([t.copy() for t in self.tensors])
 
     def rename(self, **kwargs: dict[str, str]):
-        # Should we rename all edges, or only the ones we haven't contracted?
-        # I think we need to rename everything, since one of the applications is to
-        # combine contractions, and then we might have a clash.
+        # We need to rename everything (not just on the surface), since one of the applications of renaming
+        # is to combine nested products, and then we need to avoid clashes between "internal" edges in each product.
         return Product([t.rename(**kwargs) for t in self.tensors])
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
@@ -347,12 +340,7 @@ class Product(Tensor):
         children = [t for t in children if not (isinstance(t, (Copy, Ones)) and t.rank == 0)]
         # Base cases
         if not children:
-            # TODO: Is a product of zero tensors actually the Identity tensor?
-            # It seems that I @ A is not equal to A in general, since it will
-            # contract all the edges?
-            raise NotImplementedError("Not sure what to do here yet.")
-            # return Identity(self.edges)
-            # return Zero(self.edges)
+            raise NotImplementedError("Not sure what to do here yet. But it also shouldn't happen")
         if len(children) == 1:
             return children[0]
         return Product(children)
@@ -361,12 +349,12 @@ class Product(Tensor):
 class Sum(Tensor):
     def __init__(self, tensors: Iterable[Tensor], weights: list[int] = None):
         tensors = list(tensors)
+        # Broadcasting means we always upgrade to the super set of edges
         edges = {e for t in tensors for e in t.edges}
-        # Broadcasting means we always upgrade to the fullest set of edges
         self.tensors = []
         for t in tensors:
             missing = list(edges - set(t.edges))
-            # Don't broadcast if the tensor is already full, since that would create new
+            # Note: don't broadcast if the tensor is already full, since that would create new
             # Ones([]) objects after simplification is supposed to have completed.
             self.tensors.append(t @ Copy(missing) if missing else t)
         self.edges = list(edges)
@@ -381,10 +369,6 @@ class Sum(Tensor):
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
         new_names = ensure_edges_unused(self, x, new_names)
-        # TODO: If we did broadcasting, we need to sum over the dimensions that
-        # didn't belong to the original tensor.
-        # Actually: If we just multiply the ingoing tensors by the right identity tensors,
-        # this should be fine, right?
         return Sum([t.grad(x, new_names) for t in self.tensors], self.weights)
 
     def simplify(self, full=False):
@@ -398,6 +382,9 @@ class Sum(Tensor):
             else:
                 ws_tensors[t] += w
         # Remove zero tensors or zero weights
+        # TODO: It seems this might change the set of edges. Is that a problem?
+        # Or are we OK with some operations removing edges?
+        # Like, should (x-x) have the same shape as x? or should it have no edges?
         ws_tensors = [(w, t) for t, w in ws_tensors.items() if w != 0 and not isinstance(t, Zero)]
         if not ws_tensors:
             return Zero(self.edges)

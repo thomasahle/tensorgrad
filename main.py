@@ -144,4 +144,4 @@ if __name__ == "__main__":
     import sys
 
     mode = sys.argv[1]
-    main5(mode)
+    main3(mode)
