@@ -170,6 +170,8 @@ def _to_tikz(tensor, graph):
         return {e: str(id(tensor)) for e in tensor.edges} | free_edges
 
     if isinstance(tensor, Product):
+        # subgraph = TikzGraph()
+
         sub_ids = defaultdict(list)
         for t in tensor.tensors:
             for e, sub_id in _to_tikz(t, graph).items():
@@ -181,6 +183,10 @@ def _to_tikz(tensor, graph):
             if len(ts) == 2:
                 sub_id1, sub_id2 = ts
                 graph.add_edge(sub_id1, sub_id2, label=e)
+
+        # graph.add_subgraph(
+        #     subgraph, f"{str(id(tensor))} / [inner sep=10pt] // [{layout_style}]", str(id(tensor))
+        # )
 
         return {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
 

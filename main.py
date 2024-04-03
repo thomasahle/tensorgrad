@@ -125,6 +125,8 @@ def main5(mode):
     # f(v(x))
     x = Variable("x", ["x"])
     v = Function("v", [x], ["x"], ["y"])
+    #g = Function("g", [v], ["y"], ["z"])
+    #f = Function("f", [g], ["z"], [])
     f = Function("f", [v], ["y"], [])
 
     #grad = f.grad(x).simplify()
@@ -140,8 +142,35 @@ def main5(mode):
 
     print(to_pytorch(grad))
 
+
+def Hvp(mode, depth=2):
+    # f(v(x))
+    x = Variable("x", ["y0"])
+    fs = [x]
+    for i in range(depth - 1):
+        fs.append(Function(f"f{i}", [fs[-1]], [f"y{i}"], [f"y{i+1}"]))
+    fs.append(Function(f"f{depth-1}", [fs[-1]], [f"y{depth-1}"], []))
+
+    v = Variable("v", ["b", "y0'"])
+
+    H = fs[-1].grad(x).grad(x)
+
+    hvp = H @ v
+    out = hvp.simplify()
+    #out = H.simplify()
+    #out = out @ v
+
+    if mode == "tikz":
+        print(out)
+        latex_code = to_tikz(out)
+        for i, line in enumerate(latex_code.split("\n")):
+            print(f"{i+1:2d} {line}")
+        compile_latex(latex_code)
+
+    print(to_pytorch(out))
+
 if __name__ == "__main__":
     import sys
 
     mode = sys.argv[1]
-    main3(mode)
+    Hvp(mode)

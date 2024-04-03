@@ -307,6 +307,10 @@ class Product(Tensor):
         # Combine nested contractions:
         children = []
         for i, t in enumerate(tensors):
+            # TODO: Consider not combining products, since we might want to keep the "natural" contraction order.
+            # Maybe this should be the meaning of full=True/False?
+            # It could be that simplify can take more complicated arguments, to also control whether we should
+            # use the distributive law to push products to the bottom etc.
             if not isinstance(t, Product):
                 children.append(t)
                 continue
