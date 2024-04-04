@@ -1,4 +1,5 @@
 import graphviz
+from serializers.to_manim import TensorNetworkAnimation
 from tensor import Variable, Product, Function
 from functions import frobenius2
 from serializers.to_graphviz import to_graphviz
@@ -104,7 +105,6 @@ def main3(mode):
     print(to_pytorch(grad))
 
 
-
 def main4(mode):
     # ||Ax - y||_2^2
     X = Variable("X", ["b", "x"])
@@ -125,11 +125,11 @@ def main5(mode):
     # f(v(x))
     x = Variable("x", ["x"])
     v = Function("v", [x], ["x"], ["y"])
-    #g = Function("g", [v], ["y"], ["z"])
-    #f = Function("f", [g], ["z"], [])
+    # g = Function("g", [v], ["y"], ["z"])
+    # f = Function("f", [g], ["z"], [])
     f = Function("f", [v], ["y"], [])
 
-    #grad = f.grad(x).simplify()
+    # grad = f.grad(x).simplify()
     grad = f.grad(x).grad(x).simplify()
 
     if mode == "tikz":
@@ -157,8 +157,8 @@ def Hvp(mode, depth=2):
 
     hvp = H @ v
     out = hvp.simplify()
-    #out = H.simplify()
-    #out = out @ v
+    # out = H.simplify()
+    # out = out @ v
 
     if mode == "tikz":
         print(out)
@@ -169,8 +169,25 @@ def Hvp(mode, depth=2):
 
     print(to_pytorch(out))
 
+
+def create_tensor_network():
+    X = Variable("X", ["b", "x"])
+    Y = Variable("Y", ["b", "y"])
+    W = Variable("W", ["x", "y"])
+    F = frobenius2(W @ X - Y)
+    grad = F.grad(W).simplify()
+    return grad
+
+
+def manim():
+    tensor = create_tensor_network()
+    scene = TensorNetworkAnimation(tensor)
+    scene.render()
+
+
 if __name__ == "__main__":
     import sys
 
-    mode = sys.argv[1]
-    Hvp(mode)
+    #mode = sys.argv[1]
+    #Hvp(mode)
+    manim()

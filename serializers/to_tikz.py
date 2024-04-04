@@ -166,6 +166,8 @@ def _to_tikz(tensor, graph):
             sub_id = free_edges.pop(e)
             graph.add_edge(sub_id, str(id(tensor)), label=e, directed=True)
 
+        # Make nice edges for out going edges
+
         # We propagate the free edges to the parent to handle
         return {e: str(id(tensor)) for e in tensor.edges} | free_edges
 

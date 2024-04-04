@@ -4,15 +4,15 @@ from tensor import Variable, Function, Copy, Zero, Product, Sum, Ones
 
 def test_x():
     x = Variable("x", ["x"])
-    assert x.grad(x, ["x'"]).edges == ["x", "x'"]
+    assert x.grad(x, ["x_"]).edges == ["x", "x_"]
 
 
 def test_xy():
     x = Variable("x", ["i"])
     y = Variable("y", ["i"])
     xy = x @ y
-    assert xy.grad(x, ["i'"]).edges == ["i'"]
-    assert xy.grad(y, ["i'"]).edges == ["i'"]
+    assert xy.grad(x, ["i_"]).edges == ["i_"]
+    assert xy.grad(y, ["i_"]).edges == ["i_"]
 
 
 def test_lstsq():
@@ -26,20 +26,20 @@ def test_lstsq():
     assert Axmy.edges == ["y"]
     F = frobenius2(Axmy)
     assert F.edges == []
-    grad = F.grad(x, ["x'"])
-    assert grad.edges == ["x'"]
+    grad = F.grad(x, ["x_"])
+    assert grad.edges == ["x_"]
 
 
 def test_identity():
     e = Copy(["a", "b"])
     assert e.edges == ["a", "b"]
-    assert e.grad(Variable("x", ["x"]), ["x'"]) == Zero(["a", "b", "x'"])
+    assert e.grad(Variable("x", ["x"]), ["x_"]) == Zero(["a", "b", "x_"])
 
 
 def test_zero():
     z = Zero(["a", "b"])
     assert z.edges == ["a", "b"]
-    assert z.grad(Variable("x", ["x"]), ["x'"]) == Zero(["a", "b", "x'"])
+    assert z.grad(Variable("x", ["x"]), ["x_"]) == Zero(["a", "b", "x_"])
     assert z == Zero(["b", "a"])
     assert z != Zero(["a", "b", "c"])
 
@@ -47,8 +47,8 @@ def test_zero():
 def test_variable_grad():
     x = Variable("x", ["i", "j"])
     y = Variable("y", ["k"])
-    assert x.grad(x, ["i'", "j'"]) == Product([Copy(["i", "i'"]), Copy(["j", "j'"])])
-    assert x.grad(y, ["k'"]) == Zero(["i", "j", "k'"])
+    assert x.grad(x, ["i_", "j_"]) == Product([Copy(["i", "i_"]), Copy(["j", "j_"])])
+    assert x.grad(y, ["k_"]) == Zero(["i", "j", "k_"])
 
 
 def test_contraction():
@@ -57,16 +57,8 @@ def test_contraction():
     c = Product([x, y])
     assert c.edges == ["i", "k"]
     assert c.contractions == ["j"]
-    assert c.grad(x, ["i'", "j'"]).simplify() == Product([Copy(["i", "i'"]), y.rename(j="j'")])
-    assert c.grad(y, ["j'", "k'"]).simplify() == Product([x.rename(j="j'"), Copy(["k", "k'"])])
-
-
-# Product([
-#    Identity(['i', "i'"]),
-#    Variable(y, ['j', 'k'], ["j'", 'k'])]) ==
-# Product([
-#    Identity(['i', "i'"]),
-#    Variable(y, ['j', 'k'], ['j', 'k'])])
+    assert c.grad(x, ["i_", "j_"]).simplify() == Product([Copy(["i", "i_"]), y.rename({"j": "j_"})])
+    assert c.grad(y, ["j_", "k_"]).simplify() == Product([x.rename({"j": "j_"}), Copy(["k", "k_"])])
 
 
 def test_linear_combination():
@@ -74,8 +66,8 @@ def test_linear_combination():
     y = Variable("y", ["i"])
     lc = Sum([x, y], [2, -3])
     assert lc.edges == ["i"]
-    assert lc.grad(x, ["i'"]).simplify(full=True) == Sum([Copy(["i", "i'"])], [2])
-    assert lc.grad(y, ["i'"]).simplify(full=True) == Sum([Copy(["i", "i'"])], [-3])
+    assert lc.grad(x, ["i_"]).simplify() == Sum([Copy(["i", "i_"])], [2])
+    assert lc.grad(y, ["i_"]).simplify() == Sum([Copy(["i", "i_"])], [-3])
 
 
 def test_simplify():
@@ -86,26 +78,26 @@ def test_simplify():
 
     # Test simplifying linear combinations
     lc1 = Sum([x, y, z], [1, 2, 3])
-    assert lc1.simplify(full=True) == Sum([x, y, z], [1, 2, 3])
+    assert lc1.simplify() == Sum([x, y, z], [1, 2, 3])
 
     lc2 = Sum([x, zero], [1, 2])
-    assert lc2.simplify(full=True) == x
+    assert lc2.simplify() == x
 
     lc3 = Sum([x, y, z], [1, 0, 0])
-    assert lc3.simplify(full=True) == x
+    assert lc3.simplify() == x
 
     # Test simplifying contractions
     c1 = Product([x, y])
-    assert c1.simplify(full=True) == c1
+    assert c1.simplify() == c1
 
     c2 = Product([x, zero])
-    assert c2.simplify(full=True) == Zero([])
+    assert c2.simplify() == Zero([])
 
     c3 = x @ Copy(["i", "j"])
-    assert c3.simplify(full=True) == x.rename(i="j")
+    assert c3.simplify() == x.rename({"i": "j"})
 
     c4 = (x @ Copy(["i", "j"])) @ y
-    assert c4.simplify(full=True) == Product([x.rename(i="j"), y])
+    assert c4.simplify() == Product([x.rename({"i": "j"}), y])
 
 
 def test_multiplication():
@@ -114,7 +106,7 @@ def test_multiplication():
     z = x * y
     assert isinstance(z, Product)
     assert z.edges == ["i", "k", "j"]
-    assert any(isinstance(t, Copy) and t.edges == ["j", "j_0", "j_1"] for t in z.tensors)
+    assert any(isinstance(t, Copy) and t.edges == ["j", "j_", "j__"] for t in z.tensors)
 
 
 def test_subtraction():
@@ -132,32 +124,32 @@ def test_inner_product_grad():
     y = Variable("y", ["i"])
     z = x @ y
     assert z.edges == []
-    assert z.grad(x).simplify(full=True) == y.rename(i="i'")
-    assert z.grad(y).simplify(full=True) == x.rename(i="i'")
+    assert z.grad(x).simplify() == y.rename({"i": "i_"})
+    assert z.grad(y).simplify() == x.rename({"i": "i_"})
 
 
 def test_gradient_variable_self():
     x = Variable("x", ["x"])
-    assert x.grad(x, ["x'"]).edges == ["x", "x'"]
+    assert x.grad(x, ["x_"]).edges == ["x", "x_"]
 
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
-    assert x.grad(y, ["y'"]) == Zero(["x", "y'"])
+    assert x.grad(y, ["y_"]) == Zero(["x", "y_"])
 
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
     z = x + y
-    assert set(z.grad(x, ["x'"]).edges) == {"x'", "x", "y"}
+    assert set(z.grad(x, ["x_"]).edges) == {"x_", "x", "y"}
 
     # Gradient of a contraction operation with respect to one of its operands should adjust edges appropriately
     x = Variable("x", ["i"])
     y = Variable("y", ["i"])
     z = x @ y
-    assert z.grad(x).edges == ["i'"]
+    assert z.grad(x).edges == ["i_"]
 
     # Gradient through an identity tensor should return Zero when the variable does not match
     x = Variable("x", ["x"])
-    I = Copy(["x", "x'"])
+    I = Copy(["x", "x_"])
     result = I.grad(x)
     assert isinstance(result, Zero)
 
@@ -170,14 +162,14 @@ def test_gradient_variable_self():
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
     z = (x + y) @ x - y
-    assert set(z.grad(x).edges) == {"x'", "y"}
+    assert set(z.grad(x).edges) == {"x_", "y"}
 
 
 def test_square_ip():
     x = Variable("x", ["i"])
     x2 = x @ x
     assert x2.edges == []
-    assert x2.grad(x).simplify(full=True) == Sum([x.rename(i="i'")], [2])
+    assert x2.grad(x).simplify() == Sum([x.rename({"i": "i_"})], [2])
 
 
 def test_square_xAAx():
@@ -186,7 +178,7 @@ def test_square_xAAx():
     Ax = A @ x
     xAAx = Ax @ Ax
     assert xAAx.edges == []
-    assert xAAx.grad(x).edges == ["x'"]
+    assert xAAx.grad(x).edges == ["x_"]
 
 
 def test_hessian():
@@ -195,7 +187,7 @@ def test_hessian():
     A = Variable("A", ["x", "y"])
     F = frobenius2(A @ x - y)
     hess = F.grad(x).grad(x)
-    assert set(hess.edges) == {"x'", "x''"}
+    assert set(hess.edges) == {"x_", "x__"}
 
 
 def test_square_grad():
@@ -204,8 +196,8 @@ def test_square_grad():
     print(y)
     print("y grad", y.grad(x))
     assert y.edges == ["i"]
-    # assert y.grad(x).simplify(full=True) == Sum([x, Identity(["i", "i'"])], [2, 2])
-    assert set(y.grad(x).edges) == {"i", "i'"}
+    # assert y.grad(x).simplify() == Sum([x, Identity(["i", "i_"])], [2, 2])
+    assert set(y.grad(x).edges) == {"i", "i___"}
 
 
 def test_quadratic_grad():
@@ -213,17 +205,17 @@ def test_quadratic_grad():
     A = Variable("A", ["j", "i"])
     y = frobenius2(A @ x)
     assert y.edges == []
-    print("y grad", y.grad(x).simplify(full=True))
+    print("y grad", y.grad(x).simplify())
     # To do this test well, we need graph isomorphism testing. Or maybe we can just use edge ordering?
-    # assert y.grad(x).simplify(full=True) == A @ A @ x
-    assert y.grad(x).edges == ["i'"]
+    # assert y.grad(x).simplify() == A @ A @ x
+    assert y.grad(x).edges == ["i_"]
 
 
 def test_func_grad():
     # Gradient of a function with respect to its variable should adjust edges appropriately
     x = Variable("x", ["x"])
     f = Function("f", [x], ["x"], [])
-    assert f.grad(x).edges == ["x'"]
+    assert f.grad(x).edges == ["x_"]
 
 
 def test_two_func_grad():
@@ -231,12 +223,12 @@ def test_two_func_grad():
     x = Variable("x", ["x"])
     v = Function("v", [x], ["x"], ["y"])
     f = Function("f", [v], ["y"], [])
-    assert f.grad(x).edges == ["x'"]
+    assert f.grad(x).edges == ["x_"]
 
 
 def test_matrix_grad():
     X = Variable("X", ["i", "j"])
-    assert X.grad(X) == Copy(["i", "i'"]) @ Copy(["j", "j'"])
+    assert X.grad(X) == Copy(["i", "i_"]) @ Copy(["j", "j_"])
 
 
 def test_broadcasting():
@@ -245,7 +237,7 @@ def test_broadcasting():
     z = x + y
     assert set(z.edges) == {"x", "y"}
     print(z.grad(x))
-    assert set(z.grad(x).simplify().edges) == {"x", "y", "x'"}
+    assert set(z.grad(x).simplify().edges) == {"x", "y", "x_"}
 
 
 def test_simplify_ones():
@@ -267,15 +259,15 @@ def test_broadcasting2():
     y = Variable("y", ["y"])
     z = frobenius2(x + y)
     assert z.edges == []
-    assert z.grad(x).edges == ["x'"]
-    assert z.grad(x).simplify(full=True).edges == ["x'"]
+    assert z.grad(x).edges == ["x_"]
+    assert z.grad(x).simplify().edges == ["x_"]
     actual = z.grad(x)
     # { 2 (x1+y1) + 2 (x1+y2) }
     # { 2 (x2+y1) + 2 (x2+y2) }
-    expected = 2 * ((x.rename(x="x'") + y) @ Copy(["y"]))
-    print(f"{actual.simplify(full=True)=}")
-    print(f"{expected.simplify(full=True)=}")
-    assert actual.simplify(full=True) == expected.simplify(full=True)
+    expected = 2 * ((x.rename({"x": "x_"}) + y) @ Copy(["y"]))
+    print(f"{actual.simplify()=}")
+    print(f"{expected.simplify()=}")
+    assert actual.simplify() == expected.simplify()
 
 
 def test_broadcast_zero_rank_ones():
@@ -283,4 +275,4 @@ def test_broadcast_zero_rank_ones():
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
     t = x + y
-    assert "Ones([])" not in repr(t.simplify(full=True))
+    assert "Ones([])" not in repr(t.simplify())
