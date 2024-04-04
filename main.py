@@ -65,7 +65,6 @@ def compile_latex(latex_code):
     # Compile the LaTeX file using pdflatex with the -output-directory option
     subprocess.run(
         [
-            # "pdflatex",
             "lualatex",
             "-output-directory",
             output_dir,
@@ -188,6 +187,6 @@ def manim():
 if __name__ == "__main__":
     import sys
 
-    #mode = sys.argv[1]
-    #Hvp(mode)
+    # mode = sys.argv[1]
+    # Hvp(mode)
     manim()

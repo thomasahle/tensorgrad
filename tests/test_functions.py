@@ -4,13 +4,19 @@ from tensor import Variable
 import functions as F
 
 
+def assert_close(a, b):
+    assert set(a.names) == set(b.names)
+    a = a.align_to(*b.names)
+    torch.testing.assert_close(a.rename(None), b.rename(None))
+
+
 def test_frobenius2():
     t = torch.randn(2, 3, 4, names=("a", "b", "c"))
     v = Variable("t", ["a", "b", "c"])
     frob = F.frobenius2(v)
     res = frob.evaluate({v: t})
     expected = (t * t).sum()
-    torch.testing.assert_close(res, expected)
+    assert_close(res, expected)
 
 
 def test_diag():
@@ -19,26 +25,28 @@ def test_diag():
     t = torch.randn(2, names=("a",))
     res = mat.evaluate({v: t})
     expected = torch.diag(t.rename(None)).rename("a", "b")
-    torch.testing.assert_close(res.rename(None), expected.rename(None))
+    assert_close(res, expected)
 
 
 def test_einsum():
     a = Variable("a", ["i", "j"])
     b = Variable("b", ["j", "k"])
     c = Variable("c", ["k", "l"])
-
-    # Test basic einsum
-    result = F.einsum([a, b], ["i", "k"])
     t_a = torch.randn(2, 3, names=("i", "j"))
     t_b = torch.randn(3, 4, names=("j", "k"))
-    expected = torch.einsum("ij,jk->ik", t_a.rename(None), t_b.rename(None))
-    torch.testing.assert_close(result.evaluate({a: t_a, b: t_b}).rename(None), expected)
+    t_c = torch.randn(4, 5, names=("k", "l"))
+
+    # Test basic einsum
+    res = F.einsum([a, b], ["i", "k"]).evaluate({a: t_a, b: t_b})
+    expected = torch.einsum("ij,jk->ik", t_a.rename(None), t_b.rename(None)).rename("i", "k")
+    assert_close(res, expected)
 
     # Test einsum with multiple tensors
-    result = F.einsum([a, b, c], ["i", "l"])
-    t_c = torch.randn(4, 5, names=("k", "l"))
-    expected = torch.einsum("ij,jk,kl->il", t_a.rename(None), t_b.rename(None), t_c.rename(None))
-    torch.testing.assert_close(result.evaluate({a: t_a, b: t_b, c: t_c}).rename(None), expected)
+    res = F.einsum([a, b, c], ["i", "l"]).evaluate({a: t_a, b: t_b, c: t_c})
+    expected = torch.einsum("ij,jk,kl->il", t_a.rename(None), t_b.rename(None), t_c.rename(None)).rename(
+        "i", "l"
+    )
+    assert_close(res, expected)
 
 
 def test_kronecker():

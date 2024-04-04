@@ -276,3 +276,13 @@ def test_broadcast_zero_rank_ones():
     y = Variable("y", ["y"])
     t = x + y
     assert "Ones([])" not in repr(t.simplify())
+
+
+def test_pseudo_linear_gradient():
+    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
+    x = Variable("x", ["i"])
+    A = Function("A", [x], ["i"], ["i", "j"])
+    expr = (A @ x).grad(x).simplify()
+    assert set(expr.edges) == {"j", "i_"}
+    Ad = Function("A_d0", [x], ["i"], ["i", "j", "i_"])
+    assert expr == (Ad @ x + A.rename({"i": "i_"})).simplify()

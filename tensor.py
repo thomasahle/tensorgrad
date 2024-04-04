@@ -5,9 +5,12 @@ from abc import ABC
 import torch
 
 # TODO:
+# - Evaluation of functions
 # - Support for specific functions and their simplification rules (cross entropy, etc)
 # - Code generation? (e.g. Triton)
 # - Prettier printing
+# - Stuff from https://en.wikipedia.org/wiki/Penrose_graphical_notation
+#   - Symmetrization/Antisymmetrization
 
 
 def all_edges(tensor):
@@ -276,7 +279,7 @@ class Copy(Constant):
         for idx in range(shape[0]):
             copy[(idx,) * len(self.edges)] = 1
         values[self] = copy
-        return copy
+        return copy.rename(*self.edges)
 
 
 class Zero(Constant):
@@ -290,34 +293,19 @@ class Zero(Constant):
         if not self.edges:
             return torch.tensor(0.0)
         self._check_extras(values, extras)
-        values[self] = torch.zeros([extras["edge_dims"][e] for e in self.edges])
+        values[self] = torch.zeros([extras["edge_dims"][e] for e in self.edges]).rename(*self.edges)
         return values[self]
 
 
-class Ones(Constant):
+def Ones(edges: list[str]) -> Tensor:
     """Matrix such that O_{i,j,k} = 1 for all i, j, k"""
-
-    def simplify(self, args: dict[str, Any] = {}):
-        if self.rank <= 1:
-            return Copy(self.edges)
-        return self
-
-    def evaluate(
-        self,
-        values: dict["Tensor", torch.tensor | Callable],
-        extras: dict[str, Any] | None = None,
-    ) -> torch.tensor:
-        if not self.edges:
-            return torch.tensor(1.0)
-        self._check_extras(values, extras)
-        values[self] = torch.ones([extras["edge_dims"][e] for e in self.edges])
-        return values[self]
+    return Product([Copy([e]) for e in edges])
 
 
 class Function(Tensor):
     def __init__(
         self,
-        name,
+        name: str,
         tensors: Iterable[Tensor],
         edges_in: Iterable[str],
         edges_out: Iterable[str],
@@ -381,27 +369,21 @@ class Function(Tensor):
         return f"Function({self.name}, {self.tensors}, {self.edges_in}, {self.edges})"
 
     def compute_edge_dims(self, shapes: dict["Variable", dict[str, int]]) -> dict[str, int]:
-        _shapes = join_dicts(t.compute_edge_dims(shapes) for t in self.tensors)
-        # The derivative tensor has the same shape as the original tensor, but with the new edge names.
-        # FIXME: I don't think there's a nice way to do this, other than actually calling the function...
-        raise NotImplementedError("We need the function to specify its output dimensions")
+        edge_dims = join_dicts(t.compute_edge_dims(shapes) for t in self.tensors)
+        subclass_edge_dims = self.edge_dims({e: edge_dims[e] for e in self.edges_in})
+        return join_dicts([subclass_edge_dims, edge_dims])
 
     def evaluate(
         self,
-        values: dict["Tensor", torch.tensor | Callable],
+        values: dict["Tensor", torch.tensor],
         extras: dict[str, Any] | None = None,
     ) -> torch.tensor:
         self._check_extras(values, extras)
-        val = values.get(self)
-        if val is None:
-            raise ValueError(f"Missing function {self.name}")
-        elif isinstance(val, torch.tensor):
-            return val
-        elif not isinstance(val, Callable):
-            raise ValueError(f"Invalid value for function {self.name}")
+        if self in values:
+            return values[self]
         for t in self.tensors:
             values[t] = t.evaluate(values)
-        out = val([values[t] for t in self.tensors], self.edges_in)
+        out = self(*[values[t] for t in self.tensors], self.edges_in)
         # TODO: This might cause issues if the edges are not ordered the way we expect.
         # Alternatively we could assert that the function returns a tensor with the correct names.
         # But that would fail if we have been renamed. So the best solution is probably to use
@@ -409,6 +391,12 @@ class Function(Tensor):
         out = out.rename(*self.edges)
         values[self] = out
         return out
+
+    def edge_dims(self, edge_dims: dict[str, int]) -> dict[str, int]:
+        raise NotImplementedError("Please subclass Function to evaluate it")
+
+    def __call__(self, *tensors: list[torch.tensor]) -> Tensor:
+        raise NotImplementedError("Please subclass Function to evaluate it")
 
 
 class Derivative(Tensor):
@@ -423,7 +411,8 @@ class Derivative(Tensor):
         # If grad_steps is 0, we pass the simplify through the derivative.
         if args.setdefault("grad_steps", float("inf")) > 0:
             args["grad_steps"] -= 1
-            return self.tensor.grad(self.x, self.new_names).simplify(args)
+            # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
+            return self.tensor.simplify(args).grad(self.x, self.new_names).simplify(args)
         return Derivative(self.tensor.simplify(args), self.x, self.new_names)
 
     def grad(self, x: Variable, new_names: list[str] | None) -> Tensor:
@@ -445,11 +434,7 @@ class Derivative(Tensor):
         return hash(("Derivative", hash(self.tensor), hash(self.x), len(self.new_names)))
 
     def compute_edge_dims(self, shapes: dict["Variable", dict[str, int]]) -> dict[str, int]:
-        edge_dims = self.tensor.compute_edge_dims(shapes)
-        # The derivative tensor has the same shape as the original tensor, but with the new edge names.
-        for e_in, e_out in zip(self.x.edges, self.new_names):
-            edge_dims[e_out] = edge_dims[e_in]
-        return edge_dims
+        raise ValueError("Derivative tensors cannot be evaluated directly. Please use simplify() first.")
 
     def evaluate(
         self,
@@ -513,8 +498,10 @@ class Product(Tensor):
         extras = self._check_extras(values, extras)
         if self in values:
             return values[self]
-        all_edges = {e for t in self.tensors for e in t.edges}
+        # Keep track of how many contractions we made
+        extras["contractions"] = extras.get("contractions", 0) + len(self.contractions)
         # Pytorch only supports single letter einsum names
+        all_edges = {e for t in self.tensors for e in t.edges}
         simple_names = {e: chr(ord("a") + i) for i, e in enumerate(all_edges)}
         einsum_string = (
             ", ".join(" ".join(simple_names[e] for e in t.edges) for t in self.tensors)
@@ -585,16 +572,16 @@ class Product(Tensor):
                 break
 
         # TODO: Combine connected Copy tensors into a single Copy tensor.
+        # This also includes removing "self loops" on Copy's
 
         # Remove empty Identities and Ones
-        children = [t for t in children if not (isinstance(t, (Copy, Ones)) and t.rank == 0)]
+        # children = [t for t in children if not (isinstance(t, (Copy, Ones)) and t.rank == 0)]
+        children = [t for t in children if not (isinstance(t, Copy) and t.rank == 0)]
 
         # Base cases
         if not children:
-            # The issue here is that the identity tensor (product of n identity matrices) has too many
-            # edges. We would need to copy self.edges with n new names, but that would change the
-            # signature of the tensors.
-            raise NotImplementedError
+            # The only issue here is that we're throwing away edge names.
+            return Copy([])
         if len(children) == 1:
             return children[0]
         return Product(children)
@@ -661,5 +648,7 @@ class Sum(Tensor):
         extras = self._check_extras(values, extras)
         if self in values:
             return values[self]
-        values[self] = sum(w * t.evaluate(values, extras) for w, t in zip(self.weights, self.tensors))
+        values[self] = sum(
+            w * t.evaluate(values, extras).align_to(*self.edges) for w, t in zip(self.weights, self.tensors)
+        )
         return values[self]
