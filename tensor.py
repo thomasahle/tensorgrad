@@ -349,7 +349,7 @@ class Function(Tensor):
             Product(
                 [
                     Function(
-                        self.name + f"_d{i}",
+                        f"D_{i}" + self.name,
                         self.tensors,
                         self.edges_in,
                         self.edges + [new_edge],

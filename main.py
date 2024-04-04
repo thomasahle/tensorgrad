@@ -184,9 +184,19 @@ def manim():
     scene.render()
 
 
+def milanfar():
+    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
+    x = Variable("x", ["i"])
+    A = Function("A", [x], ["i"], ["i", "j"])
+    # expr = (A @ x).grad(x).simplify({"grad_steps": 0})
+    expr = (A @ x).grad(x).simplify()
+
+    compile_latex(to_tikz(expr))
+
+
 if __name__ == "__main__":
     import sys
 
     # mode = sys.argv[1]
     # Hvp(mode)
-    manim()
+    milanfar()

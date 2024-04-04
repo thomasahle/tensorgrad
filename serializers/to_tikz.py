@@ -1,10 +1,18 @@
 from collections import defaultdict
 from tensor import Product, Zero, Copy, Variable, Sum, Function
 import random
+import re
 
 # layout_style = "layered layout"
 # layout_style = "spring layout"
 layout_style = "tree layout"
+
+
+def format_label(label):
+    suffix = re.search("(_*)$", label).group(1)
+    if len(suffix) > 0:
+        label = label[: -len(suffix)] + "'" * len(suffix)
+    return label
 
 
 class TikzGraph:
@@ -20,26 +28,26 @@ class TikzGraph:
             return
         self.node_ids.add(node_id)
         if isinstance(label, str):
-            label = label.replace("_", "+")
+            label = format_label(label)
         if node_type == "identity":
             self.lines.append(f"  {node_id}[identity,as=\\tiny{{\\textbullet}}];")
         elif node_type == "var":
-            self.lines.append(f"  {node_id}[var,as={label}];")
+            self.lines.append(f"  {node_id}[var,as=${label}$];")
         elif node_type == "zero":
             self.lines.append(f"  {node_id}[zero,as=0];")
         elif node_type == "function":
-            self.lines.append(f"  {node_id}[function,as={label}];")
+            self.lines.append(f"  {node_id}[function,as=${label}$];")
         elif node_type == "invisible":
             self.lines.append(f"  {node_id}[style={{}},as=];")
         else:
-            self.lines.append(f"  {node_id}[as={label}];")
+            self.lines.append(f"  {node_id}[as=${label}$];")
 
     def add_edge(self, id1, id2, label, directed=False):
         print(f"adding edge ({id1}) -> ({id2}) with label {label}")
         id1 = id1.replace("_", "+")
         id2 = id2.replace("_", "+")
         if isinstance(label, str):
-            label = label.replace("_", "+")
+            label = format_label(label)
         assert id1 in self.node_ids, f"Node {id1} does not exist in {self.node_ids}"
         assert id2 in self.node_ids, f"Node {id2} does not exist in {self.node_ids}"
         edge_type = " -> " if directed else " -- "
@@ -211,9 +219,7 @@ def _to_tikz(tensor, graph):
                 f"{cluster_id}+{i}",
             )
 
-        graph.add_subgraph(
-            subgraph, f"{cluster_id} / [inner sep=10pt] // [tree layout]", cluster_id
-        )
+        graph.add_subgraph(subgraph, f"{cluster_id} / [inner sep=10pt] // [tree layout]", cluster_id)
         return {e: cluster_id for e in free_edges.keys()}
 
     assert False, "Unknown tensor type"
