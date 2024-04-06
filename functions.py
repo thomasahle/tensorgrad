@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Any, Callable, Union
 import torch
 from tensor import Function, Ones, Tensor, Product, Copy, make_distinct
 from math import factorial
@@ -50,21 +50,49 @@ def sum(tensor: Tensor, edges: list[str], keepdims=False) -> Tensor:
     return out
 
 
+# The common type of cuntion in ML is that of the broadcasted function.
+# Say we have shape (B, N, M), we'll typically apply a function "along" axis M,
+# which means it takes a vector as an input and outputs a vector.
+# And we call it on each vector from (B, N).
+#
+# It would be cool to express functions such as max(dim=...) as a vector, meaning
+# it would show up in the product graph as a node with a single edge, which connects
+# to the axis "over which" we apply the function. This matches the intuition of an
+# inner product with a vector along that axis, which ends up removing it.
+#
+# But in this framework, how would we express an elementwise function? It wouldn't have
+# any edges to connect to.
 class Elementwise(Function):
     def __init__(self, name: str, function: Callable, t: Tensor, derivative: Callable = None):
-        super().__init__(name, [t], edges_in=t.edges, edges_out=t.edges)
+        # An element wise function takes no input edges and output no output edges
+        # That makes it kinda difficult to visualize in a graph... Might just have to surround it
+        super().__init__(name, [], (t,))
         self.function = function
         self.derivative = derivative
 
-    def edge_dims(self, edge_dims: dict[str, int]) -> dict[str, int]:
-        return edge_dims  # Element-wise functions don't change the dimensions
+    def inner_grad(self, i, new_edges) -> Tensor:
+        # print("inner_grad", i, new_edge, f"{self.derivative()=}")
+        print("inner_grad", self.tensors[0].edges, new_edges)
+        return self.derivative() @ Copy(new_edges)
 
-    def __call__(self, *values: list[torch.tensor], edges):
-        return self.function(*values)
+    def edge_dims(self, edge_dims: dict[str, int]) -> dict[str, int]:
+        return {}  # No output edges
+
+    def __call__(self, value: torch.tensor) -> torch.tensor:
+        return self.function(value)
+
+    def __repr__(self):
+        return f"{self.name}({self.tensors[0]})"
+
+    def simplify(self, args: dict[str, Any] = {}):
+        return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)
+
+    def rename(self, kwargs: dict[str, str]):
+        return Elementwise(self.name, self.function, self.tensors[0].rename(kwargs), self.derivative)
 
 
 def log(t: Tensor) -> Tensor:
-    return Elementwise("log", torch.log, t, lambda n, x: torch.pow(-x, -n) * factorial(n - 1))
+    return Elementwise("log", torch.log, t, lambda: pow(t, -1))
 
 
 def exp(t: Tensor) -> Tensor:
@@ -79,7 +107,7 @@ def pow(tensor: Tensor, k: int) -> Tensor:
         f"pow({k})",
         lambda x: torch.pow(x, k),
         tensor,
-        lambda x: k * pow(x, k - 1),
+        lambda: k * pow(tensor, k - 1),
     )
 
 

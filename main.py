@@ -192,6 +192,17 @@ def milanfar():
     expr = (A @ x).grad(x).simplify()
 
     compile_latex(to_tikz(expr))
+    print(to_tikz(expr))
+
+
+def simple():
+    x = Variable("x", ["i"])
+    A = Function("A", [x], ["i"], ["i", "j"])
+    # expr = (A @ x).grad(x).simplify({"grad_steps": 0})
+    expr = (A @ x).grad(x).simplify()
+
+    compile_latex(to_tikz(expr))
+    print(to_tikz(expr))
 
 
 if __name__ == "__main__":

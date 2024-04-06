@@ -1,35 +1,26 @@
 import torch
 from tensor import Copy, Derivative, Function, Ones, Product, Sum, Variable, Zero
 import functions as F
-
-
-def rand_values(variables, **shape):
-    return {v: torch.randn([shape[e] for e in v.edges], names=v.edges) for v in variables}
-
-
-def assert_close(a, b):
-    assert set(a.names) == set(b.names)
-    a = a.align_to(*b.names)
-    torch.testing.assert_close(a.rename(None), b.rename(None))
+from utils import assert_close, rand_values
 
 
 def test_copy():
     copy_tensor = Copy(["i", "j"])
-    result = copy_tensor.evaluate({}, extras={"edge_dims": {"i": 3, "j": 3}})
+    result = copy_tensor.evaluate({}, dims={"i": 3, "j": 3})
     expected = torch.eye(3).rename("i", "j")
     assert_close(result, expected)
 
 
 def test_zero():
     zero_tensor = Zero(["i", "j"])
-    result = zero_tensor.evaluate({}, extras={"edge_dims": {"i": 2, "j": 3}})
+    result = zero_tensor.evaluate({}, dims={"i": 2, "j": 3})
     expected = torch.zeros(2, 3).rename("i", "j")
     assert_close(result, expected)
 
 
 def test_ones():
     ones_tensor = Ones(["i", "j"])
-    result = ones_tensor.evaluate({}, extras={"edge_dims": {"i": 2, "j": 3}})
+    result = ones_tensor.evaluate({}, dims={"i": 2, "j": 3})
     expected = torch.ones(2, 3).rename("i", "j")
     assert_close(result, expected)
 
@@ -131,13 +122,13 @@ def test_function_evaluation():
     # Define a custom function that computes the element-wise product of two tensors
     class ElementWiseProduct(Function):
         def __init__(self, a, b):
-            super().__init__("element_wise_product", [a, b], ["i"], ["i"])
+            super().__init__("element_wise_product", ["i"], (a, "i"), (b, "i"))
 
         def edge_dims(self, edge_dims: dict[str, int]) -> dict[str, int]:
-            # Doesn't change anything
-            return edge_dims
+            # Output shape equals input shape
+            return {"i": edge_dims["i"]}
 
-        def __call__(self, v1, v2, edges_in):
+        def __call__(self, v1, v2):
             return v1 * v2
 
     # Create a tensor expression using the custom function: f(a, b)

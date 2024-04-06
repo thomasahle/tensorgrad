@@ -46,5 +46,7 @@ def test_derivative_of_hadamard_product():
     b = tg.Variable("b", ["i", "j"])
     ts = rand_values([a, b], i=2, j=3)
 
+    print((a * b).grad(a).simplify())
+
     torch.testing.assert_close((a * b).grad(a).simplify().evaluate(ts).sum(), ts[b].sum())
     torch.testing.assert_close((a * b).grad(b).simplify().evaluate(ts).sum(), ts[a].sum())

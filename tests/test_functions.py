@@ -77,3 +77,41 @@ def test_sum():
     result = F.sum(a, ["i", "j"]).evaluate({a: t_a})
     expected = t_a.sum(dim=("i", "j"))
     torch.testing.assert_close(result.rename(None), expected.rename(None))
+
+
+def test_pow():
+    a = Variable("a", ["i", "j"])
+    t_a = torch.randn(2, 3, names=("i", "j")).abs()
+    result = F.pow(a, -1).evaluate({a: t_a})
+    expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
+    assert_close(result, expected)
+
+
+def test_log():
+    a = Variable("a", ["i", "j"])
+    t_a = torch.randn(2, 3, names=("i", "j")).abs()
+    result = F.log(a).evaluate({a: t_a})
+    expected = torch.log(t_a.rename(None)).rename("i", "j")
+    assert_close(result, expected)
+
+
+def test_log_grad():
+    v = Variable("v", ["i"])
+    t_v = torch.randn(3, names=("i",)).abs()
+    print("logv", F.log(v))
+    print("grad logv", F.log(v).grad(v))
+    jacobian = F.log(v).grad(v).simplify()
+    print(jacobian.edges)
+    print(jacobian)
+    assert set(jacobian.edges) == {"i", "i_"}
+    result = jacobian.evaluate({v: t_v})
+    expected = torch.diag(torch.pow(t_v.rename(None), -1)).rename("i", "i_")
+    assert_close(result, expected)
+
+
+def test_exp():
+    a = Variable("a", ["i", "j"])
+    t_a = torch.randn(2, 3, names=("i", "j"))
+    result = F.exp(a).evaluate({a: t_a})
+    expected = torch.exp(t_a.rename(None)).rename("i", "j")
+    assert_close(result, expected)

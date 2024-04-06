@@ -12,7 +12,11 @@ def format_label(label):
     suffix = re.search("(_*)$", label).group(1)
     if len(suffix) > 0:
         label = label[: -len(suffix)] + "'" * len(suffix)
-    return label
+    style = ""
+    if "D_" in label:
+        label = re.sub("D_[\d+]", "", label, count=1)
+        style = "double"
+    return label, style
 
 
 class TikzGraph:
@@ -27,8 +31,10 @@ class TikzGraph:
             print("Warning: Node already exists. Ignoring")
             return
         self.node_ids.add(node_id)
-        if isinstance(label, str):
-            label = format_label(label)
+        if label is not None:
+            label, extra_style = format_label(label)
+        else:
+            label, extra_style = "", ""
         if node_type == "identity":
             self.lines.append(f"  {node_id}[identity,as=\\tiny{{\\textbullet}}];")
         elif node_type == "var":
@@ -36,7 +42,7 @@ class TikzGraph:
         elif node_type == "zero":
             self.lines.append(f"  {node_id}[zero,as=0];")
         elif node_type == "function":
-            self.lines.append(f"  {node_id}[function,as=${label}$];")
+            self.lines.append(f"  {node_id}[function,as=${label}$,style={{{extra_style}}}];")
         elif node_type == "invisible":
             self.lines.append(f"  {node_id}[style={{}},as=];")
         else:
@@ -47,7 +53,7 @@ class TikzGraph:
         id1 = id1.replace("_", "+")
         id2 = id2.replace("_", "+")
         if isinstance(label, str):
-            label = format_label(label)
+            label, _style = format_label(label)
         assert id1 in self.node_ids, f"Node {id1} does not exist in {self.node_ids}"
         assert id2 in self.node_ids, f"Node {id2} does not exist in {self.node_ids}"
         edge_type = " -> " if directed else " -- "
@@ -76,9 +82,9 @@ def to_tikz(tensor):
             inner sep=2pt,
         },
         identity/.style={circle, draw=black, fill=white, inner sep=0pt, minimum size=4pt},
-        var/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+        var/.style={circle, draw=black, fill=white, inner sep=2pt},
         zero/.style={rectangle, draw=black, fill=white, inner sep=2pt},
-        function/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+        function/.style={circle, draw=black, fill=white, inner sep=2pt},
         subgraph nodes={draw=gray, rounded corners},
         subgraph text none,
     ]
@@ -164,20 +170,21 @@ def _to_tikz(tensor, graph):
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Function):
-        graph.add_node(node_id := str(id(tensor)), "function", label=tensor.name)
+        node_id = str(id(tensor))
+        graph.add_node(node_id, "function", label=tensor.name)
         free_edges = {}
-        for t in tensor.tensors:
+        for t, *es in tensor.inputs:
+            edges = _to_tikz(t, graph)
+            for e in es:
+                sub_id = edges.pop(e)
+                graph.add_edge(sub_id, node_id, label=e, directed=True)
+            # Add remaining edges to free edges.
             # Note: The Function should have made sure there is no edge overlap here
-            free_edges |= _to_tikz(t, graph)
-
-        for e in tensor.edges_in:
-            sub_id = free_edges.pop(e)
-            graph.add_edge(sub_id, str(id(tensor)), label=e, directed=True)
-
-        # Make nice edges for out going edges
+            assert not (edges.keys() & free_edges.keys())
+            free_edges |= edges
 
         # We propagate the free edges to the parent to handle
-        return {e: str(id(tensor)) for e in tensor.edges} | free_edges
+        return {e: node_id for e in tensor.edges} | free_edges
 
     if isinstance(tensor, Product):
         # subgraph = TikzGraph()
@@ -215,7 +222,7 @@ def _to_tikz(tensor, graph):
                 style = ", draw=none"
             subgraph.add_subgraph(
                 subsubgraph,
-                f"{cluster_id}+{i}/[label={{[anchor=east]left:${format_weight(w)}$}} {style}] // [tree layout]",
+                f"{cluster_id}+{i}/[label={{[anchor=east, scale=2]left:${format_weight(w)}$}} {style}] // [tree layout]",
                 f"{cluster_id}+{i}",
             )
 

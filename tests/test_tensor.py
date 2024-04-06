@@ -1,5 +1,5 @@
 from functions import frobenius2
-from tensor import Variable, Function, Copy, Zero, Product, Sum, Ones
+from tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
 
 
 def test_x():
@@ -214,15 +214,15 @@ def test_quadratic_grad():
 def test_func_grad():
     # Gradient of a function with respect to its variable should adjust edges appropriately
     x = Variable("x", ["x"])
-    f = Function("f", [x], ["x"], [])
+    f = Function("f", [], (x, "x"))
     assert f.grad(x).edges == ["x_"]
 
 
 def test_two_func_grad():
     # Gradient of a function with respect to its variable should adjust edges appropriately
     x = Variable("x", ["x"])
-    v = Function("v", [x], ["x"], ["y"])
-    f = Function("f", [v], ["y"], [])
+    v = Function("v", ["y"], (x, "x"))
+    f = Function("f", [], (v, "y"))
     assert f.grad(x).edges == ["x_"]
 
 
@@ -281,8 +281,100 @@ def test_broadcast_zero_rank_ones():
 def test_pseudo_linear_gradient():
     # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
     x = Variable("x", ["i"])
-    A = Function("A", [x], ["i"], ["i", "j"])
+    A = Function("A", ["i", "j"], (x, "i"))
     expr = (A @ x).grad(x).simplify()
     assert set(expr.edges) == {"j", "i_"}
-    Ad = Function("A_d0", [x], ["i"], ["i", "j", "i_"])
+    Ad = Function("D_0A", ["i", "j", "i_"], (x, "i"))
     assert expr == (Ad @ x + A.rename({"i": "i_"})).simplify()
+
+
+def test_hash():
+    xi = Variable("x", ["i"])
+    xj = Variable("x", ["j"])
+    assert hash(xi) == hash(xj)
+
+    # Inner product and outer product should have different hashes
+    assert hash(Product([xi, xi])) != hash(Product([xi, xj]))
+    # Ordering does not affect hash
+    assert hash(Product([xi, xj])) == hash(Product([xj, xi]))
+
+    # Reordering of edges should not affect hash
+    assert hash(Variable("x", ["i", "j"])) == hash(Variable("x", ["j", "i"]))
+    # Rename should not affect hash
+    assert hash(Variable("x", ["i", "j"])) == hash(Variable("x", ["i", "k"]))
+
+
+def test_equal():
+    v = Variable("x", ["x"])
+    assert Product([Copy(["y"]), v]) == Product([v, Copy(["y"])])
+
+    s = Sum(
+        [
+            Product([Variable("x", ["x"], ["x_"]), Copy(["y"])]),
+            Product([Variable("y", ["y"], ["y"]), Copy(["x_"])]),
+        ],
+        (1, 1),
+    )
+
+    assert Product([Copy(["y"]), s]) == Product([s, Copy(["y"])])
+
+
+def test_size0():
+    v = Variable("x", ["x"])
+    shapes = {v: {"x": 3}}
+
+    assert compute_edge_dims(v, shapes)[id(v)] == {"x": 3}
+
+    c = Copy(["x", "y"])
+    assert compute_edge_dims(Product([c, v]), shapes)[id(c)] == {"x": 3, "y": 3}
+    assert compute_edge_dims(Product([v, c]), shapes)[id(c)] == {"x": 3, "y": 3}
+
+
+def test_size1():
+    v = Variable("x", ["i0"])
+    shapes = {v: {"i0": 3}}
+
+    t0 = Product([v, Copy(["i1", "i2"])])
+    t1 = Product([Copy(["i0", "i1"])])
+
+    assert compute_edge_dims(t0 @ t1, shapes)[id(t0)] == {"i0": 3, "i1": 3, "i2": 3}
+
+
+def test_size2():
+    v = Variable("x", ["i0"])
+    shapes = {v: {"i0": 3}}
+    t0 = Product([v, Copy(["i1", "i2"])])
+    t1 = Product([Copy(["i0", "i1"]), Copy(["i2", "i3"])])
+
+    assert compute_edge_dims(t0 @ t1, shapes)[id(t1)] == {
+        "i0": 3,
+        "i1": 3,
+        "i2": 3,
+        "i3": 3,
+    }
+
+
+def test_size3():
+    v = Variable("x", ["i0"])
+    shapes = {v: {"i0": 3}}
+    t0 = Product([v, Copy(["i1", "i2"]), Copy(["i3", "i4"])])
+    t1 = Product([Copy(["i0", "i1"]), Copy(["i2", "i3"]), Copy(["i4", "i5"])])
+    assert compute_edge_dims(t0 @ t1, shapes)[id(t1)] == {
+        "i0": 3,
+        "i1": 3,
+        "i2": 3,
+        "i3": 3,
+        "i4": 3,
+        "i5": 3,
+    }
+
+
+def test_sizes():
+    v = Variable("x", ["i0"])
+    shapes = {v: {"i0": 3}}
+    t0 = v
+    t1 = Copy([])
+    for i in range(0, 10, 2):
+        t1 = t1 @ Copy([f"i{i}", f"i{i+1}"])
+        t0 = t0 @ Copy([f"i{i+1}", f"i{i+2}"])
+        assert compute_edge_dims(t0 @ t1, shapes)[id(t0)] == {f"i{j}": 3 for j in range(0, i + 3)}

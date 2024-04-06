@@ -1,0 +1,23 @@
+import torch
+from torch.autograd.functional import jacobian
+
+from tensor import Variable
+from utils import rand_values, assert_close
+
+
+def test_simple_vector():
+    x = Variable("x", ["i"])
+    ts = rand_values([x], i=3)
+    print(x.grad(x).simplify())
+    res = x.grad(x).simplify().evaluate({"x": ts[x]}, dims={"i": 3})
+    expected = jacobian(lambda x: x, ts[x].rename(None))
+    torch.testing.assert_close(res.rename(None), expected)
+
+
+def test_simple_matrix():
+    x = Variable("x", ["i", "j"])
+    ts = rand_values([x], i=3, j=2)
+    print(x.grad(x).simplify())
+    res = x.grad(x).simplify().evaluate({"x": ts[x]}, dims={"i": 3, "j": 2})
+    expected = jacobian(lambda x: x, ts[x].rename(None)).rename("i", "j", "i_", "j_")
+    assert_close(res, expected)
