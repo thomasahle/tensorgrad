@@ -1,5 +1,6 @@
+from typing import Iterable
 import torch
-from tensor import Copy, Derivative, Function, Ones, Product, Sum, Variable, Zero
+from tensor import Copy, Derivative, Function, Ones, Product, Sum, Tensor, Variable, Zero
 import functions as F
 from utils import assert_close, rand_values
 
@@ -123,10 +124,18 @@ def test_function_evaluation():
     class ElementWiseProduct(Function):
         def __init__(self, a, b):
             super().__init__("element_wise_product", ["i"], (a, "i"), (b, "i"))
+            self.a = a
+            self.b = b
 
-        def edge_dims(self, edge_dims: dict[str, int]) -> dict[str, int]:
-            # Output shape equals input shape
-            return {"i": edge_dims["i"]}
+        def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
+            # Like everybody else, I don't distinguish between the same channel name from different children
+            # But I suppose in principle there could be a function that takes two inputs, which use the same
+            # edge name, but the two tensors don't have the same size for that edge...
+            # Could I just disallow that, which would make the edge_dim api much simpler?...
+            union = shapes.get(id(self), {}) | shapes.get(id(self.a), {}) | shapes.get(id(self.b), {})
+            if "i" in union:
+                return [(t, "i", union["i"]) for t in (self, self.a, self.b)]
+            return []
 
         def __call__(self, v1, v2):
             return v1 * v2

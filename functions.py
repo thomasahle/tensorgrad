@@ -1,4 +1,4 @@
-from typing import Any, Callable, Union
+from typing import Any, Callable, Iterable, Union
 import torch
 from tensor import Function, Ones, Tensor, Product, Copy, make_distinct
 from math import factorial
@@ -71,18 +71,26 @@ class Elementwise(Function):
         self.derivative = derivative
 
     def inner_grad(self, i, new_edges) -> Tensor:
-        # print("inner_grad", i, new_edge, f"{self.derivative()=}")
         print("inner_grad", self.tensors[0].edges, new_edges)
-        return self.derivative() @ Copy(new_edges)
+        t = self.derivative()
+        (t,), _renames = make_distinct(t, preserve_free=False, used_names=t.edges + new_edges)
+        print(f"all edges, {t.edges=}, {new_edges=}, {self.edges=}")
+        # return t @ Product([Copy([e0, e1, e2]) for e0, e1, e2 in zip(self.edges, t.edges, new_edges)])
+        return Product([t] + [Copy([e0, e1, e2]) for e0, e1, e2 in zip(self.edges, t.edges, new_edges)])
 
-    def edge_dims(self, edge_dims: dict[str, int]) -> dict[str, int]:
-        return {}  # No output edges
+    def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
+        t = self.tensors[0]
+        union = shapes.get(id(self), {}) | shapes.get(id(t), {})
+        for e in t.edges:
+            if e in union:
+                yield t, e, union[e]
+                yield self, e, union[e]
 
     def __call__(self, value: torch.tensor) -> torch.tensor:
         return self.function(value)
 
-    def __repr__(self):
-        return f"{self.name}({self.tensors[0]})"
+    # def __repr__(self):
+    #     return f"{self.name}({self.tensors[0]})"
 
     def simplify(self, args: dict[str, Any] = {}):
         return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)

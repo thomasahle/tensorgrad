@@ -90,6 +90,7 @@ def test_pow():
 def test_log():
     a = Variable("a", ["i", "j"])
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
+    print("loga", F.log(a))
     result = F.log(a).evaluate({a: t_a})
     expected = torch.log(t_a.rename(None)).rename("i", "j")
     assert_close(result, expected)
@@ -99,14 +100,32 @@ def test_log_grad():
     v = Variable("v", ["i"])
     t_v = torch.randn(3, names=("i",)).abs()
     print("logv", F.log(v))
+    assert F.log(v).edges == ["i"]
     print("grad logv", F.log(v).grad(v))
     jacobian = F.log(v).grad(v).simplify()
-    print(jacobian.edges)
-    print(jacobian)
+    print(f"{jacobian=}")
     assert set(jacobian.edges) == {"i", "i_"}
     result = jacobian.evaluate({v: t_v})
     expected = torch.diag(torch.pow(t_v.rename(None), -1)).rename("i", "i_")
     assert_close(result, expected)
+
+
+# Sum(
+#     [
+#         Product(
+#             [
+#                 Product(
+#                     [
+#                         Function(pow(-1), [], [(Variable(v, ["i"], ["i_"]),)]),
+#                         Product([Copy(["i", "i_", "i__"])]),
+#                     ]
+#                 ),
+#                 Derivative(Variable(v, ["i"], ["i__"]), Variable(v, ["i"], ["i"]), ["i_"]),
+#             ]
+#         )
+#     ],
+#     [1],
+# )
 
 
 def test_exp():
