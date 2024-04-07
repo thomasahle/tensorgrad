@@ -1,13 +1,11 @@
 import torch
+from torch.autograd.functional import jacobian, hessian
+import torch.nn.functional as tF
 
-from tensor import Variable
-import functions as F
+from tensorgrad.tensor import Variable
+import tensorgrad.functions as F
 
-
-def assert_close(a, b):
-    assert set(a.names) == set(b.names)
-    a = a.align_to(*b.names)
-    torch.testing.assert_close(a.rename(None), b.rename(None))
+from tests.utils import rand_values, assert_close
 
 
 def test_frobenius2():
@@ -90,7 +88,6 @@ def test_pow():
 def test_log():
     a = Variable("a", ["i", "j"])
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
-    print("loga", F.log(a))
     result = F.log(a).evaluate({a: t_a})
     expected = torch.log(t_a.rename(None)).rename("i", "j")
     assert_close(result, expected)
@@ -99,33 +96,12 @@ def test_log():
 def test_log_grad():
     v = Variable("v", ["i"])
     t_v = torch.randn(3, names=("i",)).abs()
-    print("logv", F.log(v))
     assert F.log(v).edges == ["i"]
-    print("grad logv", F.log(v).grad(v))
     jacobian = F.log(v).grad(v).simplify()
-    print(f"{jacobian=}")
     assert set(jacobian.edges) == {"i", "i_"}
     result = jacobian.evaluate({v: t_v})
     expected = torch.diag(torch.pow(t_v.rename(None), -1)).rename("i", "i_")
     assert_close(result, expected)
-
-
-# Sum(
-#     [
-#         Product(
-#             [
-#                 Product(
-#                     [
-#                         Function(pow(-1), [], [(Variable(v, ["i"], ["i_"]),)]),
-#                         Product([Copy(["i", "i_", "i__"])]),
-#                     ]
-#                 ),
-#                 Derivative(Variable(v, ["i"], ["i__"]), Variable(v, ["i"], ["i"]), ["i_"]),
-#             ]
-#         )
-#     ],
-#     [1],
-# )
 
 
 def test_exp():
@@ -134,3 +110,35 @@ def test_exp():
     result = F.exp(a).evaluate({a: t_a})
     expected = torch.exp(t_a.rename(None)).rename("i", "j")
     assert_close(result, expected)
+
+
+def test_softmax():
+    A = Variable("A", ["i", "j"])
+    ts = rand_values([A], i=3, j=2)
+    res = F.softmax(A, ["i"]).evaluate({A: ts[A]})
+    expected = tF.softmax(ts[A].rename(None), dim=0).rename("i", "j")
+    assert_close(res, expected)
+
+
+def test_softmax_grad():
+    x = Variable("x", ["i"])
+    ts = rand_values([x], i=3)
+    res = F.softmax(x, ["i"]).grad(x).simplify().evaluate({x: ts[x]})
+    expected = jacobian(lambda x: tF.softmax(x), ts[x].rename(None)).rename("i", "i_")
+    assert_close(res, expected)
+
+
+def test_softmax_hess():
+    x = Variable("x", ["i"])
+    ts = rand_values([x], i=3)
+    res = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).grad(x).simplify().evaluate({x: ts[x]})
+    expected = hessian(lambda x: tF.softmax(x).sum(), ts[x].rename(None)).rename("i_", "i__")
+    assert_close(res, expected)
+
+
+def test_softmax_grad_mat():
+    A = Variable("A", ["i", "j"])
+    ts = rand_values([A], i=3, j=2)
+    res = F.softmax(A, ["i"]).grad(A).simplify().evaluate({A: ts[A]})
+    expected = jacobian(lambda A: tF.softmax(A, dim=0), ts[A].rename(None)).rename("i", "j", "i_", "j_")
+    assert_close(res, expected)

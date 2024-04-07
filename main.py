@@ -1,11 +1,11 @@
 import graphviz
-from serializers.to_manim import TensorNetworkAnimation
-from tensor import Variable, Product, Function
-from functions import frobenius2
-from serializers.to_graphviz import to_graphviz
-from serializers.to_tikz import to_tikz
-from serializers.to_d3 import to_d3
-from serializers.to_pytorch import to_pytorch
+from tensorgrad.tensor import Variable, Product, Function
+import tensorgrad.functions as F
+from tensorgrad.serializers.to_manim import TensorNetworkAnimation
+from tensorgrad.serializers.to_graphviz import to_graphviz
+from tensorgrad.serializers.to_tikz import to_tikz
+from tensorgrad.serializers.to_d3 import to_d3
+from tensorgrad.serializers.to_pytorch import to_pytorch
 
 
 def main0():
@@ -32,8 +32,8 @@ def main(mode):
     y = Variable("y", ["y"])
     A = Variable("A", ["x", "y"])
     Axmy = A @ x - y
-    F = frobenius2(Axmy)
-    grad = F.grad(x)
+    frob = F.frobenius2(Axmy)
+    grad = frob.grad(x)
     assert grad.edges == ["x'"]
 
     out = grad.simplify()
@@ -79,8 +79,8 @@ def main2(mode):
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
     A = Variable("A", ["x", "y"])
-    F = frobenius2(A @ x - y)
-    grad = F.grad(x).grad(x).simplify()
+    frob = F.frobenius2(A @ x - y)
+    grad = frob.grad(x).grad(x).simplify()
     assert grad.edges == ["x'", "x''"]
 
     if mode == "tikz":
@@ -93,8 +93,8 @@ def main3(mode):
     X = Variable("X", ["b", "x"])
     Y = Variable("Y", ["b", "y"])
     W = Variable("W", ["x", "y"])
-    F = frobenius2(W @ X - Y)
-    grad = F.grad(W).simplify()
+    frob = F.frobenius2(W @ X - Y)
+    grad = frob.grad(W).simplify()
     assert set(grad.edges) == {"x'", "y'"}
 
     if mode == "tikz":
@@ -110,8 +110,8 @@ def main4(mode):
     Y = Variable("Y", ["b", "y"])
     W = Variable("W", ["x", "y"])
     b = Variable("b", ["y"])
-    F = frobenius2(W @ X + b - Y)
-    grad = F.grad(b).simplify()
+    frob = F.frobenius2(W @ X + b - Y)
+    grad = frob.grad(b).simplify()
 
     if mode == "tikz":
         latex_code = to_tikz(grad)
@@ -169,14 +169,6 @@ def Hvp(mode, depth=2):
     print(to_pytorch(out))
 
 
-def create_tensor_network():
-    X = Variable("X", ["b", "x"])
-    Y = Variable("Y", ["b", "y"])
-    W = Variable("W", ["x", "y"])
-    F = frobenius2(W @ X - Y)
-    grad = F.grad(W).simplify()
-    return grad
-
 
 def manim():
     tensor = create_tensor_network()
@@ -187,7 +179,7 @@ def manim():
 def milanfar():
     # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
     x = Variable("x", ["i"])
-    A = Function("A", [x], ["i"], ["i", "j"])
+    A = Function("A", ["i", "j"], (x, "i"))
     # expr = (A @ x).grad(x).simplify({"grad_steps": 0})
     expr = (A @ x).grad(x).simplify()
 
@@ -197,17 +189,32 @@ def milanfar():
 
 def simple():
     x = Variable("x", ["i"])
-    A = Function("A", [x], ["i"], ["i", "j"])
-    # expr = (A @ x).grad(x).simplify({"grad_steps": 0})
-    expr = (A @ x).grad(x).simplify()
-
+    y = Variable("y", ["i"])
+    expr = (x * y)
     compile_latex(to_tikz(expr))
-    print(to_tikz(expr))
+    print(expr)
+    to_tikz(expr)
 
+
+
+def softmax():
+    x = Variable("x", ["i"])
+    y = F.softmax(x, ["i"])
+    expr = y.simplify()
+    compile_latex(to_tikz(expr))
+
+
+def softmax_jac():
+    x = Variable("x", ["i"])
+    y = F.softmax(x, ["i"])
+    expr = y.grad(x).simplify()
+    compile_latex(to_tikz(expr))
 
 if __name__ == "__main__":
     import sys
 
     # mode = sys.argv[1]
     # Hvp(mode)
-    milanfar()
+    #milanfar()
+    softmax_jac()
+    #simple()

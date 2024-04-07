@@ -1,5 +1,5 @@
 from collections import defaultdict
-from tensor import Product, Zero, Copy, Variable, Sum, Function
+from tensorgrad.tensor import Product, Zero, Copy, Variable, Sum, Function
 import random
 import re
 
@@ -117,7 +117,8 @@ def to_tikz(tensor):
 
     tikz_code = [prefix]
     graph = TikzGraph()
-    _to_tikz(tensor, graph)
+    free_edges = _to_tikz(tensor, graph)
+    handle_free_edges(free_edges, graph)
 
     tikz_code.append(graph.to_tikz())
     tikz_code.append("};")
@@ -171,17 +172,26 @@ def _to_tikz(tensor, graph):
 
     if isinstance(tensor, Function):
         node_id = str(id(tensor))
-        graph.add_node(node_id, "function", label=tensor.name)
+        subgraph = TikzGraph()
+
+        subgraph.add_node(node_id, "function", label=tensor.name)
+
         free_edges = {}
         for t, *es in tensor.inputs:
-            edges = _to_tikz(t, graph)
+            edges = _to_tikz(t, subgraph)
             for e in es:
                 sub_id = edges.pop(e)
-                graph.add_edge(sub_id, node_id, label=e, directed=True)
+                subgraph.add_edge(sub_id, node_id, label=e, directed=True)
             # Add remaining edges to free edges.
             # Note: The Function should have made sure there is no edge overlap here
             assert not (edges.keys() & free_edges.keys())
             free_edges |= edges
+
+        graph.add_subgraph(
+            subgraph,
+            f"cluster_{node_id} // [tree layout]",
+            f"cluster_{node_id}",
+        )
 
         # We propagate the free edges to the parent to handle
         return {e: node_id for e in tensor.edges} | free_edges
@@ -189,12 +199,12 @@ def _to_tikz(tensor, graph):
     if isinstance(tensor, Product):
         # subgraph = TikzGraph()
 
-        sub_ids = defaultdict(list)
+        sub_ids = defaultdict(list)  # edge -> [sub_id1, sub_id2]
         for t in tensor.tensors:
             for e, sub_id in _to_tikz(t, graph).items():
                 sub_ids[e].append(sub_id)
 
-        # Handle contractions
+        # Handle contractions (edges with multiple sub_ids)
         for e, ts in sub_ids.items():
             assert len(ts) <= 2, "Shouldn't happen"
             if len(ts) == 2:
@@ -205,7 +215,11 @@ def _to_tikz(tensor, graph):
         #     subgraph, f"{str(id(tensor))} / [inner sep=10pt] // [{layout_style}]", str(id(tensor))
         # )
 
-        return {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
+        free = {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
+        print(f"{tensor=}")
+        print(f"{sub_ids=}")
+        print(f"{free=}")
+        return free
 
     if isinstance(tensor, Sum):
         cluster_id = str(id(tensor))

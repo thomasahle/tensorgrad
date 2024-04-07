@@ -1,7 +1,7 @@
 import torch
 
-import tensor as tg
-import functions as F
+import tensorgrad.tensor as tg
+import tensorgrad.functions as F
 
 
 def rand_values(variables, **shape):

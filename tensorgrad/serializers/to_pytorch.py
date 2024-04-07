@@ -1,5 +1,5 @@
 from collections import defaultdict
-from tensor import Product, Zero, Copy, Variable, Sum, Function
+from tensorgrad.tensor import Product, Zero, Copy, Variable, Sum, Function
 
 
 def _to_pytorch_code(tensor, code_lines):
@@ -14,9 +14,7 @@ def _to_pytorch_code(tensor, code_lines):
 
     if isinstance(tensor, Zero):
         dims = [f"d_{e}" for e in tensor.edges]
-        code_lines.append(
-            f"zero_{id(tensor)} = torch.zeros({', '.join(dims)}).rename(*{tensor.edges})"
-        )
+        code_lines.append(f"zero_{id(tensor)} = torch.zeros({', '.join(dims)}).rename(*{tensor.edges})")
         return f"zero_{id(tensor)}"
 
     if isinstance(tensor, Function):
@@ -26,9 +24,7 @@ def _to_pytorch_code(tensor, code_lines):
             sub_ids.append(sub_id)
 
         einsum_str = ",".join(sub_ids) + "->" + ",".join(tensor.edges)
-        code_lines.append(
-            f"function_{id(tensor)} = torch.einsum('{einsum_str}', {', '.join(sub_ids)})"
-        )
+        code_lines.append(f"function_{id(tensor)} = torch.einsum('{einsum_str}', {', '.join(sub_ids)})")
         return f"function_{id(tensor)}"
 
     if isinstance(tensor, Product):
@@ -48,9 +44,7 @@ def _to_pytorch_code(tensor, code_lines):
         einsum_str = ",".join(ein_edges) + " -> " + " ".join(tensor.edges)
         einsum_str = einsum_str.replace("'", "_")
 
-        code_lines.append(
-            f"product_{id(tensor)} = torch.einsum('{einsum_str}', {', '.join(sub_ids)})"
-        )
+        code_lines.append(f"product_{id(tensor)} = torch.einsum('{einsum_str}', {', '.join(sub_ids)})")
 
         # einsum from einops is like ... einsum, generic and flexible dot-product
         # but 1) axes can be multi-lettered  2) pattern goes last 3) works with multiple frameworks

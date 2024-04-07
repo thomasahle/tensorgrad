@@ -1,5 +1,5 @@
-from functions import frobenius2
-from tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
+from tensorgrad.functions import frobenius2
+from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
 
 
 def test_x():
@@ -134,7 +134,7 @@ def test_gradient_variable_self():
 
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
-    assert x.grad(y, ["y_"]) == Zero(["x", "y_"])
+    assert x.grad(y, ["y_"]) == Zero(["x", "y"])
 
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
@@ -193,11 +193,8 @@ def test_hessian():
 def test_square_grad():
     x = Variable("x", ["i"])
     y = x * x
-    print(y)
-    print("y grad", y.grad(x))
     assert y.edges == ["i"]
-    # assert y.grad(x).simplify() == Sum([x, Identity(["i", "i_"])], [2, 2])
-    assert set(y.grad(x).edges) == {"i", "i___"}
+    assert set(y.grad(x).edges) == {"i", "i_"}
 
 
 def test_quadratic_grad():
@@ -206,9 +203,33 @@ def test_quadratic_grad():
     y = frobenius2(A @ x)
     assert y.edges == []
     print("y grad", y.grad(x).simplify())
-    # To do this test well, we need graph isomorphism testing. Or maybe we can just use edge ordering?
-    # assert y.grad(x).simplify() == A @ A @ x
     assert y.grad(x).edges == ["i_"]
+
+
+def test_equality():
+    p1 = Product(
+        [
+            Variable("A", ["j", "i"], ["j", "i_"]),
+            Variable("A", ["j", "i"], ["j", "i"]),
+            Variable("x", ["i"], ["i"]),
+        ]
+    )
+    p2 = Product(
+        [
+            Variable("A", ["j", "i"], ["j", "i"]),
+            Variable("x", ["i"], ["i"]),
+            Variable("A", ["j", "i"], ["j", "i_"]),
+        ]
+    )
+    print([hash(t) for t in p1.tensors])
+    print()
+    print([hash(t) for t in p2.tensors])
+    print()
+    print(hash(p1))
+    print()
+    print(hash(p2))
+    print()
+    assert p1 == p2
 
 
 def test_func_grad():

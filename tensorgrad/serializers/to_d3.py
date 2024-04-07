@@ -1,4 +1,4 @@
-from tensor import Product, Zero, Copy, Variable, Sum
+from tensorgrad.tensor import Product, Zero, Copy, Variable, Sum
 import json
 
 

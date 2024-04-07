@@ -1,6 +1,6 @@
 from manim import *
-from tensor import Product, Zero, Copy, Variable, Sum, Function
-from functions import frobenius2
+from tensorgrad.tensor import Product, Zero, Copy, Variable, Sum, Function
+from tensorgrad.functions import frobenius2
 import random
 from collections import defaultdict
 import networkx as nx

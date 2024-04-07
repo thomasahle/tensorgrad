@@ -1,7 +1,7 @@
 from typing import Iterable
 import torch
-from tensor import Copy, Derivative, Function, Ones, Product, Sum, Tensor, Variable, Zero
-import functions as F
+from tensorgrad.tensor import Copy, Derivative, Function, Ones, Product, Sum, Tensor, Variable, Zero
+import tensorgrad.functions as F
 from utils import assert_close, rand_values
 
 
@@ -186,3 +186,12 @@ def test_simplify_sum_of_products():
     assert all(isinstance(t, Product) for t in simplified_expr.tensors)
 
     assert_close(expr.evaluate(values), simplified_expr.evaluate(values))
+
+
+def test_trace():
+    a = Variable("a", ["i", "j"])
+    trace_tensor = F.trace(a)
+    t_a = torch.randn(3, 3, names=("i", "j"))
+    result = trace_tensor.evaluate({a: t_a})
+    expected = t_a.rename(None).trace()
+    assert_close(result, expected)

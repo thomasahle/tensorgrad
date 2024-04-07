@@ -1,6 +1,6 @@
 from collections import defaultdict
 import graphviz
-from tensor import Product, Zero, Copy, Variable, Sum
+from tensorgrad.tensor import Product, Zero, Copy, Variable, Sum
 
 
 def _edge(graph, id1, id2, label):

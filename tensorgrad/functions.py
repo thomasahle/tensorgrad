@@ -1,6 +1,6 @@
 from typing import Any, Callable, Iterable, Union
 import torch
-from tensor import Function, Ones, Tensor, Product, Copy, make_distinct
+from tensorgrad.tensor import Function, Ones, Tensor, Product, Copy, make_distinct
 from math import factorial
 
 # We mostly try to follow the behavior of pytorch's named tensors:
@@ -12,12 +12,17 @@ def frobenius2(t: Tensor) -> Tensor:
 
 
 def einsum(tensors, output_edges):
+    if len(output_edges) != len(set(output_edges)):
+        # We don't support einsums like "i -> ii".
+        # We also don't support "ii -> i", but that's more hidden, because the input tensors can't have double edges.
+        raise ValueError("Output edges must be unique.")
     # Basically like Product, but will create some Identity's to ensure only the free_edges are free afterwards.
     # cnt_edges = Counter(e for t in tensors for e in t.edges)
     all_free_edges = {e for t in tensors for e in t.edges}
     dis_tensors, renames = make_distinct(*tensors, preserve_free=False, used_names=all_free_edges)
     joins = []
     for e in all_free_edges:
+        # We create a Copy([...]) with all the entries that have this edge
         edges = [rename[e] for rename in renames if e in rename]
         if e in output_edges:
             edges.append(e)
@@ -27,8 +32,9 @@ def einsum(tensors, output_edges):
 
 def kronecker(*tensors):
     # Basically just rename everything to be distinct, then contraction
-    # FIXME: This method returns the tensor product, not the Kronecker product.
-    #        To get the Kronecker product you have to flatten the output tensors.
+    # Note: This function returns the tensor product, which is different from the
+    #       Kronecker product as often described in the literature. To get the
+    #       Kronecker product you have to flatten the output tensors.
     dis_tensors, _renames = make_distinct(*tensors, preserve_free=False)
     return Product(dis_tensors)
 
@@ -39,7 +45,7 @@ def diag(t: Tensor, new_edges: list[str]):
         raise ValueError("Expected a vector, got a tensor with more than one edge.")
     # If the vector's edge is in new_edges, we need to rename it
     (t,), _renames = make_distinct(t, preserve_free=False, used_names=new_edges)
-    return Product([Copy(new_edges + t.edges), t])
+    return Copy(new_edges + t.edges) @ t
 
 
 def sum(tensor: Tensor, edges: list[str], keepdims=False) -> Tensor:
@@ -48,6 +54,10 @@ def sum(tensor: Tensor, edges: list[str], keepdims=False) -> Tensor:
     if keepdims:
         return out @ Ones(edges)
     return out
+
+
+def trace(tensor: Tensor) -> Tensor:
+    return tensor @ Copy(tensor.edges)
 
 
 # The common type of cuntion in ML is that of the broadcasted function.
@@ -73,9 +83,8 @@ class Elementwise(Function):
     def inner_grad(self, i, new_edges) -> Tensor:
         print("inner_grad", self.tensors[0].edges, new_edges)
         t = self.derivative()
-        (t,), _renames = make_distinct(t, preserve_free=False, used_names=t.edges + new_edges)
+        (t,), _renames = make_distinct(t, preserve_free=False, used_names=self.edges + new_edges)
         print(f"all edges, {t.edges=}, {new_edges=}, {self.edges=}")
-        # return t @ Product([Copy([e0, e1, e2]) for e0, e1, e2 in zip(self.edges, t.edges, new_edges)])
         return Product([t] + [Copy([e0, e1, e2]) for e0, e1, e2 in zip(self.edges, t.edges, new_edges)])
 
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
@@ -93,6 +102,8 @@ class Elementwise(Function):
     #     return f"{self.name}({self.tensors[0]})"
 
     def simplify(self, args: dict[str, Any] = {}):
+        # TODO: Functions like pow(x, -1) can commute with products. Do we want to do that?
+        # And of course logs creating sums etc.
         return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)
 
     def rename(self, kwargs: dict[str, str]):
