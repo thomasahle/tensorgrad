@@ -17,8 +17,8 @@ def einsum(tensors, output_edges):
         # We also don't support "ii -> i", but that's more hidden, because the input tensors can't have double edges.
         raise ValueError("Output edges must be unique.")
     # Basically like Product, but will create some Identity's to ensure only the free_edges are free afterwards.
-    # cnt_edges = Counter(e for t in tensors for e in t.edges)
     all_free_edges = {e for t in tensors for e in t.edges}
+    # TODO: We only really need to rename the free edges of each tensor, so `make_distinct`` is overkill.
     dis_tensors, renames = make_distinct(*tensors, preserve_free=False, used_names=all_free_edges)
     joins = []
     for e in all_free_edges:
@@ -48,8 +48,9 @@ def diag(t: Tensor, new_edges: list[str]):
     return Copy(new_edges + t.edges) @ t
 
 
-def sum(tensor: Tensor, edges: list[str], keepdims=False) -> Tensor:
+def sum(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
     """Sum the tensor over the given dimensions."""
+    edges = edges or tensor.edges
     out = Product([tensor] + [Copy([e]) for e in edges])
     if keepdims:
         return out @ Ones(edges)
@@ -136,7 +137,7 @@ def softmax(t: Tensor, dims: list[str]) -> Tensor:
 
 
 def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
-    return -(y * log(softmax(t, dims))).sum(dims)
+    return -sum(y * log(softmax(t, dims)), dims)
 
 
 # Some questions:
@@ -145,3 +146,57 @@ def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
 # - How do we get names for the derivatives?
 # - Should functions be forced to output the right edge names?
 # - What really is going on with multiple inputs?
+
+# Sum(
+#    [
+#        Product(
+#            [
+#                Variable(target, ["N", "C"], ["N_", "C_"]),
+#                Function(
+#                    log,
+#                    [],
+#                    [
+#                        (
+#                            Product(
+#                                [
+#                                    Function(exp, [], [(Variable(logits, ["N", "C"], ["N____", "C___"]),)]),
+#                                    Function(
+#                                        pow(-1),
+#                                        [],
+#                                        [
+#                                            (
+#                                                Product(
+#                                                    [
+#                                                        Function(
+#                                                            exp,
+#                                                            [],
+#                                                            [
+#                                                                (
+#                                                                    Variable(
+#                                                                        logits, ["N", "C"], ["N___", "C__"]
+#                                                                    ),
+#                                                                )
+#                                                            ],
+#                                                        ),
+#                                                        Copy(["i"]),
+#                                                        Copy(["i"]),
+#                                                    ]
+#                                                ),
+#                                            )
+#                                        ],
+#                                    ),
+#                                    Copy(["N__", "N____", "N___"]),
+#                                    Copy(["C____", "C___", "C__"]),
+#                                ]
+#                            ),
+#                        )
+#                    ],
+#                ),
+#                Copy(["N", "N_", "N__"]),
+#                Copy(["C", "C_", "C____"]),
+#                Copy(["i"]),
+#            ]
+#        )
+#    ],
+#    (-1,),
+# )

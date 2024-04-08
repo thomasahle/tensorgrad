@@ -203,6 +203,11 @@ def softmax():
     expr = y.simplify()
     compile_latex(to_tikz(expr))
 
+def softmax_mat():
+    A = Variable("A", ["i", "j"])
+    expr = F.softmax(A, ["i"]).grad(A).simplify()
+    compile_latex(to_tikz(expr))
+
 
 def softmax_jac():
     x = Variable("x", ["i"])
@@ -210,11 +215,21 @@ def softmax_jac():
     expr = y.grad(x).simplify()
     compile_latex(to_tikz(expr))
 
+def ce():
+    logits = Variable("logits", ["N", "C"])
+    target = Variable("target", ["N", "C"])
+    expr = F.cross_entropy(logits, target, ["i"]).simplify()
+
+    compile_latex(to_tikz(expr))
+    print(expr)
+
+
+
 if __name__ == "__main__":
     import sys
 
     # mode = sys.argv[1]
     # Hvp(mode)
     #milanfar()
-    softmax_jac()
+    ce()
     #simple()

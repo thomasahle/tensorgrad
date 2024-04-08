@@ -19,7 +19,12 @@ import torch
 #   edges. That's silly.
 
 
-def unused_edge_names(edges, used_names, suffix=""):
+def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = ""):
+    """Given a list of edges, return a list of new names that are not in used_names.
+    They also won't be translated to the same names.
+    Also append suffix to the new names.
+    Also returns a dictionary that can be used to rename the edges in the original list.
+    """
     used_names = set(used_names)
     new_edges = []
     rename = {}
@@ -68,23 +73,6 @@ def make_distinct(*tensors: list["Tensor"], preserve_free=True, used_names=None,
         res.append(t.rename(rename))
         renames.append(rename)
     return res, renames
-
-
-def ensure_edges_unused(tensor: "Tensor", x: "Variable", new_names: Optional[list[str]] = None) -> list[str]:
-    """When taking a derivative with respect to a variable, we need some edge names for the derivative.
-    If new_names is not given, we generate names based on the edge names of x.
-    However, we need to make sure they don't clash with any names already present in the tensor.
-    If new_names is already given, we just check to make sure they are not already present in the tensor.
-    """
-    # It shouldn't be necessary for the edges to be unused in the entire tensor, just in the free edges.
-    # all_tensor_edges = all_edges(tensor)
-    if new_names is not None:
-        assert len(x.edges) == len(new_names)
-        if used := set(new_names) & set(tensor.edges):
-            raise ValueError(f"{used} are already present in tensor, {tensor}")
-        return new_names
-    new_edges, _rename = unused_edge_names(x.edges, tensor.edges, suffix="_")
-    return new_edges
 
 
 def join_dicts(all_shapes: Iterable[dict[str, int]]) -> dict[str, int]:
@@ -191,17 +179,51 @@ class Tensor(ABC):
         If you want to push it all the way through, use simplify."""
         raise NotImplementedError
 
+    def rename(self, kwargs: dict[str, str]):
+        self._check_rename(kwargs)
+        """Renames *the free edges* of the tensor.
+        The inner edges may get renamed if necessary to avoid clashes with the new names."""
+        raise NotImplementedError
+
+    def __hash__(self):
+        raise NotImplementedError
+
     def simplify(self, args: dict[str, Any] = {}):
         """Apply various simplification rules.
         May rename things internally, but should never change any free edges.
         """
         return self
 
+    def evaluate(
+        self,
+        values: dict["Tensor", torch.tensor],
+        *,
+        dims: dict[str, int] | None,
+        extras: dict[str, Any] | None = None,
+    ) -> torch.tensor:
+        raise NotImplementedError
+
+    def update_edge_dims(self, shapes: dict["Tensor", dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
+        """Return the dimensions of the output edges of the tensor *and its children*.
+
+        Parameters:
+        - shapes: The edge_dims already computed for this tensor and its children.
+
+        The reason we need to also output the dimensions of the children is to support propagation
+        of dimensions in things like products, where you get a dimension from one child, and use it
+        to compute the dimension of another child. You don't have to tell the other child about this
+        new information. It will automatically be given to it.
+        """
+        raise NotImplementedError
+
     def __add__(self, other):
         return Sum([self, other])
 
     def __sub__(self, other):
         return Sum([self, other], [1, -1])
+
+    def __neg__(self):
+        return Sum([self], [-1])
 
     def __matmul__(self, other):
         return Product([self, other])
@@ -227,39 +249,12 @@ class Tensor(ABC):
 
         return self * pow(other, -1)
 
-    def rename(self, kwargs: dict[str, str]):
-        raise NotImplementedError
-
-    def __hash__(self):
-        raise NotImplementedError
-
     def __eq__(self, other):
         # Note: we use approximate isomorphic equality, using Weisfeiler Leman hash
+        # TODO: Use a real isomorphism test
         return hash(self) == hash(other)
 
-    def evaluate(
-        self,
-        values: dict["Tensor", torch.tensor | Callable],
-        *,
-        dims: dict[str, int] | None,
-        extras: dict[str, Any] | None = None,
-    ) -> torch.tensor:
-        raise NotImplementedError
-
-    def update_edge_dims(self, shapes: dict["Tensor", dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
-        """Return the dimensions of the output edges of the tensor *and its children*.
-
-        Parameters:
-        - shapes: The edge_dims already computed for this tensor and its children.
-
-        The reason we need to also output the dimensions of the children is to support propagation
-        of dimensions in things like products, where you get a dimension from one child, and use it
-        to compute the dimension of another child. You don't have to tell the other child about this
-        new information. It will automatically be given to it.
-        """
-        raise NotImplementedError
-
-    def _check_extras(
+    def _check_evaluate(
         self,
         values: dict["Variable", torch.tensor],
         dims: dict[str, int] | None,
@@ -274,6 +269,28 @@ class Tensor(ABC):
             extras["edge_dims"] = compute_edge_dims(self, shapes, extra_dims=dims)
         return extras
 
+    def _check_rename(self, kwargs: dict[str, str]):
+        """Check that the renaming is valid, and return the renaming dictionary."""
+        if len({kwargs.get(e, e) for e in self.edges}) != len(self.edges):
+            raise ValueError("Renamed an edge to an existing edge name.")
+        # Restrict renaming to free edges
+        return {new: old for new, old in kwargs.items() if new in self.edges}
+
+    def _check_grad(self, x: "Variable", new_names: Optional[list[str]] = None) -> list[str]:
+        """When taking a derivative with respect to a variable, we need some edge names for the derivative.
+        If new_names is not given, we generate names based on the edge names of x.
+        However, we need to make sure they don't clash with any names already present in the tensor.
+        If new_names is already given, we just check to make sure they are not already present in the tensor.
+        """
+        # It shouldn't be necessary for the edges to be unused in the entire tensor, just in the free edges.
+        if new_names is not None:
+            assert len(x.edges) == len(new_names)
+            if used := set(new_names) & set(self.edges):
+                raise ValueError(f"{used} are already present in tensor, {self}")
+            return new_names
+        new_edges, _rename = unused_edge_names(x.edges, self.edges, suffix="_")
+        return new_edges
+
 
 class Variable(Tensor):
     def __init__(self, name, edges: Iterable[str], surface_edges=None):
@@ -285,7 +302,7 @@ class Variable(Tensor):
         self.edges = self.original_edges if surface_edges is None else surface_edges
 
     def grad(self, x: "Variable", new_names: Optional[list[str]] = None):
-        new_names = ensure_edges_unused(self, x, new_names)
+        new_names = self._check_grad(x, new_names)
         # We compare using name here, rather than id (x is self), since we might have
         # changed due to renaming.
         if x.name == self.name:
@@ -303,13 +320,12 @@ class Variable(Tensor):
         return self
 
     def rename(self, kwargs: dict[str, str]):
-        v = Variable(
+        kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
+        return Variable(
             self.name,
             self.original_edges,
             [kwargs.get(e, e) for e in self.edges],
         )
-        assert len(v.edges) == len(set(v.edges)), "Duplicate edge after rename"
-        return v
 
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
         # We don't need to update anything from the variables. They are handled automatically.
@@ -322,7 +338,7 @@ class Variable(Tensor):
         dims: dict[str, int] | None = None,
         extras: dict[str, Any] | None = None,
     ) -> torch.tensor:
-        extras = self._check_extras(values, dims, extras)
+        extras = self._check_evaluate(values, dims, extras)
         if self not in values:
             raise ValueError(f"Missing value for {self}, got {values}")
         # For now we just assume positional consistency
@@ -348,20 +364,21 @@ class Constant(Tensor, ABC):
         return type(self)(self.edges)
 
     def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
         c = type(self)([kwargs.get(e, e) for e in self.edges])
         assert len(c.edges) == len(set(c.edges)), "Duplicate edge after rename"
         return c
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
-        new_names = ensure_edges_unused(self, x, new_names)
+        new_names = self._check_grad(x, new_names)
         return Zero(self.edges + new_names)
 
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
         # By default constant tensors can't compute any edge dimensions.
         return []
 
-    def _check_extras(self, values, dims=None, extras=None):
-        extras = super()._check_extras(values, dims, extras)
+    def _check_evaluate(self, values, dims=None, extras=None):
+        extras = super()._check_evaluate(values, dims, extras)
         for e in self.edges:
             if e not in extras["edge_dims"][id(self)]:
                 raise ValueError(f"Missing edge dimension for {e}.")
@@ -396,7 +413,7 @@ class Copy(Constant):
             return torch.tensor(1.0)
         if len(self.edges) > 1:
             print(f"Warning: Evaluating rank {len(self.edges)} Copy tensor. This is probably a mistake.")
-        extras = self._check_extras(values, dims, extras)
+        extras = self._check_evaluate(values, dims, extras)
         edge_dims = extras["edge_dims"][id(self)]
         shape = [edge_dims[e] for e in self.edges if e in edge_dims]
         assert len(shape) == len(self.edges) and len(set(shape)) == 1
@@ -419,7 +436,7 @@ class Zero(Constant):
     ) -> torch.tensor:
         if not self.edges:
             return torch.tensor(0.0)
-        extras = self._check_extras(values, dims, extras)
+        extras = self._check_evaluate(values, dims, extras)
         values[self] = torch.zeros([extras["edge_dims"][id(self)][e] for e in self.edges]).rename(*self.edges)
         return values[self]
 
@@ -500,12 +517,11 @@ class Function(Tensor):
     # The following methods need to be implemented by subclasses
 
     def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
         if self.__class__ is not Function:
             raise NotImplementedError(f"Please define rename(...) in {self.__class__.__name__}")
-        # We only rename on the surface
-        new_edges_out = [kwargs.get(e, e) for e in self.edges]
-        assert len(new_edges_out) == len(set(new_edges_out)), "Duplicate edge after rename"
-        return Function(self.name, new_edges_out, *self.inputs)
+        # Remember: we only rename on the surface
+        return Function(self.name, [kwargs.get(e, e) for e in self.edges], *self.inputs)
 
     def simplify(self, args: dict[str, Any] = {}):
         if self.__class__ is not Function:
@@ -515,12 +531,12 @@ class Function(Tensor):
         assert res.edges == self.edges, "Edge mismatch after simplify"
         return res
 
-    def inner_grad(self, i, new_edges):
+    def inner_grad(self, i, new_edges, inputs):
         # By default we just return a simple renamed function.
         # But subclasses can override this to do something more clever.
         if self.__class__ is not Function:
             raise NotImplementedError(f"Please define inner_grad(...) in {self.__class__.__name__}")
-        return Function(f"D_{i}" + self.name, self.edges + new_edges, *self.inputs)
+        return Function(f"D_{i}" + self.name, self.edges + new_edges, inputs)
 
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
         """Return the dimensions of the output edges of the function, as well as any children you can determine."""
@@ -534,27 +550,33 @@ class Function(Tensor):
     # The following methods should not be overridden by subclasses
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
+        new_names = self._check_grad(x, new_names)
         # We sum over each input function, just like the normal chain rule:
         # d/dx f(g₁(x), …, gₖ(x)) = Σᵢ₌₁ᵏ (d/dx gᵢ(x)) Dᵢf(g₁(x), …, gₖ(x))
 
         # D_i adds a new output edge to the function, which is contracted with
         # the normal output edge of the tensor. So we need to make sure this doesn't
         # clash with an existing output edge of f.
-        new_names = ensure_edges_unused(self, x, new_names)
         parts = []
         for i, (t, *input_edges) in enumerate(self.inputs):
             # Connection edges have the same shape as the to the function. This is different
             # from new_names, which has the shape of the variable we are taking the derivative with respect to.
+
+            # Calling `ensure_edges_unused` should already have ensured that new_names doesn't clash with self.edges
+            # But they *are* allowed to clash with the *input_edges*, which are like the "inner" edges or "contractions"
+            # on a product.
+            # So we need to rename those...
+            # FIXME: We need to rename the input_edges.
             connection_edges, rename = unused_edge_names(
                 t.edges,
                 # TODO: Why can't I just use this:
-                # set(self.edges) | set(t.edges) | set(new_names),
-                set(all_edges(self)) | set(new_names),
+                set(self.edges) | set(t.edges) | set(new_names),
+                # set(all_edges(self)) | set(new_names),
             )
             parts.append(
                 Product(
                     [
-                        self.inner_grad(i, connection_edges),
+                        self.inner_grad(i, connection_edges, [(s, *es) for s, *es in self.inputs]),
                         Derivative(t.rename(rename), x, new_names),
                     ]
                 )
@@ -583,7 +605,7 @@ class Function(Tensor):
         dims: dict[str, int] | None = None,
         extras: dict[str, Any] | None = None,
     ) -> torch.tensor:
-        extras = self._check_extras(values, dims, extras)
+        extras = self._check_evaluate(values, dims, extras)
         if self in values:
             return values[self]
         inner_values = [t.evaluate(values, extras=extras) for t in self.tensors]
@@ -600,7 +622,7 @@ class Derivative(Tensor):
     def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[list[str]] = None):
         self.tensor = tensor
         self.x = x
-        self.new_names = ensure_edges_unused(tensor, x, new_names)
+        self.new_names = self._check_grad(x, new_names)
         self.edges = tensor.edges + self.new_names
 
     def simplify(self, args: dict[str, Any] = {}):
@@ -616,7 +638,7 @@ class Derivative(Tensor):
         return res
 
     def grad(self, x: Variable, new_names: list[str] | None) -> Tensor:
-        new_names = ensure_edges_unused(self.tensor, x, new_names)
+        new_names = self._check_grad(x, new_names)
         # Recall grad is about pushing a derivative through a function,
         # so we apply it on the inside of the derivative, not the outside.
         res = Derivative(Derivative(self.tensor, x, new_names), self.x, self.new_names)
@@ -625,6 +647,9 @@ class Derivative(Tensor):
         ), f"Edges changed from {self.edges} to {res.edges}"
 
     def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        # The free edges of Derivative are both the free edges of self.tensor and the new_names.
+        # This is the only place where we need to rename the "internal edges" of the tensor.
         d = Derivative(
             self.tensor.rename(kwargs),
             self.x,
@@ -671,12 +696,39 @@ class Product(Tensor):
                 )
 
     def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
         # We need to rename everything (not just on the surface), since one of the applications of renaming
         # is to combine nested products, and then we need to avoid clashes between "internal" edges in each product.
-        return Product([t.rename(kwargs) for t in self.tensors])
+
+        # Well, we don't need that anymore, since we've created a better way to avoid nested products.
+        # *But* we do still need to prevent any inner tensors clashing with the new names.
+        # For each tensor, it must rename *its free edges* to avoid *free edges of other tensors*, to prevent a clash,
+        # *unless* the edge is a contraction, in which case it must rename to avoid *all edges of other tensors*.
+
+        # Also, it's important for all these edges to rename in a consistent way.
+        # They need to avoid:
+        # - Hitting the free edges (non contractions)
+        # - Hitting the new names
+        # - Hitting the other contractions
+        # It's OK if they hit:
+        # - the non-contractions that *are* being renamed (but that could be a bit unnecessary work...)
+        # - Their own name (so we can't just give it a list of *all* names of the tensors)
+
+        all_edges = {e for t in self.tensors for e in t.edges}
+        contractions = all_edges - set(self.edges)
+        avoid = {kwargs.get(e, e) for e in self.edges} | set(self.edges)
+        _new_edges, rename = unused_edge_names(contractions, avoid)
+
+        # It's safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
+        # contain keys that are in self.edges.
+        rename |= kwargs
+
+        res = Product([t.rename(rename) for t in self.tensors])
+        assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
+        return res
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
-        new_names = ensure_edges_unused(self, x, new_names)
+        new_names = self._check_grad(x, new_names)
         # Since we are adding new edges to an internal tensor in the product, we need to make sure
         # none of the other tensors in the product have edges that clash with these new edges.
         new_prod = self._avoid_internal_edges(new_names)
@@ -686,9 +738,7 @@ class Product(Tensor):
                 for i, t in enumerate(new_prod.tensors)
             ]
         )
-        assert set(res.edges) == set(
-            self.edges + new_names
-        ), f"Edges changed from {self.edges} to {res.edges}"
+        assert set(res.edges) == set(self.edges + new_names)
         return res
 
     def __repr__(self):
@@ -741,7 +791,7 @@ class Product(Tensor):
         extras: dict[str, Any] | None = None,
     ) -> torch.tensor:
         # TODO: We can make this more efficient by removing Copy tensors.
-        extras = self._check_extras(values, dims, extras)
+        extras = self._check_evaluate(values, dims, extras)
         if self in values:
             return values[self]
         # Keep track of how many contractions we made
@@ -778,8 +828,8 @@ class Product(Tensor):
         for t in self.tensors:
             # Try to avoid unnecessary renaming other inner edges. Not strictly necessary. Is it even a good idea?
             used_names |= set(t.edges)
-        bad_inner_names = {e for t in self.tensors for e in t.edges if e in names_to_avoid}
-        _new_names, rename = unused_edge_names(bad_inner_names, used_names)
+        inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
+        _new_names, rename = unused_edge_names(inner_names, used_names)
         res = Product([t.rename(rename) for t in self.tensors])
         assert res == self, "Renaming shouldn't change the hash/equality"
         assert res.edges == self.edges, "Free edges should be preserved"
@@ -865,10 +915,11 @@ class Sum(Tensor):
         assert len(tensors) == len(self.weights)
 
     def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
         return Sum([t.rename(kwargs) for t in self.tensors], self.weights)
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
-        new_names = ensure_edges_unused(self, x, new_names)
+        new_names = self._check_grad(x, new_names)
         res = Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
         assert set(res.edges) == set(
             self.edges + new_names
@@ -926,7 +977,7 @@ class Sum(Tensor):
         dims: dict[str, int] | None = None,
         extras: dict[str, Any] | None = None,
     ) -> torch.tensor:
-        extras = self._check_extras(values, dims, extras)
+        extras = self._check_evaluate(values, dims, extras)
         if self in values:
             return values[self]
         values[self] = sum(

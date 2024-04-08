@@ -142,3 +142,18 @@ def test_softmax_grad_mat():
     res = F.softmax(A, ["i"]).grad(A).simplify().evaluate({A: ts[A]})
     expected = jacobian(lambda A: tF.softmax(A, dim=0), ts[A].rename(None)).rename("i", "j", "i_", "j_")
     assert_close(res, expected)
+
+
+def test_ce():
+    logits = Variable("logits", ["N", "C"])
+    target = Variable("target", ["N", "C"])
+    ts = rand_values([logits, target], N=3, C=3)
+    ts[target] = ts[target].softmax(dim=1)
+
+    res = F.cross_entropy(logits, target, ["i"]).simplify().evaluate(ts)
+    expected = tF.cross_entropy(
+        ts[logits].rename(None),
+        ts[target].rename(None),
+        reduction="none",
+    ).rename("i")
+    assert_close(res, expected)

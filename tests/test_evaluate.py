@@ -2,7 +2,7 @@ from typing import Iterable
 import torch
 from tensorgrad.tensor import Copy, Derivative, Function, Ones, Product, Sum, Tensor, Variable, Zero
 import tensorgrad.functions as F
-from utils import assert_close, rand_values
+from utils import assert_close, generate_random_tensor_expression, rand_values
 
 
 def test_copy():
@@ -195,3 +195,59 @@ def test_trace():
     result = trace_tensor.evaluate({a: t_a})
     expected = t_a.rename(None).trace()
     assert_close(result, expected)
+
+
+def _test_all_small():
+    torch.manual_seed(42)
+    for _ in range(100):
+        expr, expected, variables = generate_random_tensor_expression(5)
+        dims = dict(zip(expected.names, expected.shape))
+        print()
+        print("Testing", expr)
+        print(f"{dims=}")
+        print({v: t.shape for v, t in variables.items()})
+        try:
+            result = expr.evaluate(variables, dims=dims)
+        except ValueError as e:
+            if "Missing edge dimensions" in str(e):
+                print(e)
+                continue
+        assert_close(result, expected)
+
+
+def test_rand0():
+    x = Variable("x", ["a", "b", "c"], ["a", "b", "c"])
+    y = Variable("y", ["a", "b", "c"], ["a", "b", "c"])
+    expr = Sum(
+        [
+            Product([Copy(["a"]), Copy(["b", "c"])]),
+            Sum(
+                [x, y],
+                [1, 1],
+            ),
+        ],
+        [1, 1],
+    )
+    ts = rand_values([x, y], a=2, b=3, c=2)
+    res = expr.evaluate(ts, dims={"a": 2, "b": 3, "c": 2})
+    assert_close(
+        res,
+        ts[x]
+        + ts[y]
+        + torch.eye(2 * 3 * 2).reshape(2, 3, 2, 2, 3, 2).rename("a", "b", "c", "a_", "b_", "c_"),
+    )
+
+
+# Product(
+#     [
+#         Sum(
+#             [
+#                 Product([Product([Copy(["a"])]), Copy(["c", "b"])]),
+#                 Variable(x, ["a", "b", "c"], ["a", "b", "c"]),
+#             ],
+#             [1, 1],
+#         ),
+#         Zero(["a", "b"]),
+#     ]
+# )
+#
