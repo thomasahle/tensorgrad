@@ -25,7 +25,7 @@ class TikzGraph:
         self.node_ids = set()
 
     def add_node(self, node_id, node_type, label=None):
-        print(f"adding node {node_id} of type {node_type} with label {label}")
+        # print(f"adding node {node_id} of type {node_type} with label {label}")
         node_id = node_id.replace("_", "+")
         if node_id in self.node_ids:
             print("Warning: Node already exists. Ignoring")
@@ -49,7 +49,7 @@ class TikzGraph:
             self.lines.append(f"  {node_id}[as=${label}$];")
 
     def add_edge(self, id1, id2, label, directed=False):
-        print(f"adding edge ({id1}) -> ({id2}) with label {label}")
+        # print(f"adding edge ({id1}) -> ({id2}) with label {label}")
         id1 = id1.replace("_", "+")
         id2 = id2.replace("_", "+")
         if isinstance(label, str):
@@ -216,9 +216,9 @@ def _to_tikz(tensor, graph):
         # )
 
         free = {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
-        print(f"{tensor=}")
-        print(f"{sub_ids=}")
-        print(f"{free=}")
+        # print(f"{tensor=}")
+        # print(f"{sub_ids=}")
+        # print(f"{free=}")
         return free
 
     if isinstance(tensor, Sum):

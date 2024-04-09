@@ -231,5 +231,5 @@ if __name__ == "__main__":
     # mode = sys.argv[1]
     # Hvp(mode)
     #milanfar()
-    ce()
-    #simple()
+    #ce()
+    simple()

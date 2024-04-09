@@ -297,7 +297,7 @@ class Variable(Tensor):
         # changed due to renaming.
         if x.name == self.name:
             # Note: This is the product of n identity matrices, which is exactly the identity tensor.
-            return Product(Copy([e, new]) for e, new in zip(self.edges, new_names))
+            return Product(Copy([e, new], link=self) for e, new in zip(self.edges, new_names))
         return Zero(self.edges + new_names)
 
     def __repr__(self):
@@ -340,9 +340,12 @@ class Variable(Tensor):
 
 
 class Constant(Tensor, ABC):
-    def __init__(self, edges: Iterable[str]):
+    def __init__(self, edges: Iterable[str], link: Variable | None = None):
+        """A constant tensor with the given edges.
+        The link is a variable that this tensor is associated with, and will be used to compute edge dimensions"""
         super().__init__()
         self.edges = list(edges)
+        self.link = link
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.edges})"
@@ -355,6 +358,7 @@ class Constant(Tensor, ABC):
 
     def rename(self, kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
+        # TODO: Have to rename the linked variable here as well
         c = type(self)([kwargs.get(e, e) for e in self.edges])
         assert len(c.edges) == len(set(c.edges)), "Duplicate edge after rename"
         return c
@@ -366,6 +370,7 @@ class Constant(Tensor, ABC):
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
         # By default constant tensors can't compute any edge dimensions.
         return []
+        # TODO: Propagate edge dimensions from the linked variable?
 
     def _check_evaluate(self, values, dims=None, extras=None):
         extras = super()._check_evaluate(values, dims, extras)
