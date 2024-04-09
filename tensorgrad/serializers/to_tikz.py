@@ -19,6 +19,25 @@ def format_label(label):
     return label, style
 
 
+# Sum(
+#     [
+#         Product(
+#             [
+#                 Variable(X, ["b", "x"], ["b_", "x_"]),
+#                 Sum(
+#                     [
+#                         Product([Variable(W, ["x", "y"], ["x", "y_"]), Variable(X, ["b", "x"], ["b_", "x"])]),
+#                         Variable(Y, ["b", "y"], ["b_", "y_"]),
+#                     ],
+#                     (1, -1),
+#                 ),
+#             ]
+#         )
+#     ],
+#     (2,),
+# )
+
+
 class TikzGraph:
     def __init__(self):
         self.lines = []
@@ -118,7 +137,10 @@ def to_tikz(tensor):
     tikz_code = [prefix]
     graph = TikzGraph()
     free_edges = _to_tikz(tensor, graph)
-    handle_free_edges(free_edges, graph)
+    # print("final free edges", free_edges)
+    if not isinstance(tensor, Sum):
+        # Sum handles free edges itself
+        handle_free_edges(free_edges, graph)
 
     tikz_code.append(graph.to_tikz())
     tikz_code.append("};")

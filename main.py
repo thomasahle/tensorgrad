@@ -88,20 +88,20 @@ def main2(mode):
         compile_latex(latex_code)
 
 
-def main3(mode):
+def main3():
     # ||Ax - y||_2^2
     X = Variable("X", ["b", "x"])
     Y = Variable("Y", ["b", "y"])
     W = Variable("W", ["x", "y"])
     frob = F.frobenius2(W @ X - Y)
     grad = frob.grad(W).simplify()
-    assert set(grad.edges) == {"x'", "y'"}
 
-    if mode == "tikz":
-        latex_code = to_tikz(grad)
-        compile_latex(latex_code)
+    assert set(grad.edges) == {"x_", "y_"}
 
-    print(to_pytorch(grad))
+    print(grad)
+    latex_code = to_tikz(grad)
+    compile_latex(latex_code)
+
 
 
 def main4(mode):
@@ -231,5 +231,8 @@ if __name__ == "__main__":
     # mode = sys.argv[1]
     # Hvp(mode)
     #milanfar()
-    #ce()
-    simple()
+    ce()
+    #simple()
+    #softmax_jac()
+    #softmax()
+    #main3()

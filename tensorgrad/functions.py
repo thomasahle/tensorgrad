@@ -82,7 +82,7 @@ class Elementwise(Function):
         self.derivative = derivative
 
     def inner_grad(self, i, new_edges) -> Tensor:
-        print("inner_grad", self.tensors[0].edges, new_edges)
+        # print("inner_grad", self.tensors[0].edges, new_edges)
         assert len(new_edges) == 0, "Elementwise functions don't have input edges"
         t = self.derivative(self.tensors[0])
         return t
