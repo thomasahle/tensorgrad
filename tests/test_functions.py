@@ -82,6 +82,7 @@ def test_pow():
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
     result = F.pow(a, -1).evaluate({a: t_a})
     expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
+    print(F.pow(a, -1).edges, expected.names)
     assert_close(result, expected)
 
 

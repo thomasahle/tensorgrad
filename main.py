@@ -120,24 +120,21 @@ def main4(mode):
     print(to_pytorch(grad))
 
 
-def main5(mode):
+def main5():
     # f(v(x))
     x = Variable("x", ["x"])
-    v = Function("v", [x], ["x"], ["y"])
-    # g = Function("g", [v], ["y"], ["z"])
-    # f = Function("f", [g], ["z"], [])
-    f = Function("f", [v], ["y"], [])
+    v = Function("v", ["y"], (x, "x"))
+    f = Function("f", [], (v, "y"))
 
     # grad = f.grad(x).simplify()
     grad = f.grad(x).grad(x).simplify()
 
-    if mode == "tikz":
-        print(grad)
-        latex_code = to_tikz(grad)
-        print(latex_code)
-        for i, line in enumerate(latex_code.split("\n")):
-            print(f"{i+1:2d} {line}")
-        compile_latex(latex_code)
+    print(grad)
+    latex_code = to_tikz(grad)
+    print(latex_code)
+    for i, line in enumerate(latex_code.split("\n")):
+        print(f"{i+1:2d} {line}")
+    compile_latex(latex_code)
 
     print(to_pytorch(grad))
 
@@ -218,11 +215,28 @@ def softmax_jac():
 def ce():
     logits = Variable("logits", ["N", "C"])
     target = Variable("target", ["N", "C"])
-    expr = F.cross_entropy(logits, target, ["i"]).simplify()
+    expr = F.cross_entropy(logits, target, ["C"]).simplify()
 
     compile_latex(to_tikz(expr))
     print(expr)
 
+
+def ce_grad():
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    expr = F.cross_entropy(logits, target, ["C"]).simplify()
+    expr = expr.grad(logits).simplify()
+
+    compile_latex(to_tikz(expr))
+    print(expr)
+
+def main10():
+    x = Variable("x", ["b", "i"])
+    f = Function("max", [], (x, "i"))
+    expr = f.grad(x).simplify()
+
+    compile_latex(to_tikz(expr))
+    print(expr)
 
 
 if __name__ == "__main__":
@@ -231,8 +245,10 @@ if __name__ == "__main__":
     # mode = sys.argv[1]
     # Hvp(mode)
     #milanfar()
-    ce()
+    #ce()
     #simple()
     #softmax_jac()
     #softmax()
     #main3()
+    #main5()
+    main10()

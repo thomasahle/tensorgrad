@@ -12,10 +12,21 @@ def format_label(label):
     suffix = re.search("(_*)$", label).group(1)
     if len(suffix) > 0:
         label = label[: -len(suffix)] + "'" * len(suffix)
+
+    def replacement(match):
+        digits = match.group(0)
+        return "_" + "{" + ",".join(filter(None, digits.split("_"))) + "}"
+
+    if re.search(r"(_+\d+){2}$", label):
+        print("before", label)
+        label = re.sub(r"(_+\d+)+$", replacement, label)
+        print("after", label)
+
     style = ""
     if "D_" in label:
         label = re.sub("D_[\d+]", "", label, count=1)
         style = "double"
+
     return label, style
 
 
