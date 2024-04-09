@@ -19,7 +19,7 @@ def einsum(tensors, output_edges):
     # Basically like Product, but will create some Identity's to ensure only the free_edges are free afterwards.
     all_free_edges = {e for t in tensors for e in t.edges}
     # TODO: We only really need to rename the free edges of each tensor, so `make_distinct`` is overkill.
-    dis_tensors, renames = make_distinct(*tensors, preserve_free=False, used_names=all_free_edges)
+    dis_tensors, renames = make_distinct(*tensors, used_names=all_free_edges)
     joins = []
     for e in all_free_edges:
         # We create a Copy([...]) with all the entries that have this edge
@@ -35,7 +35,7 @@ def kronecker(*tensors):
     # Note: This function returns the tensor product, which is different from the
     #       Kronecker product as often described in the literature. To get the
     #       Kronecker product you have to flatten the output tensors.
-    dis_tensors, _renames = make_distinct(*tensors, preserve_free=False)
+    dis_tensors, _renames = make_distinct(*tensors)
     return Product(dis_tensors)
 
 
@@ -44,7 +44,7 @@ def diag(t: Tensor, new_edges: list[str]):
     if len(t.edges) != 1:
         raise ValueError("Expected a vector, got a tensor with more than one edge.")
     # If the vector's edge is in new_edges, we need to rename it
-    (t,), _renames = make_distinct(t, preserve_free=False, used_names=new_edges)
+    (t,), _renames = make_distinct(t, used_names=new_edges)
     return Copy(new_edges + t.edges) @ t
 
 
@@ -83,10 +83,9 @@ class Elementwise(Function):
 
     def inner_grad(self, i, new_edges) -> Tensor:
         print("inner_grad", self.tensors[0].edges, new_edges)
-        t = self.derivative()
-        (t,), _renames = make_distinct(t, preserve_free=False, used_names=self.edges + new_edges)
-        print(f"all edges, {t.edges=}, {new_edges=}, {self.edges=}")
-        return Product([t] + [Copy([e0, e1, e2]) for e0, e1, e2 in zip(self.edges, t.edges, new_edges)])
+        assert len(new_edges) == 0, "Elementwise functions don't have input edges"
+        t = self.derivative(self.tensors[0])
+        return t
 
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
         t = self.tensors[0]
@@ -99,9 +98,6 @@ class Elementwise(Function):
     def __call__(self, value: torch.tensor) -> torch.tensor:
         return self.function(value)
 
-    # def __repr__(self):
-    #     return f"{self.name}({self.tensors[0]})"
-
     def simplify(self, args: dict[str, Any] = {}):
         # TODO: Functions like pow(x, -1) can commute with products. Do we want to do that?
         # And of course logs creating sums etc.
@@ -112,11 +108,13 @@ class Elementwise(Function):
 
 
 def log(t: Tensor) -> Tensor:
-    return Elementwise("log", torch.log, t, lambda: pow(t, -1))
+    return Elementwise("log", torch.log, t, lambda t: pow(t, -1))
 
 
 def exp(t: Tensor) -> Tensor:
-    return Elementwise("exp", torch.exp, t, lambda: exp(t))
+    # The derivative function (last) can't just reuse the same tensor t as we got,
+    # since it may have been renamed since then.
+    return Elementwise("exp", torch.exp, t, lambda t: exp(t))
 
 
 def pow(tensor: Tensor, k: int) -> Tensor:
@@ -127,7 +125,7 @@ def pow(tensor: Tensor, k: int) -> Tensor:
         f"pow({k})",
         lambda x: torch.pow(x, k),
         tensor,
-        lambda: k * pow(tensor, k - 1),
+        lambda tensor: k * pow(tensor, k - 1),
     )
 
 
@@ -140,63 +138,13 @@ def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
     return -sum(y * log(softmax(t, dims)), dims)
 
 
+def max(t: Tensor, dims: list[str]) -> Tensor:
+    raise NotImplementedError
+
+
 # Some questions:
 # - Who's responsible for realizing that 1/x and x cancel out?
 #   - Maybe tensors can register simplification rules
 # - How do we get names for the derivatives?
 # - Should functions be forced to output the right edge names?
 # - What really is going on with multiple inputs?
-
-# Sum(
-#    [
-#        Product(
-#            [
-#                Variable(target, ["N", "C"], ["N_", "C_"]),
-#                Function(
-#                    log,
-#                    [],
-#                    [
-#                        (
-#                            Product(
-#                                [
-#                                    Function(exp, [], [(Variable(logits, ["N", "C"], ["N____", "C___"]),)]),
-#                                    Function(
-#                                        pow(-1),
-#                                        [],
-#                                        [
-#                                            (
-#                                                Product(
-#                                                    [
-#                                                        Function(
-#                                                            exp,
-#                                                            [],
-#                                                            [
-#                                                                (
-#                                                                    Variable(
-#                                                                        logits, ["N", "C"], ["N___", "C__"]
-#                                                                    ),
-#                                                                )
-#                                                            ],
-#                                                        ),
-#                                                        Copy(["i"]),
-#                                                        Copy(["i"]),
-#                                                    ]
-#                                                ),
-#                                            )
-#                                        ],
-#                                    ),
-#                                    Copy(["N__", "N____", "N___"]),
-#                                    Copy(["C____", "C___", "C__"]),
-#                                ]
-#                            ),
-#                        )
-#                    ],
-#                ),
-#                Copy(["N", "N_", "N__"]),
-#                Copy(["C", "C_", "C____"]),
-#                Copy(["i"]),
-#            ]
-#        )
-#    ],
-#    (-1,),
-# )

@@ -106,7 +106,6 @@ def test_multiplication():
     z = x * y
     assert isinstance(z, Product)
     assert z.edges == ["i", "k", "j"]
-    assert any(isinstance(t, Copy) and t.edges == ["j", "j_", "j__"] for t in z.tensors)
 
 
 def test_subtraction():

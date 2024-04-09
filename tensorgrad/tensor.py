@@ -40,35 +40,27 @@ def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: s
     return new_edges, rename
 
 
-def all_edges(tensor):
-    edges = set(tensor.edges)
-    for t in getattr(tensor, "tensors", []):
-        edges |= all_edges(t)
-    return edges
-
-
-def make_distinct(*tensors: list["Tensor"], preserve_free=True, used_names=None, suffix="") -> list["Tensor"]:
-    """Makes sure all tensors have distinct edges. *All the way down*.
-    If preserve_free is True, we only rename the edges that are not free in any of the tensors.
+def make_distinct(*tensors: list["Tensor"], used_names=None) -> list["Tensor"]:
+    """Makes sure all tensors have distinct edges.
     Optionally takes used_names, an extra set of names to avoid.
     suffix is an optional string to append to the new names.
     """
-    if used_names is None:
-        used_names = set()
-    else:
-        # Copy the set, so we don't modify the input
-        used_names = set(used_names)
-    if preserve_free:
-        # We reserve the free edges, so other edges are not renamed to clash with them.
-        for t in tensors:
-            used_names |= set(t.edges)
+    # Copy the set, so we don't modify the input
+    used_names = set() if used_names is None else set(used_names)
+    # No reason to rename the names that are unique
+    cnt = Counter(e for t in tensors for e in t.edges)
+    unique_names = {e for e, c in cnt.items() if c == 1}
+    # Unless the names are already used, then we can't save them
+    unique_names -= used_names
+    used_names |= unique_names
     res = []
     renames = []
-    for t in tensors:
-        edges = all_edges(t)
-        if preserve_free:
-            edges -= set(t.edges)
-        new_names, rename = unused_edge_names(edges, used_names, suffix=suffix)
+    for i, t in enumerate(tensors):
+        edges = set(t.edges) - unique_names
+        new_names, rename = unused_edge_names(edges, used_names, suffix=f"_{i}")
+        # Make sure all t.edges are present in rename
+        for e in unique_names:
+            rename[e] = e
         used_names |= set(new_names)
         res.append(t.rename(rename))
         renames.append(rename)
@@ -238,9 +230,7 @@ class Tensor(ABC):
         # Element-wise (Hadamard) product is easy to implement using Copy tensors
         # These are the edges we multiply over
         shared_edges = set(self.edges) & set(other.edges)
-        (t0, t1), (rename0, rename1) = make_distinct(
-            self, other, preserve_free=False, used_names=shared_edges
-        )
+        (t0, t1), (rename0, rename1) = make_distinct(self, other, used_names=shared_edges)
         return Product([t0, t1] + [Copy([e, rename0[e], rename1[e]]) for e in shared_edges])
 
     def __truediv__(self, other):
@@ -494,9 +484,9 @@ class Function(Tensor):
         # plus any edges from the inputs that are not "input edges"
         self.edges = edges_out[:]
         shared_edges = set()
-        for t, *es in self.inputs:
+        for t, *input_edges in self.inputs:
             for e in t.edges:
-                if e in set(es):
+                if e in input_edges:
                     continue
                 if e in shared_edges:
                     # TODO: While it is true that we can avoid shared edges by renaming, and just use a copy tensor,
@@ -531,12 +521,12 @@ class Function(Tensor):
         assert res.edges == self.edges, "Edge mismatch after simplify"
         return res
 
-    def inner_grad(self, i, new_edges, inputs):
+    def inner_grad(self, i, new_edges):
         # By default we just return a simple renamed function.
         # But subclasses can override this to do something more clever.
         if self.__class__ is not Function:
             raise NotImplementedError(f"Please define inner_grad(...) in {self.__class__.__name__}")
-        return Function(f"D_{i}" + self.name, self.edges + new_edges, inputs)
+        return Function(f"D_{i}" + self.name, self.edges_out + new_edges, *self.inputs)
 
     def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple["Tensor", str, int]]:
         """Return the dimensions of the output edges of the function, as well as any children you can determine."""
@@ -559,32 +549,30 @@ class Function(Tensor):
         # clash with an existing output edge of f.
         parts = []
         for i, (t, *input_edges) in enumerate(self.inputs):
-            # Connection edges have the same shape as the to the function. This is different
-            # from new_names, which has the shape of the variable we are taking the derivative with respect to.
+            # We need "connection" edges for each edge in input_edges. Mostly we could just use the same name
+            # but they need to avoid clashing with "new_names".
+            avoid = set(new_names) | set(self.edges)  # These will be the new self.edges
+            connection_edges, rename = unused_edge_names(input_edges, avoid)
 
-            # Calling `ensure_edges_unused` should already have ensured that new_names doesn't clash with self.edges
-            # But they *are* allowed to clash with the *input_edges*, which are like the "inner" edges or "contractions"
-            # on a product.
-            # So we need to rename those...
-            # FIXME: We need to rename the input_edges.
-            connection_edges, rename = unused_edge_names(
-                t.edges,
-                # TODO: Why can't I just use this:
-                set(self.edges) | set(t.edges) | set(new_names),
-                # set(all_edges(self)) | set(new_names),
-            )
-            parts.append(
-                Product(
-                    [
-                        self.inner_grad(i, connection_edges, [(s, *es) for s, *es in self.inputs]),
-                        Derivative(t.rename(rename), x, new_names),
-                    ]
-                )
-            )
+            # Take the derivative of the function and the inner function (chain rule)
+            part_a = self.inner_grad(i, connection_edges)
+            part_b = Derivative(t.rename(rename), x, new_names)
+
+            # The "external edges" are going to be joined with copy tensors, resulting in joint broadcasting.
+            # So we need to rename them in both the function and the inner. Like we do in __mul__.
+            avoid |= set(connection_edges)
+            broadcasted_edges = set(t.edges) - set(input_edges)
+            assert broadcasted_edges == set(t.rename(rename).edges) - set(connection_edges)
+            # We could nearly use `make_distinct` here, but we don't want to make the connection_edges distinct,
+            # so we just do it manually.
+            ext_a, rename_a = unused_edge_names(broadcasted_edges, avoid, suffix="_0")
+            avoid |= set(ext_a)
+            ext_b, rename_b = unused_edge_names(broadcasted_edges, avoid, suffix="_1")
+            joins = [Copy([e, rename_a[e], rename_b[e]]) for e in broadcasted_edges]
+            parts.append(Product([part_a.rename(rename_a), part_b.rename(rename_b)] + joins))
+
         res = Sum(parts)
-        assert set(res.edges) == set(
-            self.edges + new_names
-        ), f"Edge mismatch after grad: {res.edges} != {self.edges + new_names}"
+        assert set(res.edges) == set(self.edges + new_names), f"{res.edges} != {self.edges + new_names}"
         return res
 
     def __hash__(self):
@@ -596,7 +584,7 @@ class Function(Tensor):
         )
 
     def __repr__(self):
-        return f"Function({self.name}, {self.edges_out}, {self.inputs})"
+        return f"Function('{self.name}', {self.edges_out}, {', '.join(map(repr, self.inputs))})"
 
     def evaluate(
         self,
