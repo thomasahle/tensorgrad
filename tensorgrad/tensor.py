@@ -633,13 +633,13 @@ class Derivative(Tensor):
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
-        if args["grad_steps"] > 0:
+        if args["grad_steps"] == 0:
+            # If grad_steps is 0, we pass the simplify through the derivative.
+            res = Derivative(self.tensor.simplify(args), self.x, self.new_names)
+        else:
             args["grad_steps"] -= 1
             # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
             res = self.tensor.simplify(args).grad(self.x, self.new_names).simplify(args)
-        else:
-            # If grad_steps is 0, we pass the simplify through the derivative.
-            res = Derivative(self.tensor.simplify(args), self.x, self.new_names)
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
 
@@ -891,6 +891,9 @@ class Product(Tensor):
 
         # TODO: Combine connected Copy tensors into a single Copy tensor.
         # This also includes removing "self loops" on Copy's
+        # And removing "dead ends"
+
+        # Also, if a child is a sum with a single element, we can pull the weight up.
 
         # Remove empty Copy's (they are just the constant 1)
         children = [t for t in children if not (isinstance(t, Copy) and t.rank == 0)]

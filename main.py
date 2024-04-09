@@ -1,11 +1,67 @@
 import graphviz
-from tensorgrad.tensor import Variable, Product, Function
+from pdf2image import convert_from_path
+import os, subprocess
+from PIL import Image
+
+from tensorgrad.tensor import Variable, Product, Function, Derivative
 import tensorgrad.functions as F
 from tensorgrad.serializers.to_manim import TensorNetworkAnimation
 from tensorgrad.serializers.to_graphviz import to_graphviz
 from tensorgrad.serializers.to_tikz import to_tikz
 from tensorgrad.serializers.to_d3 import to_d3
 from tensorgrad.serializers.to_pytorch import to_pytorch
+
+
+def compile_latex(expr, suffix=""):
+    latex_code = to_tikz(expr)
+    print(latex_code)
+
+    output_dir = "output_files"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save the LaTeX code to a file
+    tex_file_path = os.path.join(output_dir, f"output_{suffix}.tex")
+    with open(tex_file_path, "w") as file:
+        file.write(latex_code)
+
+    # Compile the LaTeX file to PDF
+    subprocess.run(
+        ["lualatex", "-output-directory", output_dir, tex_file_path],
+        check=True,
+    )
+
+    # Convert the PDF to an image
+    pdf_path = tex_file_path.replace(".tex", ".pdf")
+    images = convert_from_path(pdf_path, dpi=300)
+
+    # Save the first page as an image
+    image_path = pdf_path.replace(".pdf", ".png")
+    images[0].save(image_path, 'PNG')
+
+    return image_path
+
+def combine_images_vertically(image_paths, padding=10, background_color='white'):
+    images = [Image.open(x) for x in image_paths]
+
+    # Calculate total height considering padding and maximum width
+    total_height = sum(image.height for image in images) + padding * (len(images) + 1)
+    max_width = max(image.width for image in images) + padding * 2
+
+    # Create a new image with a white background
+    combined_image = Image.new('RGB', (max_width, total_height), color=background_color)
+
+    # Paste images into the new image with padding
+    y_offset = padding
+    for image in images:
+        # Calculate horizontal padding to center images
+        x_padding = (max_width - image.width) // 2
+        combined_image.paste(image, (x_padding, y_offset))
+        y_offset += image.height + padding
+
+    # Save the combined image
+    combined_image_path = "combined_image.png"
+    combined_image.save(combined_image_path)
+    return combined_image_path
 
 
 def main0():
@@ -51,27 +107,6 @@ def main(mode):
         with open("output.html", "w") as file:
             file.write(html_code)
 
-
-def compile_latex(latex_code):
-    import os, subprocess
-
-    output_dir = "output_files"
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Save the LaTeX code to a file in the output directory
-    with open(os.path.join(output_dir, "output.tex"), "w") as file:
-        file.write(latex_code)
-
-    # Compile the LaTeX file using pdflatex with the -output-directory option
-    subprocess.run(
-        [
-            "lualatex",
-            "-output-directory",
-            output_dir,
-            os.path.join(output_dir, "output.tex"),
-        ],
-        check=True,
-    )
 
 
 def main2(mode):
@@ -173,16 +208,6 @@ def manim():
     scene.render()
 
 
-def milanfar():
-    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
-    x = Variable("x", ["i"])
-    A = Function("A", ["i", "j"], (x, "i"))
-    # expr = (A @ x).grad(x).simplify({"grad_steps": 0})
-    expr = (A @ x).grad(x).simplify()
-
-    compile_latex(to_tikz(expr))
-    print(to_tikz(expr))
-
 
 def simple():
     x = Variable("x", ["i"])
@@ -206,37 +231,61 @@ def softmax_mat():
     compile_latex(to_tikz(expr))
 
 
-def softmax_jac():
+def softmax_grad():
     x = Variable("x", ["i"])
     y = F.softmax(x, ["i"])
-    expr = y.grad(x).simplify()
-    compile_latex(to_tikz(expr))
+    return Derivative(y, x).simplify()
+
 
 def ce():
-    logits = Variable("logits", ["N", "C"])
-    target = Variable("target", ["N", "C"])
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
     expr = F.cross_entropy(logits, target, ["C"]).simplify()
-
-    compile_latex(to_tikz(expr))
-    print(expr)
-
+    return expr
 
 def ce_grad():
     logits = Variable("logits", ["C"])
     target = Variable("target", ["C"])
     expr = F.cross_entropy(logits, target, ["C"]).simplify()
-    expr = expr.grad(logits).simplify()
+    return expr.grad(logits)
 
-    compile_latex(to_tikz(expr))
-    print(expr)
+def ce_hess():
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    expr = F.cross_entropy(logits, target, ["C"]).simplify()
+    return expr.grad(logits).grad(logits)
 
-def main10():
+def ce():
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    expr = F.cross_entropy(logits, target, ["C"]).simplify()
+    return expr
+
+def func_max():
     x = Variable("x", ["b", "i"])
     f = Function("max", [], (x, "i"))
-    expr = f.grad(x).simplify()
+    expr = Derivative(f, x)
+    return expr
 
-    compile_latex(to_tikz(expr))
-    print(expr)
+def milanfar():
+    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
+    x = Variable("x", ["i"])
+    A = Function("A", ["i", "j"], (x, "i"))
+    return Derivative(A @ x, x)
+
+
+def save_steps(expr):
+    images = []
+    images.append(compile_latex(expr, suffix=f"0"))
+    while True:
+        new = expr.simplify({"grad_steps": 1})
+        if new == expr:
+            break
+        expr = new
+        images.append(compile_latex(expr, suffix=f"{len(images)}"))
+
+    output_path = combine_images_vertically(images)
+    print(f"Combined image saved to {output_path}")
 
 
 if __name__ == "__main__":
@@ -251,4 +300,9 @@ if __name__ == "__main__":
     #softmax()
     #main3()
     #main5()
-    main10()
+    #main10()
+    #save_steps(milanfar())
+    #save_steps(ce())
+    #save_steps(softmax_grad())
+    #save_steps(ce_hess().simplify())
+    save_steps(ce_grad().simplify())
