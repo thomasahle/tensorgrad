@@ -25,8 +25,9 @@ def format_label(label):
 
     style = ""
     if "D_" in label:
-        label = re.sub("D_[\d+]", "", label, count=1)
+        # label = re.sub("D_[\d+]", "", label, count=1)
         style = "double"
+    # TODO: Handle more levels of D
 
     return label, style
 
@@ -74,7 +75,7 @@ class TikzGraph:
         elif node_type == "zero":
             self.lines.append(f"  {node_id}[zero,as=0,{nudge}];")
         elif node_type == "function":
-            if len(label) == 1:
+            if len(label) == 1 or "_" in label:
                 label = f"${label}$"
             self.lines.append(f"  {node_id}[function,as={label},style={{{extra_style}}},{nudge}];")
         elif node_type == "invisible":

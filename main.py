@@ -82,96 +82,61 @@ def main1():
     g.view()
 
 
-def main(mode):
+def l2_grad_x():
     # ||Ax - y||_2^2
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
     A = Variable("A", ["x", "y"])
     Axmy = A @ x - y
     frob = F.frobenius2(Axmy)
-    grad = frob.grad(x)
+    grad = Derivative(frob, x)
     assert grad.edges == ["x'"]
-
-    out = grad.simplify()
-    print(f"{out=}")
-
-    if mode == "graphviz":
-        to_graphviz(out).view()
-        print(to_graphviz(out).source)
-    if mode == "tikz":
-        latex_code = to_tikz(out)
-        print(latex_code)
-        compile_latex(latex_code)
-    if mode == "d3":
-        html_code = to_d3(out)
-        with open("output.html", "w") as file:
-            file.write(html_code)
+    return grad
 
 
-
-def main2(mode):
+def l2_hess_x():
     # ||Ax - y||_2^2
     x = Variable("x", ["x"])
     y = Variable("y", ["y"])
     A = Variable("A", ["x", "y"])
-    frob = F.frobenius2(A @ x - y)
-    grad = frob.grad(x).grad(x).simplify()
-    assert grad.edges == ["x'", "x''"]
-
-    if mode == "tikz":
-        latex_code = to_tikz(grad)
-        compile_latex(latex_code)
+    Axmy = A @ x - y
+    frob = F.frobenius2(Axmy)
+    grad = Derivative(Derivative(frob, x), x)
+    assert grad.edges == ["x'"]
+    return grad
 
 
-def main3():
+def l2_grad_W():
     # ||Ax - y||_2^2
     X = Variable("X", ["b", "x"])
     Y = Variable("Y", ["b", "y"])
     W = Variable("W", ["x", "y"])
     frob = F.frobenius2(W @ X - Y)
-    grad = frob.grad(W).simplify()
-
+    grad = Derivative(frob, W)
     assert set(grad.edges) == {"x_", "y_"}
-
-    print(grad)
-    latex_code = to_tikz(grad)
-    compile_latex(latex_code)
+    return grad
 
 
-
-def main4(mode):
+def l2_grad_b(mode):
     # ||Ax - y||_2^2
     X = Variable("X", ["b", "x"])
     Y = Variable("Y", ["b", "y"])
     W = Variable("W", ["x", "y"])
     b = Variable("b", ["y"])
     frob = F.frobenius2(W @ X + b - Y)
-    grad = frob.grad(b).simplify()
-
-    if mode == "tikz":
-        latex_code = to_tikz(grad)
-        compile_latex(latex_code)
-
-    print(to_pytorch(grad))
+    return Derivative(frob, b)
 
 
-def main5():
+def chain_rule_hess():
     # f(v(x))
     x = Variable("x", ["x"])
     v = Function("v", ["y"], (x, "x"))
     f = Function("f", [], (v, "y"))
 
-    # grad = f.grad(x).simplify()
-    grad = f.grad(x).grad(x).simplify()
-
-    print(grad)
-    latex_code = to_tikz(grad)
-    print(latex_code)
-    for i, line in enumerate(latex_code.split("\n")):
-        print(f"{i+1:2d} {line}")
-    compile_latex(latex_code)
-
-    print(to_pytorch(grad))
+    hess = Derivative(Derivative(f, x), x)
+    print(hess.edges)
+    assert hess.edges == ["x_", "x__"]
+    return hess
 
 
 def Hvp(mode, depth=2):
@@ -187,18 +152,7 @@ def Hvp(mode, depth=2):
     H = fs[-1].grad(x).grad(x)
 
     hvp = H @ v
-    out = hvp.simplify()
-    # out = H.simplify()
-    # out = out @ v
-
-    if mode == "tikz":
-        print(out)
-        latex_code = to_tikz(out)
-        for i, line in enumerate(latex_code.split("\n")):
-            print(f"{i+1:2d} {line}")
-        compile_latex(latex_code)
-
-    print(to_pytorch(out))
+    return hvp
 
 
 
@@ -273,26 +227,16 @@ def milanfar():
     A = Function("A", ["i", "j"], (x, "i"))
     return Derivative(A @ x, x)
 
-def rand0():
-    x = Variable("x", ["a", "b", "c"])
-    y = Variable("y", ["a", "b", "c"])
-    expr = Sum(
-        [
-            Product([Copy(["a"]), Copy(["b", "c"])]),
-            Sum([x, y]),
-        ],
-    )
-    return expr
-
-def save_steps(expr):
+def save_steps(expr, min_steps=None):
     images = []
     images.append(compile_latex(expr, suffix=f"0"))
+    old = expr
     while True:
-        new = expr.simplify({"grad_steps": 1})
-        if new == expr:
+        new = expr.simplify({"grad_steps": len(images)})
+        if new == old and (min_steps is None or len(images) >= min_steps):
             break
-        expr = new
-        images.append(compile_latex(expr, suffix=f"{len(images)}"))
+        old = new
+        images.append(compile_latex(new, suffix=f"{len(images)}"))
 
     output_path = combine_images_vertically(images)
     print(f"Combined image saved to {output_path}")
@@ -310,7 +254,9 @@ if __name__ == "__main__":
     #softmax()
     #main3()
     #main5()
-    save_steps(rand0())
+    save_steps(chain_rule_hess(), min_steps=3)
+    #save_steps(Hvp().simplify())
+    #save_steps(rand0())
     #save_steps(func_max())
     #save_steps(milanfar())
     #save_steps(ce())

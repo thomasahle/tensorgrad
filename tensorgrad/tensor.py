@@ -626,7 +626,9 @@ class Derivative(Tensor):
     def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[list[str]] = None):
         self.tensor = tensor
         self.x = x
-        self.new_names = self._check_grad(x, new_names)
+        # _check_grad makes sure the new_names are not already present in self.edges.
+        # But we haven't set self.edges yet, so we call it on tensor instead of self.
+        self.new_names = tensor._check_grad(x, new_names)
         self.edges = tensor.edges + self.new_names
 
     def simplify(self, args: dict[str, Any] = None):
@@ -646,9 +648,8 @@ class Derivative(Tensor):
         # Recall grad is about pushing a derivative through a function,
         # so we apply it on the inside of the derivative, not the outside.
         res = Derivative(Derivative(self.tensor, x, new_names), self.x, self.new_names)
-        assert set(res.edges) == set(
-            self.edges + new_names
-        ), f"Edges changed from {self.edges} to {res.edges}"
+        assert set(res.edges) == set(self.edges + new_names)
+        return res
 
     def rename(self, kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
