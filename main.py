@@ -3,7 +3,7 @@ from pdf2image import convert_from_path
 import os, subprocess
 from PIL import Image
 
-from tensorgrad.tensor import Variable, Product, Function, Derivative
+from tensorgrad.tensor import Variable, Product, Function, Derivative, Sum, Copy
 import tensorgrad.functions as F
 from tensorgrad.serializers.to_manim import TensorNetworkAnimation
 from tensorgrad.serializers.to_graphviz import to_graphviz
@@ -273,6 +273,16 @@ def milanfar():
     A = Function("A", ["i", "j"], (x, "i"))
     return Derivative(A @ x, x)
 
+def rand0():
+    x = Variable("x", ["a", "b", "c"])
+    y = Variable("y", ["a", "b", "c"])
+    expr = Sum(
+        [
+            Product([Copy(["a"]), Copy(["b", "c"])]),
+            Sum([x, y]),
+        ],
+    )
+    return expr
 
 def save_steps(expr):
     images = []
@@ -300,9 +310,10 @@ if __name__ == "__main__":
     #softmax()
     #main3()
     #main5()
-    #main10()
+    save_steps(rand0())
+    #save_steps(func_max())
     #save_steps(milanfar())
     #save_steps(ce())
     #save_steps(softmax_grad())
     #save_steps(ce_hess().simplify())
-    save_steps(ce_grad().simplify())
+    #save_steps(ce_grad().simplify())

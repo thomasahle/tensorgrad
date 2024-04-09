@@ -216,38 +216,20 @@ def _test_all_small():
 
 
 def test_rand0():
-    x = Variable("x", ["a", "b", "c"], ["a", "b", "c"])
-    y = Variable("y", ["a", "b", "c"], ["a", "b", "c"])
+    # A strange test that the random generator came up with.
+    # Originally it failed because b != c, which is a requirement for the identity matrix Copy(["b, c"])
+    x = Variable("x", ["a", "b", "c"])
+    y = Variable("y", ["a", "b", "c"])
     expr = Sum(
         [
             Product([Copy(["a"]), Copy(["b", "c"])]),
-            Sum(
-                [x, y],
-                [1, 1],
-            ),
+            Sum([x, y]),
         ],
-        [1, 1],
     )
-    ts = rand_values([x, y], a=2, b=3, c=2)
-    res = expr.evaluate(ts, dims={"a": 2, "b": 3, "c": 2})
+    a, b, c = 2, 3, 3
+    ts = rand_values([x, y], a=a, b=b, c=c)
+    res = expr.evaluate(ts, dims={"a": a, "b": b, "c": c})
     assert_close(
         res,
-        ts[x]
-        + ts[y]
-        + torch.eye(2 * 3 * 2).reshape(2, 3, 2, 2, 3, 2).rename("a", "b", "c", "a_", "b_", "c_"),
+        ts[x] + ts[y] + torch.eye(b).reshape(1, b, c).rename("a", "b", "c"),
     )
-
-
-# Product(
-#     [
-#         Sum(
-#             [
-#                 Product([Product([Copy(["a"])]), Copy(["c", "b"])]),
-#                 Variable(x, ["a", "b", "c"], ["a", "b", "c"]),
-#             ],
-#             [1, 1],
-#         ),
-#         Zero(["a", "b"]),
-#     ]
-# )
-#

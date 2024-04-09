@@ -92,4 +92,4 @@ def test_f_1_1():
     f = F.Function("f", ["y"], (x, "i"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"y", "i_"}
-    assert expr == tg.Function("D_0f", ["y"], (x,))
+    assert expr == tg.Function("D_0f", ["y", "i_"], (x, "i"))

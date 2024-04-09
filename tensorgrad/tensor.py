@@ -498,15 +498,13 @@ class Function(Tensor):
         self.edges = edges_out[:]
         shared_edges = set()
         for t, *input_edges in self.inputs:
+            for e in input_edges:
+                if e not in t.edges:
+                    raise ValueError(f"Edge {e} is not present in input tensor {t}")
             for e in [e for e in t.edges if e not in input_edges]:
                 if e in edges_out:
                     raise ValueError(f"Edge {e} is both in edge_out and a broadcasted edge of an input.")
                 if e in shared_edges:
-                    # We don't currently support shared broadcasted edges. In principle we could allow multiple inputs
-                    # to both broadcast over "batch" say. But users could also just join the two edges with a Copy tensor
-                    # themselves, so we don't want to deal with it for now.
-                    # Note that if you do join both inputs like this, we end up having multiple inputs to the function that
-                    # are the same tensor, but that is perfectly allowed.
                     raise ValueError(
                         f"Edge {e} is already used by another input tensor. Please rename."
                         + " If you need broadcasting, use a copy tensor."
@@ -821,8 +819,6 @@ class Product(Tensor):
         for p in products:
             inner_edges = {e for t in p.tensors for e in t.edges if e not in p.edges}
             new_names, rename = unused_edge_names(inner_edges, used_edges)
-            print(f"{[t.edges for t in p.tensors]=}, {rename=}")
-            print(p)
             for t in p.tensors:
                 res.append(t.rename(rename))
             used_edges |= set(new_names)  # Later renames should not clash with this one

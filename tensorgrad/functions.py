@@ -130,11 +130,15 @@ def pow(tensor: Tensor, k: int) -> Tensor:
 
 
 def softmax(t: Tensor, dims: list[str]) -> Tensor:
+    if set(dims) - set(t.edges):
+        raise ValueError("dims must be a subset of t.edges")
     e = exp(t)
     return e * pow(sum(e, dims, keepdims=True), -1)
 
 
 def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
+    if set(dims) - set(t.edges):
+        raise ValueError("dims must be a subset of t.edges")
     return -sum(y * log(softmax(t, dims)), dims)
 
 

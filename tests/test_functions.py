@@ -151,7 +151,7 @@ def test_ce():
     ts = rand_values([logits, target], N=3, C=3)
     ts[target] = ts[target].softmax(dim=1)
 
-    ce = F.cross_entropy(logits, target, ["i"]).simplify()
+    ce = F.cross_entropy(logits, target, ["C"]).simplify()
     print(ce)
 
     res = ce.evaluate(ts)
@@ -159,5 +159,5 @@ def test_ce():
         ts[logits].rename(None),
         ts[target].rename(None),
         reduction="none",
-    ).rename("i")
+    ).rename("N")
     assert_close(res, expected)
