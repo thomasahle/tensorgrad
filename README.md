@@ -1,7 +1,7 @@
 # tensorgrad
 Tensorgrad is a library for visualizing symbolic differentiation through tensor networks.
 
-Tensor network diagrams, also known as Penrose graphical notation or tensor diagram notation, provide a powerful visual representation for tensors and their contractions. Introduced by Roger Penrose in 1971, these diagrams have become widely used in various fields such as quantum physics, multilinear algebra, and machine learning. They allow complex tensor equations to be represented in a way that makes the structure of the contraction clear, without cluttering the notation with explicit indices.
+Tensor network diagrams, also known as [Penrose graphical notation](https://en.wikipedia.org/wiki/Penrose_graphical_notation) or [tensor diagram notation](https://tensornetwork.org/), provide a powerful visual representation for tensors and their contractions. Introduced by Roger Penrose in 1971, these diagrams have become widely used in various fields such as quantum physics, multilinear algebra, and machine learning. They allow complex tensor equations to be represented in a way that makes the structure of the contraction clear, without cluttering the notation with explicit indices.
 
 ## Examples
 
