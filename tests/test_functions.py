@@ -161,3 +161,11 @@ def test_ce():
         reduction="none",
     ).rename("N")
     assert_close(res, expected)
+
+
+def test_trace():
+    x = Variable("x", ["i", "j"])
+    ts = rand_values([x], i=3, j=3)
+    res = F.trace(x).simplify().evaluate({x: ts[x]})
+    expected = ts[x].rename(None).trace()
+    assert_close(res, expected)

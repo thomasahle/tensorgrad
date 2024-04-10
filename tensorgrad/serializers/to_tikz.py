@@ -1,8 +1,12 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
 import random
 import re
 from dataclasses import dataclass
+
+
+# TODO:
+# - If two tensors are contracted over two edges (like hadamard product) the edges are drawn on top of each other.
 
 
 def format_label(label):
@@ -83,7 +87,7 @@ class TikzGraph:
         else:
             self.lines.append(f"  {node_id}[as=${label}$,{nudge}];")
 
-    def add_edge(self, id1, id2, label, directed=False):
+    def add_edge(self, id1, id2, label, directed=False, multiplicity=1):
         # print(f"adding edge ({id1}) -> ({id2}) with label {label}")
         style = ""
         if isinstance(id1, dict):
@@ -103,7 +107,10 @@ class TikzGraph:
             style = "-latex"
         else:
             edge_type = " -- "
-        self.lines.append(f'    ({id1}){edge_type}[{style}, "${label}$"] ({id2});')
+
+        # angle = 0, -10, 10, -20, -20 depending on multiplicity
+        angle = (-1) ** multiplicity * 10 * (multiplicity // 2)
+        self.lines.append(f'    ({id1}){edge_type}[{style}, "${label}$", bend left={angle}] ({id2});')
 
     def add_subgraph(self, subgraph, definition: str, cluster_id: str):
         self.lines.append(f"{definition}{{")
@@ -215,7 +222,7 @@ def handle_free_edges(free_edges, graph):
         graph.add_edge(node_id, new_node_id, label=e)
 
 
-def _to_tikz(tensor, graph, depth=1):
+def _to_tikz(tensor, graph, depth=0):
     # We don't want the node_id to be tied to id(tensor), since, we often want
     # multiple tikz nodes for the same variable
     node_id = str(random.randrange(2**64))
@@ -271,11 +278,14 @@ def _to_tikz(tensor, graph, depth=1):
                 sub_ids[e].append(sub_id)
 
         # Handle contractions (edges with multiple sub_ids)
+        cnt = Counter()
         for e, ts in sub_ids.items():
             assert len(ts) <= 2, "Shouldn't happen"
             if len(ts) == 2:
+                key = tuple(sorted(ts))
+                cnt[key] += 1
                 sub_id1, sub_id2 = ts
-                graph.add_edge(sub_id1, sub_id2, label=e)
+                graph.add_edge(sub_id1, sub_id2, label=e, multiplicity=cnt[key])
 
         free = {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
         return free
@@ -299,7 +309,10 @@ def _to_tikz(tensor, graph, depth=1):
                 f"{cluster_id}+{i}",
             )
 
-        graph.add_subgraph(subgraph, f"{cluster_id} / [inner sep=10pt] // {layout(depth)}", cluster_id)
+        style = "draw=none" if depth == 0 else ""
+        graph.add_subgraph(
+            subgraph, f"{cluster_id} / [inner sep=10pt, {style}] // {layout(depth)}", cluster_id
+        )
         return {e: cluster_id for e in free_edges.keys()}
 
     assert False, "Unknown tensor type"
@@ -311,5 +324,5 @@ def format_weight(w, i):
     if w == -1:
         return "-"
     if w > 0:
-        return f"+{w}"
+        return f"+{w}" if i > 0 else f"{w}"
     return str(w)

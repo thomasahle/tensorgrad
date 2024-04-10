@@ -1,6 +1,8 @@
 from collections import defaultdict
 from tensorgrad.tensor import Product, Zero, Copy, Variable, Sum, Function
 
+# TODO: It could be cool if this function outputted a full pytorch module with a forward and backward method
+
 
 def _to_pytorch_code(tensor, code_lines):
     if isinstance(tensor, Copy):

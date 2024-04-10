@@ -1,10 +1,15 @@
 from typing import Any, Callable, Iterable, Union
 import torch
-from tensorgrad.tensor import Function, Ones, Tensor, Product, Copy, make_distinct
+from tensorgrad.tensor import Function, Ones, Tensor, Product, Copy, Zero, make_distinct
 from math import factorial
 
 # We mostly try to follow the behavior of pytorch's named tensors:
 # https://pytorch.org/docs/stable/name_inference.html
+
+# TODO:
+# - Add all the functions of PyTorch
+# - Add general function inverses, implicit functions
+# - Taylor approximation
 
 
 def frobenius2(t: Tensor) -> Tensor:
@@ -104,6 +109,7 @@ class Elementwise(Function):
         return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)
 
     def rename(self, kwargs: dict[str, str]):
+        # It's fine to do a full rename of self.tensor[0], since all its edges are external/broadcasted
         return Elementwise(self.name, self.function, self.tensors[0].rename(kwargs), self.derivative)
 
 
@@ -142,7 +148,47 @@ def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
     return -sum(y * log(softmax(t, dims)), dims)
 
 
+def gt(x: Tensor, y: Tensor) -> Tensor:
+    """Returns a tensor that's 1 where x >= y, 0 otherwise."""
+
+    class Gt(Function):
+        def inner_grad(self, i, new_edges) -> Tensor:
+            return Zero(self.edges + new_edges)
+
+        def __call__(self, xt: torch.tensor, yt: torch.tensor) -> torch.tensor:
+            return xt >= yt
+
+
 def max(t: Tensor, dims: list[str]) -> Tensor:
+    class Max(Function):
+        def __init__(self, function: Callable, t: Tensor):
+            super().__init__("max", [], (t,))
+            self.function = function
+
+        def inner_grad(self, i, new_edges) -> Tensor:
+            t = self.derivative(self.tensors[0])
+            return t
+
+        def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
+            # If this is mostly related to broadcasting, maybe I can just put it into the Function class?
+            t = self.tensors[0]
+            union = shapes.get(id(self), {}) | shapes.get(id(t), {})
+            for e in t.edges:
+                if e in union:
+                    yield t, e, union[e]
+                    yield self, e, union[e]
+
+        def __call__(self, value: torch.tensor) -> torch.tensor:
+            return self.function(value)
+
+        def simplify(self, args: dict[str, Any] = {}):
+            # The reason we need to override this is that it's creating a new instance of the function,
+            # and the parent class doesn't know about the function attribute.
+            return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)
+
+        def rename(self, kwargs: dict[str, str]):
+            return Elementwise(self.name, self.function, self.tensors[0].rename(kwargs), self.derivative)
+
     raise NotImplementedError
 
 
