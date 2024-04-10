@@ -92,3 +92,5 @@ Finally we can speed up each matrix multiplication by using FastJL, which is its
 # See also
 
 - [Tool for creating tensor diagrams from einsum](https://thomasahle.com/blog/einsum_to_dot.html?q=abc,cde,efg,ghi,ija-%3Ebdfhj&layout=circo) by Thomas Ahle
+- [Ideograph: A Language for Expressing and Manipulating Structured Data](https://arxiv.org/pdf/2303.15784.pdf) by Stephen Mell, Osbert Bastani, Steve Zdancewic
+
