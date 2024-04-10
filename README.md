@@ -19,6 +19,25 @@ frob = F.frobenius2(Axmy)
 grad = Derivative(frob, x)
 ```
 
+This will output the tensor diagram:
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w_single_step.png" width="50%">
+
+Together with the pytorch code for numerically computing the gradient with respect to W:
+```python
+import torch
+WX = torch.einsum('xy,bx -> by', W, X)
+subtraction = WX - Y
+X_subtraction = torch.einsum('bx,by -> xy', X, subtraction)
+final_result = 2 * X_subtraction
+```
+
+The neat thing about tensorgrad is that it will also give you the step by step instructions to see how the rules of derivatives are computed on tensors like this:
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w.png" width="50%">
+
+
+
 
 # Basic Elements 
 
