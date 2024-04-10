@@ -34,7 +34,7 @@ final_result = 2 * X_subtraction
 
 The neat thing about tensorgrad is that it will also give you the step by step instructions to see how the rules of derivatives are computed on tensors like this:
 
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w.png" width="50%">
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w.png" width="66%">
 
 
 
