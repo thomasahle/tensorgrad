@@ -54,14 +54,40 @@ In Penrose's book, The Road to Reality: A Complete Guide to the Laws of the Univ
 
 Another source of inspiration was Yaroslav Bulatov's [derivation of the hessian of neural networks](https://community.wolfram.com/groups/-/m/t/2437093):
 
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/hessian_yaroslaw.png">
 
 # Transformers
 
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/attention.png" width="100%">
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/attention.png">
 
 # Convolution Neural Netowrks
 
 # Tensor Sketch
+
+Taken from [this Twitter thread](https://twitter.com/thomasahle/status/1674572437953089536):
+I wish I had know about Tensor Graphs back when i worked on Tensor-sketching.
+Let me correct this now and explain dimensionality reduction for tensors using Tensor Networks:
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/ts_simple.png" width="66%">
+
+The second version is the "original" Tensor Sketch by 
+Rasmus Pagh and Ninh Pham. (https://rasmuspagh.net/papers/tensorsketch.pdf) Each fiber is reduced by a JL sketch, and the result is element-wise multiplied.
+Note the output of each JL is larger than in the "simple" sketch to give the same output size.
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/ts_pp.png" width="66%">
+
+Next we have the "recursive" sketch by myself and coauthors in https://thomasahle.com/#paper-tensorsketch-joint.
+In the paper we sometimes describe this as a tree, but it doesn't really matter. We just had already created the tree-graphic when we realized.
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/ts_tree.png" width="66%">
+
+The main issue with the AKKRVWZ-sketch was that we used order-3 tensors internally, which require more space/time than simple random matrices in the PP-sketch.
+We can mitigate this issue by replacing each order-3 tensor with a simple order-2 PP-sketch.
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/ts_hybrid.png" width="66%">
+
+
+Finally we can speed up each matrix multiplication by using FastJL, which is itself basically an outer product of a bunch of tiny matrices. But at this point my picture is starting to get a bit overwhelming.
 
 # See also
 
