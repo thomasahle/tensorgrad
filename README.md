@@ -43,10 +43,26 @@ The neat thing about tensorgrad is that it will also give you the step by step i
 
 # Basic Elements 
 
+For a beautiful introduction to tensor networks, see [Jordan Taylor's blog post](https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability)
+in which he gives analogies like this one:
+<img src="https://res.cloudinary.com/lesswrong-2-0/image/upload/f_auto,q_auto/v1/mirroredImages/BQKKQiBmc63fwjDrj/sn4nuvu7eocdljp3pc6g" width="100%">
+
 # Matrix Calculus
 
+In Penrose's book, The Road to Reality: A Complete Guide to the Laws of the Universe, he introduces a notation for taking derivatives on tensor networks. In this library we try to follow Penrose's notation, expanding it as needed to handle a full "chain rule" on tensor functions.
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Penrose_covariant_derivate.svg/2880px-Penrose_covariant_derivate.svg.png" width="100%">
+
+Another source of inspiration was Yaroslav Bulatov's [derivation of the hessian of neural networks](https://community.wolfram.com/groups/-/m/t/2437093):
+
+
 # Transformers
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/attention.png" width="100%">
 
 # Convolution Neural Netowrks
 
 # Tensor Sketch
+
+# See also
+
+- [Tool for creating tensor diagrams from einsum](https://thomasahle.com/blog/einsum_to_dot.html?q=abc,cde,efg,ghi,ija-%3Ebdfhj&layout=circo) by Thomas Ahle
