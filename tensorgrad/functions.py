@@ -1,7 +1,5 @@
-from typing import Any, Callable, Iterable, Union
 import torch
-from tensorgrad.tensor import Function, Ones, Tensor, Product, Copy, Zero, make_distinct
-from math import factorial
+from tensorgrad.tensor import Function, FunctionInfo, Ones, Tensor, Product, Copy, Zero, make_distinct
 
 # We mostly try to follow the behavior of pytorch's named tensors:
 # https://pytorch.org/docs/stable/name_inference.html
@@ -66,72 +64,47 @@ def trace(tensor: Tensor) -> Tensor:
     return tensor @ Copy(tensor.edges)
 
 
-# The common type of cuntion in ML is that of the broadcasted function.
-# Say we have shape (B, N, M), we'll typically apply a function "along" axis M,
-# which means it takes a vector as an input and outputs a vector.
-# And we call it on each vector from (B, N).
-#
-# It would be cool to express functions such as max(dim=...) as a vector, meaning
-# it would show up in the product graph as a node with a single edge, which connects
-# to the axis "over which" we apply the function. This matches the intuition of an
-# inner product with a vector along that axis, which ends up removing it.
-#
-# But in this framework, how would we express an elementwise function? It wouldn't have
-# any edges to connect to.
-class Elementwise(Function):
-    def __init__(self, name: str, function: Callable, t: Tensor, derivative: Callable = None):
-        # An element wise function takes no input edges and output no output edges
-        # That makes it kinda difficult to visualize in a graph... Might just have to surround it
-        super().__init__(name, [], (t,))
-        self.function = function
-        self.derivative = derivative
-
-    def inner_grad(self, i, new_edges) -> Tensor:
-        # print("inner_grad", self.tensors[0].edges, new_edges)
-        assert len(new_edges) == 0, "Elementwise functions don't have input edges"
-        t = self.derivative(self.tensors[0])
-        return t
-
-    def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
-        t = self.tensors[0]
-        union = shapes.get(id(self), {}) | shapes.get(id(t), {})
-        for e in t.edges:
-            if e in union:
-                yield t, e, union[e]
-                yield self, e, union[e]
-
-    def __call__(self, value: torch.tensor) -> torch.tensor:
-        return self.function(value)
-
-    def simplify(self, args: dict[str, Any] = {}):
-        # TODO: Functions like pow(x, -1) can commute with products. Do we want to do that?
-        # And of course logs creating sums etc.
-        return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)
-
-    def rename(self, kwargs: dict[str, str]):
-        # It's fine to do a full rename of self.tensor[0], since all its edges are external/broadcasted
-        return Elementwise(self.name, self.function, self.tensors[0].rename(kwargs), self.derivative)
-
-
 def log(t: Tensor) -> Tensor:
-    return Elementwise("log", torch.log, t, lambda t: pow(t, -1))
-
-
-def exp(t: Tensor) -> Tensor:
-    # The derivative function (last) can't just reuse the same tensor t as we got,
-    # since it may have been renamed since then.
-    return Elementwise("exp", torch.exp, t, lambda t: exp(t))
+    return Function(
+        FunctionInfo(
+            "log",
+            eval=lambda x: torch.log(x),
+            derivative=lambda _i, _new_edges, t: pow(t, -1),
+        ),
+        [],
+        (t,),
+    )
 
 
 def pow(tensor: Tensor, k: int) -> Tensor:
+    # Maybe pow should be moved into the tensor.py file, as it has some special properties:
+    # - It's necessary to implement __div__
+    # - It can result in cancelations in Product.simplify
+    # - It can factor its inputs in Function.simplify
+    # - pow(1) just vanishes
     """Elementwise t^k"""
     if k == 0:
         return Ones(tensor.edges)
-    return Elementwise(
-        f"pow({k})",
-        lambda x: torch.pow(x, k),
-        tensor,
-        lambda tensor: k * pow(tensor, k - 1),
+    return Function(
+        FunctionInfo(
+            f"pow({k})",
+            eval=lambda x: torch.pow(x, k),
+            derivative=lambda _i, _nn, t: k * pow(t, k - 1),
+        ),
+        [],
+        (tensor,),
+    )
+
+
+def exp(t: Tensor) -> Tensor:
+    return Function(
+        FunctionInfo(
+            "exp",
+            eval=lambda x: torch.exp(x),
+            derivative=lambda _i, _nn, t: exp(t),
+        ),
+        [],
+        (t,),
     )
 
 
@@ -148,53 +121,35 @@ def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
     return -sum(y * log(softmax(t, dims)), dims)
 
 
-def gt(x: Tensor, y: Tensor) -> Tensor:
-    """Returns a tensor that's 1 where x >= y, 0 otherwise."""
+def gt(t: Tensor, dim: str) -> Tensor:
+    """Returns a tensor that's 1 for the largest index in the row (along dim), 0 elsewhere."""
 
-    class Gt(Function):
-        def inner_grad(self, i, new_edges) -> Tensor:
-            return Zero(self.edges + new_edges)
+    def inner(x):
+        indices = torch.max(x, dim=dim).indices
+        one_hot = torch.zeros_like(x)
+        one_hot.scatter_(dim=dim, index=indices.unsqueeze(x.names.index(dim)), value=1)
 
-        def __call__(self, xt: torch.tensor, yt: torch.tensor) -> torch.tensor:
-            return xt >= yt
-
-
-def max(t: Tensor, dims: list[str]) -> Tensor:
-    class Max(Function):
-        def __init__(self, function: Callable, t: Tensor):
-            super().__init__("max", [], (t,))
-            self.function = function
-
-        def inner_grad(self, i, new_edges) -> Tensor:
-            t = self.derivative(self.tensors[0])
-            return t
-
-        def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
-            # If this is mostly related to broadcasting, maybe I can just put it into the Function class?
-            t = self.tensors[0]
-            union = shapes.get(id(self), {}) | shapes.get(id(t), {})
-            for e in t.edges:
-                if e in union:
-                    yield t, e, union[e]
-                    yield self, e, union[e]
-
-        def __call__(self, value: torch.tensor) -> torch.tensor:
-            return self.function(value)
-
-        def simplify(self, args: dict[str, Any] = {}):
-            # The reason we need to override this is that it's creating a new instance of the function,
-            # and the parent class doesn't know about the function attribute.
-            return Elementwise(self.name, self.function, self.tensors[0].simplify(args=args), self.derivative)
-
-        def rename(self, kwargs: dict[str, str]):
-            return Elementwise(self.name, self.function, self.tensors[0].rename(kwargs), self.derivative)
-
-    raise NotImplementedError
+    return Function(
+        FunctionInfo(
+            "gt",
+            eval=lambda x: inner(x),
+            derivative=lambda _i, new_edges, t: Zero(t.edges + new_edges),
+        ),
+        [],
+        (t, dim),
+    )
 
 
-# Some questions:
-# - Who's responsible for realizing that 1/x and x cancel out?
-#   - Maybe tensors can register simplification rules
-# - How do we get names for the derivatives?
-# - Should functions be forced to output the right edge names?
-# - What really is going on with multiple inputs?
+def max(t: Tensor, dim: str, keepdim=False) -> Tensor:
+    func = Function(
+        FunctionInfo(
+            "max",
+            eval=lambda x: torch.max(x, dim=dim),
+            derivative=lambda _i, _nn, t: gt(t, dim),
+        ),
+        [],
+        (t, dim),
+    )
+    if keepdim:
+        func @= Ones([dim])
+    return func

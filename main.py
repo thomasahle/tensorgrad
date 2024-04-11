@@ -208,6 +208,11 @@ def milanfar():
     A = Function("A", ["i", "j"], (x, "i"))
     return Derivative(A @ x, x)
 
+def division():
+    a = Variable("a", [])
+    x = Variable("x", ["i"])
+    return (a / x).grad(x).simplify()
+
 
 def save_steps_old(expr, min_steps=None):
     images = []
@@ -238,10 +243,16 @@ def save_steps(expr):
         expr = expr.simplify({"grad_steps": cnt_derivatives})
         images.append(compile_latex(expr, suffix=f"{len(images)}"))
 
+    print(expr)
     while True:
-        new = expr.simplify({"grad_steps": 1})
+        try:
+            new = expr.simplify({"grad_steps": 1})
+        except Exception as e:
+            print(e)
+            break
         if new == expr:
             break
+        print(new)
         images.append(compile_latex(new, suffix=f"{len(images)}"))
         expr = new
 
@@ -249,24 +260,48 @@ def save_steps(expr):
     print(f"Combined image saved to {output_path}")
 
 if __name__ == "__main__":
-    import sys
 
-    #x = chain_rule_hess()
-    # x = l2_grad_W().simplify()
-    x = l2_grad_W().simplify()
-    # x = trace_grad()
-    # x = trace_function_grad()
-    # x = ce()
-    # x = ce_grad().simplify()
-    #x = ce_hess().simplify()
-    #x = milanfar()
-    #x = func_max()
-    save_steps(x)
-    #save_steps_old(x, min_steps=2)
-    print(to_pytorch(x))
+    # A = Variable("A", ["i", "j"])
+    # x = F.softmax(A, ["i"]).grad(A).simplify()
+
+    # X = Variable("X", ["i"])
+    # S = F.softmax(X, ["i"])
+    # x = Derivative(S, X).simplify()
+
+    # logits = Variable("logits", ["C"])
+    # target = Variable("target", ["C"])
+    # ce = F.cross_entropy(logits, target, ["C"])
+    # x = ce.grad(target).simplify()
+
+    #x = Variable("x", ["i"])
+    #x = F.sum(F.softmax(x, ["i"]), ["i"]).simplify()
+    #x = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify()
+    #x = Derivative(F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify(), x)
+    #x = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).grad(x).simplify({"sum_combine_terms": True})
+    #x = F.softmax(x, ["i"]).grad(x).grad(x).simplify()
+
+    x = Variable("x", ["i"])
+    y = Variable("y", ["i"])
+    #expr = F.sum(2 * F.pow(x, 3) + 3 * F.pow(y, 3))
+    expr = F.sum(F.pow(x - y, 3))
+    expr = expr.grad(x).grad(y).simplify()
+
+    #expr = chain_rule_hess()
+    #expr = l2_grad_W().simplify()
+    #expr = l2_grad_W().simplify()
+    #expr = trace_grad()
+    #expr = trace_function_grad()
+    #expr = ce()
+    #expr = ce_grad().simplify()
+    #expr = ce_hess().simplify()
+    #expr = milanfar()
+    #expr = division()
+    #expr = func_max()
+    #expr = softmax_grad()
+    save_steps(expr)
+    print(to_pytorch(expr))
 
     # save_steps(Hvp().simplify())
     # save_steps(rand0())
     # save_steps(func_max())
-    # save_steps(softmax_grad())
     # save_steps(ce_hess().simplify())

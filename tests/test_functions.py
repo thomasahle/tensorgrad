@@ -21,6 +21,7 @@ def test_diag():
     v = Variable("v", ["a"])
     mat = F.diag(v, ["a", "b"])
     t = torch.randn(2, names=("a",))
+    print(list(mat.edge_equivalences()))
     res = mat.evaluate({v: t})
     expected = torch.diag(t.rename(None)).rename("a", "b")
     assert_close(res, expected)
@@ -121,7 +122,28 @@ def test_softmax():
     assert_close(res, expected)
 
 
-def test_softmax_grad():
+# Product(
+#     [
+#         Function("exp", [], (Variable(A, ["i", "j"], ["i_0", "j_0"]),)),
+#         Function(
+#             "pow(-1)",
+#             [],
+#             (
+#                 Product(
+#                     [
+#                         Product([Function("exp", [], (Variable(A, ["i", "j"], ["i", "j_1"]),)), Copy(["i"])]),
+#                         Product([Copy(["i_1"])]),
+#                     ]
+#                 ),
+#             ),
+#         ),
+#         Copy(["j", "j_0", "j_1"]),
+#         Copy(["i", "i_0", "i_1"]),
+#     ]
+# )
+
+
+def test_softmax_jac():
     x = Variable("x", ["i"])
     ts = rand_values([x], i=3)
     res = F.softmax(x, ["i"]).grad(x).simplify().evaluate({x: ts[x]})
@@ -129,18 +151,44 @@ def test_softmax_grad():
     assert_close(res, expected)
 
 
+def test_softmax_grad():
+    x = Variable("x", ["i"])
+    ts = rand_values([x], i=3)
+    res = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify().evaluate({x: ts[x]})
+    expected = jacobian(lambda x: tF.softmax(x).sum(), ts[x].rename(None)).rename("i_")
+    assert_close(res, expected)
+
+
 def test_softmax_hess():
     x = Variable("x", ["i"])
     ts = rand_values([x], i=3)
-    res = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).grad(x).simplify().evaluate({x: ts[x]})
+    res = (
+        F.sum(F.softmax(x, ["i"]), ["i"])
+        .grad(x)
+        .grad(x)
+        .simplify({"sum_combine_terms": False})
+        .evaluate({x: ts[x]})
+    )
     expected = hessian(lambda x: tF.softmax(x).sum(), ts[x].rename(None)).rename("i_", "i__")
     assert_close(res, expected)
 
 
+def test_softmax_hess2():
+    x = Variable("x", ["i"])
+    targets = Variable("targets", ["i"])
+    ts = rand_values([x, targets], i=3)
+    res = (F.softmax(x, ["i"]) @ targets).grad(x).grad(x).simplify().evaluate(ts)
+    expected = hessian(lambda x: tF.softmax(x) @ ts[targets], ts[x].rename(None)).rename("i_", "i__")
+    assert_close(res, expected)
+
+
 def test_softmax_grad_mat():
+    # The issue here is that there are two isomorphic subgraphs in the expression.
+    # They have the same values, but not necessarily the same names.
+    # Maybe need to use a true isomorphism algorithm to actually construct the mapping we need.
     A = Variable("A", ["i", "j"])
     ts = rand_values([A], i=3, j=2)
-    res = F.softmax(A, ["i"]).grad(A).simplify().evaluate({A: ts[A]})
+    res = F.softmax(A, ["i"]).grad(A).simplify().evaluate(ts)
     expected = jacobian(lambda A: tF.softmax(A, dim=0), ts[A].rename(None)).rename("i", "j", "i_", "j_")
     assert_close(res, expected)
 
@@ -161,6 +209,83 @@ def test_ce():
         reduction="none",
     ).rename("N")
     assert_close(res, expected)
+
+
+def test_ce_grad():
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    ts = rand_values([logits, target], C=3)
+    ce = F.cross_entropy(logits, target, ["C"])
+    my_jac_logits = ce.grad(logits).simplify().evaluate(ts)
+    my_jac_targets = ce.grad(target).simplify().evaluate(ts)
+    jac_logits, jac_targets = [
+        jac.rename("C_")
+        for jac in jacobian(
+            lambda x, y: tF.cross_entropy(x, y),
+            (ts[logits].rename(None), ts[target].rename(None)),
+        )
+    ]
+    assert_close(my_jac_logits, jac_logits)
+    assert_close(my_jac_targets, jac_targets)
+
+
+def test_ce_hess():
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    ts = rand_values([logits, target], C=3)
+    ce = F.cross_entropy(logits, target, ["C"])
+    my_hessians = [
+        [
+            ce.grad(logits).grad(logits).simplify().evaluate(ts.copy()),
+            ce.grad(logits).grad(target).simplify().evaluate(ts.copy()),
+        ],
+        [
+            ce.grad(target).grad(logits).simplify().evaluate(ts.copy()),
+            torch.zeros(3, 3).rename("C_", "C__"),
+        ],
+    ]
+    torch_hessians = hessian(
+        lambda x, y: tF.cross_entropy(x, y),
+        (ts[logits].rename(None), ts[target].rename(None)),
+    )
+    for i in range(2):
+        for j in range(2):
+            names = my_hessians[i][j].names
+            assert_close(my_hessians[i][j], torch_hessians[i][j].rename(*names))
+
+
+def test_pow_hess():
+    x = Variable("x", ["i"])
+    ts = rand_values([x], i=3)
+    ce = F.sum(F.pow(x, 3))
+    my_hessian = ce.grad(x).grad(x).simplify().evaluate(ts.copy())
+    torch_hessian = hessian(lambda x: x.pow(3).sum(), ts[x].rename(None)).rename("i_", "i__")
+    assert_close(my_hessian, torch_hessian)
+
+
+def test_pow_hess2():
+    x = Variable("x", ["i"])
+    y = Variable("y", ["i"])
+    ts = rand_values([x, y], i=2, j=2)
+    ce = F.sum(F.pow((x - y), 3))
+    my_hessians = [
+        [
+            ce.grad(x).grad(x).simplify().evaluate(ts.copy()),
+            ce.grad(x).grad(y).simplify().evaluate(ts.copy()),
+        ],
+        [
+            ce.grad(y).grad(x).simplify().evaluate(ts.copy()),
+            ce.grad(y).grad(y).simplify().evaluate(ts.copy()),
+        ],
+    ]
+    torch_hessians = hessian(
+        lambda x, y: torch.pow(x - y, 3).sum(),
+        (ts[x].rename(None), ts[y].rename(None)),
+    )
+    for i in range(2):
+        for j in range(2):
+            names = my_hessians[i][j].names
+            assert_close(my_hessians[i][j], torch_hessians[i][j].rename(*names))
 
 
 def test_trace():

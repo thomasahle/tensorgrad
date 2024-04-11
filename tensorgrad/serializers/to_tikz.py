@@ -243,7 +243,7 @@ def _to_tikz(tensor, graph, depth=0):
         cluster_id = f"cluster+{node_id}"
         subgraph = TikzGraph()
 
-        subgraph.add_node(node_id, "function", label=tensor.name)
+        subgraph.add_node(node_id, "function", label=tensor.fn_info.name)
 
         free_edges = {}
         for t, *es in tensor.inputs:

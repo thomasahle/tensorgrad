@@ -27,7 +27,14 @@ def test_a_not_function_of_x():
     a = Variable("a", [])
     x = Variable("x", ["i"])
     ts = rand_values([a, x], i=3)
-    res = (a / x).grad(x).simplify().evaluate({a: ts[a], x: ts[x]})
+    expr = (a / x).grad(x).simplify()
+    print("Pre eval")
+    print(expr)
+    for k1, k2 in expr.edge_equivalences():
+        print(k1, "->", k2)
+    print()
+    print("Evaluate")
+    res = expr.evaluate(ts)
     expected = jacobian(lambda x: ts[a] / x, ts[x].rename(None)).rename("i", "i_")
     assert_close(res, expected)
 

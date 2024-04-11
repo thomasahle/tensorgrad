@@ -1,6 +1,17 @@
 from typing import Iterable
 import torch
-from tensorgrad.tensor import Copy, Derivative, Function, Ones, Product, Sum, Tensor, Variable, Zero
+from tensorgrad.tensor import (
+    Copy,
+    Derivative,
+    Function,
+    FunctionInfo,
+    Ones,
+    Product,
+    Sum,
+    Tensor,
+    Variable,
+    Zero,
+)
 import tensorgrad.functions as F
 from utils import assert_close, generate_random_tensor_expression, rand_values
 
@@ -52,10 +63,10 @@ def test_derivative():
     a = Variable("a", ["i"])
     b = Variable("b", ["i"])
     product_tensor = Product([a, b])
-    derivative_tensor = Derivative(product_tensor, a, ["j"])
+    derivative_tensor = Derivative(product_tensor, a, ["j"]).simplify()
     t_a = torch.randn(3, names=("i",))
     t_b = torch.randn(3, names=("i",))
-    result = derivative_tensor.simplify().evaluate({a: t_a, b: t_b})
+    result = derivative_tensor.evaluate({a: t_a, b: t_b})
     expected = t_b.rename("j")
     assert_close(result, expected)
 
@@ -120,28 +131,15 @@ def test_function_evaluation():
     a = Variable("a", ["i"])
     b = Variable("b", ["i"])
 
-    # Define a custom function that computes the element-wise product of two tensors
-    class ElementWiseProduct(Function):
-        def __init__(self, a, b):
-            super().__init__("element_wise_product", ["i"], (a, "i"), (b, "i"))
-            self.a = a
-            self.b = b
-
-        def update_edge_dims(self, shapes: dict[int, dict[str, int]]) -> Iterable[tuple[Tensor, str, int]]:
-            # Like everybody else, I don't distinguish between the same channel name from different children
-            # But I suppose in principle there could be a function that takes two inputs, which use the same
-            # edge name, but the two tensors don't have the same size for that edge...
-            # Could I just disallow that, which would make the edge_dim api much simpler?...
-            union = shapes.get(id(self), {}) | shapes.get(id(self.a), {}) | shapes.get(id(self.b), {})
-            if "i" in union:
-                return [(t, "i", union["i"]) for t in (self, self.a, self.b)]
-            return []
-
-        def __call__(self, v1, v2):
-            return v1 * v2
-
-    # Create a tensor expression using the custom function: f(a, b)
-    expr = ElementWiseProduct(a, b)
+    expr = Function(
+        FunctionInfo(
+            "element_wise_product",
+            eval=lambda x, y: x * y,
+        ),
+        ["i"],
+        (a, "i"),
+        (b, "i"),
+    )
 
     # Create random input tensors
     t_a = torch.randn(3, names=("i",))
