@@ -60,7 +60,13 @@ Another source of inspiration was Yaroslav Bulatov's [derivation of the hessian 
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/attention.png">
 
-# Convolution Neural Netowrks
+# Convolutional Neural Networks 
+
+The main ingredient in CNNs are the linear operations Fold and Unfold. 
+Unfold takes an image, with dimensions HxW and outputs P "patches" of size K^2, where K is the kernel size. Fold is the reverse operation. 
+Since they are linear operations (they consists only of copying/adding) we can express them as a tensor with shape (H, W, P, K^2).
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/uCrOg.png">
 
 # Tensor Sketch
 
