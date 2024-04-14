@@ -34,9 +34,10 @@ def generate_random_tensor_expression(
         return left_aligned, right_aligned
 
     def generate_recursive(size: int, variables: Dict[Variable, torch.Tensor]) -> Tuple[Tensor, torch.Tensor]:
-        if size == 1 or random.random() < 0.3:
+        if size == 1:
             # Base case: single variable or constant with different edge configurations
-            if random.random() < 0.5 and variables:
+            # if random.random() < 0.5 and variables:
+            if random.random() < 1:
                 var, tensor = random.choice(list(variables.items()))
                 return var, tensor
             else:

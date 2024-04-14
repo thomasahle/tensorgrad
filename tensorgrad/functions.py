@@ -1,5 +1,18 @@
+from typing import Any, Callable, Iterable, Optional
 import torch
-from tensorgrad.tensor import Function, FunctionInfo, Ones, Tensor, Product, Copy, Zero, make_distinct
+from tensorgrad.tensor import (
+    Constant,
+    Function,
+    FunctionInfo,
+    Ones,
+    Tensor,
+    Product,
+    Copy,
+    Variable,
+    Zero,
+    make_distinct,
+    unused_edge_names,
+)
 
 # We mostly try to follow the behavior of pytorch's named tensors:
 # https://pytorch.org/docs/stable/name_inference.html
@@ -60,6 +73,11 @@ def sum(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
     return out
 
 
+def dot(t1: Tensor, t2: Tensor, dims: list[str]) -> Tensor:
+    """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges."""
+    return (t1 * t2).sum(dims)
+
+
 def trace(tensor: Tensor) -> Tensor:
     return tensor @ Copy(tensor.edges)
 
@@ -84,7 +102,7 @@ def pow(tensor: Tensor, k: int) -> Tensor:
     # - pow(1) just vanishes
     """Elementwise t^k"""
     if k == 0:
-        return Ones(tensor.edges)
+        return Ones(tensor.edges, link=tensor)
     return Function(
         FunctionInfo(
             f"pow({k})",
@@ -121,6 +139,18 @@ def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
     return -sum(y * log(softmax(t, dims)), dims)
 
 
+def relu(t: Tensor) -> Tensor:
+    return Function(
+        FunctionInfo(
+            "relu",
+            eval=lambda x: torch.relu(t),
+            derivative=lambda _i, new_edges, t: None,
+        ),
+        [],
+        (t,),
+    )
+
+
 def gt(t: Tensor, dim: str) -> Tensor:
     """Returns a tensor that's 1 for the largest index in the row (along dim), 0 elsewhere."""
 
@@ -153,3 +183,123 @@ def max(t: Tensor, dim: str, keepdim=False) -> Tensor:
     if keepdim:
         func @= Ones([dim])
     return func
+
+
+# Convolution is equivalent with Unfold + Matrix Multiplication + Fold (or view to output shape)
+# Variable("data", ["batch", "channel_in", "width", "height"])
+# @ Unfold(["width", "height"], ["kw", "kh"], ["width_out", "height_out"])
+# @ Variable("kernel", ["channel_in", "kw", "kh", "channel_out"])
+# -> ["batch", "channel_out", "width_out", "heigth_out"] (where width_out = width - kw + 1 and height_out = height - kh + 1)
+def Unfold(input_edges: list[str], kernel_edges: list[str], output_edges: list[str]):
+    # The full Unfold function is just the product over individual convolutions
+    return Product(Convolution(ie, ke, oe) for ie, ke, oe in zip(input_edges, kernel_edges, output_edges))
+
+
+class Convolution(Constant):
+    def __init__(self, input_edge: str, kernel_edge: str, output_edge: str):
+        super().__init__([input_edge, kernel_edge, output_edge])
+        assert len(self.edges) == len(set(self.edges))
+        self.input_edge = input_edge
+        self.kernel_edge = kernel_edge
+        self.output_edge = output_edge
+
+    def __repr__(self):
+        return f"Convolution({self.input_edge}, {self.kernel_edge}, {self.output_edge})"
+
+    def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        return Convolution(
+            kwargs.get(self.input_edge, self.input_edge),
+            kwargs.get(self.kernel_edge, self.kernel_edge),
+            kwargs.get(self.output_edge, self.output_edge),
+        )
+
+    def evaluate(
+        self,
+        values: dict[Tensor, torch.tensor],
+        *,
+        dims: dict[str, int] | None = None,
+        extras: dict[str, Any] | None = None,
+    ) -> torch.tensor:
+        if not self.edges:
+            return torch.tensor(1.0)
+        edge_dims = extras["edge_dims"][id(self)]
+        w_in = edge_dims[self.input_edge]
+        k_size = edge_dims[self.kernel_edge]
+        # TODO: How do I communicate w_out to the next convolution kernel?
+        w_out = w_in - k_size + 1
+        # return[i,j,k] = 1 iff i=j+k
+        res = torch.zeros(w_in, k_size, w_out)
+        for k in range(w_out):
+            for j in range(k_size):
+                res[k + j, j, k] = 1
+        return res
+
+    # Output shape (patches, dim) where dim = channels * kernel_width * kernel_height
+    # But that's where I'm arguing that we don't need to flatten the channels unto the output
+    # we can just keep it broadcasted and people can flatten it if they want.
+    # I don't know why torch.Unfold doesn't do it this way, but presumably there's some performance hit?
+
+    # width_in = 6
+    # [x x x x x x]
+    # [1 0 0 - - -] [0 1 0 - - -] [0 0 1 - - -]
+    # [- 1 0 0 - -] [- 0 1 0 - -] [- 0 0 1 - -]
+    # [- - 1 0 0 -] [- - 0 1 0 -] [- - 0 0 1 -]
+    # [- - - 1 0 0] [- - - 0 1 0] [- - - 0 0 1]
+    # width_out = 4
+    # kw = 3
+
+    #
+
+    # (width_out, kw, width_in)
+    # [1 0 0 - - -]
+    # [0 1 0 - - -]
+    # [0 0 1 - - -]
+
+    # [- 1 0 0 - -]
+    # [- 0 1 0 - -]
+    # [- 0 0 1 - -]
+
+    # [- - 1 0 0 -]
+    # [- - 0 1 0 -]
+    # [- - 0 0 1 -]
+
+    # [- - - 1 0 0]
+    # [- - - 0 1 0]
+    # [- - - 0 0 1]
+
+    # width_in = 5
+    # height_in = 3
+    # [x x x x x]
+    # [x x x x x]
+    # [x x x x x]
+    # [1 0 - - -]
+    # [0 1 - - -]
+    #
+    # [1 0 0 - - -] [0 1 0 - - -] [0 0 1 - - -]
+    # [- 1 0 0 - -] [- 0 1 0 - -] [- 0 0 1 - -]
+    # [- - 1 0 0 -] [- - 0 1 0 -] [- - 0 0 1 -]
+    # [- - - 1 0 0] [- - - 0 1 0] [- - - 0 0 1]
+    # width_out = 4
+    # kw = 3
+
+
+class Flatten(Constant):
+    def __init__(self, input_edges: list[str], output_edge: str):
+        self.input_edges = input_edges[:]
+        self.output_edge = output_edge
+        self.edges = input_edges + [output_edge]
+        assert len(self.edges) == len(set(self.edges))
+
+    def __repr__(self):
+        return f"Flatten({self.input_edges}, {self.output_edge})"
+
+    def __hash__(self):
+        return hash((type(self).__name__, len(self.edges)))
+
+    def rename(self, kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        return Flatten(
+            [kwargs.get(e, e) for e in self.input_edges],
+            kwargs.get(self.output_edge, self.output_edge),
+        )

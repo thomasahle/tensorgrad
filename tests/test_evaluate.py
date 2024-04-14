@@ -195,22 +195,15 @@ def test_trace():
     assert_close(result, expected)
 
 
-def _test_all_small():
+def test_random_small():
     torch.manual_seed(42)
     for _ in range(100):
         expr, expected, variables = generate_random_tensor_expression(5)
-        dims = dict(zip(expected.names, expected.shape))
-        print()
-        print("Testing", expr)
-        print(f"{dims=}")
-        print({v: t.shape for v, t in variables.items()})
-        try:
-            result = expr.evaluate(variables, dims=dims)
-        except ValueError as e:
-            if "Missing edge dimensions" in str(e):
-                print(e)
-                continue
+        print(expr)
+        result = expr.evaluate(variables)
         assert_close(result, expected)
+        result2 = expr.simplify().evaluate(variables)
+        assert_close(result2, expected)
 
 
 def test_rand0():
@@ -231,3 +224,44 @@ def test_rand0():
         res,
         ts[x] + ts[y] + torch.eye(b).reshape(1, b, c).rename("a", "b", "c"),
     )
+
+
+def test_linked_variable():
+    x = Variable("x", ["a"])
+    ts = rand_values([x], a=3)
+    expr = x.grad(x).simplify()
+    assert_close(expr.evaluate(ts), torch.eye(3).rename("a", "a_"))
+
+    X = Variable("x", ["a", "b"])
+    ts = rand_values([X], a=3, b=2)
+    expr = X.grad(X).simplify()
+    assert_close(expr.evaluate(ts), torch.eye(6).reshape(3, 2, 3, 2).rename("a", "b", "a_", "b_"))
+
+
+def test_pow0_linked_variable():
+    x = Variable("x", ["a"])
+    ts = rand_values([x], a=3)
+    expr = F.pow(x, 0).simplify()
+    assert_close(expr.evaluate(ts), torch.ones(3).rename("a"))
+
+    X = Variable("x", ["a", "b"])
+    ts = rand_values([X], a=3, b=2)
+    expr = F.pow(X, 0).simplify()
+    assert_close(expr.evaluate(ts), torch.ones(3, 2).rename("a", "b"))
+
+
+def test_unfold():
+    data = Variable("data", ["b", "cin", "win", "hin"])
+    unfold = F.Unfold(["win", "hin"], ["kw", "kh"], ["wout", "hout"])
+    expr = data @ unfold
+
+    b, cin, win, hin, kw, kh = 2, 3, 4, 5, 2, 2
+    ts = rand_values([data], b=b, cin=cin, win=win, hin=hin, kw=kw, kh=kh)
+    res = expr.evaluate(ts, dims={"kw": kw, "kh": kh})
+    expected = (
+        torch.nn.functional.unfold(ts[data].rename(None), (2, 2))
+        .reshape(b, cin, kw, kh, win - kw + 1, hin - kh + 1)
+        .rename("b", "cin", "kw", "kh", "wout", "hout")
+    )
+
+    assert_close(res, expected)

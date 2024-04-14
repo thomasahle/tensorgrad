@@ -1,9 +1,10 @@
 import graphviz
 from pdf2image import convert_from_path
+
 import os, subprocess
 from PIL import Image, ImageDraw
 
-from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy
+from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy, Zero, Ones, Unfold
 import tensorgrad.functions as F
 from tensorgrad.serializers.to_manim import TensorNetworkAnimation
 from tensorgrad.serializers.to_graphviz import to_graphviz
@@ -164,7 +165,13 @@ def Hvp(mode, depth=2):
 def softmax_grad():
     x = Variable("x", ["i"])
     y = F.softmax(x, ["i"])
-    return Derivative(y, x).simplify()
+    return Derivative(y, x)
+
+def softmax_func_grad():
+    x = Variable("x", ["i"])
+    y = Function("f", ["i"], (x, "i"))
+    z = F.softmax(y, ["i"])
+    return Derivative(z, x)
 
 
 def ce():
@@ -207,6 +214,18 @@ def milanfar():
     x = Variable("x", ["i"])
     A = Function("A", ["i", "j"], (x, "i"))
     return Derivative(A @ x, x)
+
+def taylor(k):
+    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
+    x = Variable("x", ["i"])
+    # f = Function("f", ["o"], (x, "i"))
+    z = Zero(["i"])
+    f = Function("f", ["o"], (z, "i"))
+    res = f
+    for i in range(1, k):
+        f = Derivative(f, x, [f"i_{i}"]) @ x.rename({"i": f"i_{i}"})
+        res += f
+    return res
 
 def division():
     a = Variable("a", [])
@@ -280,11 +299,54 @@ if __name__ == "__main__":
     #x = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).grad(x).simplify({"sum_combine_terms": True})
     #x = F.softmax(x, ["i"]).grad(x).grad(x).simplify()
 
-    x = Variable("x", ["i"])
-    y = Variable("y", ["i"])
-    #expr = F.sum(2 * F.pow(x, 3) + 3 * F.pow(y, 3))
-    expr = F.sum(F.pow(x - y, 3))
-    expr = expr.grad(x).grad(y).simplify()
+    # x = Variable("x", ["i"])
+    # y = Variable("y", ["i"])
+    # expr = F.sum(F.pow(x - y, 3))
+    # expr = expr.grad(x).grad(y).simplify()
+
+    #expr = taylor(2)
+
+    A = Variable("A", ["i", "j"])
+    B = Variable("B", ["j", "k"])
+    C = Variable("C", ["k", "i"])
+    x = (A @ B @ C) @ (A @ B @ C)
+    y = A @ B @ C.rename({"i": "i'"}) @ A.rename({"i": "i'"}) @ B @ C
+    expr = x - y
+
+    #  B B      B     B
+    # A D A    A \   / A
+    # A D A vs A  D-D  A
+    #  B B      B/   \B
+
+    #D = Variable("D", ["k", "k'", "l"])
+    #A2 = A.rename({"i": "i'"})
+    #B2 = B.rename({"k": "k'"})
+    #half1 = A @ B @ D @ B2 @ A2
+    #expr1 = half1 @ half1
+    #half2 = A @ B @ D @ B2 @ A
+    #expr2 = half2 @ half2
+    #expr  = expr1 - expr2
+
+
+    data = Variable("data", ["b", "cin", "win", "hin"])
+    unfold = Unfold(["win", "hin"], ["kw", "kh"], ["wout", "hout"])
+    kernel = Variable("kernel", ["cin", "kw", "kh", "cout"])
+    expr = data @ unfold @ kernel
+    #expr = Derivative(expr, kernel)
+
+    data = Variable("data", ["b", "c1", "w1"])
+    kernel = Variable("kernel", ["c1", "kw", "c2"])
+    expr = data @ Unfold(["w1"], ["kw"], ["w2"]) @ kernel
+    expr = F.relu(expr)
+    kernel2 = Variable("kernel2", ["c2", "kw", "c3"])
+    expr = expr @ Unfold(["w2"], ["kw"], ["w3"]) @ kernel2
+    expr = expr @ F.Flatten(["c3", "w3"], "out")
+
+    # expr = Sum([Variable('y', ['a', 'b'], ['a', 'b']), Sum([Sum([Variable('y', ['a', 'b'], ['a', 'b']), Product([Product([Variable('y', ['a', 'b'], ['a', 'b']), Variable('z', ['a'], ['a'])]), Product([Copy(['a'])])])], [1, 1]), Product([Variable('z', ['a'], ['a']), Product([Copy(['b'])])])], [1, 1])], [1, 1])
+    # expr = Sum([Variable('y', ['a'], ['a']), Product([Product([Variable('z', ['a'], ['a']), Sum([Product([Product([Variable('x', ['a'], ['a']), Variable('z', ['a'], ['a'])]), Product([Copy(['a'])])]), Variable('x', ['a'], ['a'])], [1, 1])]), Product([Copy(['a'])])])], [1, 1])
+    # expr = Variable("x", ["a"]) + Variable("y", ["a", "b", "c"])
+
+    # expr = Ones(["a", "b", "c"]) + Ones(["a", "b", "c"])
 
     #expr = chain_rule_hess()
     #expr = l2_grad_W().simplify()
@@ -297,9 +359,10 @@ if __name__ == "__main__":
     #expr = milanfar()
     #expr = division()
     #expr = func_max()
-    #expr = softmax_grad()
-    save_steps(expr)
-    print(to_pytorch(expr))
+    #expr = softmax_func_grad()
+    #save_steps(expr)
+    save_steps_old(expr)
+    #print(to_pytorch(expr))
 
     # save_steps(Hvp().simplify())
     # save_steps(rand0())

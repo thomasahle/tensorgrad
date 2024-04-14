@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from tensorgrad.functions import Convolution, Flatten
 from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
 import random
 import re
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 
 # TODO:
 # - If two tensors are contracted over two edges (like hadamard product) the edges are drawn on top of each other.
+# - Maybe we don't need a border around functions if they don't have any broadcasted edges?
 
 
 def format_label(label):
@@ -78,6 +80,10 @@ class TikzGraph:
             self.lines.append(f"  {node_id}[var,as=${label}$,{nudge}];")
         elif node_type == "zero":
             self.lines.append(f"  {node_id}[zero,as=0,{nudge}];")
+        elif node_type == "conv":
+            self.lines.append(f"  {node_id}[conv,as=$\\ast$,{nudge}];")
+        elif node_type == "flatten":
+            self.lines.append(f"  {node_id}[flatten,as=flatten,{nudge}];")
         elif node_type == "function":
             if len(label) == 1 or "_" in label:
                 label = f"${label}$"
@@ -167,6 +173,8 @@ def to_tikz(tensor):
         identity/.style={circle, draw=black, fill=white, inner sep=0pt, minimum size=4pt},
         var/.style={circle, draw=black, fill=white, inner sep=2pt},
         zero/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+        conv/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+        flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
         function/.style={circle, draw=black, fill=white, inner sep=2pt},
         subgraph nodes={draw=gray, rounded corners},
         subgraph text none,
@@ -237,6 +245,14 @@ def _to_tikz(tensor, graph, depth=0):
 
     if isinstance(tensor, Zero):
         graph.add_node(node_id := str(id(tensor)), "zero")
+        return {e: node_id for e in tensor.edges}
+
+    if isinstance(tensor, Convolution):
+        graph.add_node(node_id := str(id(tensor)), "conv")
+        return {e: node_id for e in tensor.edges}
+
+    if isinstance(tensor, Flatten):
+        graph.add_node(node_id := str(id(tensor)), "flatten")
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Function):
