@@ -71,13 +71,18 @@ Since they are linear operations (they consists only of copying/adding) we can e
 <a href="https://arxiv.org/abs/1908.04471">Hayashi et al.</a> show that if you define a tensor `(∗)_{i,j,k} = [i=j+k]`, then the "Unfold" operator factors along the spacial dimensions, and you can write a bunch of different convolutional neural networks easily as tensor networks:
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/68747470733a2f2f64726976652e676f6f676c652e636f6d2f75633f6578706f72743d766965772669643d3141305235795371446e48715939624650677163546f6b347735416a516c666572.png">
 
-With tensorgrad you can similarly write a simple convolutional neural network like this:
+With tensorgrad you can write the "standard" convolutional neural network like this:
 ```python
-data = Variable("data", ["b", "cin", "win", "hin"])
-unfold = Convolution("win", "kw", "wout") @ Convolution("hin", "kh", "hout")
-kernel = Variable("kernel", ["cin", "kw", "kh", "cout"])
+data = Variable("data", ["b", "c", "w", "h"])
+unfold = Convolution("w", "j", "w2") @ Convolution("h", "i", "h2")
+kernel = Variable("kernel", ["c", "i", "j", "c2"])
 expr = data @ unfold @ kernel
 ```
+
+And then easily find the jacobian symbolically with `expr.grad(kernel)`:
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/conv_jac.png">
+
+
 
 # Tensor Sketch
 
