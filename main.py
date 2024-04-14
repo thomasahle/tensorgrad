@@ -329,7 +329,7 @@ if __name__ == "__main__":
 
 
     data = Variable("data", ["b", "cin", "win", "hin"])
-    unfold = Unfold(["win", "hin"], ["kw", "kh"], ["wout", "hout"])
+    unfold = F.Convolution("win", "kw", "wout") @ F.Convolution("hin", "kh", "hout")
     kernel = Variable("kernel", ["cin", "kw", "kh", "cout"])
     expr = data @ unfold @ kernel
     #expr = Derivative(expr, kernel)
@@ -341,6 +341,12 @@ if __name__ == "__main__":
     kernel2 = Variable("kernel2", ["c2", "kw", "c3"])
     expr = expr @ Unfold(["w2"], ["kw"], ["w3"]) @ kernel2
     expr = expr @ F.Flatten(["c3", "w3"], "out")
+
+    data = Variable("X", ["b", "c", "w", "h"])
+    unfold = F.Convolution("w", "j", "w2") @ F.Convolution("h", "i", "h2")
+    kernel = Variable("kernel", ["c", "i", "j", "c2"])
+    expr = data @ unfold @ kernel
+    expr = Derivative(expr, kernel).simplify()
 
     # expr = Sum([Variable('y', ['a', 'b'], ['a', 'b']), Sum([Sum([Variable('y', ['a', 'b'], ['a', 'b']), Product([Product([Variable('y', ['a', 'b'], ['a', 'b']), Variable('z', ['a'], ['a'])]), Product([Copy(['a'])])])], [1, 1]), Product([Variable('z', ['a'], ['a']), Product([Copy(['b'])])])], [1, 1])], [1, 1])
     # expr = Sum([Variable('y', ['a'], ['a']), Product([Product([Variable('z', ['a'], ['a']), Sum([Product([Product([Variable('x', ['a'], ['a']), Variable('z', ['a'], ['a'])]), Product([Copy(['a'])])]), Variable('x', ['a'], ['a'])], [1, 1])]), Product([Copy(['a'])])])], [1, 1])
