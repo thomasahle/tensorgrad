@@ -1,5 +1,4 @@
 import pytest
-import torch
 from tensorgrad.functions import frobenius2
 from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
 from tests.utils import assert_close, rand_values
@@ -208,7 +207,6 @@ def test_quadratic_grad():
     A = Variable("A", ["j", "i"])
     y = frobenius2(A @ x)
     assert y.edges == []
-    print("y grad", y.grad(x).simplify())
     assert y.grad(x).edges == ["i_"]
 
 
@@ -227,14 +225,6 @@ def test_equality():
             Variable("A", ["j", "i"], ["j", "i_"]),
         ]
     )
-    print([hash(t) for t in p1.tensors])
-    print()
-    print([hash(t) for t in p2.tensors])
-    print()
-    print(hash(p1))
-    print()
-    print(hash(p2))
-    print()
     assert p1 == p2
 
 
@@ -263,7 +253,6 @@ def test_broadcasting():
     y = Variable("y", ["y"])
     z = x + y
     assert set(z.edges) == {"x", "y"}
-    print(z.grad(x))
     assert set(z.grad(x).simplify().edges) == {"x", "y", "x_"}
 
 
@@ -292,8 +281,6 @@ def test_broadcasting2():
     # { 2 (x1+y1) + 2 (x1+y2) }
     # { 2 (x2+y1) + 2 (x2+y2) }
     expected = 2 * ((x.rename({"x": "x_"}) + y) @ Copy(["y"]))
-    print(f"{actual.simplify()=}")
-    print(f"{expected.simplify()=}")
     assert actual.simplify() == expected.simplify()
 
 
@@ -414,8 +401,6 @@ def test_transpose():
     ts = rand_values([x], i=3, j=3)
 
     expr = x + x.rename({"i": "j", "j": "i"})
-    print(f"{expr=}")
-    print(f"{expr.simplify()=}")
 
     res = expr.evaluate(ts)
     expected = ts[x].rename(None) + ts[x].rename(None).T

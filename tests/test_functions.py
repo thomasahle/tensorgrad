@@ -21,7 +21,6 @@ def test_diag():
     v = Variable("v", ["a"])
     mat = F.diag(v, ["a", "b"])
     t = torch.randn(2, names=("a",))
-    print(list(mat.edge_equivalences()))
     res = mat.evaluate({v: t})
     expected = torch.diag(t.rename(None)).rename("a", "b")
     assert_close(res, expected)
@@ -83,7 +82,6 @@ def test_pow():
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
     result = F.pow(a, -1).evaluate({a: t_a})
     expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
-    print(F.pow(a, -1).edges, expected.names)
     assert_close(result, expected)
 
 
@@ -122,31 +120,11 @@ def test_softmax():
     assert_close(res, expected)
 
 
-# Product(
-#     [
-#         Function("exp", [], (Variable(A, ["i", "j"], ["i_0", "j_0"]),)),
-#         Function(
-#             "pow(-1)",
-#             [],
-#             (
-#                 Product(
-#                     [
-#                         Product([Function("exp", [], (Variable(A, ["i", "j"], ["i", "j_1"]),)), Copy(["i"])]),
-#                         Product([Copy(["i_1"])]),
-#                     ]
-#                 ),
-#             ),
-#         ),
-#         Copy(["j", "j_0", "j_1"]),
-#         Copy(["i", "i_0", "i_1"]),
-#     ]
-# )
-
-
 def test_softmax_jac():
     x = Variable("x", ["i"])
     ts = rand_values([x], i=3)
-    res = F.softmax(x, ["i"]).grad(x).simplify().evaluate({x: ts[x]})
+    expr = F.softmax(x, ["i"]).grad(x).simplify()
+    res = expr.evaluate({x: ts[x]})
     expected = jacobian(lambda x: tF.softmax(x), ts[x].rename(None)).rename("i", "i_")
     assert_close(res, expected)
 
@@ -198,10 +176,7 @@ def test_ce():
     target = Variable("target", ["N", "C"])
     ts = rand_values([logits, target], N=3, C=3)
     ts[target] = ts[target].softmax(dim=1)
-
     ce = F.cross_entropy(logits, target, ["C"]).simplify()
-    print(ce)
-
     res = ce.evaluate(ts)
     expected = tF.cross_entropy(
         ts[logits].rename(None),
@@ -250,8 +225,7 @@ def test_ce_hess():
     )
     for i in range(2):
         for j in range(2):
-            names = my_hessians[i][j].names
-            assert_close(my_hessians[i][j], torch_hessians[i][j].rename(*names))
+            assert_close(my_hessians[i][j], torch_hessians[i][j].rename("C_", "C__"))
 
 
 def test_pow_hess():

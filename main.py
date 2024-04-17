@@ -287,14 +287,15 @@ def main():
     # S = F.softmax(X, ["i"])
     # x = Derivative(S, X).simplify()
 
-    # logits = Variable("logits", ["C"])
-    # target = Variable("target", ["C"])
-    # ce = F.cross_entropy(logits, target, ["C"])
-    # x = ce.grad(target).simplify()
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    ce = F.cross_entropy(logits, target, ["C"])
+    #expr = ce.grad(logits).grad(logits).simplify()
+    expr = ce.grad(logits).simplify()
 
     #x = Variable("x", ["i"])
     #x = F.sum(F.softmax(x, ["i"]), ["i"]).simplify()
-    #x = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify()
+    #expr = F.softmax(x, ["i"]).grad(x).simplify()
     #x = Derivative(F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify(), x)
     #x = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).grad(x).simplify({"sum_combine_terms": True})
     #x = F.softmax(x, ["i"]).grad(x).grad(x).simplify()
@@ -306,12 +307,12 @@ def main():
 
     #expr = taylor(2)
 
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
-    x = (A @ B @ C) @ (A @ B @ C)
-    y = A @ B @ C.rename({"i": "i'"}) @ A.rename({"i": "i'"}) @ B @ C
-    expr = x - y
+    # A = Variable("A", ["i", "j"])
+    # B = Variable("B", ["j", "k"])
+    # C = Variable("C", ["k", "i"])
+    # x = (A @ B @ C) @ (A @ B @ C)
+    # y = A @ B @ C.rename({"i": "i'"}) @ A.rename({"i": "i'"}) @ B @ C
+    # expr = x - y
 
     #  B B      B     B
     # A D A    A \   / A
@@ -328,28 +329,28 @@ def main():
     #expr  = expr1 - expr2
 
 
-    data = Variable("data", ["b", "cin", "win", "hin"])
-    unfold = F.Convolution("win", "kw", "wout") @ F.Convolution("hin", "kh", "hout")
-    kernel = Variable("kernel", ["cin", "kw", "kh", "cout"])
-    expr = data @ unfold @ kernel
+    # data = Variable("data", ["b", "cin", "win", "hin"])
+    # unfold = F.Convolution("win", "kw", "wout") @ F.Convolution("hin", "kh", "hout")
+    # kernel = Variable("kernel", ["cin", "kw", "kh", "cout"])
+    # expr = data @ unfold @ kernel
     #expr = Derivative(expr, kernel)
 
-    data = Variable("data", ["b", "c1", "w1"])
-    kernel = Variable("kernel", ["c1", "kw", "c2"])
-    expr = data @ Unfold(["w1"], ["kw"], ["w2"]) @ kernel
-    expr = F.relu(expr)
-    kernel2 = Variable("kernel2", ["c2", "kw", "c3"])
-    expr = expr @ Unfold(["w2"], ["kw"], ["w3"]) @ kernel2
-    expr = expr @ F.Flatten(["c3", "w3"], "out")
+    # data = Variable("data", ["b", "c1", "w1"])
+    # kernel = Variable("kernel", ["c1", "kw", "c2"])
+    # expr = data @ Unfold(["w1"], ["kw"], ["w2"]) @ kernel
+    # expr = F.relu(expr)
+    # kernel2 = Variable("kernel2", ["c2", "kw", "c3"])
+    # expr = expr @ Unfold(["w2"], ["kw"], ["w3"]) @ kernel2
+    # expr = expr @ F.Flatten(["c3", "w3"], "out")
 
-    data = Variable("X", ["b", "c", "w", "h"])
-    unfold = F.Convolution("w", "j", "w2") @ F.Convolution("h", "i", "h2")
-    kernel = Variable("kernel", ["c", "i", "j", "c2"])
-    expr = data @ unfold @ kernel
-    expr = Derivative(expr, kernel).simplify()
+    # data = Variable("X", ["b", "c", "w", "h"])
+    # unfold = F.Convolution("w", "j", "w2") @ F.Convolution("h", "i", "h2")
+    # kernel = Variable("kernel", ["c", "i", "j", "c2"])
+    # expr = data @ unfold @ kernel
+    # expr = Derivative(expr, kernel).simplify()
 
-    x = Variable("x", "i, j")
-    expr = x + x.rename({"i": "j", "j": "i"})
+    #x = Variable("x", "i, j")
+    #expr = x + x.rename({"i": "j", "j": "i"})
     #print(expr)
     #return
 

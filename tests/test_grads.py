@@ -117,7 +117,6 @@ def test_fxx_1_1_1():
     f = F.Function("f", ["z"], (x, "i"), (x, "i"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"z", "i_"}
-    print("hashes")
     # We can't control what connection_edges are used by the chain rule, which makes
     # this test a bit more brittle.
     # fmt: off
@@ -126,8 +125,6 @@ def test_fxx_1_1_1():
       + tg.Function( "D_1f", ["z", "i_"], (x, "i"), (x, "i"))
     )
     # fmt: on
-    print(f"{expr=}")
-    print(f"{expected=}")
     assert expr == expected
 
 
@@ -197,7 +194,6 @@ def test_f_2_2_double_nested():
     f = F.Function("f", ["o", "p"], (g, "m", "n"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"o", "p", "i_", "j_"}
-    print(expr)
     assert expr == tg.Product(
         [
             tg.Function("D_0f", ["o", "p", "m", "n"], (g, "m", "n"), orig_edges_out=["o", "p", "m_", "n_"]),

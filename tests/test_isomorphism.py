@@ -242,8 +242,6 @@ def test_different_variables():
     z = Variable("z", ["a"], ["a"])
     e1 = x + z
     e2 = z + z
-    print(f"{e1.canonical_edge_names=}")
-    print(f"{e2.canonical_edge_names=}")
     assert e1 != e2
 
 

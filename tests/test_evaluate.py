@@ -1,5 +1,4 @@
 import random
-from typing import Iterable
 import torch
 from tensorgrad.tensor import (
     Copy,
@@ -9,7 +8,6 @@ from tensorgrad.tensor import (
     Ones,
     Product,
     Sum,
-    Tensor,
     Variable,
     Zero,
 )
@@ -97,8 +95,6 @@ def test_nested_product_and_sum():
 
     # Evaluate the tensor expression
     result = expr.evaluate({a: t_a, b: t_b, c: t_c, d: t_d})
-    print((t_a @ t_b + t_c))
-    print(t_d)
     # Compare with the expected result
     expected = (t_a @ t_b + t_c).transpose("k", "i") @ t_d
     assert_close(result, expected)
@@ -204,10 +200,7 @@ def test_random_small():
     random.seed(42)
     for _ in range(100):
         expr, expected, variables = generate_random_tensor_expression(5)
-        print()
         print(f"{expr=}")
-        print(f"variables={[(v, val.shape) for v, val in variables.items()]}")
-        print()
         result = expr.evaluate(variables)
         assert_close(result, expected)
         result2 = expr.simplify().evaluate(variables)
@@ -220,21 +213,11 @@ def test_rand2():
     z = Variable("z", ["a", "b", "c"])
     ts = rand_values([x, y, z], a=2, b=3, c=3)
     expr = x @ z + y
-    print(f"{expr=}")
 
     res = expr.evaluate(ts)
     expected_xy = torch.einsum("a,abc->bc", ts[x].rename(None), ts[z].rename(None))
     expected = expected_xy.reshape(1, 3, 3) + ts[y].rename(None).reshape(2, 3, 1)
     assert_close(res, expected.rename("a", "b", "c"))
-
-
-expr = Sum(
-    [
-        Product([Product([Variable("x", ["a"]), Variable("z", ["a", "b", "c"])]), Product([Copy(["a"])])]),
-        Product([Variable("y", ["a", "b"]), Product([Copy(["c"])])]),
-    ],
-    [1, 1],
-)
 
 
 def test_rand0():
