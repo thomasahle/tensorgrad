@@ -37,16 +37,52 @@ class Tensor(ABC):
         return len(self.edges)
 
     def grad(self, x: "Variable", new_names: Optional[list[str]]) -> "Tensor":
-        """Take the derivative with respect to the variable x.
-        Pushes the derivative one step through the tensor.
-        If you want to push it all the way through, use simplify."""
+        """
+        Take the derivative of this tensor with respect to the variable x.
+
+        Args:
+            x: The variable to take the derivative with respect to.
+            new_names: Optional list of names to use for the new edges created by the derivative.
+                If not provided, new names will be generated based on the edges of x.
+
+        Note:
+            Pushes the derivative one step through the tensor.
+            If you want to push it all the way through, use simplify.
+
+        Returns:
+            The tensor representing the derivative.
+        """
+        new_names = self._check_grad(x, new_names)
         raise NotImplementedError
 
     def rename(self, kwargs: dict[str, str]):
-        self._check_rename(kwargs)
-        """Renames *the free edges* of the tensor.
-        The inner edges may get renamed if necessary to avoid clashes with the new names."""
+        """
+        Rename the free edges of this tensor.
+
+        Args:
+            kwargs: A dictionary mapping old edge names to new edge names.
+                Only free edges can be renamed. Inner edges may get renamed
+                if necessary to avoid clashes with the new free edge names.
+
+        Returns:
+            A new tensor with the edges renamed according to kwargs.
+        """
+        kwargs = self._check_rename(kwargs)
         raise NotImplementedError
+
+    def simplify(self, args: dict[str, Any] = None):
+        """
+        Apply simplification rules to this tensor.
+
+        This may rename inner edges but should never change the free edges.
+
+        Args:
+            args: Optional dictionary of arguments controlling the simplification.
+
+        Returns:
+            A simplified version of this tensor.
+        """
+        return self
 
     def __hash__(self):
         return self.canon
@@ -54,62 +90,13 @@ class Tensor(ABC):
     def __eq__(self, other):
         return self.is_isomorphic(other)
 
-    def simplify(self, args: dict[str, Any] = None):
-        """Apply various simplification rules.
-        May rename things internally, but should never change any free edges.
-        """
-        return self
-
-    def evaluate(
-        self,
-        values: dict["Variable", torch.tensor],
-        *,
-        dims: dict[str, int] | None = None,
-        extras: dict[str, Any] | None = None,
-    ) -> torch.tensor:
-        if extras is None:
-            extras = {}
-        if "edge_dims" not in extras:
-            extras["edge_dims"] = {}
-        if "cached_values" not in extras:
-            extras["cached_values"] = {}
-        if id(self) not in extras["edge_dims"]:
-            shapes = {v: dict(zip(t.names, t.shape)) for v, t in values.items() if isinstance(v, Variable)}
-            extras["edge_dims"] |= compute_edge_dims(self, shapes, extra_dims=dims)
-        edge_dims = extras["edge_dims"].get(id(self), {})
-        if not edge_dims and self.edges:
-            print("Warning: Unable to compute edge dimensions for", self)
-
-        # Variables don't need the value cache, since we can just look up the value directly.
-        if isinstance(self, Variable):
-            if self not in values:
-                raise ValueError(f"Missing value for {self}, got {values}")
-            # Since renaming values never change the order, we can just rename back here.
-            return values[self].rename(*self.edges)
-
-        cached_values = extras["cached_values"]
-        key = (self, tuple(sorted(edge_dims.items())))
-        if key in cached_values:
-            # Take over the isomorphic representative
-            other, value = next((t, v) for (t, ed), v in cached_values.items() if (t, ed) == key)
-            rename = other.get_isomorphism(self)
-            res = value.rename(*(rename[e] for e in other.edges)).align_to(*self.edges)
-            # Enable this to debug the isomorphic cache
-            expected = self.inner_evaluate(edge_dims, values, extras)
-            assert expected.names == res.names, f"{expected.names=} {res.names=}"
-            assert torch.allclose(res.rename(None), expected.rename(None))
-            return res
-
-        res = self.inner_evaluate(edge_dims, values, extras)
-        assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
-        cached_values[key] = res
-        return res
-
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
-        raise NotImplementedError
-
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
-        """Return a list of tuples of equivalent edges."""
+        """
+        Return a list of equivalent edges in this tensor.
+
+        Each entry in the returned list is a tuple ((t1, e1), (t2, e2)),
+        indicating that edge e1 of tensor t1 is equivalent to edge e2 of tensor t2.
+        """
         return []
 
     def __add__(self, other):
@@ -176,6 +163,78 @@ class Tensor(ABC):
         """
         raise NotImplementedError
 
+    def evaluate(
+        self,
+        values: dict["Variable", torch.tensor],
+        *,
+        dims: dict[str, int] | None = None,
+        extras: dict[str, Any] | None = None,
+    ) -> torch.tensor:
+        """
+        Evaluate this tensor given values for the variable tensors.
+
+        Args:
+            values: A dictionary mapping variable tensors to their values.
+            dims: An optional dictionary specifying the dimensions of free edges.
+            extras: An dictionary containing extra data used during evaluation.
+
+        Returns:
+            The result of evaluating this tensor.
+        """
+        if extras is None:
+            extras = {}
+        if "edge_dims" not in extras:
+            extras["edge_dims"] = {}
+        if "cached_values" not in extras:
+            extras["cached_values"] = {}
+        if id(self) not in extras["edge_dims"]:
+            shapes = {v: dict(zip(t.names, t.shape)) for v, t in values.items() if isinstance(v, Variable)}
+            extras["edge_dims"] |= compute_edge_dims(self, shapes, extra_dims=dims)
+        edge_dims = extras["edge_dims"].get(id(self), {})
+        if not edge_dims and self.edges:
+            print("Warning: Unable to compute edge dimensions for", self)
+
+        # Variables don't need the value cache, since we can just look up the value directly.
+        if isinstance(self, Variable):
+            if self not in values:
+                raise ValueError(f"Missing value for {self}, got {values}")
+            # Since renaming values never change the order, we can just rename back here.
+            return values[self].rename(*self.edges)
+
+        cached_values = extras["cached_values"]
+        key = (self, tuple(sorted(edge_dims.items())))
+        if key in cached_values:
+            # Take over the isomorphic representative
+            other, value = next((t, v) for (t, ed), v in cached_values.items() if (t, ed) == key)
+            rename = other.get_isomorphism(self)
+            res = value.rename(*(rename[e] for e in other.edges)).align_to(*self.edges)
+            # Enable this to debug the isomorphic cache
+            expected = self.inner_evaluate(edge_dims, values, extras)
+            assert expected.names == res.names, f"{expected.names=} {res.names=}"
+            assert torch.allclose(res.rename(None), expected.rename(None))
+            return res
+
+        res = self.inner_evaluate(edge_dims, values, extras)
+        assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
+        cached_values[key] = res
+        return res
+
+    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
+        """
+        The inner implementation of tensor evaluation.
+
+        Subclasses should override this to define the actual evaluation logic.
+
+        Args:
+            edge_dims: A dictionary mapping edge names to their dimensions.
+            values: A dictionary mapping variable tensors to their values.
+            extras: An dictionary containing extra data used during evaluation.
+
+        Returns:
+            The result of evaluating this tensor.
+        """
+        raise NotImplementedError
+
     def _check_rename(self, kwargs: dict[str, str]):
         """Check that the renaming is valid, and return the renaming dictionary."""
         if len({kwargs.get(e, e) for e in self.edges}) != len(self.edges):
@@ -221,6 +280,14 @@ class Tensor(ABC):
 
 class Variable(Tensor):
     def __init__(self, name, edges: str | Iterable[str], surface_edges=None):
+        """
+        A tensor holding a variable.
+
+        Args:
+            name: The name of this variable.
+            edges: The names of the edges of this variable. Can be a comma-delimited string or iterable of strings.
+            surface_edges: The actual edge names to use. If not provided, the names in `edges` are used directly.
+        """
         edges = self._check_edges(edges)
         self.name = name
         # The original edges are saved so evaluation can happen with the original
@@ -276,8 +343,14 @@ class Variable(Tensor):
 
 class Constant(Tensor, ABC):
     def __init__(self, edges: Iterable[str], link: Optional[Variable] = None, tag: Optional[int] = None):
-        """A constant tensor with the given edges.
-        The link is a variable that this tensor is associated with, and will be used to compute edge dimensions"""
+        """
+        A constant tensor with the given edges.
+
+        Args:
+            edges: The names of the edges of this constant tensor.
+            link: An optional variable that this tensor is associated with, used to compute edge dimensions.
+            tag: An optional tag for this tensor.
+        """
         edges = self._check_edges(edges)
         self.edges = list(edges)
         self.link = link
@@ -417,6 +490,17 @@ class Function(Tensor):
         orig_edges_in: list[tuple[str]] = None,
         orig_edges_ts: list[tuple[str]] = None,
     ):
+        """
+        A function tensor that takes one or more input tensors and produces an output tensor.
+
+        Args:
+            fn_info: The FunctionInfo defining this function, or a string giving the function name.
+            edges_out: The names of the output edges of this function.
+            *inputs: The input tensors and their input edge names.
+            orig_edges_out: The original output edge names. If not provided, `edges_out` is used.
+            orig_edges_in: The original input edge names for each input. If not provided, the actual input edge names are used.
+            orig_edges_ts: The original edges of each complete input tensor. If not provided, the actual tensor edges are used.
+        """
         edges_out = self._check_edges(edges_out)
         self.edges_out = list(edges_out)
         self.inputs = list(inputs)
@@ -635,6 +719,14 @@ class Function(Tensor):
 
 class Derivative(Tensor):
     def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[list[str]] = None):
+        """
+        A tensor representing the derivative of another tensor.
+
+        Args:
+            tensor: The tensor to take the derivative of.
+            x: The variable to take the derivative with respect to.
+            new_names: The names to use for the new edges created by the derivative. If not provided, they will be generated.
+        """
         new_names = self._check_edges(new_names)
         self.tensor = tensor
         self.x = x
@@ -695,6 +787,12 @@ class Derivative(Tensor):
 
 class Product(Tensor):
     def __init__(self, tensors: Iterable[Tensor]):
+        """
+        A product of multiple tensors.
+
+        Args:
+            tensors: The tensors to multiply together.
+        """
         self.tensors = list(tensors)
         self.edges = []
         self.contractions = []
@@ -932,10 +1030,6 @@ class Product(Tensor):
         return base, [hash((base, h)) for h in outer]
 
 
-def nauty_hash(tensors: list[Tensor]) -> list[int]:
-    pass
-
-
 ################################################################################
 # Sum
 ################################################################################
@@ -943,6 +1037,13 @@ def nauty_hash(tensors: list[Tensor]) -> list[int]:
 
 class Sum(Tensor):
     def __init__(self, tensors: Iterable[Tensor], weights: list[int] = None):
+        """
+        A weighted sum of multiple tensors.
+
+        Args:
+            tensors: The tensors to add together.
+            weights: The weights of each tensor in the sum. If not provided, all weights are 1.
+        """
         tensors = list(tensors)
         # Broadcasting means we always upgrade to the super set of edges
         edges = {e for t in tensors for e in t.edges}
