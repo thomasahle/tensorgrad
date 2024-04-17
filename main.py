@@ -278,7 +278,7 @@ def save_steps(expr):
     output_path = combine_images_vertically(images)
     print(f"Combined image saved to {output_path}")
 
-if __name__ == "__main__":
+def main():
 
     # A = Variable("A", ["i", "j"])
     # x = F.softmax(A, ["i"]).grad(A).simplify()
@@ -348,6 +348,11 @@ if __name__ == "__main__":
     expr = data @ unfold @ kernel
     expr = Derivative(expr, kernel).simplify()
 
+    x = Variable("x", "i, j")
+    expr = x + x.rename({"i": "j", "j": "i"})
+    #print(expr)
+    #return
+
     # expr = Sum([Variable('y', ['a', 'b'], ['a', 'b']), Sum([Sum([Variable('y', ['a', 'b'], ['a', 'b']), Product([Product([Variable('y', ['a', 'b'], ['a', 'b']), Variable('z', ['a'], ['a'])]), Product([Copy(['a'])])])], [1, 1]), Product([Variable('z', ['a'], ['a']), Product([Copy(['b'])])])], [1, 1])], [1, 1])
     # expr = Sum([Variable('y', ['a'], ['a']), Product([Product([Variable('z', ['a'], ['a']), Sum([Product([Product([Variable('x', ['a'], ['a']), Variable('z', ['a'], ['a'])]), Product([Copy(['a'])])]), Variable('x', ['a'], ['a'])], [1, 1])]), Product([Copy(['a'])])])], [1, 1])
     # expr = Variable("x", ["a"]) + Variable("y", ["a", "b", "c"])
@@ -374,3 +379,6 @@ if __name__ == "__main__":
     # save_steps(rand0())
     # save_steps(func_max())
     # save_steps(ce_hess().simplify())
+
+if __name__ == "__main__":
+    main()

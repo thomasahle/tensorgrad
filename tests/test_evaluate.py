@@ -1,3 +1,4 @@
+import random
 from typing import Iterable
 import torch
 from tensorgrad.tensor import (
@@ -175,6 +176,9 @@ def test_simplify_sum_of_products():
     d = Variable("d", ["j", "k"])
     values = rand_values([a, b, c, d], i=2, j=3, k=4)
 
+    assert a != b
+    assert a @ b != c @ d
+
     expr = (a @ b) + (c @ d)
     simplified_expr = expr.simplify()
 
@@ -197,13 +201,40 @@ def test_trace():
 
 def test_random_small():
     torch.manual_seed(42)
+    random.seed(42)
     for _ in range(100):
         expr, expected, variables = generate_random_tensor_expression(5)
-        print(expr)
+        print()
+        print(f"{expr=}")
+        print(f"variables={[(v, val.shape) for v, val in variables.items()]}")
+        print()
         result = expr.evaluate(variables)
         assert_close(result, expected)
         result2 = expr.simplify().evaluate(variables)
         assert_close(result2, expected)
+
+
+def test_rand2():
+    x = Variable("x", ["a"])
+    y = Variable("y", ["a", "b"])
+    z = Variable("z", ["a", "b", "c"])
+    ts = rand_values([x, y, z], a=2, b=3, c=3)
+    expr = x @ z + y
+    print(f"{expr=}")
+
+    res = expr.evaluate(ts)
+    expected_xy = torch.einsum("a,abc->bc", ts[x].rename(None), ts[z].rename(None))
+    expected = expected_xy.reshape(1, 3, 3) + ts[y].rename(None).reshape(2, 3, 1)
+    assert_close(res, expected.rename("a", "b", "c"))
+
+
+expr = Sum(
+    [
+        Product([Product([Variable("x", ["a"]), Variable("z", ["a", "b", "c"])]), Product([Copy(["a"])])]),
+        Product([Variable("y", ["a", "b"]), Product([Copy(["c"])])]),
+    ],
+    [1, 1],
+)
 
 
 def test_rand0():
@@ -224,6 +255,15 @@ def test_rand0():
         res,
         ts[x] + ts[y] + torch.eye(b).reshape(1, b, c).rename("a", "b", "c"),
     )
+
+
+def test_rand1():
+    x = Variable("x", ["a"], ["a"])
+    z = Variable("z", ["a"], ["a"])
+    expr = (x + z) + (z + z)
+    ts = rand_values([x, z], a=2)
+    res = expr.evaluate(ts)
+    assert_close(res, 1 * ts[x] + 3 * ts[z])
 
 
 def test_linked_variable():

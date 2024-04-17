@@ -1,5 +1,8 @@
+import pytest
+import torch
 from tensorgrad.functions import frobenius2
 from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
+from tests.utils import assert_close, rand_values
 
 
 def test_x():
@@ -313,19 +316,21 @@ def test_pseudo_linear_gradient():
 
 
 def test_hash():
+    # Variables with different (original) edge names are eseentially different types
     xi = Variable("x", ["i"])
     xj = Variable("x", ["j"])
-    assert hash(xi) == hash(xj)
+    assert hash(xi) != hash(xj)
 
     # Inner product and outer product should have different hashes
     assert hash(Product([xi, xi])) != hash(Product([xi, xj]))
     # Ordering does not affect hash
     assert hash(Product([xi, xj])) == hash(Product([xj, xi]))
 
-    # Reordering of edges should not affect hash
+    # Reordering of edges should not affect the basic hash
     assert hash(Variable("x", ["i", "j"])) == hash(Variable("x", ["j", "i"]))
-    # Rename should not affect hash
-    assert hash(Variable("x", ["i", "j"])) == hash(Variable("x", ["i", "k"]))
+
+    # Again: Different (original) names are different types
+    assert hash(Variable("x", ["i", "j"])) != hash(Variable("x", ["i", "k"]))
 
 
 def test_equal():
@@ -402,3 +407,29 @@ def test_sizes():
         t1 = t1 @ Copy([f"i{i}", f"i{i+1}"])
         t0 = t0 @ Copy([f"i{i+1}", f"i{i+2}"])
         assert compute_edge_dims(t0 @ t1, shapes)[id(t0)] == {f"i{j}": 3 for j in range(0, i + 3)}
+
+
+def test_transpose():
+    x = Variable("x", "i, j")
+    ts = rand_values([x], i=3, j=3)
+
+    expr = x + x.rename({"i": "j", "j": "i"})
+    print(f"{expr=}")
+    print(f"{expr.simplify()=}")
+
+    res = expr.evaluate(ts)
+    expected = ts[x].rename(None) + ts[x].rename(None).T
+    assert_close(res, expected.rename("i", "j"))
+    res2 = expr.simplify().evaluate(ts)
+    assert_close(res2, expected.rename("i", "j"))
+
+
+def test_transpose_mismatched():
+    for string in ["i, j", "j, i"]:
+        x = Variable("x", string)
+        expr = x + x.rename({"i": "j", "j": "i"})
+        ts = rand_values([x], i=3, j=2)
+        with pytest.raises(ValueError):
+            expr.evaluate(ts)
+        with pytest.raises(ValueError):
+            expr.simplify().evaluate(ts)

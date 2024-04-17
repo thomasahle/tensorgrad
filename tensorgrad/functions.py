@@ -59,7 +59,9 @@ def diag(t: Tensor, new_edges: list[str]):
     """Takes vector `t` and creates a diagonal matrix with `t` on the diagonal."""
     if len(t.edges) != 1:
         raise ValueError("Expected a vector, got a tensor with more than one edge.")
-    # If the vector's edge is in new_edges, we need to rename it
+    # If the vector's edge is in new_edges, we need to rename it.
+    # We assume t is a vector, so there's only one edge in it.
+    # I'm not sure how to define this function otherwise.
     (t,), _renames = make_distinct(t, used_names=new_edges)
     return Copy(new_edges + t.edges) @ t
 
@@ -68,6 +70,7 @@ def sum(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
     """Sum the tensor over the given dimensions."""
     edges = edges or tensor.edges
     out = Product([tensor] + [Copy([e]) for e in edges])
+    # Optionally broadcast back to orignal shape
     if keepdims:
         return out @ Ones(edges)
     return out
@@ -100,6 +103,7 @@ def pow(tensor: Tensor, k: int) -> Tensor:
     # - It can result in cancelations in Product.simplify
     # - It can factor its inputs in Function.simplify
     # - pow(1) just vanishes
+    # - pow(2) can be written with a Hadamard product
     """Elementwise t^k"""
     if k == 0:
         return Ones(tensor.edges, link=tensor)
@@ -131,6 +135,10 @@ def softmax(t: Tensor, dims: list[str]) -> Tensor:
         raise ValueError("dims must be a subset of t.edges")
     e = exp(t)
     return e * pow(sum(e, dims, keepdims=True), -1)
+
+
+def pairwise_distance(t1: Tensor, t2: Tensor, dims: list[str]):
+    return pow(t1 - t2, 2).sum(dims)
 
 
 def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:

@@ -28,7 +28,12 @@ def test_simple_hessian():
     ts = rand_values([x, A], x=2, y=2)
     quad = x @ A @ x.rename({"x": "y"})
     res = quad.grad(x).grad(x).simplify()
-    assert_close(res.evaluate(ts), 2 * ts[A].rename("x_", "x__"))
+    assert_close(res.evaluate(ts), (ts[A].rename(None) + ts[A].rename(None).T).rename("x_", "x__"))
+
+    quad2 = x @ A @ A @ x
+    res2 = quad2.grad(x).grad(x).simplify()
+    tA = ts[A].rename(None)
+    torch.testing.assert_close(res2.evaluate(ts).rename(None), 2 * tA @ tA.T)
 
     x = tg.Variable("x", ["x"])
     y = tg.Variable("y", ["y"])
@@ -37,19 +42,18 @@ def test_simple_hessian():
     frob = F.frobenius2(A @ x - y)
     hess = frob.grad(x).grad(x).simplify().evaluate(ts)
     # Hessian of ||Ax - y||^2 is 2 * A^T A
-    expected = 2 * ts[A].rename("x_", "y") @ ts[A].align_to("y", "x").rename("y", "x__")
-    assert_close(hess, expected)
+    tH = 2 * ts[A].rename(None) @ ts[A].rename(None).T
+    assert_close(hess, tH.rename("x_", "x__"))
 
 
 def test_derivative_of_hadamard_product():
     a = tg.Variable("a", ["i", "j"])
     b = tg.Variable("b", ["i", "j"])
     ts = rand_values([a, b], i=2, j=3)
-
-    print((a * b).grad(a).simplify())
-
-    torch.testing.assert_close((a * b).grad(a).simplify().evaluate(ts).sum(), ts[b].sum())
-    torch.testing.assert_close((a * b).grad(b).simplify().evaluate(ts).sum(), ts[a].sum())
+    res_a = (a * b).grad(a).simplify().evaluate(ts)
+    res_b = (a * b).grad(b).simplify().evaluate(ts)
+    torch.testing.assert_close(res_a.sum(), ts[b].sum())
+    torch.testing.assert_close(res_b.sum(), ts[a].sum())
 
 
 def test_f_0_0():
@@ -67,6 +71,10 @@ def test_f_0_1():
     assert set(expr.edges) == {"i_"}
     fg = F.Function("D_0f", ["i_"], (x, "i"))
     assert expr == fg
+
+
+# Function("D_0f", ["i_"], (Variable("x", ["i"], ["i"]), "i"), orig_edges_out=["i"])
+# == Function("D_0f", ["i_"], (Variable("x", ["i"], ["i"]), "i"))
 
 
 def test_f_0_2():
@@ -109,10 +117,18 @@ def test_fxx_1_1_1():
     f = F.Function("f", ["z"], (x, "i"), (x, "i"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"z", "i_"}
-    assert expr == (
+    print("hashes")
+    # We can't control what connection_edges are used by the chain rule, which makes
+    # this test a bit more brittle.
+    # fmt: off
+    expected = (
         tg.Function("D_0f", ["z", "i_"], (x, "i"), (x, "i"))
-        + tg.Function("D_1f", ["z", "i_"], (x, "i"), (x, "i"))
+      + tg.Function( "D_1f", ["z", "i_"], (x, "i"), (x, "i"))
     )
+    # fmt: on
+    print(f"{expr=}")
+    print(f"{expected=}")
+    assert expr == expected
 
 
 def test_f_2_2_multi_input():
@@ -133,7 +149,10 @@ def test_f_1_1_nested():
     f = F.Function("f", ["k"], (g, "j"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"k", "i_"}
-    assert expr == tg.Function("D_0f", ["k", "j_"], (g, "j")) @ tg.Function("D_0g", ["j_", "i_"], (x, "i"))
+    expected = tg.Function("D_0f", ["k", "j_"], (g, "j")) @ tg.Function(
+        "D_0g", ["j_", "i_"], (x, "i"), orig_edges_out=["j", "i_"]
+    )
+    assert expr == expected
 
 
 def test_f_2_1_nested():
@@ -143,7 +162,7 @@ def test_f_2_1_nested():
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"l", "i_"}
     assert expr == tg.Function("D_0f", ["l", "j_", "k_"], (g, "j", "k")) @ tg.Function(
-        "D_0g", ["j_", "k_", "i_"], (x, "i")
+        "D_0g", ["j_", "k_", "i_"], (x, "i"), orig_edges_out=["j", "k", "i_"]
     )
 
 
@@ -153,8 +172,9 @@ def test_f_1_2_nested():
     f = F.Function("f", ["l", "m"], (g, "k"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"l", "m", "i_", "j_"}
-    assert expr == tg.Function("D_0f", ["l", "m", "k_"], (g, "k")) @ tg.Function(
-        "D_0g", ["k_", "i_", "j_"], (x, "i", "j")
+    assert expr == (
+        tg.Function("D_0f", ["l", "m", "k_"], (g, "k"))
+        @ tg.Function("D_0g", ["k_", "i_", "j_"], (x, "i", "j"), orig_edges_out=["k", "i_", "j_"])
     )
 
 
@@ -164,10 +184,10 @@ def test_f_2_2_nested():
     f = F.Function("f", ["m", "n"], (g, "k", "l"))
     expr = f.grad(x).simplify()
     assert set(expr.edges) == {"m", "n", "i_", "j_"}
-    assert expr == (
-        tg.Function("D_0f", ["m", "n", "k", "l"], (g, "k", "l"))
-        @ tg.Function("D_0g", ["k", "l", "i_", "j_"], (x, "i", "j"))
+    expected = tg.Function("D_0f", ["m", "n", "k_", "l_"], (g, "k", "l")) @ tg.Function(
+        "D_0g", ["k_", "l_", "i_", "j_"], (x, "i", "j"), orig_edges_out=["k", "l", "i_", "j_"]
     )
+    assert expr == expected
 
 
 def test_f_2_2_double_nested():
@@ -180,8 +200,8 @@ def test_f_2_2_double_nested():
     print(expr)
     assert expr == tg.Product(
         [
-            tg.Function("D_0f", ["o", "p", "m", "n"], (g, "m", "n")),
-            tg.Function("D_0g", ["m", "n", "k", "l"], (h, "k", "l")),
+            tg.Function("D_0f", ["o", "p", "m", "n"], (g, "m", "n"), orig_edges_out=["o", "p", "m_", "n_"]),
+            tg.Function("D_0g", ["m", "n", "k", "l"], (h, "k", "l"), orig_edges_out=["m", "n", "k_", "l_"]),
             tg.Function("D_0h", ["k", "l", "i_", "j_"], (x, "i", "j")),
         ]
     )
