@@ -9,17 +9,14 @@ import torch
 # TODO:
 # - Code generation (e.g. Triton)
 # - Prettier printing
-# - Use a real algorithm to check isomorphism, like vf2++
-# - Maybe don't use isomorphic equality as the default equality for tensors, since it leads to some annoying footguns.
+# - Use a real algorithm to check isomorphism, like nauty.
 # - Taking the derivative with respect to multiple variables at the same time (full backprop)
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
-# X Redo the function class using FunctionInfo instead of subclasses.
-# - Also support broadcasting better, since simple two input functions like Cross Entropy is currently basically not possible.
+# - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
 # More simplification rules:
 # - Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
-# X Elementwise functions that get broadcasted, like 1/sum_x(exp(x)) can be commuted with broadcasting
 # - Optional "expand" setting that expands the expression to a sum of products
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
@@ -988,6 +985,8 @@ class Product(Tensor):
         return res
 
     def _compute_canonical(self):
+        # return self._compute_canonical_with_nauty()
+
         # We need to give the edges a value corresponding to the canonical_edge_name.
         # But we can't give edges values, so instead we "surround" each tensor in rank-2 Copy's.
         tensors = []
@@ -1027,6 +1026,45 @@ class Product(Tensor):
         # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
         outer = hashes[-len(self.edges) :]
         base = hash(("Product", certificate))
+        return base, [hash((base, h)) for h in outer]
+
+    def _compute_canonical_with_nauty(self):
+        import pynauty
+
+        # Surround each tensor with rank-2 Copy's.
+        tensors = []
+        all_edges = {e for t in self.tensors for e in t.edges}
+        for tensor in self.tensors:
+            new_names, rename = unused_edge_names(tensor.edges, all_edges)
+            all_edges |= set(new_names)
+            tensors.append(tensor.rename(rename))
+            for e, e_new, h in zip(tensor.edges, new_names, tensor.canonical_edge_names):
+                tensors.append(Copy([e, e_new], tag=h))
+
+        # Create dummy nodes for the free edges.
+        tensors += [Copy([e]) for e in self.edges]
+
+        # Build the graph for pynauty.
+        g = pynauty.Graph(number_of_vertices=len(tensors), directed=False)
+        for i, t1 in enumerate(tensors):
+            for j, t2 in enumerate(tensors):
+                if i < j and set(t1.edges) & set(t2.edges):
+                    g.connect_vertex(i, [j])
+
+        # Set node colors based on the hash of each tensor.
+        partition = defaultdict(set)
+        for i, t in enumerate(tensors):
+            partition[t.canon].add(i)
+        print(list(partition.values()))
+        g.set_vertex_coloring(partition.values())
+
+        # Compute the canonical labeling using pynauty.
+        # cert = pynauty.certificate(g)
+        labels = pynauty.canon_label(g)
+
+        # Extract the part corresponding to the free edges.
+        outer = labels[-len(self.edges) :]
+        base = hash(("Product", tuple(sorted(labels))))
         return base, [hash((base, h)) for h in outer]
 
 
