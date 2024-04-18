@@ -119,6 +119,34 @@ def test_example_from_softmax_hessian():
     assert graph @ variables == graph3 @ variables
 
 
+def test_symmetries():
+    #    A   B
+    #    |   ⅄
+    #    i  j k
+    A = Variable("A", "i")
+    B = Variable("B", "l")
+    graph = A @ B @ Copy("l, j, k")
+    assert graph.symmetries == [{"i"}, {"j", "k"}]
+
+    #    A   B      A   B
+    #    |   ⅄   +  |   ⅄
+    #    i  j k     i  k j
+    graph2 = graph + graph.rename({"j": "k", "k": "j"})
+    assert graph2.symmetries == [{"i"}, {"j", "k"}]
+
+    #    A   B      A   B
+    #    |   ⅄   +  |   ⅄
+    #    i  j k     k  j i
+    graph3 = graph + graph.rename({"i": "k", "k": "i"})
+    assert graph3.symmetries == [{"i", "k"}, {"j"}]
+
+    #    A   B      A   B      A   B
+    #    |   ⅄   +  |   ⅄   +  |   ⅄
+    #    i  j k     j  i k     k  j i
+    graph4 = Sum([graph, graph.rename({"i": "j", "j": "i"}), graph.rename({"i": "k", "k": "i"})])
+    assert graph4.symmetries == [{"i", "j", "k"}]
+
+
 def test_empty_graphs():
     empty_graph1 = Product([])
     empty_graph2 = Product([])

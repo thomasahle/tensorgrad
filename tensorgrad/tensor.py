@@ -154,6 +154,13 @@ class Tensor(ABC):
             self._base, self._edge_canons = self._compute_canonical()
         return self._edge_canons
 
+    @property
+    def symmetries(self) -> list[set[str]]:
+        res = defaultdict(set)
+        for c, e in zip(self.canonical_edge_names, self.edges):
+            res[c].add(e)
+        return sorted(res.values(), key=lambda s: sorted(s))
+
     def _compute_canonical(self) -> list[int]:
         """Return a canonical form of the tensor, and a list of edge canons.
         The canonical edge names should be aligned with self.edges, such that self.edges[i]
