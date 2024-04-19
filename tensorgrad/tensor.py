@@ -775,9 +775,8 @@ class Derivative(Tensor):
 
     def grad(self, x: Variable, new_names: list[str] | None) -> Tensor:
         new_names = self._check_grad(x, new_names)
-        # Recall grad is about pushing a derivative through a function,
-        # so we apply it on the inside of the derivative, not the outside.
-        res = Derivative(Derivative(self.tensor, x, new_names), self.x, self.new_names)
+        # To avoid an infinite loop, we let the grad pass through us, rather than creating a double derivative.
+        res = Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
         assert set(res.edges) == set(self.edges + new_names)
         return res
 

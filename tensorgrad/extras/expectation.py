@@ -45,6 +45,8 @@ class Expectation(Tensor):
                 # 2) Expand: (x - mu + mu) rest = mu * rest + (x - mu) * rest
                 res = mu @ Expectation(rest, self.wrt, self.mu, self.covar)
                 assert set(res.edges) == set(self.edges), (res.edges, self.edges)
+                if not rest.depends_on(self.wrt):
+                    return res.simplify(args=args)
                 # 3) Use Gaussian Integration of Parts on (x - mu) * rest
                 covar_out_edges = covar.edges[len(mu.edges) :]
                 new_names, rename = unused_edge_names(

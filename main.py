@@ -380,7 +380,7 @@ def main():
     mu = Variable("m", ["i"])
     covar = Variable("M", ["i", "j"])
     expr = Expectation(expr, x, mu, covar)
-    #expr = expr.simplify()
+    # expr = expr.simplify()
 
     #A = Variable("A", ["i", "j"])
     #x = Variable("x", ["i"])
@@ -402,8 +402,8 @@ def main():
     #expr = division()
     #expr = func_max()
     #expr = softmax_func_grad()
-    #save_steps(expr)
-    save_steps_old(expr)
+    save_steps(expr)
+    #save_steps_old(expr, min_steps=7)
     #print(to_pytorch(expr))
 
     # save_steps(Hvp().simplify())
