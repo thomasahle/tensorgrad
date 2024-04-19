@@ -12,10 +12,6 @@ from dataclasses import dataclass
 
 
 def format_label(label):
-    def replacement(match):
-        digits = match.group(0)
-        return "_" + "{" + ",".join(filter(None, digits.split("_"))) + "}"
-
     pairs = []
     while m := re.search(r"(\d+)(_*)$", label):
         number, underscores = m.groups()
@@ -59,7 +55,7 @@ class TikzGraph:
         self.lines = []
         self.node_ids = set()
 
-    def add_node(self, node_id, node_type, label=None, extra=None):
+    def add_node(self, node_id, node_type, label=None, extra=None, degree=None):
         # print(f"adding node {node_id} of type {node_type} with label {label}")
         if isinstance(node_id, dict):
             node_id = node_id["node_id"]
@@ -75,9 +71,12 @@ class TikzGraph:
         nudge = f"nudge=(left:{random.random()-.5:.3f}em)"
         # nudge = ""
         if node_type == "identity":
-            self.lines.append(f"  {node_id}[identity,as=\\tiny{{\\textbullet}},{nudge}];")
+            self.lines.append(f"  {node_id}[identity,as=,{nudge}];")
         elif node_type == "var":
-            self.lines.append(f"  {node_id}[var,as=${label}$,{nudge}];")
+            style = "var"
+            if degree is not None and degree < 5:
+                style = f"degree{degree}"
+            self.lines.append(f"  {node_id}[{style},as={label},{nudge}];")
         elif node_type == "zero":
             self.lines.append(f"  {node_id}[zero,as=0,{nudge}];")
         elif node_type == "conv":
@@ -87,7 +86,8 @@ class TikzGraph:
         elif node_type == "function":
             if len(label) == 1 or "_" in label:
                 label = f"${label}$"
-            self.lines.append(f"  {node_id}[function,as={label},style={{{extra_style}}},{nudge}];")
+            style = "function" if degree is None or degree >= 5 else f"degree{degree}"
+            self.lines.append(f"  {node_id}[{style},as={label},style={{{extra_style}}},{nudge}];")
         elif node_type == "invisible":
             self.lines.append(f"  {node_id}[style={{}},as=,{nudge}];")
         elif node_type == "label":
@@ -120,8 +120,8 @@ class TikzGraph:
         angle = (-1) ** multiplicity * 10 * (multiplicity // 2)
         self.lines.append(f'    ({id1}){edge_type}[{style}, "${label}$", bend left={angle}] ({id2});')
 
-    def add_subgraph(self, subgraph, definition: str, cluster_id: str):
-        self.lines.append(f"{definition}{{")
+    def add_subgraph(self, subgraph, style: str, layout: str, cluster_id: str):
+        self.lines.append(f"{cluster_id}[{style}] // [{layout}] {{")
         self.lines += subgraph.lines
         self.lines.append("},")
         self.node_ids |= subgraph.node_ids
@@ -132,64 +132,76 @@ class TikzGraph:
 
 
 tree_layout = """\
-[
     tree layout,
-    % spring layout,
-    %grow'=right,
+    components go down left aligned,
     fresh nodes,
-    sibling sep=3em,
-    %level sep=3em,
-    node sep=3em,
+    sibling sep=1em,
+    node sep=1em,
     nodes behind edges,
-]"""
+"""
 
 spring_layout = """\
-    [
-    spring electrical layout,
+    spring layout,
+    %spring electrical layout,
     %spring electrical layout',
     %spring electrical Walshaw 2000 layout,
     fresh nodes,
     %sibling sep=3em,
     nodes behind edges,
-    ]"""
+"""
 
 
 def layout(depth):
-    if depth % 2 == 1:
+    if depth % 2 == 0:
         return tree_layout
-    return tree_layout
+    return tree_layout.replace("down left aligned", "right top aligned")
 
 
 def to_tikz(tensor):
     prefix = (
         """
     \\documentclass[tikz]{standalone}
-    \\usetikzlibrary{graphs, graphdrawing, quotes, arrows.meta, decorations.markings, fit}
+    \\usetikzlibrary{graphs, graphdrawing, quotes, arrows.meta, decorations.markings, shapes.geometric}
     \\usegdlibrary{trees, layered, force}
+    \\usepackage[T1]{fontenc}
+    \\usepackage{comicneue}
     \\begin{document}
     \\tikz[
+        font=\sffamily,
         every node/.style={
-            font=\\scriptsize,
-            inner sep=2pt,
+            inner sep=3pt,
         },
-        identity/.style={circle, draw=black, fill=white, inner sep=0pt, minimum size=4pt},
-        var/.style={circle, draw=black, fill=white, inner sep=2pt},
+        identity/.style={circle, draw=black, fill=black, inner sep=0pt, minimum size=4pt},
         zero/.style={rectangle, draw=black, fill=white, inner sep=2pt},
         conv/.style={rectangle, draw=black, fill=white, inner sep=2pt},
         flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
         function/.style={circle, draw=black, fill=white, inner sep=2pt},
-        label/.style={scale=2},
+        var/.style={circle, draw=purple!50!black, very thick, fill=purple!20, inner sep=3pt},
+        degree1/.style={circle, draw=blue!50!black, very thick, fill=blue!20, inner sep=4pt},
+        degree2/.style={rectangle, draw=red!50!black, very thick, fill=red!20, inner sep=6pt},
+        degree3/.style={diamond, draw=green!50!black, very thick, fill=green!20, inner sep=4pt},
+        degree4/.style={star, star points=5, draw=purple!50!black, very thick, fill=purple!20, inner sep=4pt},
+        label/.style={scale=2, inner sep=0pt},
         subgraph nodes={draw=gray, rounded corners},
+        derivative_subgraph/.style={draw=black, very thick, circle},
+        function_subgraph/.style={draw=black, thick, dashed, rounded corners},
         subgraph text none,
+        every edge/.append style={
+            very thick,
+        },
+        every edge quotes/.append style={
+            font=\scriptsize,
+            align=center,
+            auto,
+        },
     ]
     \\graph """
-        + layout(depth=0)
-        + "{"
+        + f"[{layout(depth=0)}] {{"
     )
 
     tikz_code = [prefix]
     graph = TikzGraph()
-    free_edges = _to_tikz(tensor, graph)
+    free_edges = _to_tikz(tensor, graph, depth=1)
     # print("final free edges", free_edges)
     if not isinstance(tensor, Sum):
         # Sum handles free edges itself
@@ -243,26 +255,26 @@ def _to_tikz(tensor, graph, depth=0):
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Variable):
-        graph.add_node(node_id, "var", label=tensor.name)
+        graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Zero):
-        graph.add_node(node_id := str(id(tensor)), "zero")
+        graph.add_node(node_id := str(id(tensor)), "zero", degree=len(tensor.edges))
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Convolution):
-        graph.add_node(node_id := str(id(tensor)), "conv")
+        graph.add_node(node_id := str(id(tensor)), "conv", degree=len(tensor.edges))
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Flatten):
-        graph.add_node(node_id := str(id(tensor)), "flatten")
+        graph.add_node(node_id := str(id(tensor)), "flatten", degree=len(tensor.edges))
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Function):
         cluster_id = f"cluster+{node_id}"
         subgraph = TikzGraph()
 
-        subgraph.add_node(node_id, "function", label=tensor.fn_info.name)
+        subgraph.add_node(node_id, "function", label=tensor.fn_info.name, degree=len(tensor.edges_out))
 
         free_edges = {}
         for t, *es in tensor.inputs:
@@ -275,7 +287,7 @@ def _to_tikz(tensor, graph, depth=0):
             assert not (edges.keys() & free_edges.keys())
             free_edges |= edges
 
-        graph.add_subgraph(subgraph, f"{cluster_id} // {tree_layout}", f"{cluster_id}")
+        graph.add_subgraph(subgraph, "function_subgraph", layout(depth), cluster_id)
 
         # We propagate the free edges to the parent to handle
         return {e: node_id for e in tensor.edges_out} | free_edges
@@ -286,8 +298,7 @@ def _to_tikz(tensor, graph, depth=0):
         edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
         for e in tensor.new_names:
             edges[e] = {"node_id": cluster_id, "style": "Circle-"}
-        style = "[draw=black, circle]"
-        graph.add_subgraph(subgraph, f"{cluster_id} {style} // {tree_layout}", f"{cluster_id}")
+        graph.add_subgraph(subgraph, "derivative_subgraph", layout(depth), cluster_id)
         return edges
 
     if isinstance(tensor, Product):
@@ -328,23 +339,18 @@ def _to_tikz(tensor, graph, depth=0):
                 label_subgraph = TikzGraph()
                 label_subgraph_id = f"{sub_id}+labelsubgraph"
                 label_subgraph.add_node(f"{label_subgraph_id}+label", "label", extra=prefix)
-                label_subgraph.add_subgraph(subsubgraph, f"{sub_id}/[{style}] // {tree_layout}", f"{sub_id}")
+                label_subgraph.add_subgraph(subsubgraph, f"inner sep=0, {style}", layout(depth + 1), sub_id)
                 subgraph.add_subgraph(
                     label_subgraph,
-                    f"{label_subgraph_id}/[draw=none] // {tree_layout}",
-                    f"{label_subgraph_id}",
+                    "inner sep=0, draw=none",
+                    "tree layout",
+                    label_subgraph_id,
                 )
-                # fresh nodes,
-                # sibling sep=3em,
-                # node sep=3em,
-                # nodes behind edges,
             else:
-                subgraph.add_subgraph(subsubgraph, f"{sub_id}/[{style}] // {tree_layout}", f"{sub_id}")
+                subgraph.add_subgraph(subsubgraph, style, layout(depth + 1), sub_id)
 
-        style = "draw=none" if depth == 0 else ""
-        graph.add_subgraph(
-            subgraph, f"{cluster_id} / [inner sep=10pt, {style}] // {layout(depth)}", cluster_id
-        )
+        style = "draw=none" if depth == 1 else ""
+        graph.add_subgraph(subgraph, f"inner sep=1em, {style}", layout(depth), cluster_id)
         return {e: cluster_id for e in free_edges.keys()}
 
     assert False, "Unknown tensor type"

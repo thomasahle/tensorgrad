@@ -778,6 +778,11 @@ class Derivative(Tensor):
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
 
+    def _compute_canonical(self):
+        base = hash(("Derivative", self.tensor, self.x))
+        edges = self.tensor.canonical_edge_names + list(range(len(self.new_names)))
+        return base, [hash((base, e)) for e in edges]
+
     def __repr__(self):
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
 

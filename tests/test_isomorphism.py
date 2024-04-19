@@ -1,7 +1,7 @@
 import torch
 from tensorgrad import Variable
 from tensorgrad.tensor import Copy, Product, Sum
-from tests.utils import assert_close, rand_values
+from tensorgrad.utils import assert_close, rand_values
 
 
 def test_hash_counterexample():

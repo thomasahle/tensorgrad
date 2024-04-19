@@ -12,6 +12,8 @@ from tensorgrad.serializers.to_tikz import to_tikz
 from tensorgrad.serializers.to_d3 import to_d3
 from tensorgrad.serializers.to_pytorch import to_pytorch
 
+from tensorgrad.utils import generate_random_tensor_expression
+
 
 def compile_latex(expr, suffix=""):
     latex_code = to_tikz(expr)
@@ -287,16 +289,19 @@ def main():
     # S = F.softmax(X, ["i"])
     # x = Derivative(S, X).simplify()
 
-    logits = Variable("logits", ["C"])
-    target = Variable("target", ["C"])
-    ce = F.cross_entropy(logits, target, ["C"])
+    #logits = Variable("logits", ["C"])
+    #target = Variable("target", ["C"])
+    #ce = F.cross_entropy(logits, target, ["C"])
     #expr = ce.grad(logits).grad(logits).simplify()
-    expr = ce.grad(logits).simplify()
+    #expr = ce.grad(logits).simplify()
 
-    #x = Variable("x", ["i"])
-    #eps = Variable("eps", ["j"])
-    #f = F.exp(x)
-    #expr = F.taylor(f, x, eps, 2).simplify()
+    # x = Variable("x", ["i"])
+    # eps = Variable("eps", ["j"])
+    # f = F.softmax(x, dims=["i"])
+    # expr = F.taylor(f, x, eps, 2).simplify()
+
+    #expr, _, _ = generate_random_tensor_expression(20)
+    #expr = expr.simplify()
 
     #x = Variable("x", ["i"])
     #x = F.sum(F.softmax(x, ["i"]), ["i"]).simplify()
@@ -312,12 +317,12 @@ def main():
 
     #expr = taylor(2)
 
-    # A = Variable("A", ["i", "j"])
-    # B = Variable("B", ["j", "k"])
-    # C = Variable("C", ["k", "i"])
-    # x = (A @ B @ C) @ (A @ B @ C)
-    # y = A @ B @ C.rename({"i": "i'"}) @ A.rename({"i": "i'"}) @ B @ C
-    # expr = x - y
+    #A = Variable("A", ["i", "j"])
+    #B = Variable("B", ["j", "k"])
+    #C = Variable("C", ["k", "i"])
+    #x = (A @ B @ C) @ (A @ B @ C)
+    #y = A @ B @ C.rename({"i": "i'"}) @ A.rename({"i": "i'"}) @ B @ C
+    #expr = x - y
 
     #  B B      B     B
     # A D A    A \   / A
@@ -367,13 +372,13 @@ def main():
 
     #expr = chain_rule_hess()
     #expr = l2_grad_W().simplify()
-    #expr = l2_grad_W().simplify()
+    #expr = l2_grad_W()
     #expr = trace_grad()
     #expr = trace_function_grad()
     #expr = ce()
     #expr = ce_grad().simplify()
     #expr = ce_hess().simplify()
-    #expr = milanfar()
+    expr = milanfar()
     #expr = division()
     #expr = func_max()
     #expr = softmax_func_grad()

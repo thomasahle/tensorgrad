@@ -1,4 +1,4 @@
-from typing import Any, Callable, Iterable, Optional
+from typing import Any
 import torch
 from tensorgrad.tensor import (
     Constant,
@@ -11,7 +11,6 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
     make_distinct,
-    unused_edge_names,
 )
 
 # We mostly try to follow the behavior of pytorch's named tensors:

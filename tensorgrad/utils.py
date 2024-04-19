@@ -56,31 +56,38 @@ def generate_random_tensor_expression(
             left_size = random.randint(1, size // 2 + 1)
             right_size = size - left_size
 
-            left_tensor, left_torch = generate_recursive(left_size, variables)
-            right_tensor, right_torch = generate_recursive(right_size, variables)
+            for _ in range(10):
+                left_tensor, left_torch = generate_recursive(left_size, variables)
+                right_tensor, right_torch = generate_recursive(right_size, variables)
 
-            if random.random() < 0.5:
-                left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
-                try:
-                    return left_tensor + right_tensor, left_aligned + right_aligned
-                except RuntimeError as e:
-                    print(e)
-                    raise ValueError("Failed to generate random tensor expression")
-            else:
-                contracted = set(left_tensor.edges) & set(right_tensor.edges)
-                rhs = "".join(e for e in left_torch.names + right_torch.names if e not in contracted)
-                eq = f"{''.join(left_torch.names)},{''.join(right_torch.names)}->{rhs}"
-                try:
-                    torch_result = torch.einsum(eq, left_torch.rename(None), right_torch.rename(None))
-                except RuntimeError as e:
-                    print(eq, e)
-                    raise ValueError("Failed to generate random tensor expression")
-                return left_tensor @ right_tensor, torch_result.rename(*rhs)
+                if random.random() < 0.2:
+                    left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
+                    try:
+                        return left_tensor + right_tensor, left_aligned + right_aligned
+                    except RuntimeError as e:
+                        # print(e)
+                        continue
+                else:
+                    contracted = set(left_tensor.edges) & set(right_tensor.edges)
+                    rhs = "".join(e for e in left_torch.names + right_torch.names if e not in contracted)
+                    eq = f"{''.join(left_torch.names)},{''.join(right_torch.names)}->{rhs}"
+                    try:
+                        torch_result = torch.einsum(eq, left_torch.rename(None), right_torch.rename(None))
+                    except RuntimeError as e:
+                        # print(eq, e)
+                        continue
+                    return left_tensor @ right_tensor, torch_result.rename(*rhs)
+            # Give up
+            raise ValueError("Failed to generate random tensor expression")
 
     variables = {}
-    for var_name in ["x", "y", "z"]:
-        edges = random.choice([["a"], ["a", "b"], ["a", "b", "c"]])
-        dims = [random.choice([2, 3]) for _ in range(len(edges))]
+    ds = {c: random.choice([2, 3]) for c in "abc"}
+    for var_name in "xyztuv":
+        edges = {"x": ["a"], "y": ["b"], "z": ["c"], "t": ["a", "b"], "u": ["a", "b"], "v": ["a", "b", "c"]}[
+            var_name
+        ]
+        # dims = [random.choice([2, 3]) for _ in range(len(edges))]
+        dims = [ds[e] for e in edges]
         variables[Variable(var_name, edges)] = torch.randn(dims, names=edges)
 
     while True:

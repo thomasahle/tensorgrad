@@ -12,7 +12,7 @@ from tensorgrad.tensor import (
     Zero,
 )
 import tensorgrad.functions as F
-from utils import assert_close, generate_random_tensor_expression, rand_values
+from tensorgrad.utils import assert_close, generate_random_tensor_expression, rand_values
 
 
 def test_copy():
