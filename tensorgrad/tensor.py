@@ -261,7 +261,7 @@ class Tensor(ABC):
         """
         # It shouldn't be necessary for the edges to be unused in the entire tensor, just in the free edges.
         if new_names is not None:
-            assert len(x.edges) == len(new_names)
+            assert len(x.edges) == len(new_names), f"{x.edges=} != {new_names=}"
             if used := set(new_names) & set(self.edges):
                 raise ValueError(f"{used} are already present in tensor, {self}")
             return new_names
@@ -311,7 +311,7 @@ class Variable(Tensor):
         new_names = self._check_grad(x, new_names)
         # We compare using name here, rather than id (x is self), since we might have
         # changed due to renaming.
-        if x.name == self.name:
+        if x == self:
             # Note: This is the product of n identity matrices, which is exactly the identity tensor.
             return Product(Copy([e, new], link=self) for e, new in zip(self.edges, new_names))
         return Zero(self.edges + new_names)
@@ -1000,6 +1000,10 @@ class Product(Tensor):
         if weight != 1:
             res = Sum([res], [weight])
 
+        print()
+        print(f"{self=}")
+        print(f"{res=}")
+        print()
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
 

@@ -13,6 +13,7 @@ from tensorgrad.serializers.to_d3 import to_d3
 from tensorgrad.serializers.to_pytorch import to_pytorch
 
 from tensorgrad.utils import generate_random_tensor_expression
+from tensorgrad.extras.expectation import Expectation
 
 
 def compile_latex(expr, suffix=""):
@@ -242,6 +243,7 @@ def save_steps_old(expr, min_steps=None):
     while True:
         new = expr.simplify({"grad_steps": len(images)})
         if new == old and (min_steps is None or len(images) >= min_steps):
+            print(f"{new=} = {old=}")
             break
         old = new
         images.append(compile_latex(new, suffix=f"{len(images)}"))
@@ -370,6 +372,23 @@ def main():
 
     # expr = Ones(["a", "b", "c"]) + Ones(["a", "b", "c"])
 
+    A = Variable("A", ["i", "j"])
+    B = Variable("B", ["i", "k"])
+    C = Variable("C", ["k", "i"])
+    x = Variable("x", ["i"])
+    expr = x @ A @ x @ B @ C @ x
+    mu = Variable("m", ["i"])
+    covar = Variable("M", ["i", "j"])
+    expr = Expectation(expr, x, mu, covar)
+
+    #A = Variable("A", ["i", "j"])
+    #x = Variable("x", ["i"])
+    #expr = x @ A @ (A @ x)
+    #mu = Variable("m", ["i"])
+    #covar = Variable("M", ["i", "j"])
+    #expr = Expectation(expr, x, mu, covar)
+    #expr = expr.simplify()
+
     #expr = chain_rule_hess()
     #expr = l2_grad_W().simplify()
     #expr = l2_grad_W()
@@ -378,7 +397,7 @@ def main():
     #expr = ce()
     #expr = ce_grad().simplify()
     #expr = ce_hess().simplify()
-    expr = milanfar()
+    #expr = milanfar()
     #expr = division()
     #expr = func_max()
     #expr = softmax_func_grad()

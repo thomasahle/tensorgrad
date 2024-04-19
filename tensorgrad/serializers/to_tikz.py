@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 from tensorgrad.functions import Convolution, Flatten
 from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
+from tensorgrad.extras import Expectation
 import random
 import re
 from dataclasses import dataclass
@@ -9,6 +10,46 @@ from dataclasses import dataclass
 # TODO:
 # - If two tensors are contracted over two edges (like hadamard product) the edges are drawn on top of each other.
 # - Maybe we don't need a border around functions if they don't have any broadcasted edges?
+
+
+prefix = """\
+\\documentclass[tikz]{standalone}
+\\usetikzlibrary{graphs, graphdrawing, quotes, arrows.meta, decorations.markings, shapes.geometric}
+\\usegdlibrary{trees, layered, force}
+\\usepackage[T1]{fontenc}
+\\usepackage{comicneue}
+\\begin{document}
+\\tikz[
+    font=\sffamily,
+    every node/.style={
+        inner sep=3pt,
+    },
+    identity/.style={circle, draw=black, fill=black, inner sep=0pt, minimum size=4pt},
+    zero/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+    conv/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+    flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+    function/.style={circle, draw=black, fill=white, inner sep=2pt},
+    var/.style={circle, draw=purple!50!black, very thick, fill=purple!20, inner sep=3pt},
+    degree1/.style={circle, draw=blue!50!black, very thick, fill=blue!20, inner sep=4pt},
+    degree2/.style={rectangle, draw=red!50!black, very thick, fill=red!20, inner sep=6pt},
+    degree3/.style={diamond, draw=green!50!black, very thick, fill=green!20, inner sep=4pt},
+    degree4/.style={star, star points=5, draw=purple!50!black, very thick, fill=purple!20, inner sep=4pt},
+    label/.style={scale=2, inner sep=0pt},
+    subgraph nodes={draw=gray, rounded corners},
+    derivative_subgraph/.style={draw=black, very thick, circle},
+    expectation_subgraph/.style={draw=black, very thick, sharp corners},
+    function_subgraph/.style={draw=black, thick, dashed, rounded corners},
+    subgraph text none,
+    every edge/.append style={
+        very thick,
+    },
+    every edge quotes/.append style={
+        font=\scriptsize,
+        align=center,
+        auto,
+    },
+]
+"""
 
 
 def format_label(label):
@@ -158,48 +199,7 @@ def layout(depth):
 
 
 def to_tikz(tensor):
-    prefix = (
-        """
-    \\documentclass[tikz]{standalone}
-    \\usetikzlibrary{graphs, graphdrawing, quotes, arrows.meta, decorations.markings, shapes.geometric}
-    \\usegdlibrary{trees, layered, force}
-    \\usepackage[T1]{fontenc}
-    \\usepackage{comicneue}
-    \\begin{document}
-    \\tikz[
-        font=\sffamily,
-        every node/.style={
-            inner sep=3pt,
-        },
-        identity/.style={circle, draw=black, fill=black, inner sep=0pt, minimum size=4pt},
-        zero/.style={rectangle, draw=black, fill=white, inner sep=2pt},
-        conv/.style={rectangle, draw=black, fill=white, inner sep=2pt},
-        flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
-        function/.style={circle, draw=black, fill=white, inner sep=2pt},
-        var/.style={circle, draw=purple!50!black, very thick, fill=purple!20, inner sep=3pt},
-        degree1/.style={circle, draw=blue!50!black, very thick, fill=blue!20, inner sep=4pt},
-        degree2/.style={rectangle, draw=red!50!black, very thick, fill=red!20, inner sep=6pt},
-        degree3/.style={diamond, draw=green!50!black, very thick, fill=green!20, inner sep=4pt},
-        degree4/.style={star, star points=5, draw=purple!50!black, very thick, fill=purple!20, inner sep=4pt},
-        label/.style={scale=2, inner sep=0pt},
-        subgraph nodes={draw=gray, rounded corners},
-        derivative_subgraph/.style={draw=black, very thick, circle},
-        function_subgraph/.style={draw=black, thick, dashed, rounded corners},
-        subgraph text none,
-        every edge/.append style={
-            very thick,
-        },
-        every edge quotes/.append style={
-            font=\scriptsize,
-            align=center,
-            auto,
-        },
-    ]
-    \\graph """
-        + f"[{layout(depth=0)}] {{"
-    )
-
-    tikz_code = [prefix]
+    tikz_code = [prefix + f"\\graph [{layout(depth=0)}] {{"]
     graph = TikzGraph()
     free_edges = _to_tikz(tensor, graph, depth=1)
     # print("final free edges", free_edges)
@@ -296,9 +296,17 @@ def _to_tikz(tensor, graph, depth=0):
         cluster_id = f"cluster+{node_id}"
         subgraph = TikzGraph()
         edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
+        # Add new free edges with Circle- arrow-start, similar to Penrose
         for e in tensor.new_names:
             edges[e] = {"node_id": cluster_id, "style": "Circle-"}
         graph.add_subgraph(subgraph, "derivative_subgraph", layout(depth), cluster_id)
+        return edges
+
+    if isinstance(tensor, Expectation):
+        cluster_id = f"cluster+{node_id}"
+        subgraph = TikzGraph()
+        edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
+        graph.add_subgraph(subgraph, "expectation_subgraph", layout(depth), cluster_id)
         return edges
 
     if isinstance(tensor, Product):
@@ -312,7 +320,7 @@ def _to_tikz(tensor, graph, depth=0):
         for e, ts in sub_ids.items():
             assert len(ts) <= 2, "Shouldn't happen"
             if len(ts) == 2:
-                key = tuple(sorted(ts))
+                key = tuple(sorted(map(str, ts)))
                 cnt[key] += 1
                 sub_id1, sub_id2 = ts
                 graph.add_edge(sub_id1, sub_id2, label=e, multiplicity=cnt[key])
