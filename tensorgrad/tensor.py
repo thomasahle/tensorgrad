@@ -90,6 +90,10 @@ class Tensor(ABC):
     def __eq__(self, other):
         return self.is_isomorphic(other)
 
+    def depends_on(self, x: "Variable") -> bool:
+        """Check if this tensor depends on the variable x."""
+        raise NotImplementedError
+
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         """
         Return a list of equivalent edges in this tensor.
@@ -346,6 +350,9 @@ class Variable(Tensor):
         for e1, e2 in zip(self.original_edges, self.edges):
             yield (self, e1), (self, e2)
 
+    def depends_on(self, x: "Variable") -> bool:
+        return x == self
+
 
 ################################################################################
 # Constants
@@ -407,6 +414,9 @@ class Constant(Tensor, ABC):
             if e not in extras["edge_dims"][id(self)]:
                 raise ValueError(f"Missing edge dimension for {e}.")
         return extras
+
+    def depends_on(self, x: "Variable") -> bool:
+        return False
 
 
 class Copy(Constant):
@@ -727,6 +737,9 @@ class Function(Tensor):
         assert out.names == tuple(self.edges)
         return out
 
+    def depends_on(self, x: "Variable") -> bool:
+        return any(t.depends_on(x) for t, *_ in self.inputs)
+
 
 class Derivative(Tensor):
     def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[list[str]] = None):
@@ -748,6 +761,8 @@ class Derivative(Tensor):
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
+        if not self.tensor.depends_on(self.x):
+            return Zero(self.edges)
         if args["grad_steps"] == 0:
             # If grad_steps is 0, we pass the simplify through the derivative.
             res = Derivative(self.tensor.simplify(args), self.x, self.new_names)
@@ -794,6 +809,9 @@ class Derivative(Tensor):
     def edge_equivalences(self):
         # Not really needed since we don't expect to be evaluated
         yield from self.tensor.edge_equivalences()
+
+    def depends_on(self, x: "Variable") -> bool:
+        return self.tensor.depends_on(x)
 
 
 ################################################################################
@@ -1090,6 +1108,9 @@ class Product(Tensor):
         base = hash(("Product", tuple(sorted(labels))))
         return base, [hash((base, h)) for h in outer]
 
+    def depends_on(self, x: "Variable") -> bool:
+        return any(t.depends_on(x) for t in self.tensors)
+
 
 ################################################################################
 # Sum
@@ -1199,6 +1220,9 @@ class Sum(Tensor):
         )
         assert res.names == tuple(self.edges), f"Expected {self.edges}, got {res.names}"
         return res
+
+    def depends_on(self, x: "Variable") -> bool:
+        return any(t.depends_on(x) for t in self.tensors)
 
 
 ################################################################################

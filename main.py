@@ -380,6 +380,7 @@ def main():
     mu = Variable("m", ["i"])
     covar = Variable("M", ["i", "j"])
     expr = Expectation(expr, x, mu, covar)
+    #expr = expr.simplify()
 
     #A = Variable("A", ["i", "j"])
     #x = Variable("x", ["i"])

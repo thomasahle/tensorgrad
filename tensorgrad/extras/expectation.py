@@ -29,8 +29,8 @@ class Expectation(Tensor):
             return self.mu if inner == self.wrt else inner
         if isinstance(inner, Product):
             prod = inner
-            # if not prod.depends_on(self.wrt):
-            #     return prod
+            if not prod.depends_on(self.wrt):
+                return prod
             if self.wrt in prod.tensors:
                 # 1) Look for an instance of wrt in the product
                 x = next(x for x in prod.tensors if x == self.wrt)
