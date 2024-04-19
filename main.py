@@ -294,6 +294,11 @@ def main():
     expr = ce.grad(logits).simplify()
 
     #x = Variable("x", ["i"])
+    #eps = Variable("eps", ["j"])
+    #f = F.exp(x)
+    #expr = F.taylor(f, x, eps, 2).simplify()
+
+    #x = Variable("x", ["i"])
     #x = F.sum(F.softmax(x, ["i"]), ["i"]).simplify()
     #expr = F.softmax(x, ["i"]).grad(x).simplify()
     #x = Derivative(F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify(), x)

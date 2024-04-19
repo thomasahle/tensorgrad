@@ -20,7 +20,18 @@ from tensorgrad.tensor import (
 # TODO:
 # - Add all the functions of PyTorch
 # - Add general function inverses, implicit functions
-# - Taylor approximation
+# - Taylor approximation should support chanigng the point of expansion
+
+
+def taylor(f: Tensor, wrt: Variable, eps: Tensor, n: int) -> Tensor:
+    """Return the nth order Taylor approximation of f at x+eps."""
+    if len(eps.edges) != len(wrt.edges):
+        raise ValueError("eps must have the same number of edges as wrt.")
+    total = f
+    for i in range(1, n + 1):
+        f = f.grad(wrt, new_names=eps.edges) @ eps / i
+        total += f
+    return total
 
 
 def frobenius2(t: Tensor) -> Tensor:

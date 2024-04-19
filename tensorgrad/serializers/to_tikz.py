@@ -59,7 +59,7 @@ class TikzGraph:
         self.lines = []
         self.node_ids = set()
 
-    def add_node(self, node_id, node_type, label=None):
+    def add_node(self, node_id, node_type, label=None, extra=None):
         # print(f"adding node {node_id} of type {node_type} with label {label}")
         if isinstance(node_id, dict):
             node_id = node_id["node_id"]
@@ -90,6 +90,8 @@ class TikzGraph:
             self.lines.append(f"  {node_id}[function,as={label},style={{{extra_style}}},{nudge}];")
         elif node_type == "invisible":
             self.lines.append(f"  {node_id}[style={{}},as=,{nudge}];")
+        elif node_type == "label":
+            self.lines.append(f"  {node_id}[label, as=${extra}$];")
         else:
             self.lines.append(f"  {node_id}[as=${label}$,{nudge}];")
 
@@ -162,7 +164,7 @@ def to_tikz(tensor):
     prefix = (
         """
     \\documentclass[tikz]{standalone}
-    \\usetikzlibrary{graphs, graphdrawing, quotes, arrows.meta, decorations.markings}
+    \\usetikzlibrary{graphs, graphdrawing, quotes, arrows.meta, decorations.markings, fit}
     \\usegdlibrary{trees, layered, force}
     \\begin{document}
     \\tikz[
@@ -176,6 +178,7 @@ def to_tikz(tensor):
         conv/.style={rectangle, draw=black, fill=white, inner sep=2pt},
         flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
         function/.style={circle, draw=black, fill=white, inner sep=2pt},
+        label/.style={scale=2},
         subgraph nodes={draw=gray, rounded corners},
         subgraph text none,
     ]
@@ -312,18 +315,31 @@ def _to_tikz(tensor, graph, depth=0):
         free_edges = {}
         for i, (w, t) in enumerate(zip(tensor.weights, tensor.tensors)):
             subsubgraph = TikzGraph()
+            sub_id = f"{cluster_id}+{i}"
             subgraph_edges = _to_tikz(t, subsubgraph, depth + 1)
             handle_free_edges(subgraph_edges, subsubgraph)
             free_edges |= subgraph_edges
             if isinstance(t, Product) and count_components(t) > 1:
                 style = ""
             else:
-                style = ", draw=none"
-            subgraph.add_subgraph(
-                subsubgraph,
-                f"{cluster_id}+{i}/[label={{[anchor=east, scale=2]left:${format_weight(w, i)}$}} {style}] // {tree_layout}",
-                f"{cluster_id}+{i}",
-            )
+                style = "draw=none"
+            style = "draw=none"
+            if prefix := format_weight(w, i):
+                label_subgraph = TikzGraph()
+                label_subgraph_id = f"{sub_id}+labelsubgraph"
+                label_subgraph.add_node(f"{label_subgraph_id}+label", "label", extra=prefix)
+                label_subgraph.add_subgraph(subsubgraph, f"{sub_id}/[{style}] // {tree_layout}", f"{sub_id}")
+                subgraph.add_subgraph(
+                    label_subgraph,
+                    f"{label_subgraph_id}/[draw=none] // {tree_layout}",
+                    f"{label_subgraph_id}",
+                )
+                # fresh nodes,
+                # sibling sep=3em,
+                # node sep=3em,
+                # nodes behind edges,
+            else:
+                subgraph.add_subgraph(subsubgraph, f"{sub_id}/[{style}] // {tree_layout}", f"{sub_id}")
 
         style = "draw=none" if depth == 0 else ""
         graph.add_subgraph(

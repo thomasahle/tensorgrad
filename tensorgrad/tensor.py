@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from math import prod
 from typing import Any, Callable, Iterable, Optional
 from abc import ABC
+from fractions import Fraction
+from numbers import Number
 
 import torch
 
@@ -15,6 +17,7 @@ import torch
 # - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
+# - Support taking the Expectaion, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
 # More simplification rules:
 # - Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
 # - Optional "expand" setting that expands the expression to a sum of products
@@ -113,7 +116,7 @@ class Tensor(ABC):
 
     def __mul__(self, other):
         """Contract self and other, but use a 3d-identity to keep the shared edges free."""
-        if isinstance(other, int) or isinstance(other, float):
+        if isinstance(other, Number):
             return Sum([self], [other])
         # Element-wise (Hadamard) product is easy to implement using Copy tensors
         # These are the edges we multiply over
@@ -124,6 +127,10 @@ class Tensor(ABC):
     def __truediv__(self, other):
         from tensorgrad.functions import pow  # Avoid circular import
 
+        if isinstance(other, int):
+            return Sum([self], [Fraction(1, other)])
+        if isinstance(other, Number):
+            return Sum([self], [1 / other])
         return self * pow(other, -1)
 
     def is_isomorphic(self, other) -> Optional[dict[str, str]]:
@@ -133,14 +140,14 @@ class Tensor(ABC):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
         if sorted(self.canonical_edge_names) != sorted(other.canonical_edge_names):
             raise ValueError(f"Graphs must be isomorphic (with edges)")
-        rename = {}
         # Note that the canonical_edge_names may have repetitions
-        for (_h, oe), (_h, se) in zip(
-            sorted(zip(other.canonical_edge_names, other.edges)),
-            sorted(zip(self.canonical_edge_names, self.edges)),
-        ):
-            rename[se] = oe
-        return rename
+        return {
+            se: oe
+            for (_h, oe), (_h, se) in zip(
+                sorted(zip(other.canonical_edge_names, other.edges)),
+                sorted(zip(self.canonical_edge_names, self.edges)),
+            )
+        }
 
     @property
     def canon(self) -> int:
