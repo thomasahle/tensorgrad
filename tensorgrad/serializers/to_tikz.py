@@ -216,22 +216,7 @@ def to_tikz(tensor):
 def count_components(con: Product):
     # Counts the individual components of a contraction,
     # that is, subgraphs that are not connected by an edge
-    edges = defaultdict(list)
-    for t in con.tensors:
-        for e in t.edges:
-            edges[e].append(t)
-    colors = {}
-    queue = list(con.tensors)
-    while queue:
-        t = queue.pop()
-        if id(t) not in colors:
-            colors[id(t)] = len(colors)
-        for e in t.edges:
-            for v in edges[e]:
-                if id(v) not in colors:
-                    colors[id(v)] = colors[id(t)]
-                    queue.append(v)
-    return max(colors.values()) + 1
+    return len(con.components())
 
 
 def handle_free_edges(free_edges, graph):

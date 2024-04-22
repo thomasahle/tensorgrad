@@ -382,6 +382,42 @@ def main():
     expr = Expectation(expr, x, mu, covar)
     # expr = expr.simplify()
 
+    X = Variable("X", "i, j")
+    A = Variable("A", "j, j1")
+    B = Variable("B", "i, i1")
+    C = Variable("C", "j, j1")
+    expr = (
+            X.rename({"i":"i0"})
+            @ A
+            @ X.rename({"j":"j1"})
+            @ B
+            @ X.rename({"i":"i1"})
+            @ C
+            @ X.rename({"j":"j1"})
+        )
+    mu = Zero(["i", "j"])
+    #mu = Variable("M", "i, j")
+    covar = Copy(["i", "k"]) @ Copy(["j", "l"])
+    assert covar.edges == ["i", "k", "j", "l"]
+    expr = Expectation(expr, X, mu, covar)
+
+    #mu = Variable("m", ["i", "j"])
+    ##covar = Variable("M", "i, j, k, l")
+    #expr = (X.rename({"i":"i0"}) # (i0, j)
+    #        @ A # (j, j1)
+    #        @ X.rename({"j":"j1"})) # (j1, i)
+    #expr = Expectation(expr, X, mu, covar)
+
+    # expr = (Xt.rename({"i":"i0"})
+    #         @ X.rename({"i":"i1"}))
+    # expr = Expectation(expr, X, mu, covar)
+
+
+    # mu = Zero(["i", "j"])
+    # covar = Copy(["i", "k"]) @ Copy(["j", "l"])
+    # assert covar.edges == ["i", "k", "j", "l"]
+    # expr = Expectation(expr, X, mu, covar)
+
     #A = Variable("A", ["i", "j"])
     #x = Variable("x", ["i"])
     #expr = x @ A @ (A @ x)

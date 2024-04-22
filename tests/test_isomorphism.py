@@ -278,3 +278,19 @@ def test_broadcasted():
         ]
     )
     assert e1 == e2
+
+
+def test_transpose_grad():
+    x = Variable("X", "i, j")
+    xt = x.rename({"j": "i", "i": "j"})
+    res = xt.grad(x, ["a", "b"])
+    expected = Copy("j, a") @ Copy("i, b")
+    # The automorphism group here is more complicated than what we are allowing with "symmetries".
+    # E.g. {i -> j, j -> i} is not allowed, but {i -> j, a -> b; j -> i, b -> a} _is_ allowed.
+    # So the set of symmetries {{i, a}, {j, b}} is too weak. (Or is it?)
+    # But (unless we support full automorphism groups) we should always give a conservative set
+    # of symmetries here.
+    assert expected.symmetries == [{"j", "a"}, {"i", "b"}]
+    print(f"{res=}")
+    print(f"{expected=}")
+    assert res.is_isomorphic(expected, match_edges=True)

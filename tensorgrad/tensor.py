@@ -1,7 +1,7 @@
 from collections import Counter, UserDict, defaultdict, deque
 from dataclasses import dataclass
-from math import prod
-from typing import Any, Callable, Iterable, Optional
+import math
+from typing import Any, Callable, Generator, Iterable, Optional
 from abc import ABC
 from fractions import Fraction
 from numbers import Number
@@ -137,8 +137,15 @@ class Tensor(ABC):
             return Sum([self], [1 / other])
         return self * pow(other, -1)
 
-    def is_isomorphic(self, other) -> Optional[dict[str, str]]:
-        return self.canon == other.canon
+    def is_isomorphic(self, other, match_edges=False) -> Optional[dict[str, str]]:
+        if not match_edges:
+            return self.canon == other.canon
+
+        # If match_edges, we require the edge names to match.
+        # We don't require the order to match, but we do require the canonical order to match.
+        if set(self.edges) != set(other.edges):
+            return False
+        return all(k == v for k, v in self.get_isomorphism(other).items())
 
     def get_isomorphism(self, other):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
@@ -313,10 +320,8 @@ class Variable(Tensor):
 
     def grad(self, x: "Variable", new_names: Optional[list[str]] = None):
         new_names = self._check_grad(x, new_names)
-        # We compare using name here, rather than id (x is self), since we might have
-        # changed due to renaming.
         if x == self:
-            # Note: This is the product of n identity matrices, which is exactly the identity tensor.
+            # assert x.original_edges == self.original_edges
             return Product(Copy([e, new], link=self) for e, new in zip(self.edges, new_names))
         return Zero(self.edges + new_names)
 
@@ -404,6 +409,7 @@ class Constant(Tensor, ABC):
 
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         if self.link is not None:
+            yield from self.link.edge_equivalences()
             for e in self.link.edges:
                 if e in self.edges:
                     yield (self, e), (self.link, e)
@@ -435,7 +441,7 @@ class Copy(Constant):
         if not self.edges:
             return torch.tensor(1.0)
         shape = [edge_dims[e] for e in self.edges if e in edge_dims]
-        assert len(shape) == len(self.edges) and len(set(shape)) == 1
+        assert len(shape) == len(self.edges) and len(set(shape)) == 1, shape
         copy = torch.zeros(shape)
         for idx in range(shape[0]):
             copy[(idx,) * len(self.edges)] = 1
@@ -958,7 +964,7 @@ class Product(Tensor):
 
         if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.tensors) == 1]:
             tensors = [t if t not in single_sums else t.tensors[0] for t in tensors]
-            weight = prod(t.weights[0] for t in single_sums)
+            weight = math.prod(t.weights[0] for t in single_sums)
         else:
             weight = 1
 
@@ -1017,11 +1023,32 @@ class Product(Tensor):
         if weight != 1:
             res = Sum([res], [weight])
 
-        print()
-        print(f"{self=}")
-        print(f"{res=}")
-        print()
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
+        return res
+
+    def components(self) -> list["Product"]:
+        """Find all disjoint components, that is, subgraphs that are not connected by an edge."""
+        edges = defaultdict(list)
+        for t in self.tensors:
+            for e in t.edges:
+                edges[e].append(t)
+        colors = TensorDict(key_fn=id)
+        queue = deque(self.tensors)
+        while queue:
+            t = queue.popleft()
+            if t not in colors:
+                colors[t] = len(colors)
+            for e in t.edges:
+                for v in edges[e]:
+                    if v not in colors:
+                        colors[v] = colors[t]
+                        queue.append(v)
+
+        components = defaultdict(list)
+        for tensor, color in colors.items():
+            components[color].append(tensor)
+        res = [Product(sub) for sub in components.values()]
+        assert set(Product(res).edges) == set(self.edges)
         return res
 
     def _compute_canonical(self):
@@ -1060,12 +1087,25 @@ class Product(Tensor):
             if len(set(hashes)) == n_parts:
                 break
             n_parts = len(set(hashes))
-        certificate = tuple(sorted(hashes))
+
+        # If we have disjoint components of isomorphic graphs, we need to distinguish their output
+        # edges, so they don't get mixed up when computing isomorphic mappings etc.
+        numbers = TensorDict([(t, i) for i, t in enumerate(tensors)], key_fn=id)
+        identical_components = defaultdict(list)
+        # Group by certificate
+        for prod in Product(tensors).components():
+            p_cert = tuple(sorted(hashes[numbers[t]] for t in prod.tensors))
+            identical_components[p_cert].append(prod.tensors)
+        # The tensors's hash get combined with a number
+        for p_cert, comps in identical_components.items():
+            for i, ts in enumerate(comps):
+                for t in ts:
+                    hashes[numbers[t]] = hash((i, hashes[numbers[t]]))
 
         # The last hashes are for the new nodes we created on the free tensors. They can be used to match two graphs.
         # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
         outer = hashes[-len(self.edges) :]
-        base = hash(("Product", certificate))
+        base = hash(("Product", tuple(sorted(hashes))))
         return base, [hash((base, h)) for h in outer]
 
     def _compute_canonical_with_nauty(self):
@@ -1166,7 +1206,7 @@ class Sum(Tensor):
                 canons = [t.canonical_edge_names[t.edges.index(e)] for e in self.edges]
                 return hash((t.canon,) + tuple(canons))
 
-            ws_tensors = TensorDict(key_fn, int)
+            ws_tensors = TensorDict(key_fn=key_fn, default_fn=int)
             for w, t in zip(self.weights, self.tensors):
                 t = t.simplify(args=args)
                 if isinstance(t, Sum):
@@ -1230,10 +1270,12 @@ class Sum(Tensor):
 
 
 class TensorDict(UserDict):
-    def __init__(self, key_fn: Callable, default_fn: Callable = None):
+    def __init__(self, items=(), *, key_fn: Callable, default_fn: Callable = None):
         super().__init__()
         self.default_fn = default_fn
         self.key_fn = key_fn
+        for k, v in items:
+            self[k] = v
 
     def __getitem__(self, tensor: Tensor):
         key = self.key_fn(tensor)
@@ -1248,19 +1290,19 @@ class TensorDict(UserDict):
     def __delitem__(self, tensor):
         super().__delitem__(self.key_fn(tensor))
 
-    def __contains__(self, tensor: Tensor):
-        super().__contains__(self.key_fn(tensor))
+    def __contains__(self, tensor: Tensor) -> bool:
+        return super().__contains__(self.key_fn(tensor))
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[Tensor, None, None]:
         return self.keys()
 
-    def keys(self):
+    def keys(self) -> Generator[Tensor, None, None]:
         return (tensor for tensor, _ in self.data.values())
 
-    def values(self):
+    def values(self) -> Generator[Any, None, None]:
         return (value for _, value in self.data.values())
 
-    def items(self):
+    def items(self) -> Generator[tuple[Tensor, Any], None, None]:
         return self.data.values()
 
 
