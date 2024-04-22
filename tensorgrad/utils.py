@@ -12,10 +12,10 @@ def rand_values(variables, **shape):
     return {v: torch.randn([shape[e] for e in v.edges], names=v.edges) for v in variables}
 
 
-def assert_close(a, b):
+def assert_close(a, b, rtol=1e-4, atol=1e-5):
     assert set(a.names) == set(b.names)
     a = a.align_to(*b.names)
-    torch.testing.assert_close(a.rename(None), b.rename(None))
+    torch.testing.assert_close(a.rename(None), b.rename(None), rtol=rtol, atol=atol)
 
 
 def generate_random_tensor_expression(

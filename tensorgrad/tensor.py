@@ -84,6 +84,16 @@ class Tensor(ABC):
         """
         return self
 
+    def full_simplify(self) -> "Tensor":
+        """Applies multiple simplification rules until the expression no longer changes"""
+        expr = self
+        while (new := expr.simplify()) != expr:
+            expr = new
+        expr = expr.simplify({"expand": True})
+        while (new := expr.simplify()) != expr:
+            expr = new
+        return expr
+
     def __hash__(self):
         return self.canon
 
@@ -284,7 +294,9 @@ class Tensor(ABC):
             args = {}
         # args["grad_steps"] allows us to control how far we propagate the derivative.
         args.setdefault("grad_steps", float("inf"))
+        args.setdefault("associative_products", True)
         args.setdefault("sum_combine_terms", True)
+        args.setdefault("expand", False)
         return args
 
     def _check_edges(self, edges: str | Iterable[str]) -> list[str]:
@@ -970,7 +982,7 @@ class Product(Tensor):
 
         # Combine nested products. Note that not combining products may be useful to keep the
         # "natural" contraction order. This can speed up evaluation, since sub-tensors can be reused.
-        if args.get("associative_products", True):
+        if args["associative_products"]:
             sub_products = [t if isinstance(t, Product) else Product([t]) for t in tensors]
             children = Product.merge(sub_products).tensors
         else:
@@ -1022,6 +1034,17 @@ class Product(Tensor):
 
         if weight != 1:
             res = Sum([res], [weight])
+
+        if args["expand"]:
+            terms = [[]]
+            for t in tensors:
+                if isinstance(t, Sum):
+                    # Create cartesian product
+                    terms = [term + [t0] for term in terms for t0 in t.tensors]
+                else:
+                    for term in terms:
+                        term.append(t)
+            res = Sum(Product(ts) for ts in terms)
 
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res

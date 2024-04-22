@@ -252,7 +252,7 @@ def save_steps_old(expr, min_steps=None):
     print(f"Combined image saved to {output_path}")
 
 
-def save_steps(expr):
+def save_steps(expr, slow_grad=False):
     images = []
     images.append(compile_latex(expr, suffix=f"0"))
 
@@ -266,14 +266,20 @@ def save_steps(expr):
         expr = expr.simplify({"grad_steps": cnt_derivatives})
         images.append(compile_latex(expr, suffix=f"{len(images)}"))
 
-    print(expr)
+    expand = False
     while True:
         try:
-            new = expr.simplify({"grad_steps": 1})
+            args = {"grad_steps": 1} if slow_grad else {}
+            if expand:
+                args["expand"] = True
+            new = expr.simplify(args).simplify()
         except Exception as e:
             print(e)
             break
         if new == expr:
+            if not expand:
+                expand = True
+                continue
             break
         print(new)
         images.append(compile_latex(new, suffix=f"{len(images)}"))
@@ -395,11 +401,12 @@ def main():
             @ C
             @ X.rename({"j":"j1"})
         )
-    mu = Zero(["i", "j"])
-    #mu = Variable("M", "i, j")
-    covar = Copy(["i", "k"]) @ Copy(["j", "l"])
+    #mu = Zero(["i", "j"])
+    mu = Variable("M", "i, j")
+    #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
+    covar = Variable("S", ["i", "k"]) @ Copy(["j", "l"])
     assert covar.edges == ["i", "k", "j", "l"]
-    expr = Expectation(expr, X, mu, covar)
+    expr = Expectation(expr, X, mu, covar).full_simplify()
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")

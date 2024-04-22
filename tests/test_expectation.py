@@ -1,4 +1,5 @@
 import torch
+from einops import einsum
 from tensorgrad import Variable
 from tensorgrad.extras.expectation import Expectation
 from tensorgrad.tensor import Copy, Zero
@@ -64,17 +65,65 @@ def test_quartic():
     mu = Zero(["i", "j"])
     covar = Copy(["i", "k"]) @ Copy(["j", "l"])
     assert covar.edges == ["i", "k", "j", "l"]
-    expr = Expectation(expr, X, mu, covar).simplify()
+    expr = Expectation(expr, X, mu, covar).full_simplify()
 
     ts = rand_values([X, A, B, C], i=2, i0=2, i1=2, j=3, j1=3)
     ts[A] = ts[A] ** 2
     ts[B] = ts[B] ** 2
     ts[C] = ts[C] ** 2
+    tA, tB, tC = ts[A].rename(None), ts[B].rename(None), ts[C].rename(None)
 
     res = expr.evaluate(ts, dims={"i": 2})
     expected = (
-        ts[A].rename(None).trace() * ts[C].rename(None).trace() * ts[B].rename(None)
-        + (ts[A].rename(None).T @ ts[C].rename(None)).trace() * ts[B].rename(None).T
-        + (ts[A].rename(None).T @ ts[C].rename(None)).trace() * ts[B].rename(None).trace() * torch.eye(2)
-    ).rename("i", "i0")
+        tA.trace() * tC.trace() * tB
+        + (tA.T @ tC).trace() * tB.T
+        + (tA @ tC).trace() * tB.trace() * torch.eye(2)
+    ).rename("i0", "i")
     assert_close(res, expected)
+
+
+def test_quartic2():
+    X = Variable("X", "i, j")
+    A = Variable("A", "j, j1")
+    B = Variable("B", "i, i1")
+    C = Variable("C", "j, j1")
+    expr = (
+        X.rename({"i": "i0"})
+        @ A
+        @ X.rename({"j": "j1"})
+        @ B
+        @ X.rename({"i": "i1"})
+        @ C
+        @ X.rename({"j": "j1"})
+    )
+    M = Variable("M", ["i", "j"])
+    Sh = Variable("Sh", ["j", "l"])
+    S = (Sh.rename({"j": "j0"}) @ Sh).rename({"j0": "j", "j": "l"})
+    covar = Copy(["i", "k"]) @ S
+    assert covar.edges == ["i", "k", "j", "l"]
+    expr = Expectation(expr, X, M, covar).full_simplify()
+
+    i, j = 2, 3
+    ts = rand_values([X, A, B, C, M, Sh], i=i, i0=i, i1=i, j=j, j1=j, k=i, l=j)
+    ts[A] = ts[A] ** 2
+    ts[B] = ts[B] ** 2
+    ts[C] = ts[C] ** 2
+    tA, tB, tC, tSh = ts[A].rename(None), ts[B].rename(None), ts[C].rename(None), ts[Sh].rename(None)
+
+    m = 10**6
+    X = torch.randn(m, i, j) @ tSh.T
+
+    expected_covar = torch.cov(X.reshape(-1, j).T).rename("j", "l")
+    assert_close(S.evaluate(ts), expected_covar, rtol=0.05, atol=1e-2)
+
+    print(f"{ts[M]=}")
+    X += ts[M].rename(None)
+
+    expected = (
+        einsum(X, tA, X, tB, X, tC, X, "b i0 j, j j1, b i1 j1, i1 i2, b i2 j2, j2 j3, b i j3 -> b i0 i")
+        .mean(0)
+        .rename("i0", "i")
+    )
+
+    res = expr.evaluate(ts, dims={"i": i})
+    assert_close(res, expected, rtol=0.05, atol=0.01)
