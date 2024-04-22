@@ -1058,7 +1058,7 @@ class Product(Tensor):
         colors = TensorDict(key_fn=id)
         queue = deque(self.tensors)
         while queue:
-            t = queue.popleft()
+            t = queue.pop()  # We actually use the queue as a stack
             if t not in colors:
                 colors[t] = len(colors)
             for e in t.edges:

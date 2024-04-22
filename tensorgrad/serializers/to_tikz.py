@@ -20,7 +20,7 @@ prefix = """\
 \\usepackage{comicneue}
 \\begin{document}
 \\tikz[
-    font=\sffamily,
+    font=\\sffamily,
     every node/.style={
         inner sep=3pt,
     },
@@ -43,10 +43,14 @@ prefix = """\
     every edge/.append style={
         very thick,
     },
-    every edge quotes/.append style={
-        font=\scriptsize,
-        align=center,
+    every edge quotes/.style={
+        font=\\fontsize{5}{5.5}\\selectfont,
+        fill=white,
+        fill opacity=0.85,
+        text opacity=1,
+        midway,
         auto,
+        inner sep=1pt,
     },
 ]
 """
@@ -139,11 +143,15 @@ class TikzGraph:
     def add_edge(self, id1, id2, label, directed=False, multiplicity=1):
         # print(f"adding edge ({id1}) -> ({id2}) with label {label}")
         style = ""
+        start_text = ""
+        end_text = ""
         if isinstance(id1, dict):
             style = id1.get("style", "")
+            start_text = id1.get("text", "")
             id1 = id1["node_id"]
         if isinstance(id2, dict):
             style = id2.get("style", "")
+            end_text = id2.get("text", "")
             id2 = id2["node_id"]
         id1 = id1.replace("_", "+")
         id2 = id2.replace("_", "+")
@@ -158,8 +166,11 @@ class TikzGraph:
             edge_type = " -- "
 
         # angle = 0, -10, 10, -20, -20 depending on multiplicity
-        angle = (-1) ** multiplicity * 10 * (multiplicity // 2)
-        self.lines.append(f'    ({id1}){edge_type}[{style}, "${label}$", bend left={angle}] ({id2});')
+        angle = (-1) ** multiplicity * 20 * (multiplicity // 2)
+        side = "left" if multiplicity % 2 == 0 else "right"
+        self.lines.append(
+            f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "${label}$", "${start_text}$"  at start, "${end_text}$"  at end] ({id2});'
+        )
 
     def add_subgraph(self, subgraph, style: str, layout: str, cluster_id: str):
         self.lines.append(f"{cluster_id}[{style}] // [{layout}] {{")
@@ -240,8 +251,15 @@ def _to_tikz(tensor, graph, depth=0):
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Variable):
+        name = tensor.name
+        if True:
+            if "i" in tensor.edges[0] and "j" in tensor.original_edges[0]:
+                name += "'"
         graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
-        return {e: node_id for e in tensor.edges}
+        return {
+            e: {"node_id": node_id, "text": orig_name}
+            for e, orig_name in zip(tensor.edges, tensor.original_edges)
+        }
 
     if isinstance(tensor, Zero):
         graph.add_node(node_id := str(id(tensor)), "zero", degree=len(tensor.edges))
@@ -305,7 +323,7 @@ def _to_tikz(tensor, graph, depth=0):
         for e, ts in sub_ids.items():
             assert len(ts) <= 2, "Shouldn't happen"
             if len(ts) == 2:
-                key = tuple(sorted(map(str, ts)))
+                key = tuple(sorted(eid["node_id"] if isinstance(eid, dict) else eid for eid in ts))
                 cnt[key] += 1
                 sub_id1, sub_id2 = ts
                 graph.add_edge(sub_id1, sub_id2, label=e, multiplicity=cnt[key])

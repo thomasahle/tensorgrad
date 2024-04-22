@@ -5,6 +5,8 @@ import os, subprocess
 from PIL import Image, ImageDraw
 
 from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy, Zero, Ones, Unfold
+from tensorgrad.tensor import TensorDict
+from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.serializers.to_manim import TensorNetworkAnimation
 from tensorgrad.serializers.to_graphviz import to_graphviz
@@ -378,35 +380,41 @@ def main():
 
     # expr = Ones(["a", "b", "c"]) + Ones(["a", "b", "c"])
 
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["i", "k"])
-    C = Variable("C", ["k", "i"])
-    x = Variable("x", ["i"])
-    expr = x @ A @ x @ B @ C @ x
-    mu = Variable("m", ["i"])
-    covar = Variable("M", ["i", "j"])
-    expr = Expectation(expr, x, mu, covar)
-    # expr = expr.simplify()
+    if True:
+        X = Variable("X", "i, j")
+        A = Variable("A", "j, j1")
+        B = Variable("B", "i, i1")
+        C = Variable("C", "j, j1")
+        expr = (
+                X.rename({"i":"i0"})
+                @ A
+                @ X.rename({"j":"j1"})
+                @ B
+                @ X.rename({"i":"i1"})
+                @ C
+                @ X.rename({"j":"j1"})
+            )
+        mu = Variable("M", "i, j")
+        covar = Copy("i, k") @ Variable("S", "j, l")
+        #mu = Zero(["i", "j"])
+        #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
+        assert covar.edges == ["i", "k", "j", "l"]
+        expr = Expectation(expr, X, mu, covar).full_simplify()
 
-    X = Variable("X", "i, j")
-    A = Variable("A", "j, j1")
-    B = Variable("B", "i, i1")
-    C = Variable("C", "j, j1")
-    expr = (
-            X.rename({"i":"i0"})
-            @ A
-            @ X.rename({"j":"j1"})
-            @ B
-            @ X.rename({"i":"i1"})
-            @ C
-            @ X.rename({"j":"j1"})
-        )
-    #mu = Zero(["i", "j"])
-    mu = Variable("M", "i, j")
-    #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
-    covar = Variable("S", ["i", "k"]) @ Copy(["j", "l"])
-    assert covar.edges == ["i", "k", "j", "l"]
-    expr = Expectation(expr, X, mu, covar).full_simplify()
+
+    if False:
+        X = Variable("X", "i, j")
+        A = Variable("A", "i, i1")
+        expr = (
+                X.rename({"i":"i0"}) # (i0, j)
+                @ X # (i0, i)
+                @ A # (i0, i1)
+                @ X.rename({"i":"i1"}) # (i0, j)
+                @ X # (i0, i)
+            )
+        mu = Variable("M", "i, j")
+        covar = Copy("i, k") @ Variable("S", "j, l")
+        expr = Expectation(expr, X, mu, covar).full_simplify()
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")
@@ -448,11 +456,60 @@ def main():
     save_steps(expr)
     #save_steps_old(expr, min_steps=7)
     #print(to_pytorch(expr))
+    print(to_simple_matrix_formula(expr))
 
     # save_steps(Hvp().simplify())
     # save_steps(rand0())
     # save_steps(func_max())
     # save_steps(ce_hess().simplify())
+
+def to_simple_matrix_formula(expr):
+    assert isinstance(expr, Sum)
+    res = []
+    e0 = expr.edges[0]
+    for prod in expr.tensors:
+        assert isinstance(prod, Product)
+        mat = []
+        for comp in prod.components():
+            print("Comp:", comp)
+            visited = TensorDict(key_fn=id)
+            adj = defaultdict(list)
+            for t in comp.tensors:
+                for e in t.edges:
+                    adj[e].append(t)
+            if len(comp.edges) == 0:
+                t = comp.tensors[0]
+                in_edge = ""
+            else:
+                t = next(t for t in comp.tensors if e0 in t.edges)
+                in_edge = e0
+            s = " ".join(dfs(t, adj, visited, in_edge))
+            #if comp.rank == 0:
+            if len(comp.edges) == 0:
+                s = s.replace("1", "")
+                s = f"\\mathrm{{tr}}({s})"
+            else:
+                s = s.replace("1", "\\mathbf{1}")
+            mat.append(s)
+        res.append(" \\cdot ".join(mat))
+    return "\n\\\\&+ ".join(res)
+
+def dfs(t, adj, visited, in_edge):
+    visited[t] = True
+    if isinstance(t, Variable):
+        yield t.name + ("^T" if in_edge == t.edges[1] else "")
+    elif isinstance(t, Copy):
+        yield "1"
+    else:
+        assert False
+    for e in t.edges:
+        for u in adj[e]:
+            if u not in visited:
+                yield from dfs(u, adj, visited, e)
+
+
+
+
 
 if __name__ == "__main__":
     main()
