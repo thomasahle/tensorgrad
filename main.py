@@ -394,7 +394,7 @@ def main():
                 @ C
                 @ X.rename({"j":"j1"})
             )
-        mu = Variable("M", "i, j")
+        mu = Copy(["i"]) @ Variable("m", "j")
         covar = Copy("i, k") @ Variable("S", "j, l")
         #mu = Zero(["i", "j"])
         #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
@@ -404,16 +404,18 @@ def main():
 
     if False:
         X = Variable("X", "i, j")
-        A = Variable("A", "i, i1")
+        A = Variable("A", "j, j1")
         expr = (
-                X.rename({"i":"i0"}) # (i0, j)
-                @ X # (i0, i)
-                @ A # (i0, i1)
-                @ X.rename({"i":"i1"}) # (i0, j)
-                @ X # (i0, i)
+                X.rename({"j":"j0"}) # (i, j0)
+                @ X # (j0, j)
+                @ A # (j0, j1)
+                @ X.rename({"j":"j1"}) # (j0, i)
+                @ X # (j0, j)
             )
-        mu = Variable("M", "i, j")
+        mu = Copy(["i"]) @ Variable("m", ["j"])
         covar = Copy("i, k") @ Variable("S", "j, l")
+        #mu = Zero(["i", "j"])
+        #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
         expr = Expectation(expr, X, mu, covar).full_simplify()
 
     #mu = Variable("m", ["i", "j"])
@@ -479,7 +481,7 @@ def to_simple_matrix_formula(expr):
                     adj[e].append(t)
             if len(comp.edges) == 0:
                 t = comp.tensors[0]
-                in_edge = ""
+                in_edge = "" # FIXME: This prevents us from getting the right transpose on the first matrix in the trace
             else:
                 t = next(t for t in comp.tensors if e0 in t.edges)
                 in_edge = e0

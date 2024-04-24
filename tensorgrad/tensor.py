@@ -17,13 +17,13 @@ import torch
 # - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
-# - Support taking the Expectaion, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
+# X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
 # More simplification rules:
 # - Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
-# - Optional "expand" setting that expands the expression to a sum of products
+# X Optional "expand" setting that expands the expression to a sum of products
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
-# - We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and add it to a product.
+# - We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and include it in a product.
 # - Stuff from https://en.wikipedia.org/wiki/Penrose_graphical_notation
 #   - Symmetrization/Antisymmetrization
 #   - Matrix inverses
@@ -990,13 +990,20 @@ class Product(Tensor):
 
         # Simplify Copy Tensors
         while True:
+            # For each internal edge
             for e in [e for t in children for e in t.edges]:
+                # Find the (one or two) children using that edge
                 ts = [t for t in children if e in t.edges]
                 if len(ts) == 1:
                     continue
                 t1, t2 = ts
                 # Merge connected copy tensors into one
                 if isinstance(t1, Copy) and isinstance(t2, Copy):
+                    # Don't create a singleton Copy tensor
+                    if set(t1.edges) == set(t2.edges):
+                        # We could reduce the number of edges here, but then we'd have to check which
+                        # are linked to variables, so we can still evaluate the copy tensor.
+                        continue
                     new = Copy(list(set(t1.edges + t2.edges) - {e}))
                     # Can't use children.remove(t1) since we've overloaded equality to mean isomorphic...
                     children = [t for t in children if t is not t1]
@@ -1008,7 +1015,7 @@ class Product(Tensor):
                     t1, t2 = t2, t1
                 if isinstance(t2, Copy) and len(t2.edges) == 2:
                     (other_edge,) = set(t2.edges) - {e}
-                    # Don't create self loops
+                    # Don't create self loops. We never connect a tensor to itself.
                     if other_edge in t1.edges:
                         continue
                     rename = {e: other_edge}
