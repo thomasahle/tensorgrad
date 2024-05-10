@@ -299,11 +299,24 @@ def main():
     # S = F.softmax(X, ["i"])
     # x = Derivative(S, X).simplify()
 
-    #logits = Variable("logits", ["C"])
-    #target = Variable("target", ["C"])
-    #ce = F.cross_entropy(logits, target, ["C"])
-    #expr = ce.grad(logits).grad(logits).simplify()
+    logits = Variable("logits", ["C"])
+    target = Variable("target", ["C"])
+    ce = F.cross_entropy(logits, target, ["C"])
+    #expr = ce.grad(logits).grad(logits).full_simplify()
+    expr = ce.grad(logits).grad(logits).simplify()
     #expr = ce.grad(logits).simplify()
+
+    #a = Variable("a", [])
+    #x = Variable("x", ["i"])
+    #expr = Derivative(a / x, x)
+
+    #X = Variable("X", "i, j")
+    #expr = Derivative(F.sum(X)**2, X)
+
+    #b = Variable("b", ["i"])
+    #c = Variable("c", ["i"])
+    #X = Variable("X", "j, i")
+    #expr = Derivative(b @ X @ X @ c, X)
 
     # x = Variable("x", ["i"])
     # eps = Variable("eps", ["j"])
@@ -314,11 +327,10 @@ def main():
     #expr = expr.simplify()
 
     #x = Variable("x", ["i"])
-    #x = F.sum(F.softmax(x, ["i"]), ["i"]).simplify()
-    #expr = F.softmax(x, ["i"]).grad(x).simplify()
-    #x = Derivative(F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify(), x)
-    #x = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).grad(x).simplify({"sum_combine_terms": True})
-    #x = F.softmax(x, ["i"]).grad(x).grad(x).simplify()
+    #expr = Derivative(F.softmax(x, ["i"]), x)
+    #print("Simplify again")
+    #print(expr)
+    #return
 
     # x = Variable("x", ["i"])
     # y = Variable("y", ["i"])
@@ -380,7 +392,7 @@ def main():
 
     # expr = Ones(["a", "b", "c"]) + Ones(["a", "b", "c"])
 
-    if True:
+    if False:
         X = Variable("X", "i, j")
         A = Variable("A", "j, j1")
         B = Variable("B", "i, i1")
@@ -458,7 +470,8 @@ def main():
     save_steps(expr)
     #save_steps_old(expr, min_steps=7)
     #print(to_pytorch(expr))
-    print(to_simple_matrix_formula(expr))
+
+    #print(to_simple_matrix_formula(expr))
 
     # save_steps(Hvp().simplify())
     # save_steps(rand0())
@@ -474,18 +487,14 @@ def to_simple_matrix_formula(expr):
         mat = []
         for comp in prod.components():
             print("Comp:", comp)
-            visited = TensorDict(key_fn=id)
-            adj = defaultdict(list)
-            for t in comp.tensors:
-                for e in t.edges:
-                    adj[e].append(t)
-            if len(comp.edges) == 0:
-                t = comp.tensors[0]
-                in_edge = "" # FIXME: This prevents us from getting the right transpose on the first matrix in the trace
-            else:
-                t = next(t for t in comp.tensors if e0 in t.edges)
-                in_edge = e0
-            s = " ".join(dfs(t, adj, visited, in_edge))
+            #if len(comp.edges) == 0:
+            #    t = comp.tensors[0]
+            #    in_edge = "" # FIXME: This prevents us from getting the right transpose on the first matrix in the trace
+            #else:
+            #    t = next(t for t in comp.tensors if e0 in t.edges)
+            #    in_edge = e0
+            #s = " ".join(dfs(t, adj, visited, in_edge))
+            s = component_to_matrix(comp, e0)
             #if comp.rank == 0:
             if len(comp.edges) == 0:
                 s = s.replace("1", "")
@@ -495,6 +504,48 @@ def to_simple_matrix_formula(expr):
             mat.append(s)
         res.append(" \\cdot ".join(mat))
     return "\n\\\\&+ ".join(res)
+
+def component_to_matrix(comp, left_edge):
+    adj = defaultdict(list)
+    for t in comp.tensors:
+        for e in t.edges:
+            adj[e].append(t)
+
+    # We can handle 4 cases:
+    # - A matrix
+    # - A trace
+    # - A matrix-vector mult
+    # - A vector-matrix*-vector mult
+
+    # If there's a vector, we start from that
+    # vec = next((t for t in comp.tensors if len(t.edges) == 1), None)
+    # if vec is not None:
+    #     # This is a vector
+    #     pass
+
+    # If there's supposed to be a free edge on the left, we start from that
+    start = next((t for t in comp.tensors if left_edge in t.edges), None)
+    if start is not None:
+        in_edge = left_edge
+    else:
+        start = comp.tensors[0]
+        in_edge = ""
+    cur = start
+
+    visited = TensorDict(key_fn=id)
+    res = []
+    while cur not in visited:
+        visited[cur] = True
+        e0, e1 = cur.edges
+        res.append(cur.name)
+        if e0 != in_edge:
+            e0, e1 = e1, e0
+            res.append("^T")
+        t0, t1 = adj[e1]
+        in_edge = e1
+        cur = t1 if t0 is cur else t0
+
+    return " ".join(res)
 
 def dfs(t, adj, visited, in_edge):
     visited[t] = True

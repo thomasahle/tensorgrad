@@ -15,6 +15,10 @@
 
 
 \usetikzlibrary {arrows.meta,automata,positioning,shadows,decorations.pathmorphing, decorations.pathreplacing, decorations.shapes}
+\usetikzlibrary{shapes.geometric}
+\usetikzlibrary{decorations.pathreplacing}
+
+
 
 \tikzset{%
    dot/.style={circle, inner sep=0mm, outer sep=0mm, minimum size=2mm, draw=black, fill=black},
@@ -604,8 +608,9 @@ Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
    \tag{76}
    \frac{\partial}{\partial X_{i,j}}
    \sum_{k,l,m,n} X_{k,l} X_{m,n}
-   &= \frac{\partial \|X\|_F^2}{\partial X_{i,j}}
-   % &= 2\, \sum_{k,l} X_{k,l}
+   &= (\sum_{k,l} X_{k,l})^2
+   %&= \frac{\partial \|X\|_F^2}{\partial X_{i,j}}
+   %&= 2\, \sum_{k,l} X_{k,l}
    &
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
       \node (a0) at (0,0) {$\sbullet$};
@@ -1074,6 +1079,101 @@ General principle for Gaussian expectations.
 \section{Kronecker and Vec Operator}
 
 The Kronecker Product and Vec Operator are ways to avoid dealing with tensors, and generally best avoided.
+
+
+\tikzstyle{triangle}=[
+    regular polygon,
+    regular polygon sides=3,
+    rotate=270,
+    scale=.5,
+    draw
+]
+
+\begin{tikzpicture}[baseline=-.5em]
+\node (X) at (1,0) {X};
+\node (A) at (2,1) {A};
+\node (B) at (2,-1) {B};
+\node[triangle] (c1) at (3,0) {};
+\node (c2) at (4,0) {};
+\draw (X) -- (A);
+\draw (X) -- (B);
+\draw (A) -- (c1);
+\draw (B) -- (c1);
+\draw (c1) edge[double] (c2);
+\draw [decorate,decoration={brace,amplitude=5pt,mirror,raise=4ex}]
+  (.5,-.75) -- (3.5,-.75) node[midway,yshift=-3em]{$\mathrm{vec}(A^T X B)$};
+\end{tikzpicture}
+=
+\begin{tikzpicture}[baseline=-.5em]
+\node (X) at (.5,0) {X};
+\node[triangle] (c0) at (1.5,0) {};
+\node[triangle, rotate=180] (c1) at (2.5,0) {};
+\node (A) at (3.5,1) {A};
+\node (B) at (3.5,-1) {B};
+\node[triangle] (c2) at (4.5,0) {};
+\node (c3) at (5.5,0) {};
+\draw (X) edge[bend left] (c0);
+\draw (X) edge[bend right] (c0);
+\draw[double] (c0) -- (c1);
+\draw (c1) -- (A) -- (c2);
+\draw (c1) -- (B) -- (c2);
+\draw[double] (c2) -- (c3);
+\draw [decorate,decoration={brace,amplitude=5pt,mirror,raise=4ex}]
+  (.5,-.75) -- (3.5,-.75) node[midway,yshift=-3em]{$\mathrm{vec}(X)^T(A \otimes B)$};
+\end{tikzpicture}
+\\
+Some basic properties:
+\\
+\begin{tikzpicture}[baseline=-.5em]
+\node (a0) at (.5,1) {};
+\node (a1) at (.5,-1) {};
+\node[triangle] (c0) at (1.5,0) {};
+\node (a2) at (2.5,0) {};
+\draw (a0) -- (c0) node[midway, above right, font=\tiny] {i};
+\draw (a1) -- (c0) node[midway, above left, font=\tiny] {j};
+\draw (c0) -- (a2) node[midway, above, font=\tiny] {k};
+\end{tikzpicture}
+= [i + j n = k]
+\\
+Opposing triangles cancel:
+\\
+\begin{tikzpicture}[baseline=-.3em]
+\node (X) at (.5,0) {\phantom{X}};
+\node[triangle] (c0) at (1.5,0) {};
+\node[triangle, rotate=180] (c1) at (2.5,0) {};
+\node (Y) at (3.5,0) {\phantom{Y}};
+\draw (X) edge[bend left] (c0);
+\draw (X) edge[bend right] (c0);
+\draw[double] (c0) -- (c1);
+\draw (Y) edge[bend left] (c1);
+\draw (Y) edge[bend right] (c1);
+\end{tikzpicture}
+=
+\begin{tikzpicture}[baseline=-.3em]
+\node (X) at (0,0) {\phantom{X}};
+\node (Y) at (1.5,0) {\phantom{Y}};
+\draw (X) edge[bend left] (Y);
+\draw (X) edge[bend right] (Y);
+\end{tikzpicture}
+\\and\\
+\begin{tikzpicture}[baseline=-.3em]
+\node (X) at (.5,0) {\phantom{X}};
+\node[triangle, rotate=180] (c0) at (1.5,0) {};
+\node[triangle] (c1) at (2.5,0) {};
+\node (Y) at (3.5,0) {\phantom{Y}};
+\draw[double] (X) -- (c0);
+\draw (c0) edge[bend left] (c1);
+\draw (c0) edge[bend right] (c1);
+\draw[double] (Y) -- (c1);
+\end{tikzpicture}
+=
+\begin{tikzpicture}[baseline=-.3em]
+\node (X) at (0,0) {\phantom{X}};
+\node (Y) at (1.5,0) {\phantom{Y}};
+\draw[double] (X) -- (Y);
+\end{tikzpicture}
+
+
 
 \subsubsection{The Kronecker Product}
 The Kronecker product of an $m\times n$ matrix $A$ and an $r \times q$ matrix $B$, is an $mr \times nq$ matrix, $A \otimes B$ defined as

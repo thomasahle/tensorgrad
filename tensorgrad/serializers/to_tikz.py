@@ -30,6 +30,7 @@ prefix = """\
     flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
     function/.style={circle, draw=black, fill=white, inner sep=2pt},
     var/.style={circle, draw=purple!50!black, very thick, fill=purple!20, inner sep=3pt},
+    degree0/.style={circle, draw=orange!50!black, very thick, fill=orange!20, inner sep=3pt},
     degree1/.style={circle, draw=blue!50!black, very thick, fill=blue!20, inner sep=4pt},
     degree2/.style={rectangle, draw=red!50!black, very thick, fill=red!20, inner sep=6pt},
     degree3/.style={diamond, draw=green!50!black, very thick, fill=green!20, inner sep=4pt},
@@ -251,10 +252,10 @@ def _to_tikz(tensor, graph, depth=0):
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Variable):
-        name = tensor.name
-        if True:
-            if "i" in tensor.edges[0] and "j" in tensor.original_edges[0]:
-                name += "'"
+        # name = tensor.name
+        # if True:
+        #     if "i" in tensor.edges[0] and "j" in tensor.original_edges[0]:
+        #         name += "'"
         graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
         return {
             e: {"node_id": node_id, "text": orig_name}

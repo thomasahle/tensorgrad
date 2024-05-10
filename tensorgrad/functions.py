@@ -5,6 +5,7 @@ from tensorgrad.tensor import (
     Function,
     FunctionInfo,
     Ones,
+    Sum,
     Tensor,
     Product,
     Copy,
@@ -107,25 +108,73 @@ def log(t: Tensor) -> Tensor:
     )
 
 
+class PowFunctionInfo(FunctionInfo):
+    def __init__(self, k: int):
+        super().__init__(f"pow({k})", eval=self.eval, derivative=self.derivative, simplify=self.simplify)
+        self.k = k
+
+    def eval(self, x):
+        return torch.pow(x, self.k)
+
+    def derivative(self, i, new_edges, t):
+        return self.k * pow(t, self.k - 1)
+
+    def simplify(self, func, args):
+        assert len(func.inputs) == 1, "pow should only have one input"
+        inner, *es = func.inputs[0]
+        assert not es, "Multiplicative functions should be element-wise"
+
+        if self.k == 0:
+            return Ones(func.edges, link=func)
+        if self.k == 1:
+            return inner
+
+        kwargs = dict(
+            orig_edges_out=func.orig_edges_out,
+            orig_edges_in=func.orig_edges_in,
+            orig_edges_ts=func.orig_edges_ts,
+        )
+
+        # The pow function is multiplicative, so we can pull components out of a product apart.
+        if isinstance(inner, Product):
+            new_comps = []
+            for comp in inner.components():
+                new_comps.append(Function(func.fn_info, func.edges_out, (comp,), **kwargs))
+            if len(new_comps) > 1:
+                return Product(new_comps).simplify(args)
+
+        # We can pull out the weight of a sum if it's just a single tensor
+        if isinstance(inner, Sum) and len(inner.tensors) == 1:
+            (w,) = inner.weights
+            (t,) = inner.tensors
+            return Function(func.fn_info, func.edges_out, (t,), **kwargs) * (w**self.k)
+
+        # Base cases
+        if (
+            # Pow of 1 is just 1
+            isinstance(inner, Copy)
+            or isinstance(inner, Product)
+            and all(isinstance(t, Copy) for t in inner.tensors)
+            # Pow of 0 is just 0
+            or isinstance(inner, Zero)
+        ):
+            return inner
+
+        # Combine pows
+        if isinstance(inner, Function) and isinstance(inner.fn_info, PowFunctionInfo):
+            return Function(
+                PowFunctionInfo(inner.fn_info.k * func.fn_info.k),
+                func.edges_out,
+                *inner.inputs,
+                **kwargs,
+            )
+
+        return func
+
+
 def pow(tensor: Tensor, k: int) -> Tensor:
-    # Maybe pow should be moved into the tensor.py file, as it has some special properties:
-    # - It's necessary to implement __div__
-    # - It can result in cancelations in Product.simplify
-    # - It can factor its inputs in Function.simplify
-    # - pow(1) just vanishes
-    # - pow(2) can be written with a Hadamard product
     """Elementwise t^k"""
-    if k == 0:
-        return Ones(tensor.edges, link=tensor)
-    return Function(
-        FunctionInfo(
-            f"pow({k})",
-            eval=lambda x: torch.pow(x, k),
-            derivative=lambda _i, _nn, t: k * pow(t, k - 1),
-        ),
-        [],
-        (tensor,),
-    )
+    return Function(PowFunctionInfo(k), [], (tensor,))
 
 
 def exp(t: Tensor) -> Tensor:

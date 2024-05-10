@@ -124,6 +124,7 @@ def test_softmax_jac():
     x = Variable("x", ["i"])
     ts = rand_values([x], i=3)
     expr = F.softmax(x, ["i"]).grad(x).simplify()
+    print(expr)
     res = expr.evaluate({x: ts[x]})
     expected = jacobian(lambda x: tF.softmax(x), ts[x].rename(None)).rename("i", "i_")
     assert_close(res, expected)
@@ -212,7 +213,7 @@ def test_ce_hess():
     my_hessians = [
         [
             ce.grad(logits).grad(logits).simplify().evaluate(ts.copy()),
-            ce.grad(logits).grad(target).simplify().evaluate(ts.copy()),
+            ce.grad(logits).grad(target).full_simplify().evaluate(ts.copy()),
         ],
         [
             ce.grad(target).grad(logits).simplify().evaluate(ts.copy()),

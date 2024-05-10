@@ -147,6 +147,13 @@ class Tensor(ABC):
             return Sum([self], [1 / other])
         return self * pow(other, -1)
 
+    def __pow__(self, other):
+        from tensorgrad.functions import pow  # Avoid circular import
+
+        if not isinstance(other, int):
+            raise ValueError("Only integer powers are supported.")
+        return pow(self, other)
+
     def is_isomorphic(self, other, match_edges=False) -> Optional[dict[str, str]]:
         if not match_edges:
             return self.canon == other.canon
@@ -160,7 +167,7 @@ class Tensor(ABC):
     def get_isomorphism(self, other):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
         if sorted(self.canonical_edge_names) != sorted(other.canonical_edge_names):
-            raise ValueError(f"Graphs must be isomorphic (with edges)")
+            raise ValueError("Graphs must be isomorphic (with edges)")
         # Note that the canonical_edge_names may have repetitions
         return {
             se: oe
@@ -295,6 +302,7 @@ class Tensor(ABC):
         # args["grad_steps"] allows us to control how far we propagate the derivative.
         args.setdefault("grad_steps", float("inf"))
         args.setdefault("associative_products", True)
+        args.setdefault("associative_sums", True)
         args.setdefault("sum_combine_terms", True)
         args.setdefault("expand", False)
         return args
@@ -484,7 +492,7 @@ class FunctionInfo:
     name: str
     eval: Callable[[list[torch.tensor]], torch.tensor] = None
     derivative: Callable[[int, list[str]], Tensor] = None
-    # Could add simplification rules here
+    simplify: Callable[["Function", dict[str, Any]], Tensor] = None
 
 
 class Function(Tensor):
@@ -636,10 +644,6 @@ class Function(Tensor):
             orig_edges_ts.append([rename[e] for e in t_new.edges])
         new_inputs = new_inputs2
 
-        # - If the function is multiplicative, we can factor any tensors with no input_edges.
-        # But the only relevant multiplicative function is probably pow(), so maybe it can just
-        # define it's own simplification rule...
-
         res = Function(
             self.fn_info,
             self.edges_out,
@@ -649,7 +653,11 @@ class Function(Tensor):
             orig_edges_ts=orig_edges_ts,
         )
         if pulled_out:
-            res = Product([res] + pulled_out)
+            return Product([res] + pulled_out)
+
+        if self.fn_info.simplify is not None:
+            res = self.fn_info.simplify(res, args)
+
         assert set(res.edges) == set(self.edges), "Free edges should be preserved"
         return res
 
@@ -781,13 +789,14 @@ class Derivative(Tensor):
         args = self._check_simplify(args)
         if not self.tensor.depends_on(self.x):
             return Zero(self.edges)
+        inner = self.tensor.simplify(args)
         if args["grad_steps"] == 0:
             # If grad_steps is 0, we pass the simplify through the derivative.
-            res = Derivative(self.tensor.simplify(args), self.x, self.new_names)
+            res = Derivative(inner, self.x, self.new_names)
         else:
             args["grad_steps"] -= 1
             # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
-            res = self.tensor.simplify(args).grad(self.x, self.new_names).simplify(args)
+            res = inner.grad(self.x, self.new_names).simplify(args)
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
 
@@ -829,6 +838,55 @@ class Derivative(Tensor):
 
     def depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
+
+
+# Function(
+#    "pow(-1)",
+#    [],
+#    (
+#        Product(
+#            [Product([Function("exp", [], (Variable("x", ["i"]),)), Copy(["i"])]), Product([Copy(["i_1_"])])]
+#        ),
+#    ),
+# )
+
+
+# Product(
+#    [
+#        Sum(
+#            [
+#                Function(
+#                    "pow(-2)",
+#                    [],
+#                    (Product([Function("exp", [], (Variable("logits", ["C"]),)), Copy(["C"])]),),
+#                )
+#            ],
+#            (-1,),
+#        ),
+#        Sum(
+#            [
+#                Product(
+#                    [
+#                        Derivative(
+#                            Function("exp", [], (Variable("logits", ["C__"], orig=["C"]),)),
+#                            Variable("logits", ["C"]),
+#                            ["C_"],
+#                        ),
+#                        Copy(["C__"]),
+#                    ]
+#                ),
+#                Product(
+#                    [
+#                        Function("exp", [], (Variable("logits", ["C__"], orig=["C"]),)),
+#                        Derivative(Copy(["C__"]), Variable("logits", ["C"]), ["C_"]),
+#                    ]
+#                ),
+#            ],
+#            (1, 1),
+#        ),
+#        Function("exp", [], (Variable("logits", ["C_1__1_"], orig=["C"]),)),
+#    ]
+# )
 
 
 ################################################################################
@@ -960,7 +1018,9 @@ class Product(Tensor):
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
+
         tensors = [t.simplify(args=args) for t in self.tensors]
+
         # If any tensor in a product is 0, so is the whole product
         if any(isinstance(t, Zero) for t in tensors):
             return Zero(self.edges)
@@ -970,30 +1030,29 @@ class Product(Tensor):
         if args.get("distributed_products", False):
             raise NotImplementedError("Not implemented yet")
 
-        # We can do a "small" kind of distributed products, which is handling children that are single sums
-        # Also, if a child is a sum with a single element, we can pull the weight up.
-        # In general, we can pull out the least common multiple of the weights of the children.
-
-        if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.tensors) == 1]:
-            tensors = [t if t not in single_sums else t.tensors[0] for t in tensors]
-            weight = math.prod(t.weights[0] for t in single_sums)
-        else:
-            weight = 1
-
         # Combine nested products. Note that not combining products may be useful to keep the
         # "natural" contraction order. This can speed up evaluation, since sub-tensors can be reused.
         if args["associative_products"]:
             sub_products = [t if isinstance(t, Product) else Product([t]) for t in tensors]
-            children = Product.merge(sub_products).tensors
+            tensors = Product.merge(sub_products).tensors
         else:
-            children = tensors
+            tensors = tensors
+
+        # We can do a "small" kind of distributed products, which is handling children that are single sums
+        # Also, if a child is a sum with a single element, we can pull the weight up.
+        # In general, we can pull out the least common multiple of the weights of the children.
+        if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.tensors) == 1]:
+            tensors = [t if t not in single_sums else t.tensors[0] for t in tensors]
+            res_weight = math.prod(t.weights[0] for t in single_sums)
+        else:
+            res_weight = 1
 
         # Simplify Copy Tensors
         while True:
             # For each internal edge
-            for e in [e for t in children for e in t.edges]:
+            for e in [e for t in tensors for e in t.edges]:
                 # Find the (one or two) children using that edge
-                ts = [t for t in children if e in t.edges]
+                ts = [t for t in tensors if e in t.edges]
                 if len(ts) == 1:
                     continue
                 t1, t2 = ts
@@ -1006,9 +1065,9 @@ class Product(Tensor):
                         continue
                     new = Copy(list(set(t1.edges + t2.edges) - {e}))
                     # Can't use children.remove(t1) since we've overloaded equality to mean isomorphic...
-                    children = [t for t in children if t is not t1]
-                    children = [t for t in children if t is not t2]
-                    children.append(new)
+                    tensors = [t for t in tensors if t is not t1]
+                    tensors = [t for t in tensors if t is not t2]
+                    tensors.append(new)
                     break
                 # Remove identity matrices
                 if isinstance(t1, Copy) and len(t1.edges) == 2:
@@ -1019,39 +1078,77 @@ class Product(Tensor):
                     if other_edge in t1.edges:
                         continue
                     rename = {e: other_edge}
-                    children = [t for t in children if t is not t1]
-                    children = [t for t in children if t is not t2]
-                    children.append(t1.rename(rename))
+                    tensors = [t for t in tensors if t is not t1]
+                    tensors = [t for t in tensors if t is not t2]
+                    tensors.append(t1.rename(rename))
                     break
             else:
                 # If we didn't find any identity matrices to remove, we are done.
                 break
 
         # Remove empty Copy's (they are just the constant 1)
-        children = [t for t in children if not (isinstance(t, Copy) and t.rank == 0)]
+        tensors = [t for t in tensors if not (isinstance(t, Copy) and t.rank == 0)]
+
+        # Combine / Cancel Product Functions
+        # First group tensors by their edges
+        from tensorgrad.functions import PowFunctionInfo, pow
+
+        if True:
+            # print("Before:", tensors)
+            hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
+            partition = defaultdict(list)
+            for t in tensors:
+                # We don't include Copy's since they have been reduced to hyper-edges
+                if isinstance(t, Copy):
+                    continue
+                key = tuple(hyperedges.get(e, e) for e in t.edges)
+                if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
+                    power_weight = t.fn_info.k
+                    t, *_es = t.inputs[0]
+                else:
+                    power_weight = 1
+                partition[key, hash(t)].append((power_weight, t))
+            tensors = [c for c in tensors if isinstance(c, Copy)]
+            for (edge_key, h), ts in partition.items():
+                w = sum(w for w, t in ts)
+                t0 = ts[0][1]
+                if w == 0:
+                    tensors.append(Ones(t0.edges))
+                elif w == 1:
+                    tensors.append(t0)
+                else:
+                    tensors.append(pow(t0, w))
+                # Replace the other tensors with Ones. This ensures the edges are preserved.
+                for _, t in ts[1:]:
+                    tensors.append(Ones(t.edges))
+            print("After:", tensors)
+            # FIXME: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
+            # but instead need to look for a similar subgraph. This is a bit more complicated.
 
         # Base cases
-        if not children:
+        if not tensors:
             # The only issue here is that we're throwing away edge names.
             res = Copy([])
-        if len(children) == 1:
-            res = children[0]
-        else:
-            res = Product(children)
-
-        if weight != 1:
-            res = Sum([res], [weight])
-
-        if args["expand"]:
+        if len(tensors) == 1:
+            res = tensors[0]
+        elif args["expand"]:
             terms = [[]]
+            weights = [1]
             for t in tensors:
                 if isinstance(t, Sum):
                     # Create cartesian product
                     terms = [term + [t0] for term in terms for t0 in t.tensors]
+                    weights = [w * w0 for w in weights for w0 in t.weights]
                 else:
                     for term in terms:
                         term.append(t)
-            res = Sum(Product(ts) for ts in terms)
+            res = Sum([Product(ts) for ts in terms], weights)
+        else:
+            res = Product(tensors)
+
+        if res_weight != 1:
+            print(f"Res weight: {res_weight}")
+            res = res_weight * res
 
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
@@ -1062,6 +1159,7 @@ class Product(Tensor):
         for t in self.tensors:
             for e in t.edges:
                 edges[e].append(t)
+        # Flood fill
         colors = TensorDict(key_fn=id)
         queue = deque(self.tensors)
         while queue:
@@ -1073,7 +1171,7 @@ class Product(Tensor):
                     if v not in colors:
                         colors[v] = colors[t]
                         queue.append(v)
-
+        # Then we group
         components = defaultdict(list)
         for tensor, color in colors.items():
             components[color].append(tensor)
@@ -1082,8 +1180,6 @@ class Product(Tensor):
         return res
 
     def _compute_canonical(self):
-        # return self._compute_canonical_with_nauty()
-
         # We need to give the edges a value corresponding to the canonical_edge_name.
         # But we can't give edges values, so instead we "surround" each tensor in rank-2 Copy's.
         tensors = []
@@ -1139,6 +1235,7 @@ class Product(Tensor):
         return base, [hash((base, h)) for h in outer]
 
     def _compute_canonical_with_nauty(self):
+        """Not currently working."""
         import pynauty
 
         # Surround each tensor with rank-2 Copy's.
@@ -1225,6 +1322,16 @@ class Sum(Tensor):
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
+        tensors = [t.simplify(args=args) for t in self.tensors]
+        weights = self.weights[:]
+        if args["associative_sums"]:
+            new_tensors = []
+            for w, t in zip(weights, tensors):
+                if isinstance(t, Sum):
+                    new_tensors.extend((w1 * w, t1) for w1, t1 in zip(t.weights, t.tensors))
+                else:
+                    new_tensors.append((w, t))
+            weights, tensors = zip(*new_tensors)
         if args["sum_combine_terms"]:
             # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
             # It is important that isomorphic tensors with different outer edge labels don't get matched. For example
@@ -1232,23 +1339,18 @@ class Sum(Tensor):
             # Hessian of softmax.
 
             def key_fn(t: Tensor):
-                # Along tensor edges to have the same order, using Sum's order as reference.
+                # Aline tensor edges to have the same order, using Sum's order as reference.
                 canons = [t.canonical_edge_names[t.edges.index(e)] for e in self.edges]
                 return hash((t.canon,) + tuple(canons))
 
             ws_tensors = TensorDict(key_fn=key_fn, default_fn=int)
-            for w, t in zip(self.weights, self.tensors):
-                t = t.simplify(args=args)
-                if isinstance(t, Sum):
-                    for w1, t1 in zip(t.weights, t.tensors):
-                        ws_tensors[t1] += w * w1
-                else:
-                    ws_tensors[t] += w
+            for w, t in zip(weights, tensors):
+                ws_tensors[t] += w
             # Remove zero tensors or zero weights.
             # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
             ws_tensors = [(w, t) for t, w in ws_tensors.items()]
         else:
-            ws_tensors = [(w, t.simplify(args=args)) for w, t in zip(self.weights, self.tensors)]
+            ws_tensors = [(w, t) for w, t in zip(weights, tensors)]
         ws_tensors = [(w, t) for w, t in ws_tensors if w != 0 and not isinstance(t, Zero)]
         # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
         if not ws_tensors:
