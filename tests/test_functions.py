@@ -213,7 +213,7 @@ def test_ce_hess():
     my_hessians = [
         [
             ce.grad(logits).grad(logits).simplify().evaluate(ts.copy()),
-            ce.grad(logits).grad(target).full_simplify().evaluate(ts.copy()),
+            ce.grad(logits).grad(target).simplify().evaluate(ts.copy()),
         ],
         [
             ce.grad(target).grad(logits).simplify().evaluate(ts.copy()),

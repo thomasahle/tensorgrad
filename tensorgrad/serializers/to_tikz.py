@@ -252,10 +252,6 @@ def _to_tikz(tensor, graph, depth=0):
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Variable):
-        # name = tensor.name
-        # if True:
-        #     if "i" in tensor.edges[0] and "j" in tensor.original_edges[0]:
-        #         name += "'"
         graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
         return {
             e: {"node_id": node_id, "text": orig_name}

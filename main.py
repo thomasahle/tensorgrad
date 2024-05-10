@@ -302,9 +302,10 @@ def main():
     logits = Variable("logits", ["C"])
     target = Variable("target", ["C"])
     ce = F.cross_entropy(logits, target, ["C"])
-    #expr = ce.grad(logits).grad(logits).full_simplify()
-    expr = ce.grad(logits).grad(logits).simplify()
-    #expr = ce.grad(logits).simplify()
+    expr = ce.grad(logits)
+    expr = expr.grad(logits)
+    # expr = expr.simplify()
+
 
     #a = Variable("a", [])
     #x = Variable("x", ["i"])
@@ -328,9 +329,7 @@ def main():
 
     #x = Variable("x", ["i"])
     #expr = Derivative(F.softmax(x, ["i"]), x)
-    #print("Simplify again")
-    #print(expr)
-    #return
+    #expr = Derivative(expr, x)
 
     # x = Variable("x", ["i"])
     # y = Variable("y", ["i"])

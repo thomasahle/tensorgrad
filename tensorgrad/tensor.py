@@ -1091,10 +1091,12 @@ class Product(Tensor):
 
         # Combine / Cancel Product Functions
         # First group tensors by their edges
-        from tensorgrad.functions import PowFunctionInfo, pow
-
         if True:
-            # print("Before:", tensors)
+            # TODO: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
+            # but instead need to look for a similar subgraph. This is a bit more complicated.
+
+            from tensorgrad.functions import PowFunctionInfo, pow
+
             hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
             partition = defaultdict(list)
             for t in tensors:
@@ -1121,9 +1123,31 @@ class Product(Tensor):
                 # Replace the other tensors with Ones. This ensures the edges are preserved.
                 for _, t in ts[1:]:
                     tensors.append(Ones(t.edges))
-            print("After:", tensors)
-            # FIXME: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
-            # but instead need to look for a similar subgraph. This is a bit more complicated.
+
+            # Just a tempoary solution to cancel separate components until we have a better way to do it.
+            partition = TensorDict(default_fn=int, key_fn=lambda t: (t.canon, tuple(sorted(t.edges))))
+            for p in Product(tensors).components():
+                power_weight = 1
+                if len(p.tensors) == 1:
+                    t = p.tensors[0]
+                    if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
+                        power_weight = t.fn_info.k
+                        t, *_es = t.inputs[0]
+                else:
+                    t = p
+                partition[t] += power_weight
+            tensors = []
+            for t, w in partition.items():
+                if w == 0:
+                    tensors.append(Ones(t.edges))
+                elif w == 1:
+                    if isinstance(t, Product):
+                        for tt in t.tensors:
+                            tensors.append(tt)
+                    else:
+                        tensors.append(t)
+                else:
+                    tensors.append(pow(t, w))
 
         # Base cases
         if not tensors:
@@ -1147,7 +1171,6 @@ class Product(Tensor):
             res = Product(tensors)
 
         if res_weight != 1:
-            print(f"Res weight: {res_weight}")
             res = res_weight * res
 
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
@@ -1214,19 +1237,23 @@ class Product(Tensor):
                 break
             n_parts = len(set(hashes))
 
-        # If we have disjoint components of isomorphic graphs, we need to distinguish their output
-        # edges, so they don't get mixed up when computing isomorphic mappings etc.
-        numbers = TensorDict([(t, i) for i, t in enumerate(tensors)], key_fn=id)
-        identical_components = defaultdict(list)
-        # Group by certificate
-        for prod in Product(tensors).components():
-            p_cert = tuple(sorted(hashes[numbers[t]] for t in prod.tensors))
-            identical_components[p_cert].append(prod.tensors)
-        # The tensors's hash get combined with a number
-        for p_cert, comps in identical_components.items():
-            for i, ts in enumerate(comps):
-                for t in ts:
-                    hashes[numbers[t]] = hash((i, hashes[numbers[t]]))
+        if True:
+            # If we have disjoint components of isomorphic graphs, we need to distinguish their output
+            # edges, so they don't get mixed up when computing isomorphic mappings etc.
+            # Hm, actually it seams that no, we actually want them to have the same hash?
+            # This is related to test_isomorphism/test_transpose_grad. It just isn't possible to get a perfect answer
+            # unless we actually start using automorphism groups. :(
+            numbers = TensorDict([(t, i) for i, t in enumerate(tensors)], key_fn=id)
+            identical_components = defaultdict(list)
+            # Group by certificate
+            for prod in Product(tensors).components():
+                p_cert = tuple(sorted(hashes[numbers[t]] for t in prod.tensors))
+                identical_components[p_cert].append(prod.tensors)
+            # The tensors's hash get combined with a number
+            for p_cert, comps in identical_components.items():
+                for i, ts in enumerate(comps):
+                    for t in ts:
+                        hashes[numbers[t]] = hash((i, hashes[numbers[t]]))
 
         # The last hashes are for the new nodes we created on the free tensors. They can be used to match two graphs.
         # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
@@ -1262,7 +1289,6 @@ class Product(Tensor):
         partition = defaultdict(set)
         for i, t in enumerate(tensors):
             partition[t.canon].add(i)
-        print(list(partition.values()))
         g.set_vertex_coloring(partition.values())
 
         # Compute the canonical labeling using pynauty.
@@ -1324,6 +1350,7 @@ class Sum(Tensor):
         args = self._check_simplify(args)
         tensors = [t.simplify(args=args) for t in self.tensors]
         weights = self.weights[:]
+
         if args["associative_sums"]:
             new_tensors = []
             for w, t in zip(weights, tensors):
@@ -1332,6 +1359,7 @@ class Sum(Tensor):
                 else:
                     new_tensors.append((w, t))
             weights, tensors = zip(*new_tensors)
+
         if args["sum_combine_terms"]:
             # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
             # It is important that isomorphic tensors with different outer edge labels don't get matched. For example
@@ -1339,18 +1367,19 @@ class Sum(Tensor):
             # Hessian of softmax.
 
             def key_fn(t: Tensor):
-                # Aline tensor edges to have the same order, using Sum's order as reference.
+                # Align tensor edges to have the same order, using Sum's order as reference.
                 canons = [t.canonical_edge_names[t.edges.index(e)] for e in self.edges]
                 return hash((t.canon,) + tuple(canons))
 
             ws_tensors = TensorDict(key_fn=key_fn, default_fn=int)
             for w, t in zip(weights, tensors):
                 ws_tensors[t] += w
-            # Remove zero tensors or zero weights.
-            # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
             ws_tensors = [(w, t) for t, w in ws_tensors.items()]
         else:
             ws_tensors = [(w, t) for w, t in zip(weights, tensors)]
+
+        # Remove zero tensors or zero weights.
+        # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
         ws_tensors = [(w, t) for w, t in ws_tensors if w != 0 and not isinstance(t, Zero)]
         # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
         if not ws_tensors:

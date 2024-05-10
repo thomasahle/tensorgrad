@@ -2,6 +2,7 @@ import torch
 from tensorgrad import Variable
 from tensorgrad.tensor import Copy, Product, Sum
 from tensorgrad.utils import assert_close, rand_values
+import tensorgrad.functions as F
 
 
 def test_hash_counterexample():
@@ -145,6 +146,37 @@ def test_symmetries():
     #    i  j k     j  i k     k  j i
     graph4 = Sum([graph, graph.rename({"i": "j", "j": "i"}), graph.rename({"i": "k", "k": "i"})])
     assert graph4.symmetries == [{"i", "j", "k"}]
+
+
+def test_symmetries_simplify_sum():
+    #    A   B
+    #    |   ⅄
+    #    i  j k
+    A = Variable("A", "i")
+    B = Variable("B", "l")
+    graph1 = A @ B @ Copy("l, j, k")
+    #    A   B
+    #    |   ⅄
+    #    i  k j
+    graph2 = graph1.rename({"j": "k", "k": "j"})
+
+    # Flipping j and k we can still combine the two graphs.
+    assert len((graph1 + graph2).simplify().tensors) == 1
+
+    #    A   B
+    #    |   ⅄
+    #    k  j i
+    graph3 = graph1.rename({"i": "k", "k": "i"})
+
+    # Flipping i and k we can't combine the two graphs.
+    assert len((graph1 + graph3).simplify().tensors) == 2
+
+    #    A   B
+    #    |   ⅄
+    #    m  j k
+    graph4 = graph1.rename({"i": "m"})
+    # Even if graph1 and graph4 are isomorphic, we can't combine them.
+    assert len((graph1 + graph4).simplify().tensors) == 2
 
 
 def test_empty_graphs():
@@ -294,3 +326,34 @@ def test_transpose_grad():
     print(f"{res=}")
     print(f"{expected=}")
     assert res.is_isomorphic(expected, match_edges=True)
+
+
+def test_symmetries_simplify_sum2():
+    # Unfortunately it's not possible to make this test pass together with the preivous one, unless we majorly refactor the code...
+    logits = Variable("logits", "C")
+    expr = Sum(
+        [
+            Product(
+                [
+                    logits.rename({"C": "C__"}),
+                    logits.rename({"C": "C_"}),
+                ]
+            ),
+            Product(
+                [
+                    logits.rename({"C": "C_"}),
+                    logits.rename({"C": "C__"}),
+                ]
+            ),
+        ],
+    )
+    assert sorted(expr.tensors[0].edges) == sorted(expr.tensors[1].edges)
+    print([hash(t) for t in expr.tensors])
+    print([t.canonical_edge_names for t in expr.tensors])
+    for t in expr.tensors:
+        print([t.canonical_edge_names[t.edges.index(e)] for e in expr.edges])
+    assert len({hash(t) for t in expr.tensors}) == 1
+    assert expr.symmetries == [{"C_", "C__"}]
+    for t in expr.tensors:
+        assert t.symmetries == [{"C_", "C__"}]
+    assert len(expr.simplify().tensors) == 1
