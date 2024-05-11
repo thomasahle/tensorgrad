@@ -304,7 +304,14 @@ def main():
     ce = F.cross_entropy(logits, target, ["C"])
     expr = ce.grad(logits)
     expr = expr.grad(logits)
-    # expr = expr.simplify()
+
+    # for _ in range(4):
+    #     expr = expr.simplify()
+    # expr = expr.simplify({"expand": True})
+    # for _ in range(4):
+    #     expr = expr.simplify()
+
+    expr = expr.full_simplify()
 
 
     #a = Variable("a", [])

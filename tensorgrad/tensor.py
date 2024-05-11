@@ -1253,7 +1253,9 @@ class Product(Tensor):
             for p_cert, comps in identical_components.items():
                 for i, ts in enumerate(comps):
                     for t in ts:
-                        hashes[numbers[t]] = hash((i, hashes[numbers[t]]))
+                        # Hack
+                        if t.rank > 1:
+                            hashes[numbers[t]] = hash((i, hashes[numbers[t]]))
 
         # The last hashes are for the new nodes we created on the free tensors. They can be used to match two graphs.
         # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
