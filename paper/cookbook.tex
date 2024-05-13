@@ -1906,10 +1906,10 @@ Some properties of the Hadamard product are:
       \node[triangle] (F1) at (2,0) {};
       \draw[double] (F0) -- ++(-.4,0);
       \draw[double] (F1) -- ++(.4,0);
-      \draw[double] (F0) -- (Fab0);
-      \draw[double] (Fab1) -- (F1);
-      \draw[double] (F0) -- (Fcd0);
-      \draw[double] (Fcd1) -- (F1);
+      \draw (F0) -- (Fab0);
+      \draw (Fab1) -- (F1);
+      \draw (F0) -- (Fcd0);
+      \draw (Fcd1) -- (F1);
       \draw (Fab0) -- (A) -- (Fab1);
       \draw (Fab0) -- (C.west);
       \draw (C.east) -- (Fab1);
@@ -1918,6 +1918,7 @@ Some properties of the Hadamard product are:
       \draw (Fcd0) -- (D) -- (Fcd1);
    \end{tikzpicture}
 \end{align*}
+To see why the last equation holds, it suffices to follow the double lines to see that $A$ and $C$ both use the ``upper'' part of the double edge, while $B$ and $D$ use the lower part.
 
 \section{Khatri–Rao product}
 Also known as the column-wise Kronecker, row-wise Kronecker or ``Face-splitting Product''.
