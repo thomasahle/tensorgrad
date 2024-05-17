@@ -75,11 +75,11 @@ As an example, consider the L2 Loss program from before:
 X = Variable("X", "b, x")
 Y = Variable("Y", "b, y")
 W = Variable("W", "x, y")
-mu = Variable("m", "x, y")
-covar = Variable("C", "x, y, x2, y2")
+mu = Variable("mu", "x, y")
+C = Variable("C", "x, y, x2, y2")
 XWmY = X @ W - Y
 l2 = F.sum(XWmY * XWmY)
-E = Expectation(l2, W, m, covar)
+E = Expectation(l2, W, mu, C)
 display_pdf_image(to_tikz(E.full_simplify()))
 ```
 
