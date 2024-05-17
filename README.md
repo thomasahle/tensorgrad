@@ -88,6 +88,17 @@ display_pdf_image(to_tikz(E.full_simplify()))
 Note that the covariance is a rank-4 tensor (illustrated with a star) since we take the expectation with respect to a matrix.
 This is different from the normal "matrix shaped" covariance you get if you take expectation with respect to a vector.
 
+## Evaluation
+
+Tensorgrad can evaluate your diagrams using [Pytorch Named Tensors](https://pytorch.org/docs/stable/named_tensor.html).
+It uses graph isomorphism detection to eliminated common subexpressions.
+
+## Code Generation
+
+Tensorgrad can convert your diagrams back into pytorch code.
+This gives a super optimized way to do gradients and higher order derivatives in neural networks.
+
+
 # Matrix Calculus
 
 In Penrose's book, The Road to Reality: A Complete Guide to the Laws of the Universe, he introduces a notation for taking derivatives on tensor networks. In this library we try to follow Penrose's notation, expanding it as needed to handle a full "chain rule" on tensor functions.
