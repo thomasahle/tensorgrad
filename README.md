@@ -54,7 +54,7 @@ H = ce.grad(logits).grad(logits)
 display_pdf_image(to_tikz(H.full_simplify()))
 ```
 
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/hess_ce" width="50%">
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/hess_ce.png" width="50%">
 
 # Basic Elements 
 
