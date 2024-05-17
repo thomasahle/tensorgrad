@@ -5,9 +5,10 @@ Tensor network diagrams, also known as [Penrose graphical notation](https://en.w
 
 # Basics 
 
-For a beautiful introduction to tensor networks, see [Jordan Taylor's blog post](https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability)
-in which he gives analogies like this one:
-<img src="https://res.cloudinary.com/lesswrong-2-0/image/upload/f_auto,q_auto/v1/mirroredImages/BQKKQiBmc63fwjDrj/sn4nuvu7eocdljp3pc6g" width="100%">
+The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know about tensor networks. 
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="70%">
+
+For a beautiful introduction to tensor networks, see also [Jordan Taylor's blog post](https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability)
 
 # Example of Tensorgrad
 
