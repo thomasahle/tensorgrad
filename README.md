@@ -64,6 +64,8 @@ display_pdf_image(to_tikz(H.full_simplify()))
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/hess_ce.png" width="50%">
 
+This is tensor diagram notation for `(diag(p) - pp^T) sum(target)`, where `p = softmax(logits)`.
+
 ## Expectations
 
 Tensorgrad can also take expectations of arbitrary functions with respect to Gaussian tensors.
@@ -83,6 +85,8 @@ display_pdf_image(to_tikz(E.full_simplify()))
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/expectation.png" width="50%">
 
+Note that the covariance is a rank-4 tensor (illustrated with a star) since we take the expectation with respect to a matrix.
+This is different from the normal "matrix shaped" covariance you get if you take expectation with respect to a vector.
 
 # Matrix Calculus
 
