@@ -13,7 +13,7 @@ from tensorgrad.serializers.to_graphviz import to_graphviz
 from tensorgrad.serializers.to_tikz import to_tikz
 from tensorgrad.serializers.to_d3 import to_d3
 from tensorgrad.serializers.to_pytorch import to_pytorch
-
+from tensorgrad.extras import Expectation
 from tensorgrad.utils import generate_random_tensor_expression
 from tensorgrad.extras.expectation import Expectation
 
@@ -299,20 +299,34 @@ def main():
     # S = F.softmax(X, ["i"])
     # x = Derivative(S, X).simplify()
 
-    logits = Variable("logits", ["C"])
-    target = Variable("target", ["C"])
-    ce = F.cross_entropy(logits, target, ["C"])
-    expr = ce.grad(logits)
-    expr = expr.grad(logits)
+    # logits = Variable("logits", ["C"])
+    # target = Variable("target", ["C"])
 
-    # for _ in range(4):
-    #     expr = expr.simplify()
-    # expr = expr.simplify({"expand": True})
-    # for _ in range(4):
-    #     expr = expr.simplify()
+    # e = F.exp(logits)
+    # softmax = e / F.sum(e)
+    # ce = -F.sum(target * F.log(softmax))
 
-    expr = expr.full_simplify()
+    # expr = ce.grad(logits)
+    # expr = expr.grad(logits)
+    # expr = expr.full_simplify()
 
+
+    # X = Variable("X", "b, x")
+    # Y = Variable("Y", "b, y")
+    # W = Variable("W", "x, y")
+    # XWmY = X @ W - Y
+    # l2 = F.sum(XWmY * XWmY)
+    # expr = Derivative(l2, W)
+    # expr = expr.simplify()
+
+    X = Variable("X", "b, x")
+    Y = Variable("Y", "b, y")
+    W = Variable("W", "x, y")
+    mu = Variable("mu", "x, y")
+    covar = Variable("C", "x, y, x2, y2")
+    XWmY = X @ W - Y
+    l2 = F.sum(XWmY * XWmY)
+    expr = Expectation(l2, W, mu, covar)
 
     #a = Variable("a", [])
     #x = Variable("x", ["i"])

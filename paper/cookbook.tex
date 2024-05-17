@@ -16,7 +16,7 @@
 \allowdisplaybreaks
 
 
-\usetikzlibrary {arrows.meta,automata,positioning,shadows,decorations.pathmorphing, decorations.pathreplacing, decorations.shapes, graphs}
+\usetikzlibrary {arrows.meta,automata,positioning,shadows,decorations.pathmorphing, decorations.pathreplacing, decorations.shapes, graphs, calc}
 \usetikzlibrary{shapes.geometric}
 \usetikzlibrary{decorations.pathreplacing}
 
@@ -324,6 +324,16 @@ The order of the tensor resulting from a complicated network of contractions can
    \end{tikzpicture}
    }$
 \end{tabular}
+
+\subsection{The Copy Tensor}
+
+We define $\sbullet-$ to be the all-ones vector.
+That is $\sbullet_i = 1$.
+We generalize $\sbullet$ to rank-n tensors by $\sbullet_{i,j,k,\ldots} = [i=j=k=\dots]$.
+That is, the tensor with 1 on the diagonal, and 0 everywhere else.
+This is also known as the ``copy'' or ``spider'' tensor, or ``generalized Kronecker delta''.
+For rank-2 tensors, $-\sbullet- = I$, the identity matrix.
+
 
 The rank-4 copy tensor, $C_{i,j,k,l} = [i=j=k=l]$,
 \begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
@@ -888,10 +898,17 @@ Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
 Assume $W$ is symmetric, then... (84) - (88)
 
 \subsection{Higher-order and non-linear}
-...
 
-\subsection{Gradient and Hessian}
-...
+
+$$
+\frac{\partial\left(\mathbf{X}^n\right)_{k l}}{\partial X_{i j}}=\sum_{r=0}^{n-1}\left(\mathbf{X}^r \mathbf{J}^{i j} \mathbf{X}^{n-1-r}\right)_{k l}
+$$
+
+For proof of the above, see B.1.3.
+$$
+\frac{\partial}{\partial \mathbf{X}} \mathbf{a}^T \mathbf{X}^n \mathbf{b}=\sum_{r=0}^{n-1}\left(\mathbf{X}^r\right)^T \mathbf{a b}^T\left(\mathbf{X}^{n-1-r}\right)^T
+$$
+
 \section{Derivatives of Traces}
 Assume F(X) to be a differentiable function of each of the elements of X. It
 then holds that
@@ -925,12 +942,56 @@ Continues for (102-105).
 The last one uses the Kronecker product, which we may have to introduce first.
 
 \subsection{Second Order}
+\begin{aligned}
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^2\right)=2 \mathbf{X}^T \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^2 \mathbf{B}\right)=(\mathbf{X B}+\mathbf{B X})^T \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{B} \mathbf{X}\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B} \mathbf{X} \mathbf{X}^T\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X} \mathbf{X}^T \mathbf{B}\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X B} \mathbf{X}^T\right)=\mathbf{X} \mathbf{B}^T+\mathbf{X B} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B} \mathbf{X}^T \mathbf{X}\right)=\mathbf{X} \mathbf{B}^T+\mathbf{X B} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{X B}\right)=\mathbf{X} \mathbf{B}^T+\mathbf{X B} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{A X B X})=\mathbf{A}^T \mathbf{X}^T \mathbf{B}^T+\mathbf{B}^T \mathbf{X}^T \mathbf{A}^T \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{X}\right)=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X} \mathbf{X}^T\right)=2 \mathbf{X} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B}^T \mathbf{X}^T \mathbf{C X B}\right)=\mathbf{C}^T \mathbf{X} \mathbf{B B}^T+\mathbf{C X B B}^T \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{X}^T \mathbf{B X C}\right]=\mathbf{B X C}+\mathbf{B}^T \mathbf{X} \mathbf{C}^T \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A X B} \mathbf{X}^T \mathbf{C}\right)=\mathbf{A}^T \mathbf{C}^T \mathbf{X B}^T+\mathbf{C A X B} \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[(\mathbf{A X B}+\mathbf{C})(\mathbf{A X B}+\mathbf{C})^T\right]=2 \mathbf{A}^T(\mathbf{A X B}+\mathbf{C}) \mathbf{B}^T \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I}(120) \\
+&
+\end{aligned}
 
 \subsection{Higher Order}
 
+\begin{aligned}
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^k\right)= & k\left(\mathbf{X}^{k-1}\right)^T \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A} \mathbf{X}^k\right)= & \sum_{r=0}^{k-1}\left(\mathbf{X}^r \mathbf{A X}^{k-r-1}\right)^T \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{B}^T \mathbf{X}^T \mathbf{C X} \mathbf{X}^T \mathbf{C X B}\right]= & \mathbf{C X} \mathbf{X}^T \mathbf{C X B B}{ }^T \\
+& +\mathbf{C}^T \mathbf{X B B} \mathbf{B}^T \mathbf{X}^T \mathbf{C}^T \mathbf{X} \\
+& +\mathbf{C X B B}^T \mathbf{X}^T \mathbf{C X} \\
+& +\mathbf{C}^T \mathbf{X X}^T \mathbf{C}^T \mathbf{X} \mathbf{B B}
+\end{aligned}
+
 \subsection{Other}
+$$
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A} \mathbf{X}^{-1} \mathbf{B}\right)=-\left(\mathbf{X}^{-1} \mathbf{B} \mathbf{A} \mathbf{X}^{-1}\right)^T=-\mathbf{X}^{-T} \mathbf{A}^T \mathbf{B}^T \mathbf{X}^{-T}
+$$
 
+Assume $\mathbf{B}$ and $\mathbf{C}$ to be symmetric, then
+$$
+\begin{aligned}
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{A}\right] & =-\left(\mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\right)\left(\mathbf{A}+\mathbf{A}^T\right)\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+& -2 \mathbf{C X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+& +2 \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}
+\end{aligned}
+$$
 
+See $[7]$.
+$$
+\frac{\partial \operatorname{Tr}(\sin (\mathbf{X}))}{\partial \mathbf{X}}=\cos (\mathbf{X})^T
+$$
 
 \chapter{Statistics and Probability}
 \subsection{Definition of Moments}
@@ -1214,6 +1275,8 @@ $A\otimes B=$
 .
 
 The Kronecker product has the following properties:
+\noindent
+%\makebox[\textwidth]{\parbox{1.1\textwidth}{%
 \begin{align*}
    \tag{506}
    A \otimes (B + C) &= A \otimes B + A \otimes C
@@ -1329,7 +1392,30 @@ The Kronecker product has the following properties:
    \\
    \tag{510}
    (A \otimes B)^T &= A^T \otimes B^T
-                   &\dots
+                   &
+      \begin{tikzpicture}[baseline=-.25em]
+         \node[triangle, rotate=180, minimum size=1cm] (F0) at (0,0) {};
+         \node (A) at (.6,.25) {A};
+         \node (B) at (.6,-.25) {B};
+         \node[triangle, minimum size=1cm] (F1) at (1.2,0) {};
+         \draw (F0) -- (A) -- (F1);
+         \draw (F0) -- (B) -- (F1);
+         \draw[double] (F0) .. controls (-1,0) and (.6,1) .. (2,0);
+         \draw[double] (F1) .. controls (2.2,0) and (.6,-1) .. (-.8,0);
+      \end{tikzpicture}
+                   &=
+      \begin{tikzpicture}[baseline=-.25em]
+         \node[triangle, rotate=180, minimum size=1cm] (F0) at (-1,0) {};
+         \node (A) at (0,.25) {A};
+         \node (B) at (0,-.25) {B};
+         \node[triangle, minimum size=1cm] (F1) at (1,0) {};
+         \draw[double] (F0) -- ++(-.4,0);
+         \draw[double] (F1) -- ++(.4,0);
+         \draw (A.east) .. controls (1,.1) and (0,0) .. (F0);
+         \draw (A.west) .. controls (-1,.5) and (0,.5) .. (F1);
+         \draw (B.east) .. controls (1,-.5) and (0,-.5) .. (F0);
+         \draw (B.west) .. controls (-1,-.1) and (0,0) .. (F1);
+      \end{tikzpicture}
    \\
    \tag{511}
    (A \otimes B)(C \otimes D) &= AC \otimes BD
@@ -1504,6 +1590,7 @@ The Kronecker product has the following properties:
       \draw (Fb) -- ++(.1, -.25) node[anchor=north west] {$\lambda_2$};
    \end{tikzpicture}
 \end{align*}
+%}}
 
 Here the last equation shows an interesting general property of $\triangleright$:
 \[
@@ -2049,6 +2136,114 @@ There are multiple ``mixed product'' identities:
 \end{align*}
 
 
+
+\chapter{Functions}
+
+\begin{center}
+\begin{tabular}[h]{lccc}
+   Function to scalar
+   & $f : \mathbb R^n \to \mathbb R$
+   & $f(x) \in \mathbb R$
+   & \{f \leftarrow x\}
+   \\
+   Function to vector
+   & $g : \mathbb R^n \to \mathbb R^m$
+   & $g(x) \in \mathbb R^m$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (0,0) {$\{g \leftarrow x\}$};
+      \draw (-.25, .15) -- ++(.1,.2);
+   \end{tikzpicture}
+   \\
+   Element-wise function
+   & $h : \mathbb R^n \to \mathbb R$
+   & $h(x) \in \mathbb R^m$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (0,0) {$\{h \quad x\}$};
+      \draw (.3, .15) -- ++(.1,.2);
+   \end{tikzpicture}
+   \\
+   Vector times vector function
+   & $u : \mathbb R^n \to \mathbb R^m, v \in \mathbb R^m$
+   & $v^T u(x) \in \mathbb R$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (v) at (0,0) {$v$};
+      \node (u) at (1,0) {$\{u \leftarrow x\}$};
+      \path (v) edge [out=140, in=40, looseness=1] ($(u.west) + (1.5em,.5em)$);
+   \end{tikzpicture}
+   \\
+   Vector times matrix function
+   & $A : \mathbb R^n \to \mathbb R^{m\times n}, v \in \mathbb R^n$
+   & $A(x)v \in \mathbb R^m$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (A) at (0,0) {$\{A \leftarrow x\}$};
+      \node (x) at (1,0) {$v$};
+      \path (-.27, .25) edge [out=60, in=120, looseness=1] (x);
+      \draw (-.45, .2) -- ++(-.2,.2) node[midway, above, font=\tiny] {m};
+   \end{tikzpicture}
+   \\
+   Batch function application
+   & $f : \mathbb R^d \to \mathbb R, X \in \mathbb R^{b\times d}$
+   & $f(X) \in \mathbb R^b$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (f) at (0,0) {$\{f \leftarrow X\}$};
+      \draw ($(f.east) + (-.35, .25)$) --  ++(.1,.2) node[midway, above, font=\tiny] {b};
+   \end{tikzpicture}
+\end{tabular}
+\end{center}
+
+As an example of a more complicated function, let $\exp : \mathbb R \to \mathbb R$ be the element-wise exponential function,
+and $\mathrm{pow}^{-1} : \mathbb R \to \mathbb R$ be the element-wise inverse power function.
+Then we can write soft-max as the tensor diagram:
+\[
+   \begin{tikzpicture}[baseline=-.25em]
+      \node (ex) at (0,0) {$\{\mathrm{exp} \quad x\}$}
+      \node[right=1em of ex] (p) {$\{\mathrm{pow}^{-1} \quad \{\mathrm{exp} \quad x\}\quad \sbullet\,\}$};
+      \path ($(p.east)+(-1.1,.15)$) edge [out=90, in=90, looseness=1] ($(p.east)+(-.4,.15)$);
+      \draw ($(ex) + (.5, .15)) -- ++(.1,.2);
+   \end{tikzpicture}
+   .
+\]
+Note in particular how
+\begin{tikzpicture}[baseline=-.25em]
+   \node (p) {$\{\mathrm{exp} \quad x\}\quad \sbullet$};
+   \path ($(p.east)+(-.9,.15)$) edge [out=90, in=90, looseness=1] ($(p.east)+(-.2,.15)$);
+\end{tikzpicture}
+is the diagram way of writing $\sum_i \exp(x_i)$.
+Alternatively we could have used a function $\mathrm{sum} : \mathbb R^n \to \mathbb R$, but the more we can express in terms of tensor diagrams, the more we can use the powerful tensor diagram calculus.
+
+
+
+Stuff about analytical matrix functions.
+Such as Exponential Matrix Function.
+I'd rather talk about my general function notation.
+And maybe about taylor series?
+
+
+\subsection{The Chain Rule}
+Sometimes the objective is to find the derivative of a matrix which is a function of another matrix.
+
+
+\subsubsection{Pseudo-linear form}
+Maybe this should just be an example in a table?
+
+Derivation of Peyman Milanfar's gradient
+\begin{align*}
+\mathrm{d}[\mathbf{f}(\mathbf{x})] & =\mathrm{d}[\mathbf{A}(\mathbf{x}) \mathbf{x}] \\
+& =\mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
+& =\operatorname{vec}\{\mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
+& =\operatorname{vec}\{\mathbf{I} \mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
+& =\left(\mathbf{x}^T \otimes \mathbf{I}\right) \operatorname{vec}\{\mathrm{d}[\mathbf{A}(\mathbf{x})]\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
+& =\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})] \mathrm{d} \mathbf{x}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
+& =\left[\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})]+\mathbf{A}(\mathbf{x})\right] \mathrm{d} \mathbf{x}
+\end{align*}
+
+\subsection{The Hessian Chain Rule}
+See main.tex
+
+
+\section{Taylor Series}
+I've always wanted to write these out properly with tensors.
+
 \chapter{Determinant and Inverses}
 
 \section{Determinant}
@@ -2270,30 +2465,6 @@ A curious property is that
 Might be reduced, unless cofactor matrices have a nice representation?
 
 
-\chapter{Functions}
-Stuff about analytical matrix functions.
-Such as Exponential Matrix Function.
-I'd rather talk about my general function notation.
-And maybe about taylor series?
-
-\subsection{Pseudo-linear form}
-Maybe this should just be an example in a table?
-
-Derivation of Peyman Milanfar's gradient
-\begin{align*}
-\mathrm{d}[\mathbf{f}(\mathbf{x})] & =\mathrm{d}[\mathbf{A}(\mathbf{x}) \mathbf{x}] \\
-& =\mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\operatorname{vec}\{\mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\operatorname{vec}\{\mathbf{I} \mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\left(\mathbf{x}^T \otimes \mathbf{I}\right) \operatorname{vec}\{\mathrm{d}[\mathbf{A}(\mathbf{x})]\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})] \mathrm{d} \mathbf{x}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\left[\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})]+\mathbf{A}(\mathbf{x})\right] \mathrm{d} \mathbf{x}
-\end{align*}
-
-
-
-\section{Taylor Series}
-I've always wanted to write these out properly with tensors.
 
 \chapter{Advanced Derivatives}
 
@@ -2311,11 +2482,6 @@ I've always wanted to write these out properly with tensors.
 \section{Derivatives of matrix norms}
 
 \section{Derivatives of Structured Matrices}
-\subsection{The Chain Rule}
-Sometimes the objective is to find the derivative of a matrix which is a function of another matrix.
-
-\subsection{The Hessian Chain Rule}
-See main.tex
 
 \subsection{Symmetric}
 \subsection{Diagonal}
