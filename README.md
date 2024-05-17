@@ -25,7 +25,7 @@ This will output the tensor diagram:
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w_single_step.png" width="50%">
 
-Together with the pytorch code for numerically computing the gradient with respect to W:
+Tensorgrad can also output pytorch code for numerically computing the gradient with respect to W:
 ```python
 import torch
 WX = torch.einsum('xy,bx -> by', W, X)
@@ -34,12 +34,27 @@ X_subtraction = torch.einsum('bx,by -> xy', X, subtraction)
 final_result = 2 * X_subtraction
 ```
 
-The neat thing about tensorgrad is that it will also give you the step by step instructions to see how the rules of derivatives are computed on tensors like this:
+### Hessian of CE Loss
 
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w.png" width="100%">
+For a more complicated example, consider the following program for computing the Entropy of Cross Entropy Loss:
 
+```python
+from tensorgrad import Variable
+import tensorgrad.functions as F
 
+logits = Variable("logits", ["C"])
+target = Variable("target", ["C"])
 
+e = F.exp(logits)
+softmax = e * F.pow(F.sum(e, ["C"], keepdims=True), -1)
+ce = -F.sum(y * F.log(softmax(t, ["C"])), ["C"])
+
+H = ce.grad(logits).grad(logits)
+
+display_pdf_image(to_tikz(H.full_simplify()))
+```
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/hess_ce" width="50%">
 
 # Basic Elements 
 
@@ -115,4 +130,13 @@ Finally we can speed up each matrix multiplication by using FastJL, which is its
 
 - [Tool for creating tensor diagrams from einsum](https://thomasahle.com/blog/einsum_to_dot.html?q=abc,cde,efg,ghi,ija-%3Ebdfhj&layout=circo) by Thomas Ahle
 - [Ideograph: A Language for Expressing and Manipulating Structured Data](https://arxiv.org/pdf/2303.15784.pdf) by Stephen Mell, Osbert Bastani, Steve Zdancewic
+
+
+# Step by Step Instructions
+
+The neat thing about tensorgrad is that it will also give you the step by step instructions to see how the rules of derivatives are computed on tensors like this:
+
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w.png" width="100%">
+
+
 
