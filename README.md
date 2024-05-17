@@ -10,15 +10,16 @@ To run the examples for yourself, you can use [the main.py file](https://github.
 ### Derivative of L2 Loss
 
 ```python
-from tensorgrad import Variable, Derivative
+from tensorgrad import Variable
 import tensorgrad.functions as F
 # ||Ax - y||_2^2
-x = Variable("x", ["x"])
-y = Variable("y", ["y"])
-A = Variable("A", ["x", "y"])
-Axmy = A @ x - y
-frob = F.frobenius2(Axmy)
-grad = Derivative(frob, x)
+X = Variable("X", "b, x")
+Y = Variable("Y", "b, y")
+W = Variable("W", "x, y")
+XWmY = X @ W - Y
+l2 = F.sum(XWmY * XWmY)
+grad = l2.grad(W)
+display_pdf_image(to_tikz(grad.full_simplify()))
 ```
 
 This will output the tensor diagram:
@@ -46,8 +47,8 @@ logits = Variable("logits", ["C"])
 target = Variable("target", ["C"])
 
 e = F.exp(logits)
-softmax = e * F.pow(F.sum(e, ["C"], keepdims=True), -1)
-ce = -F.sum(y * F.log(softmax(t, ["C"])), ["C"])
+softmax = e / F.sum(e)
+ce = -F.sum(target * F.log(softmax))
 
 H = ce.grad(logits).grad(logits)
 
