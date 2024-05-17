@@ -304,6 +304,7 @@ class Tensor(ABC):
         args.setdefault("associative_products", True)
         args.setdefault("associative_sums", True)
         args.setdefault("sum_combine_terms", True)
+        args.setdefault("combine_products", True)
         args.setdefault("expand", False)
         return args
 
@@ -1091,7 +1092,7 @@ class Product(Tensor):
 
         # Combine / Cancel Product Functions
         # First group tensors by their edges
-        if True:
+        if args["combine_products"]:
             # TODO: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
             # but instead need to look for a similar subgraph. This is a bit more complicated.
 

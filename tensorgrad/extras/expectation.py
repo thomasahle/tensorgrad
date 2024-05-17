@@ -1,4 +1,4 @@
-from tensorgrad.tensor import Constant, Derivative, Product, Sum, Tensor, Variable, unused_edge_names
+from tensorgrad.tensor import Constant, Derivative, Product, Sum, Tensor, Variable, unused_edge_names, Function
 
 
 class Expectation(Tensor):
@@ -44,8 +44,9 @@ class Expectation(Tensor):
         raise NotImplementedError
 
     def simplify(self, args=None):
-        args = self._check_simplify(args)
+        args = self._check_simplify(args) | {"combine_products": False}
         inner = self.tensor.simplify(args=args)
+
         if not inner.depends_on(self.wrt):
             return inner
 
@@ -90,7 +91,6 @@ class Expectation(Tensor):
                 res += Expectation(Derivative(rest, x, new_out_names), self.wrt, self.mu, self.covar) @ covar
                 assert set(res.edges) == set(self.edges)
                 return res.simplify(args=args)
-            pass
         return Expectation(inner, self.wrt, self.mu, self.covar)
 
     def grad(self, x: Variable, new_names: list[str] | None) -> Tensor:
