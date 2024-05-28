@@ -1,0 +1,363 @@
+
+\chapter{Introduction}
+\paragraph{What is this?}
+These pages are a guide to tensors, using the visual language of ``tensor diagrams''.
+For illustrating the generality of the approach, I've tried to closely follow the legendary ``Matrix Cookbook''.
+As such, most of the presentation is a collection of facts (identities, approximations, inequalities, relations, ...) about tensors and matters relating to them.
+You won't find many results not in the original cookbook, but hopefully the diagrams will give you a new way to understand and appreciate them.
+
+\paragraph{It's ongoing:}
+The Matrix Cookbook is a long book, and not all the sections are equally amendable to diagrams.
+Hence I've opted to skip certain sections and shorten others.
+Perhaps in the future, I, or others, will expand the coverage further.
+
+For example, while we cover all of the results on Expectation of Linear Combinations and Gaussian moments, we skip the section on general multi-variate distributions.
+I have also had to rearrange the material a bit, to avoid having to introduce all the notation up front.
+
+\paragraph{Complex Matrices and Covariance}
+Tensor diagrams (or networks) are currently most often seen in Quantum Physics.
+Here most values are complex numbers, which introduce some extra complexity.
+In particular transposing a matrix now involves taking the conjugate (flipping the sign of the imaginary part), which introduces the need for co- and contra-variant tensors.
+None of this complexity is present with standard real valued matrices, as is common e.g. in Machine Learning applications.
+For simplicity I have decided to not include these complexities.
+
+\paragraph{Tensorgrad}
+The symbolic nature of tensor diagrams make the well suited for symbolic computation.
+
+\paragraph{Advantages of Tensor Diagram Notation:}
+Tensor diagram notation has many benefits compared to other notations:
+
+Various operations, such as a trace, tensor product, or tensor contraction can be expressed simply without extra notation.
+Names of indices and tensors can often be omitted. This saves time and lightens the notation, and is especially useful for internal indices which exist mainly to be summed over.
+The order of the tensor resulting from a complicated network of contractions can be determined by inspection: it is just the number of unpaired lines. For example, a tensor network with all lines joined, no matter how complicated, must result in a scalar.
+
+\tableofcontents
+
+\section{Notation and Nomenclature}
+
+\newenvironment{compress}{
+  \renewcommand{\arraystretch}{0.6} % Set the array stretch
+  \setlength{\arraycolsep}{2pt}     % Set the column separation
+  \vspace{.3em}
+}{
+  \vspace{.3em}
+  \renewcommand{\arraystretch}{1}   % Reset to default after the environment
+  \setlength{\arraycolsep}{5pt}     % Reset to default column separation
+}
+
+\renewcommand{\arraystretch}{2}
+\noindent
+%\hspace{-1em}
+\begin{tabular}[h]{lcccl}
+   Dot product
+   &
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$a$};
+      \node[right=1em of a0] (a1) {$b$};
+      \path (a0) edge (a1);
+   \end{tikzpicture}
+   &
+   $y=\sum_i a_i b_i$
+   &
+   $
+\begin{compress}
+\left[\begin{array}{cccc}
+\cdot & \cdot & \cdot & \cdot \\
+\end{array}\right]
+\left[\begin{array}{c}
+\cdot \\
+\cdot \\
+\cdot \\
+\cdot \\
+\end{array}\right]
+\end{compress}
+   $
+   &
+   $=y$
+   \\
+   Outer product
+   &
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$a$};
+      \node[right=.5em of a0] (a1) {$b$};
+      \draw (a0.west) -- ++(-.3,0) node {};
+      \draw (a1.east) -- ++(.3,0) node {};
+   \end{tikzpicture}
+   &
+   $Y_{i,j} = a_i b_j$
+   &
+   $
+\begin{compress}
+\left[\begin{array}{c}
+\cdot \\
+\cdot \\
+\cdot \\
+\cdot \\
+\end{array}\right]
+\left[\begin{array}{cccc}
+\cdot & \cdot & \cdot & \cdot \\
+\end{array}\right]
+\end{compress}
+   $
+   &
+   $=\mathbin{
+   \begin{tikzpicture}[baseline=(Y.base), inner sep=1pt]
+      \node (Y) {$Y$};
+      \draw (Y.east) -- ++(.3, 0);
+      \draw (Y.west) -- ++(-.3, 0);
+   \end{tikzpicture}}
+   $
+   \\
+   Matrix-Vector
+   &
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      \node (A) {$A$};
+      \node[right=.5em of A] (b) {$b$};
+      \draw (A.west) -- ++(-.3,0) node {};
+      \draw (A.east) -- (b.west);
+   \end{tikzpicture}
+   &
+   $
+   y_{i} = \sum_j A_{i,j} b_j
+   $
+   &
+   $
+   \begin{compress}
+   \left[\begin{array}{cccc}
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \end{array}\right]
+   \left[\begin{array}{c}
+   \cdot \\
+   \cdot \\
+   \cdot \\
+   \cdot \\
+   \end{array}\right]
+   \end{compress}
+   $
+   &
+   $=\mathbin{
+   \begin{tikzpicture}[baseline=(y.base), inner sep=1pt]
+      \node (y) {$y$};
+      \draw (y.west) -- ++(-.3, 0);
+   \end{tikzpicture}
+   }$
+   \\
+   Matrix-Matrix
+   &
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      \node (A) {$A$};
+      \node[right=.5em of A] (B) {$B$};
+      \draw (A.west) -- ++(-.3,0) node {};
+      \draw (A.east) -- (B.west);
+      \draw (B.east) -- ++(.3,0) node {};
+   \end{tikzpicture}
+   &
+   $
+   Y_{i,k} = \sum_j A_{i,j} B_{j,k}
+   $
+   &
+   $
+   \begin{compress}
+   \left[\begin{array}{cccc}
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \end{array}\right]
+   \left[\begin{array}{cccc}
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \cdot & \cdot & \cdot & \cdot \\
+   \end{array}\right]
+   \end{compress}
+   $
+   &
+   $=\mathbin{
+   \begin{tikzpicture}[baseline=(Y.base), inner sep=1pt]
+      \node (Y) {$Y$};
+      \draw (Y.west) -- ++(-.3, 0);
+      \draw (Y.east) -- ++(.3, 0);
+   \end{tikzpicture}
+   }$
+\end{tabular}
+
+\subsection{The Copy Tensor}
+
+We define $\sbullet-$ to be the all-ones vector.
+That is $\sbullet_i = 1$.
+We generalize $\sbullet$ to rank-n tensors by $\sbullet_{i,j,k,\ldots} = [i=j=k=\dots]$.
+That is, the tensor with 1 on the diagonal, and 0 everywhere else.
+This is also known as the ``copy'' or ``spider'' tensor, or ``generalized Kronecker delta''.
+For rank-2 tensors, $-\sbullet- = I$, the identity matrix.
+
+
+The rank-4 copy tensor, $C_{i,j,k,l} = [i=j=k=l]$,
+\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0) -- ++(.17,.17);
+   \draw (a0) -- ++(.17,-.17);
+   \draw (a0) -- ++(-.17,.17);
+   \draw (a0) -- ++(-.17,-.17);
+\end{tikzpicture},
+differs from the outer product of two identity matrices (in the Cookbook denoted $J$),
+which satisfies $J_{i,j,k,l} = [i=k][j=l]$ and which we'd write as
+$J=\vcenter{\hbox{
+   \begin{tikzpicture}[inner sep=0pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0.east) -- ++(.2,0);
+   \draw (a0.west) -- ++(-.2,0);
+   \node[below=.2em of a0] (a1) {$\sbullet$};
+   \draw (a1.east) -- ++(.2,0);
+   \draw (a1.west) -- ++(-.2,0);
+\end{tikzpicture}}}$,
+and satisfies, for example, $\frac{dX}{dX}=J$.
+
+\section{Basics}
+
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3, 0);
+   \draw (A.east) -- ++(+.3, 0);
+\end{tikzpicture}
+=
+\begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
+   \node (Q) {$Q$};
+   \draw (Q.west) -- ++(-.3, 0);
+   \node[right=1em of Q] (dot) {$\sbullet$};
+   \path (Q) edge (dot);
+   \node[below=.3em of dot] (e) {$\lambda$};
+   \path (dot) edge (e);
+   \node[right=1em of dot] (Qi) {$Q^{-1}$};
+   \path (dot) edge (Qi);
+   \draw (Qi.east) -- ++(.3, 0);
+\end{tikzpicture}
+where $\lambda_i$ is the $i$th eigenvalue of $A$.
+
+More general principles:
+\begin{enumerate}
+   \item You can contract edges in any order.
+   \item You can always contract connected subgraphs of Copy tensors.
+   \item distributive law of sums/products.
+   \item Sums and broadcasting.
+\end{enumerate}
+
+%\begin{figure}[h]
+%\centering{
+%\resizebox{75mm}{!}{\input{figures/path1.pdf_tex}}
+%\caption{Top view.}
+%\label{fig:topView}
+%}
+%\end{figure}
+
+\begin{figure}[h]
+\centering{
+\def\svgwidth{.5\linewidth}
+\import{figures/}{path1.pdf_tex}
+\caption{Contract spiders}
+\label{fig:spiders}
+}
+\end{figure}
+
+
+\begin{figure}[h]
+\centering{
+\def\svgwidth{.75\linewidth}
+\import{figures/}{path2.pdf_tex}
+\caption{Eliminate Identity}
+\label{fig:identity}
+}
+\end{figure}
+
+
+\begin{figure}[h]
+\centering{
+\def\svgwidth{\linewidth}
+\import{figures/}{path3.pdf_tex}
+\caption{Distributive law}
+\label{fig:dist}
+}
+\end{figure}
+\subsection{Trace}
+
+The ``trace'' of a square matrix is defined $\mathrm{Tr}(A) = \sum_i A_{i,i}$.
+In tensor diagram notation, that corresponds to a self-edge: $\trace{A}{1}$.
+
+\begin{align*}
+   \sum_{i=1}^{n} A_{ii} &= \mathrm{Tr}(A) = \mathrm{Tr}(A I)
+   &
+   \trace{A}{1} &= \trace{A, \sbullet}{2}
+   \tag{11}
+   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \mathrm{Tr}(A) &= \sum_i \lambda_i = \langle 1, \lambda\rangle
+   &
+   \trace{A}1 &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
+      \node (Q) {$Q$};
+      \node[right=1em of Q] (dot) {$\sbullet$};
+      \path (Q) edge (dot);
+      \node[below=.3em of dot] (e) {$\lambda$};
+      \path (dot) edge (e);
+      \node[right=1em of dot] (Qi) {$Q^{-1}$};
+      \path (dot) edge (Qi);
+      \path (Q) edge [out=160, in=20, looseness=1] (Qi);
+   \end{tikzpicture}
+   \hspace{-2em}
+   \tag{12}
+   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \mathrm{Tr}(A) &= \mathrm{Tr}(A^T)
+   &
+   \trace{A}1 &= \trace{A}1
+   \tag{13}
+   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \mathrm{Tr}(AB) &= \mathrm{Tr}(BA)
+   &
+   \trace{A,B}2 &= \trace{B,A}2
+   \tag{14}
+   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{15}
+   \mathrm{Tr}(A+B)
+   &= \mathrm{Tr}(A) + \mathrm{Tr}(B)
+   &
+   \trace{(A+B),\sbullet}1
+   %\trace{(\matmul{A}+\matmul{B}),\sbullet}{2}
+   &= \trace{A,\sbullet}2
+ \\&&&+\trace{B,\sbullet}2
+   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{16}
+   \mathrm{Tr}(ABC) &= \mathrm{Tr}(BCA)
+   &
+   \trace{A,B,C}1 &= \trace{B,C,A}1
+   \\
+                  & = \mathrm{Tr}(CAB)
+                  &&= \trace{C,A,B}1
+   \\[0.5em]
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{17}
+   a^T a &= \mathrm{Tr}(a a^T)
+   &
+   \vecmatvec{1em}{a}{}{a}
+   &=
+   \mathrm{Tr}(
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$a$};
+      \node[right=.5em of a0] (a1) {$a$};
+      \draw (a0.west) -- ++(-.3,0) node {};
+      \draw (a1.east) -- ++(.3,0) node {};
+   \end{tikzpicture}
+   )
+ \\&&&=
+   \hspace{-1em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$a$};
+      \node[right=1em of a0] (a1) {$a$};
+      \path (a0) edge [out=160, in=20, looseness=2] (a1);
+   \end{tikzpicture}
+   \hspace{-1em}
+\end{align*}
+
+

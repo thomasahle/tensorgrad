@@ -1,0 +1,221 @@
+
+\chapter{Determinant and Inverses}
+\section{Determinant}
+
+It's convenient to write the determinant in tensor notation as
+\[\mathrm{det}(A)=
+\frac{1}{n!}\,\mathbin{
+\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+   \node (a0) {$A$};
+   \node[right=.5em of a0] (dots) {$\cdots$};
+   \node[right=.5em of dots] (a1) {$A$};
+   \draw (a0.north) -- ++(0,.2) coordinate (a0top);
+   \draw (a1.north) -- ++(0,.2) coordinate (a1top);
+   \draw (a0.south) -- ++(0,-.2) coordinate (a0bot);
+   \draw (a1.south) -- ++(0,-.2) coordinate (a1bot);
+   \draw[line width=2pt] (a0top -| a0.west) -- (a1top -| a1.east);
+   \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
+\end{tikzpicture}}
+\]
+where
+$\mathbin{
+\begin{tikzpicture}[baseline=(a0.south)-3em, inner sep=1pt]
+   \node (a0) {\tiny $i_1$};
+   \node[right=.5em of a0] (a1) {\tiny $i_2$};
+   \node[right=.5em of a1] (dots) {$\dots$};
+   \node[right=.5em of dots] (a2) {\tiny $i_n$};
+   \draw (a0.south) -- ++(0,-.25) coordinate (a0bot);
+   \draw (a1.south) -- ++(0,-.25) coordinate (a1bot);
+   \draw (a2.south) -- ++(0,-.25) coordinate (a2bot);
+   \draw[line width=2pt] (a0bot -| a0.west) -- (a2bot -| a2.east);
+\end{tikzpicture}}
+=\varepsilon_{i_1,\dots,i_n}$
+is the rank-$n$ Levi-Civita tensor defined by
+\[
+   \varepsilon_{i_1, \dots, i_n} =
+   \begin{cases}
+      \mathrm{sign}(\sigma) & \sigma=(i_1, \dots, i_n) \text{ is a permutation} \\
+      0 & \text{otherwise.}
+   \end{cases}
+\]
+To see that the definition makes sense, let's first consider
+\begin{align*}
+   \mathrm{det}(I)=
+   \frac{1}{n!}
+\mathbin{
+   \begin{tikzpicture}[baseline=(dots.base), inner sep=1pt]
+      \node (a0) {};
+      \node[right=.5em of a0] (a1) {};
+      \node[right=.5em of a1] (dots) {$\dots$};
+      \node[right=.5em of dots] (a2) {};
+      \draw (a0.south) -- ++(0,.3) coordinate (a0top);
+      \draw (a1.south) -- ++(0,.3) coordinate (a1top);
+      \draw (a2.south) -- ++(0,.3) coordinate (a2top);
+      \draw (a0.north) -- ++(0,-.3) coordinate (a0bot);
+      \draw (a1.north) -- ++(0,-.3) coordinate (a1bot);
+      \draw (a2.north) -- ++(0,-.3) coordinate (a2bot);
+      \draw[line width=2pt] (a0top -| a0.west) -- (a2top -| a2.east);
+      \draw[line width=2pt] (a0bot -| a0.west) -- (a2bot -| a2.east);
+   \end{tikzpicture}
+}
+%&
+=
+\frac{1}{n!}
+\sum_{i_1, \dots, i_n, j_1, \dots, j_n}
+   \varepsilon_{i_1, \dots, i_n}
+   \varepsilon_{j_1, \dots, j_n}
+   [i=j]
+%\\&
+=
+   \frac{1}{n!}
+   \sum_{i_1, \dots, i_n}
+   \varepsilon_{i_1, \dots, i_n}^2
+%\\&
+%=
+%   \sum_{i_1, \dots, i_n}
+%   [(i_1, \dots, i_n)\text{ is a permutation}]
+%\\&
+= 1.
+\end{align*}
+In general we get from the permutation definition of the determinant:
+\begin{align*}
+   \detstack{A}
+   &=
+   \sum_{i_1, \dots, i_n, j_1, \dots, j_n}
+   \varepsilon_{i_1, \dots, i_n}
+   \varepsilon_{j_1, \dots, j_n}
+   A_{i_1,j_1} \cdots A_{i_n,j_n}
+   \\&=
+   \sum_{\sigma, \tau}
+   \mathrm{sign}(\sigma)
+   \mathrm{sign}(\tau)
+   A_{\sigma_1,\tau_1} \cdots A_{\sigma_n,\tau_n}
+   \\&=
+   \sum_{\sigma}
+   \mathrm{sign}(\sigma)
+   \sum_\tau
+   \mathrm{sign}(\tau)
+   A_{\sigma_1,\tau_1} \cdots A_{\sigma_n,\tau_n}
+   \\&=
+   \sum_{\sigma}
+   \mathrm{sign}(\sigma)^2
+   \mathrm{det}(A)
+   \\&=
+   n! \mathrm{det}(A).
+\end{align*}
+The definition generalizes to Cayley's ``hyper determinants'' by $\dots$.
+
+A curious property is that
+\[
+   \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$A$};
+      \node[right=.5em of a0] (dots) {$\cdots$};
+      \node[right=.5em of dots] (a1) {$A$};
+      \draw (a0.north) -- ++(0,.2) coordinate (a0top);
+      \draw (a1.north) -- ++(0,.2) coordinate (a1top);
+      \draw (a0.south) -- ++(0,-.2) coordinate (a0bot);
+      \draw (a1.south) -- ++(0,-.2) coordinate (a1bot);
+      \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
+   \end{tikzpicture}}
+   =
+   \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$A$};
+      \node[right=.5em of a0] (dots) {$\cdots$};
+      \node[right=.5em of dots] (a1) {$A$};
+      \draw (a0.north) -- ++(0,.2) coordinate (a0top);
+      \draw (a1.north) -- ++(0,.2) coordinate (a1top);
+      \draw (a0.south) -- ++(0,-.2) coordinate (a0bot);
+      \draw (a1.south) -- ++(0,-.2) coordinate (a1bot);
+      \draw[line width=2pt] (a0top -| a0.west) -- (a1top -| a1.east);
+      \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
+      \node[above=1.5em of a0] (b0) {$\phantom{A}$};
+      \node[above=1.5em of dots] (d1) {$\cdots$};
+      \node[above=1.5em of a1] (b1) {$\phantom{A}$};
+      \draw (b0.south) -- ++(0,-.2) coordinate (b0bot);
+      \draw (b1.south) -- ++(0,-.2) coordinate (b1bot);
+      \draw[line width=2pt] (b0bot -| b0.west) -- (b1bot -| b1.east);
+   \end{tikzpicture}}
+\]
+
+\renewcommand{\arraystretch}{2}
+\begin{tabular}[h]{lcc}
+   (18) &
+   $ \mathrm{det}(A) = \prod_i \lambda_i $
+   &
+   \dots
+   \\
+   (19) &
+   $ \mathrm{det}(cA) = c^n \mathrm{det}(A) $
+   &
+   $ \detstack{$cA$} = c^n \detstack{$A$} $
+   \\
+   (20) &
+   $ \mathrm{det}(A) = \mathrm{det}(A^T) $
+   &
+   \dots
+   \\
+   (21) &
+   $ \mathrm{det}(AB) = \mathrm{det}(A)\mathrm{det}(B) $
+   &
+   $
+   \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$B$};
+      \node[right=.5em of a0] (dots) {$\cdots$};
+      \node[right=.5em of dots] (a1) {$B$};
+      \draw (a0.south) -- ++(0,-.2) coordinate (a0bot);
+      \draw (a1.south) -- ++(0,-.2) coordinate (a1bot);
+      \node[above=.5em of a0] (b0) {$A$};
+      \node[above=.5em of dots] (d1) {$\cdots$};
+      \node[above=.5em of a1] (b1) {$A$};
+      \draw (b0.south) -- (a0.north);
+      \draw (b1.south) -- (a1.north);
+      \draw (b0.north) -- ++(0,.2) coordinate (b0top);
+      \draw (b1.north) -- ++(0,.2) coordinate (b1top);
+      \draw[line width=2pt] (b0top -| b0.west) -- (b1top -| b1.east);
+      \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
+   \end{tikzpicture}}
+   =
+   \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$B$};
+      \node[right=.5em of a0] (dots) {$\cdots$};
+      \node[right=.5em of dots] (a1) {$B$};
+      \draw (a0.north) -- ++(0,.2) coordinate (a0top);
+      \draw (a1.north) -- ++(0,.2) coordinate (a1top);
+      \draw (a0.south) -- ++(0,-.2) coordinate (a0bot);
+      \draw (a1.south) -- ++(0,-.2) coordinate (a1bot);
+      \draw[line width=2pt] (a0top -| a0.west) -- (a1top -| a1.east);
+      \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
+      \node[above=1.5em of a0] (b0) {$A$};
+      \node[above=1.5em of dots] (d1) {$\cdots$};
+      \node[above=1.5em of a1] (b1) {$A$};
+      \draw (b0.north) -- ++(0,.2) coordinate (b0top);
+      \draw (b1.north) -- ++(0,.2) coordinate (b1top);
+      \draw (b0.south) -- ++(0,-.2) coordinate (b0bot);
+      \draw (b1.south) -- ++(0,-.2) coordinate (b1bot);
+      \draw[line width=2pt] (b0top -| b0.west) -- (b1top -| b1.east);
+      \draw[line width=2pt] (b0bot -| b0.west) -- (b1bot -| b1.east);
+   \end{tikzpicture}}
+   $
+   \\
+   (22) &
+   $ \mathrm{det}(A^{-1}) = 1/\mathrm{det}(A) $
+   &
+   \dots
+   \\
+   (23) &
+   $ \mathrm{det}(A^n) = \mathrm{det}(A)^n $
+   &
+   \dots
+   \\
+   (24) &
+   $ \mathrm{det}(I+uv^T) = 1 + u^Tv $
+   &
+   \dots
+   \\
+\end{tabular}
+
+
+\section{Inverses}
+Might be reduced, unless cofactor matrices have a nice representation?
+
+
