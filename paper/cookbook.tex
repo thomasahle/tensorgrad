@@ -19,7 +19,7 @@
 \usetikzlibrary {arrows.meta,automata,positioning,shadows,decorations.pathmorphing, decorations.pathreplacing, decorations.shapes, graphs, calc}
 \usetikzlibrary{shapes.geometric}
 \usetikzlibrary{decorations.pathreplacing}
-
+\usetikzlibrary {arrows.meta}
 
 
 \tikzset{%
@@ -41,21 +41,39 @@
       }
     },
    every loop/.style={},
-}
-\tikzset{
-  d/.style={
-    Circle[]-,
-    shorten <=-2pt,
-    transform canvas={shift={(-3pt, 4pt)}}
-  }
-}
-\tikzstyle{triangle}=[
+   d/.style={
+     Circle[]-,
+     shorten <=-2pt,
+     transform canvas={shift={(-3pt, 4pt)}}
+   },
+   d0/.style={
+     Circle[]-,
+     shorten <=-2pt,
+   },
+   d1/.style={
+     Circle[]-,
+   },
+   dn/.style={
+     draw, circle, minimum size=1.3em
+   },
+   ddn/.style={
+     draw, circle, double, minimum size=1.3em
+   },
+   dddn/.style={
+     draw, circle, double, minimum size=1.3em,
+       double distance=2pt,
+       postaction={draw}
+   },
+   triangle/.style={
     regular polygon,
     regular polygon sides=3,
     rotate=270,
     scale=.5,
     draw
-]
+   },
+}
+
+
 
 \newcommand{\trace}[2]{% #1 is the list of items, #2 is the looseness for the loop
    %\pgfmathsetmacro{\negspace}{-1.0em - 0.5em*#2} % Calculate negative space
@@ -106,7 +124,6 @@
    \end{tikzpicture}
 }
 
-
 \def\detstack#1{
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {#1};
@@ -121,6 +138,25 @@
    \end{tikzpicture}}
 }
 
+% Define a new command for drawing the ellipse
+\NewDocumentCommand{\drawellipse}{m m m m m o}{
+    \def\centerX{#1}
+    \def\centerY{#2}
+    \def\widthR{#3}
+    \def\heightR{#4}
+    \def\angle{#5}
+    
+    \draw (\centerX,\centerY) ellipse [x radius=\widthR, y radius=\heightR];
+    \fill ({\centerX + \widthR*cos(\angle)},{\centerY + \heightR*sin(\angle)}) circle [radius=0.075];
+    
+    % If target node is provided, use it, otherwise fall back to default behavior
+    \IfNoValueTF{#6}{
+        \draw ({\centerX + \widthR*cos(\angle)},{\centerY + \heightR*sin(\angle)}) -- ({\centerX + .5 + \widthR*cos(\angle)}, {\centerY + \heightR*sin(\angle)});
+    }{
+        \draw ({\centerX + \widthR*cos(\angle)},{\centerY + \heightR*sin(\angle)}) -- (#6);
+    }
+}
+
 \newcommand{\smat}[1]{\left[\begin{smallmatrix}#1\end{smallmatrix}\right]}
 \newcommand{\svec}[1]{[\begin{smallmatrix}#1\end{smallmatrix}]}
 \newcommand{\E}{\mathrm{E}}
@@ -128,7 +164,9 @@
 \newcommand\sbullet[1][1.5pt]{%
   \tikz[baseline=-0.5ex]\draw (0,0) circle (#1);%
 }
-\usetikzlibrary {arrows.meta}
+\newcommand{\R}{\mathbb R}
+\newcommand{\eps}{\varepsilon}
+
 
 \title{The Tensor Cookbook}
 \author{Thomas Dybdahl Ahle}
@@ -921,29 +959,196 @@ TODO: To show this with tensor diagrams, we first need to introduce our notation
 
 \subsection{First Order}
 
-\begin{tabular}[h]{lcc}
-   (99) &
-   $ \frac{\partial}{\partial X} \mathrm{Tr}(X) = I $
+\begin{align*}
+   \tag{99}
+   \frac{\partial}{\partial X} \mathrm{Tr}(X)
+   &= I
    &
-   $ (\trace{X}{1}) = \trace{(X)}{0} = \trace{\phantom{X}}2 = \matmul{\sbullet} $
+   \hspace{-1em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=1em of a0] (a1) {$X$};
+      \node[right=1em of a1] (a3) {$)$};
+      \path (a1) edge[out=160, in=20, loop] (a1);
+      \draw[d] (a3.east) -- ++(.2,.2);
+      \draw[d] (a3.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   \hspace{-1em}
+   &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$(X)$};
+      \path (a1) edge[out=160, in=20, loop, looseness=4] (a1);
+      \draw[d] (a1.south east) -- ++(.2,-.2);
+      \draw[d] (a1.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+ \\&&&=
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$\phantom{X}$};
+      \path (a1) edge[out=160, in=20, loop, looseness=6] (a1);
+      \draw ($(a1.east)-(0,-.2em)$) -- ++(.2,-.1);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(-.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+ \\&&&=
+   \matmul{\sbullet}
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \\
-   (100) &
-   $ \frac{\partial}{\partial X} \mathrm{Tr}(XA) = A^T $
+   \tag{100}
+   \frac{\partial}{\partial X} \mathrm{Tr}(XA)
+   &= A^T
    &
-   $ (\trace{X,A}{2}) = \trace{(X), A}{2} = \trace{\phantom{X}, A}2 = \matmul{A^T} $
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=1em of a0] (a1) {$X$};
+      \node[right=1em of a1] (a2) {$A$};
+      \node[right=1em of a2] (a3) {$)$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw[d] (a3.east) -- ++(.2,.2);
+      \draw[d] (a3.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$(X)$};
+      \node[right=1em of a1] (a2) {$A$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw[d] (a1.south east) -- ++(.2,-.2);
+      \draw[d] (a1.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+ \\&&&
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$\phantom{X}$};
+      \node[right=1em of a1] (a2) {$A$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw (a1.east) -- ++(.2,-.1);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(-.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+ \\&&&
+   = \matmul{A^T}
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \\
-   (101) &
-   $ \frac{\partial}{\partial X} \mathrm{Tr}(AXB) = A^TB^T $
+   \tag{101}
+   \frac{\partial}{\partial X} \mathrm{Tr}(AXB)
+   &= A^TB^T
    &
-   $ (\trace{A,X,B}{2}) = \trace{A, (X), B}{2} = \matmul{A^T, B^T} $
-   \\
-\end{tabular}
+   \hspace{-1em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=1em of a0] (a1) {$A$};
+      \node[right=1em of a1] (a2) {$X$};
+      \node[right=1em of a2] (a3) {$B$};
+      \node[right=1em of a3] (a4) {$)$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=2] (a3);
+      \draw[d] (a4.east) -- ++(.2,.2);
+      \draw[d] (a4.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   \hspace{-1em}
+   &=
+   \hspace{-3em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$A$};
+      \node[right=1em of a1] (a2) {$(X)$};
+      \node[right=1em of a2] (a3) {$B$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=2] (a3);
+      \draw[d] (a2.south east) -- ++(.2,-.2);
+      \draw[d] (a2.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-3em}
+ \\&&&=
+   \hspace{-2.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$A$};
+      \node[right=1em of a1] (a2) {$\phantom{X}$};
+      \node[right=1em of a2] (a3) {$B$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=2] (a3);
+      \draw (a2.east) -- ++(.2,-.1);
+      \draw (a2.west) -- ++(-.2,-.1);
+   \end{tikzpicture}
+   \hspace{-2.5em}
+ \\&&&=
+   \matmul{A^T, B^T}
+\end{align*}
+
+
 Continues for (102-105).
 The last one uses the Kronecker product, which we may have to introduce first.
 
 \subsection{Second Order}
-\begin{aligned}
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^2\right)=2 \mathbf{X}^T \\
+\begin{align*}
+   \frac{\partial}{\partial X} \mathrm{Tr}(X^2)
+   &=2 X^T
+   &
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=1em of a0] (a1) {$X$};
+      \node[right=1em of a1] (a2) {$X$};
+      \node[right=1em of a2] (a3) {$)$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw[d] (a3.east) -- ++(.2,.2);
+      \draw[d] (a3.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$(X)$};
+      \node[right=1em of a1] (a2) {$X$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw[d] (a1.south east) -- ++(.2,-.2);
+      \draw[d] (a1.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+   +
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X$};
+      \node[right=1em of a1] (a2) {$(X)$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw[d] (a2.south east) -- ++(.2,-.2);
+      \draw[d] (a2.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+ \\&&&=
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$\phantom{X}$};
+      \node[right=1em of a1] (a2) {$X$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw (a1.east) -- ++(.2,-.1);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(-.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+   +
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X$};
+      \node[right=1em of a1] (a2) {$\phantom{X}$};
+      \draw (a1) -- (a2);
+      \path (a1) edge[out=160, in=20, looseness=2] (a2);
+      \draw (a2.west) -- ++(-.2,-.1);
+      \draw ($(a2.east)-(0,-.2em)$) -- ++(.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+ \\&&&=
+   2\matmul{X^T}
+\end{align*}
+More:
+\begin{align*}
 & \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^2 \mathbf{B}\right)=(\mathbf{X B}+\mathbf{B X})^T \\
 & \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{B} \mathbf{X}\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
 & \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B} \mathbf{X} \mathbf{X}^T\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
@@ -957,20 +1162,20 @@ The last one uses the Kronecker product, which we may have to introduce first.
 & \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{X}^T \mathbf{B X C}\right]=\mathbf{B X C}+\mathbf{B}^T \mathbf{X} \mathbf{C}^T \\
 & \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A X B} \mathbf{X}^T \mathbf{C}\right)=\mathbf{A}^T \mathbf{C}^T \mathbf{X B}^T+\mathbf{C A X B} \\
 & \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[(\mathbf{A X B}+\mathbf{C})(\mathbf{A X B}+\mathbf{C})^T\right]=2 \mathbf{A}^T(\mathbf{A X B}+\mathbf{C}) \mathbf{B}^T \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I}(120) \\
+& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I} \\
 &
-\end{aligned}
+\end{align*}
 
 \subsection{Higher Order}
 
-\begin{aligned}
+\begin{align*}
 \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^k\right)= & k\left(\mathbf{X}^{k-1}\right)^T \\
 \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A} \mathbf{X}^k\right)= & \sum_{r=0}^{k-1}\left(\mathbf{X}^r \mathbf{A X}^{k-r-1}\right)^T \\
 \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{B}^T \mathbf{X}^T \mathbf{C X} \mathbf{X}^T \mathbf{C X B}\right]= & \mathbf{C X} \mathbf{X}^T \mathbf{C X B B}{ }^T \\
 & +\mathbf{C}^T \mathbf{X B B} \mathbf{B}^T \mathbf{X}^T \mathbf{C}^T \mathbf{X} \\
 & +\mathbf{C X B B}^T \mathbf{X}^T \mathbf{C X} \\
 & +\mathbf{C}^T \mathbf{X X}^T \mathbf{C}^T \mathbf{X} \mathbf{B B}
-\end{aligned}
+\end{align*}
 
 \subsection{Other}
 $$
@@ -1521,6 +1726,7 @@ The Kronecker product has the following properties:
    \hspace{-1em}
    \\
    \tag{519}
+   \hspace{-1cm}
    \mathrm{eig}(A \otimes B) &= \mathrm{eig}(A) \mathrm{eig}(B)
                              &
    \begin{tikzpicture}[baseline=-.25em]
@@ -1593,7 +1799,7 @@ The Kronecker product has the following properties:
 %}}
 
 Here the last equation shows an interesting general property of $\triangleright$:
-\[
+\begin{align}
    \begin{tikzpicture}[baseline=-.25em]
       \node[triangle, rotate=180] (F0) at (0,0) {};
       \node (b1) at (.4,.25) {$\sbullet$};
@@ -1618,16 +1824,26 @@ Here the last equation shows an interesting general property of $\triangleright$
       \draw (M) edge[bend left] (F);
       \draw (M) edge[bend right] (F);
    \end{tikzpicture}.
-\]
-While the right side is just $\mathrm{diag}(\mathrm{vec}(M))$,
-the left side is harder to write in classical notation.
-We can write it with index notation as
-\[
-   v_{k,\ell}
-   = \sum_{i,j} \triangleright_{i,j,k}\triangleright_{i,j,\ell} M_{i,j}
-   = \sum_{i,j} [i+jn=k][i+jn=\ell] M_{i,j},
-\]
-but it is hardly enlightening.
+   \label{eq:tensor_diag}
+\end{align}
+This is easier to see when we consider that
+$
+   V =
+\begin{tikzpicture}[baseline=-.5em, inner sep=1pt, outer sep=0pt]
+      \node (b1) at (.4,.1) {$\sbullet$};
+      \node (b2) at (.6,-.1) {$\sbullet$};
+      \draw (b1) -- (0, .1);
+      \draw (b2) -- (0, -.1);
+      \draw (b1) -- (1, .1);
+      \draw (b2) -- (1, -.1);
+      \node (M) at (.2,-.4) {M};
+      \draw (M) -- (b1);
+      \draw (M) -- (b2);
+   \end{tikzpicture}
+$
+represents the tensor where $V_{i,j,i,j} = M_{i,j}$ and 0 otherwise.
+So flattening $V$ on both sides is the same as $\mathrm{diag}(\mathrm{vec}(M))$,
+which is the rhs of \eqref{eq:tensor_diag}.
 
 \section{The Vec Operator}
 
@@ -2136,6 +2352,121 @@ There are multiple ``mixed product'' identities:
 \end{align*}
 
 
+\subsection{Stacking}
+Can be part of Kronecker section
+
+From Josh:
+Proposition 2.5. For any field $\mathbb{F}$, integers $d_1, d_2, d_3, d_4$ and matrices $X_1 \in \mathbb{F}^{d_1 \times d_2}, X_2 \in \mathbb{F}^{d_2 \times d_3}$, $X_3 \in \mathbb{F}^{d_1 \times d_4}$, and $X_4 \in \mathbb{F}^{d_4 \times d_3}$, we have
+$$
+X_1 \times X_2+X_3 \times X_4=\left(X_1 \mid X_3\right) \times\left(\frac{X_2}{X_4}\right),
+$$
+where we are writing '|'to denote matrix concatenation.
+
+With tensor diagrams we can write stacking along a new axis $i$ as
+\[
+\mathrm{stack}_i(X, Y)
+=
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(0)}$};
+    \draw (e) -- ++(.5,0) node[midway, above right, font=\tiny] {$i$};
+    \node (X) at (0, -.2) {$X$};
+    \draw (X) -- ++(.5,0);
+    \draw (X) -- ++(-.5,0);
+\end{tikzpicture}
++
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(1)}$};
+    \draw (e) -- ++(.5,0) node[midway, above right, font=\tiny] {$i$};
+    \node (X) at (0, -.2) {$Y$};
+    \draw (X) -- ++(.5,0);
+    \draw (X) -- ++(-.5,0);
+\end{tikzpicture}
+\]
+where $e^{(i)}_i=1$ and 0 elsewhere.
+
+Fro this we easily get the identity
+\begin{align}
+\left(A \mid C\right) \left(\frac{B}{D}\right)
+&=
+\mathrm{stack}_i(A, C)
+\,
+% \times_i
+\mathrm{stack}_i(B, D)
+\\&=
+\left(
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(0)}$};
+    \draw (e) -- ++(.5,0) node[midway, above right, font=\tiny] {$i$};
+    \node (X) at (0, -.2) {$A$};
+    \draw (X) -- ++(-.5,0) node[midway, below left, font=\tiny] {$k$};
+    \draw (X) -- ++(.5,0) node[midway, below right, font=\tiny] {$j$};
+\end{tikzpicture}
++
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(1)}$};
+    \draw (e) -- ++(.5,0) node[midway, above right, font=\tiny] {$i$};
+    \node (X) at (0, -.2) {$C$};
+    \draw (X) -- ++(-.5,0) node[midway, below left, font=\tiny] {$k$};
+    \draw (X) -- ++(.5,0) node[midway, below right, font=\tiny] {$j$};
+\end{tikzpicture}
+\right)
+\left(
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(0)}$};
+    \draw (e) -- ++(.5,0) node[midway, above right, font=\tiny] {$i$};
+    \node (X) at (0, -.2) {$B$};
+    \draw (X) -- ++(-.5,0) node[midway, below left, font=\tiny] {$j$};
+    \draw (X) -- ++(.5,0) node[midway, below right, font=\tiny] {$m$};
+\end{tikzpicture}
++
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(1)}$};
+    \draw (e) -- ++(.5,0) node[midway, above right, font=\tiny] {$i$};
+    \node (X) at (0, -.2) {$D$};
+    \draw (X) -- ++(-.5,0) node[midway, below left, font=\tiny] {$j$};
+    \draw (X) -- ++(.5,0) node[midway, below right, font=\tiny] {$m$};
+\end{tikzpicture}
+\right)
+\\&=
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(0)}$};
+    \draw (e) -- ++(.5,0);
+    \node (X) at (0, -.2) {$A$};
+    \draw (X) -- ++(.5,0);
+    \draw (X) -- ++(-.5,0) node[midway, below left, font=\tiny] {$k$};
+\end{tikzpicture}
+\,
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(0)}$};
+    \draw (e) -- ++(-.5,0);
+    \node (X) at (0, -.2) {$B$};
+    \draw (X) -- ++(.5,0) node[midway, below right, font=\tiny] {$m$};
+    \draw (X) -- ++(-.5,0);
+\end{tikzpicture}
++
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(1)}$};
+    \draw (e) -- ++(.5,0);
+    \node (X) at (0, -.2) {$C$};
+    \draw (X) -- ++(.5,0);
+    \draw (X) -- ++(-.5,0) node[midway, below left, font=\tiny] {$k$};
+\end{tikzpicture}
+\,
+\begin{tikzpicture}[baseline=-.5em, inner sep = 1pt]
+    \node (e) at (0, .2) {$e^{(1)}$};
+    \draw (e) -- ++(-.5,0);
+    \node (X) at (0, -.2) {$D$};
+    \draw (X) -- ++(.5,0) node[midway, below right, font=\tiny] {$m$};
+    \draw (X) -- ++(-.5,0);
+\end{tikzpicture}
+\\&=
+AB + CD
+\end{align}
+
+TODO: Relation to direct sum, which is basically stacking + flattening.
+Also have a bunch of properties like $A\otimes(B\oplus C) = A\otimes B\oplus A\otimes C$.
+
+
 
 \chapter{Functions}
 
@@ -2144,7 +2475,7 @@ There are multiple ``mixed product'' identities:
    Function to scalar
    & $f : \mathbb R^n \to \mathbb R$
    & $f(x) \in \mathbb R$
-   & \{f \leftarrow x\}
+   & $\{f \leftarrow x\}$
    \\
    Function to vector
    & $g : \mathbb R^n \to \mathbb R^m$
@@ -2177,7 +2508,7 @@ There are multiple ``mixed product'' identities:
    & \begin{tikzpicture}[baseline=-.25em]
       \node (A) at (0,0) {$\{A \leftarrow x\}$};
       \node (x) at (1,0) {$v$};
-      \path (-.27, .25) edge [out=60, in=120, looseness=1] (x);
+      \draw (-.27, .25) edge[out=60, in=120, looseness=1] (x);
       \draw (-.45, .2) -- ++(-.2,.2) node[midway, above, font=\tiny] {m};
    \end{tikzpicture}
    \\
@@ -2193,13 +2524,14 @@ There are multiple ``mixed product'' identities:
 
 As an example of a more complicated function, let $\exp : \mathbb R \to \mathbb R$ be the element-wise exponential function,
 and $\mathrm{pow}^{-1} : \mathbb R \to \mathbb R$ be the element-wise inverse power function.
-Then we can write soft-max as the tensor diagram:
+Then we can write $\mathrm{softmax}:\mathbb R^d \to \mathbb R^d$ as the tensor diagram:
 \[
+   \mathrm{softmax}(x) =
    \begin{tikzpicture}[baseline=-.25em]
-      \node (ex) at (0,0) {$\{\mathrm{exp} \quad x\}$}
+      \node (ex) at (0,0) {$\{\mathrm{exp} \quad x\}$};
       \node[right=1em of ex] (p) {$\{\mathrm{pow}^{-1} \quad \{\mathrm{exp} \quad x\}\quad \sbullet\,\}$};
-      \path ($(p.east)+(-1.1,.15)$) edge [out=90, in=90, looseness=1] ($(p.east)+(-.4,.15)$);
-      \draw ($(ex) + (.5, .15)) -- ++(.1,.2);
+      \draw ($(p.east)+(-1.1,.15)$) edge[out=90, in=90, looseness=1] ($(p.east)+(-.4,.15)$);
+      \draw ($(ex) + (.5, .15)$) -- ++(.1,.2);
    \end{tikzpicture}
    .
 \]
@@ -2219,8 +2551,298 @@ I'd rather talk about my general function notation.
 And maybe about taylor series?
 
 
-\subsection{The Chain Rule}
+\newpage
+\section{The Chain Rule}
 Sometimes the objective is to find the derivative of a matrix which is a function of another matrix.
+
+E.g. $f : \R^n -> \R^n$
+
+Standard chain rule.
+Here we let $f\in\mathbb R^d\to \mathbb R$ be a scalar function, and $v\in\mathbb R^d\to \mathbb R^d$ be a vector function as used in backprop.
+
+Visualization of the Chain Rule: $J_{f\circ v}(x) = \nabla_{\!f}(v(x)) J_v(x)$.
+
+\[
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (n1) {$(\quad\{$};
+      \node[right=.5em of n1] (n2) {$f$};
+      \node[right=.5em of n2] (n3) {$\{$};
+      \node[right=0em of n3] (n4) {$v$};
+      \node[right=1em of n4] (n5) {$x$};
+      \node[right=0em of n5] (n6) {$\}\}\quad)$};
+      \draw (n4) edge[out=90, in=90, looseness=1, ->] (n2);
+      \draw (n5) edge[->] (n4);
+      \draw[d] (n6.east) -- ++(.2,.2);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (n1) {$\{$};
+      \node[right=.5em of n1] (n2) {$f$};
+      \node[right=.5em of n2] (n3) {$\{$};
+      \node[right=0em of n3] (n4) {$v$};
+      \node[right=1em of n4] (n5) {$x$};
+      \node[right=0em of n5] (n6) {$\}\}$};
+      \node[right=1em of n6] (n7) {$\{$};
+      \node[right=0em of n7] (n8) {$v$};
+      \node[right=1em of n8] (n9) {$x$};
+      \node[right=0em of n9] (n10) {$\}$};
+      \draw (n4) edge[out=90, in=90, looseness=1, ->] (n2);
+      \draw (n5) edge[->] (n4);
+      \draw (n9) edge[->] (n8);
+      \draw[d1] (n2) edge[out=-30, in=-120, looseness=1] (n8);
+      \draw[d1] (n8) -- ++(.3,.3);
+   \end{tikzpicture}
+\]
+
+\subsection{The Chain Rule}
+Let $f\in\mathbb R^d\to \mathbb R$ be a scalar function, and $v\in\mathbb R^d\to \mathbb R^d$ be a vector function, as used in backprop.
+Then we can write the chain rule as:
+\[
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \drawellipse{0}{-.55}{.5}{1}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \node[right=1em of n0, dn] (n3) {$v$};
+      \node[below=1em of n3] (n4) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n4) -- (n3);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n3) -- ++(.5,0);
+   \end{tikzpicture}
+\]
+Using standard notation:
+$J_{f\circ v}(x) = \nabla_{\!f}(v(x)) J_v(x)$.
+
+\vspace{1em}
+
+The second derivative, (or Hessian Chain rule):
+\[
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \drawellipse{0}{-.55}{.5}{1}{180/4}
+      \drawellipse{0}{-.55}{.7}{1.2}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \node[right=1em of n0, dn] (n3) {$v$};
+      \node[below=1em of n3] (n4) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n4) -- (n3);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n3) -- ++(.5,0);
+      \drawellipse{.4}{-.55}{1}{1.2}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \node[right=1.5em of n0, dn] (n3) {$v$};
+      \node[below=1em of n3] (n4) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n4) -- (n3);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n3) -- ++(.5,0);
+      \drawellipse{0}{-.55}{.5}{1.2}{180/4}
+   \end{tikzpicture}
+   +
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \node[right=1.5em of n0, dn] (n3) {$v$};
+      \node[below=1em of n3] (n4) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n4) -- (n3);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n3) -- ++(.5,0);
+      \drawellipse{1}{-.25}{.5}{.7}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[ddn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \node[right=1em of n0, yshift=-1em, dn] (n3) {$v$};
+      \node[below=1em of n3] (n4) {$x$};
+      \node[right=1.5em of n3, yshift=1em, dn] (n5) {$v$};
+      \node[below=1em of n5] (n6) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n4) -- (n3);
+      \draw[->] (n6) -- (n5);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n0) -- (n5);
+      \draw[d0] (n3) -- ++(.5,0);
+      \draw[d0] (n5) -- ++(.5,0);
+   \end{tikzpicture}
+   +
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$x$};
+      \node[right=1.5em of n0, ddn] (n3) {$v$};
+      \node[below=1em of n3] (n4) {$x$};
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n4) -- (n3);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n3) -- ++(.5,0);
+      \draw[d0] ($(n3)+(.166,.15)$) -- ++(.4,0);
+   \end{tikzpicture}
+\]
+Using standard notation:
+\(
+H_{f\circ v}(x) = Dv(x)^T \cdot D^2f(v(x)) \cdot Dv(x) + \sum_{k=1}^d \frac{\partial f}{\partial u_k}(v(x)) \frac{\partial^2 v_k}{\partial x \partial x^T}(x).
+\)
+
+
+\begin{align*}
+\hspace{-2em}
+   \frac{\partial A(x)x}{\partial x}
+   &= (x^T \otimes I) \frac{\partial}{\partial x}  \mathrm{vec}[A(x)] + A(x)
+   &
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (n0) at (0,0) {$($};
+      \node[right=.5em of n0] (x0) {$x$};
+      \node[right=.5em of x0] (n2) {$\{$};
+      \node[right=.5em of n2] (A) {$A$};
+      \node[right=1em of A] (x1) {$x$};
+      \node[right=.5em of x1] (n5) {$\})$};
+      \draw[->] (x1) -- (A);
+      \draw (x0) edge[out=90, in=90, looseness=1] (A);
+      \draw[d] (n5.east) -- ++(.2,.2);
+   \end{tikzpicture}
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (x0) {$x$};
+      \node [right=.5em of x0] (n2) {$(\{$};
+      \node [right=.5em of n2] (A) {$A$};
+      \node [right=1em of A] (x1) {$x$};
+      \node [right=.5em of x1] (n5) {$\})$};
+      \draw[->] (x1) -- (A);
+      \draw (x0) edge[out=90, in=90, looseness=1] (A);
+      \draw[d] (n5.east) -- ++(.2,.2);
+   \end{tikzpicture}
+ +
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (n0) at (0,0) {$($};
+      \node [right=.5em of n0] (x0) {$x$};
+      \node [right=.5em of x0] (n1) {$)$};
+      \node [right=.5em of n1] (n2) {$\{$};
+      \node [right=.5em of n2] (A) {$A$};
+      \node [right=1em of A] (x1) {$x$};
+      \node [right=.5em of x1] (n5) {$\}$};
+      \draw[->] (x1) -- (A);
+      \draw (x0) edge[out=90, in=90, looseness=1] (A);
+      \draw[d] (n1.east) -- ++(.2,.2);
+   \end{tikzpicture}
+ \\&&&=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (x0) {$x$};
+      \node [right=.5em of x0] (n2) {$\{$};
+      \node [right=.5em of n2] (A) {$A$};
+      \node [right=1em of A] (x1) {$x$};
+      \node [right=.5em of x1] (n5) {$\}$};
+      \draw[->] (x1) -- (A);
+      \draw (x0) edge[out=90, in=90, looseness=1] (A);
+      \draw[d] ($(A.east)+(.1,.1)$) -- ++(.3,.2);
+   \end{tikzpicture}
+ +
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (n2) {$\{$};
+      \node [right=.5em of n2] (A) {$A$};
+      \node [right=1em of A] (x1) {$x$};
+      \node [right=.5em of x1] (n5) {$\}$};
+      \draw[->] (x1) -- (A);
+      \draw (A) -- ++(.4,.3);
+   \end{tikzpicture}
+\end{align*}
+
+\[
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$A$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[right=1em of n0] (n2) {$x$};
+      \draw[->] (n1) -- (n0);
+      \draw (n2) -- (n0);
+      \drawellipse{.25}{-.25}{.7}{.7}{180/4}
+      \draw (n0) -- ++(-.5,0);
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$A$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[right=1em of n0] (n3) {$x$};
+      \draw[->] (n1) -- (n0);
+      \draw (n0) -- (n3);
+      \drawellipse{0}{-.25}{.4}{.7}{180/4}
+      \draw (n0) -- ++(-.5,0);
+   \end{tikzpicture}
+   +
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$A$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[right=.75em of n0] (n3) {$x$};
+      \draw[->] (n1) -- (n0);
+      \draw (n0) -- (n3);
+      \draw (n0) -- ++(-.5,0);
+      \drawellipse{.575}{0}{.25}{.25}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$A$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[right=.75em of n0] (n3) {$x$};
+      \draw[->] (n1) -- (n0);
+      \draw (n0) -- (n3);
+      \draw[d0] (n0) -- ++(.4,.4);
+      \draw (n0) -- ++(-.5,0);
+   \end{tikzpicture}
+   +
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$A$};
+      \node[below=1em of n0] (n1) {$x$};
+      \draw[->] (n1) -- (n0);
+      \draw (n0) -- ++(.5,0);
+      \draw (n0) -- ++(-.5,0);
+   \end{tikzpicture}
+\]
+
+
+are common. All pixel-adaptive filters like non-local means, bilateral, etc, and the so-called attention mechanism in transformers can be written this way
+
+Gradient of this f(x) is important \& has a form worth remembering…
 
 
 \subsubsection{Pseudo-linear form}
@@ -2237,12 +2859,97 @@ Derivation of Peyman Milanfar's gradient
 & =\left[\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})]+\mathbf{A}(\mathbf{x})\right] \mathrm{d} \mathbf{x}
 \end{align*}
 
-\subsection{The Hessian Chain Rule}
-See main.tex
+\subsection{Taylor}
+For an n-times differentiable function $v: \R^d\to\R^d$ we can write the Taylor expansion:
+\begin{align*}
+    v(x + \eps)
+    &\approx
+    v(x)
+    + \left[\frac{\partial}{\partial x} v(x)\right]\eps
+    + \frac{1}{2}\left[\frac{\partial}{\partial x}\left[\frac{\partial}{\partial x} v(x)\right]\eps\right]\eps
+    + \frac{1}{6}\left[\frac{\partial}{\partial x}\left[\frac{\partial}{\partial x} \left[\frac{\partial}{\partial x} v(x)\right]\eps\right]\eps\right]\eps
+    + \dots
+    \\
+    &=
+    v(x)
+    + \left[\frac{\partial}{\partial x} v(x)\right]\eps
+    +
+    \frac{1}{2}
+    (I \otimes \eps)
+    \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial v(x)}{\partial x} \right]\right]\eps
+    + \frac{1}{6}
+    (I \otimes \eps \otimes \eps)
+    \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial\mathrm{vec}}{\partial x} \left[\frac{\partial v(x)}{\partial x} \right]\right]\right]\eps
+    + \dots
+\end{align*}
+Or with indices:
+\begin{align*}
+    v_i(x + \eps)
+    &\approx
+    v_i(x)
+    + \sum_j \frac{\partial v_i(x)}{\partial x_j} \eps_j
+    + \frac12 \sum_{j,k} \frac{\partial v_i(x)}{\partial x_j\partial x_k} \eps_j \eps_k
+    + \frac16 \sum_{j,k,\ell} \frac{\partial v_i(x)}{\partial x_j\partial x_k\partial x_\ell} \eps_j \eps_k \eps_\ell
+\end{align*}
+Or diagrams:
+\[
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$v$};
+      \node[below=1em of n0] (n1) {$(x+\eps)$};
+      \draw[->] (n1) -- (n0);
+      \draw (n0) -- ++(.5,0);
+   \end{tikzpicture}
+   \approx
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$v$};
+      \node[below=1em of n0] (n1) {$x$};
+      \draw[->] (n1) -- (n0);
+      \draw (n0) -- ++(.5,0);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$v$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[left=1em of n0] (n2) {$\eps$};
+      \draw[->] (n1) -- (n0);
+      \draw[d0] (n0) -- (n2);
+      \draw (n0) -- ++(.5,0);
+   \end{tikzpicture}
+   +\frac12
+   %\hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[ddn] (n0) {$v$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[left=1em of n0] (n2) {$\eps$};
+      \node[left=.75em of n0, yshift=-1em] (n3) {$\eps$};
+      \draw[->] (n1) -- (n0);
+      \draw[d0] (n0) -- (n2);
+      \draw[d0] (n0) -- (n3);
+      \draw (n0) -- ++(.5,0);
+   \end{tikzpicture}
+   +
+   \frac16
+   %\hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dddn] (n0) {$v$};
+      \node[below=1em of n0] (n1) {$x$};
+      \node[left=1em of n0] (n2) {$\eps$};
+      \node[left=.75em of n0, yshift=-1em] (n3) {$\eps$};
+      \node[left=.75em of n0, yshift=1em] (n4) {$\eps$};
+      \draw[->] (n1) -- (n0);
+      \draw[d0] (n0) -- (n2);
+      \draw[d0] (n0) -- (n3);
+      \draw[d0] (n0) -- (n4);
+      \draw (n0) -- ++(.5,0);
+   \end{tikzpicture}
+   +
+   \dots
+\]
+
+TODO: Examples based on idempotent matrices etc.
 
 
-\section{Taylor Series}
-I've always wanted to write these out properly with tensors.
+
 
 \chapter{Determinant and Inverses}
 
@@ -2512,6 +3219,335 @@ Hm. It's just a bunch of matrices below each other, kinda boring.
 What about the FFT?
 Does that require a bit more?
 
+
+
+
+
+\subsection{Fast Kronecker Multiplication}
+
+Say we want to compute $(A_1\otimes A_2\cdots A_n)x$,
+where $A_i$ is a $a_i \times a_i$ matrix, and $x \in \R^{a_1 a_2 \cdots a_n}$.
+If we first compute the Kronecker product, and then the matrix-vector multiplication, this would take $(a_1\cdots a_n)^2$ time.
+
+Instead we can reshape $x$ into a $a_1 \times \cdots a_n$ tensor and 
+perform the multiplication
+\[
+   \begin{tikzpicture}[baseline=-.25em]
+      \node (A) at (1,.5) {$A_1$};
+      \node (B) at (1,0) {$A_2$};
+      \node (C) at (1,-0.4) {$\vdots$};
+      \node (D) at (1,-1.1) {$A_n$};
+      \node (x) at (2,0) {$X$};
+      \draw (A) -- ++(-.6,0) node[midway, above, font=\tiny] {$a_1$};
+      \draw (B) -- ++(-.6,0)node[midway, above, font=\tiny] {$a_2$};
+      \draw ($(C.west)+(0,-.1)$) -- ++(-.4,0);
+      \draw (D) -- ++(-.6,0) node[midway, below, font=\tiny] {$a_n$};
+      \draw (A) -- (x) node[midway, above, font=\tiny] {$a_1$};
+      \draw (B) -- (x);
+      \draw ($(C.east)+(0,-.1)$) -- (x);
+      \draw (D) -- (x) node[midway, below right, font=\tiny] {$a_n$};
+   \end{tikzpicture}
+%\quad\text{in time}
+\]
+by contracting the $a_i$ edges one by one.
+This takes time
+\[
+a_1^2(a_2\cdots a_n)
++ a_2^2(a_1a_3\cdots a_n)
++ \dots
++ a_n^2(a_1\cdots a_{n-1})
+= (a_1 + \dots + a_n)(a_1 \cdots a_n),
+\]
+which is the basis of many fast algorithm as we will see.
+
+\subsubsection{Hadamard}
+
+The Hadamard matrix is defined as
+$
+H_{2^n}
+= H_2^{\otimes n}
+= H_2 \otimes \dots\otimes H_2
+$
+where $H_2=\begin{bmatrix}1 & 1 \\ 1 & -1\end{bmatrix}$.
+For example
+\[
+  H_4 = \begin{bmatrix}
+    1 &  1 &  1 &  1\\
+    1 & -1 &  1 & -1\\
+    1 &  1 & -1 & -1\\
+    1 & -1 & -1 &  1
+  \end{bmatrix}.
+\]
+This gives a very simple tensor diagram representation as:
+\[
+H_{2^n} = 
+   \begin{tikzpicture}[baseline=-.25em]
+      \node[triangle, rotate=180] (F0) at (0,0) {};
+      \node (A) at (1,.5) {$H_2$};
+      \node[triangle] (F1) at (2,0) {};
+      \node (B) at (1,0.1) {$\vdots$};
+      \node (C) at (1,-.5) {$H_2$};
+      \draw[double] (F0) -- ++(-.4,0);
+      \draw[double] (F1) -- ++(.4,0);
+      \draw (F0) -- (A) -- (F1);
+      \draw (F0) -- (B) -- (F1);
+      \draw (F0) -- (C) -- (F1);
+   \end{tikzpicture}
+   \,.
+\]
+The Fast Hadamard Transform (FHT) transform is usually described recursively by:
+\[
+H_{2^n} x
+= \begin{bmatrix}
+   H_{2^{n-1}} 
+   & H_{2^{n-1}} 
+   \\ H_{2^{n-1}} 
+   & -H_{2^{n-1}} 
+\end{bmatrix}
+\begin{bmatrix}
+    x^{(1)}
+    \\
+    x^{(2)}
+\end{bmatrix}
+,
+\]
+where $\smat{ x^{(1)} \\ x^{(2)} }$ is the first and second half of $x$.
+Because of the redundancy in the matrix multiplication (it only depends on $H_{2^{n-1}}x^{(1)}$ and $H_{2^{n-1}} x^{(2)}$, the algorithm computes $H_N x$ in $O(N\log N)$ time.
+
+Alternatively we could just use the general fact, as described above, where $a_i = 2$ for all $i$.
+Then the ``fast Kronecker multiplication'' method takes time $(a_1 a_2\cdots a_n)(a_1+a_2+\cdots a_n) = 2 n \log_2 n$.
+
+
+\subsubsection{Fourier}
+
+A more common matrix is the Discrete Fourier Matrix.
+It is defined by $(F_N)_{i,j}=\omega^{ij}$, 
+where $\omega = e^{-2\pi i/N}$.
+We can write it out as 
+\[
+F_N =  \begin{bmatrix}
+1&1&1&1&\cdots &1 \\
+1&\omega&\omega^2&\omega^3&\cdots&\omega^{N-1} \\
+1&\omega^2&\omega^4&\omega^6&\cdots&\omega^{2(N-1)}\\ 1&\omega^3&\omega^6&\omega^9&\cdots&\omega^{3(N-1)}\\
+\vdots&\vdots&\vdots&\vdots&\ddots&\vdots\\
+1&\omega^{N-1}&\omega^{2(N-1)}&\omega^{3(N-1)}&\cdots&\omega^{(N-1)(N-1)}
+\end{bmatrix}
+.
+\]
+
+The Good-Thomas Fast Fourier Transformer (FFT) uses a decomposition based on the Chinese Remainder Theorem:
+\[
+F_{N} = 
+   \begin{tikzpicture}[baseline=-1em, y=1.7em]
+      \node[rectangle, draw, minimum height=4em] (P1) at (0,-.5) {$P_1$};
+      \node (A) at (1,1) {$F_{p_1^{i_1}}$};
+      \node[rectangle, draw, minimum height=4em] (P2) at (2,-.5) {$P_2$};
+      \node (B) at (1,0) {$F_{p_2^{i_2}}$};
+      \node (C) at (1,-.8) {$\vdots$};
+      \node (D) at (1,-2) {$F_{p_n^{i_n}}$};
+      \draw (-1,1) -- (P1) -- (A) -- (P2) -- (3, 1);
+      \draw (-1,0) -- (P1) -- (B) -- (P2) -- (3, 0);
+      \draw (-1,-1) -- (P1) -- (C) -- (P2) -- (3, -1);
+      \draw (-1,-2) -- (P1) -- (D) -- (P2) -- (3, -2);
+   \end{tikzpicture}
+   \,,
+\]
+where $N = p_1^{i_1} p_2^{i_2} \cdots p_n^{i_n}$ is the prime factorisation of $N$, and $P_1$ and $P_2$ are some permutation matrices.
+
+Using fast Kronecker multiplication, the algorithm this takes $(p_1^{i_1}+\dots+p_n^{i_n}) N$ time.
+By padding $x$ with zeros, we can increase $N$ by a constant factor to get a string of $n=O(\log(N)/\log\log(N))$ primes, the sum of which is $\sim n^2/\log n = O(\log(N)^2)$.
+The complete algorithm thus takes time $O(N \log(N)^2)$.
+Next we will see how to reduce this to $O(N\log N)$.
+
+The classical Cooley-Tukey FFT algorithm uses a recursion:
+\[
+F_N =
+\begin{bmatrix}
+I & I \\
+I & -I
+\end{bmatrix}
+\begin{bmatrix}
+I & 0 \\
+0 & D_{N/2}
+\end{bmatrix}
+\begin{bmatrix}
+F_{N/2} & 0 \\
+0 & F_{N/2}
+\end{bmatrix}
+\begin{bmatrix}
+\text{even-odd} \\
+\text{permutation}
+\end{bmatrix}
+,
+\]
+where $D_N = [1, w^N, w^{2N}, \dots]$.
+The even-odd permutation moves all the even values to the start.
+If we reshape $I_{2^n}$ as $I_2\otimes\dots\otimes I_2$, this permutation is just
+$
+P_N = \begin{tikzpicture}[baseline=.5em, x=1em, y=.5em]
+    \draw (0,0) -- (1, 1);
+    \draw (0,1) -- (1, 2);
+    \draw (0,2) -- (1, 3);
+    \draw (0,3) -- (1, 0);
+\end{tikzpicture}
+$,
+or in pytorch: \texttt{x.permute([3,0,1,2])}.
+Also note that
+$\smat{I&I\\I&-I} = H_2 \otimes I$ and $\smat{F_{N/2} & 0\\0&F_{N/2}}=I_2 \otimes F_{N/2}$.
+So we can write in tensor diagram notation:
+\[
+F_N =
+\begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
+    \node[rectangle,draw] (H) at (0,0) {$H_2$};
+    \node[inner sep=0pt, minimum size=0pt] (l1) at (0,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (l2) at (0,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (l3) at (0,-3) {};
+    \node[inner sep=0pt, minimum size=0pt] (L0) at (-1,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (L1) at (-1,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (L2) at (-1,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (L3) at (-1,-3) {};
+    \node[inner sep=0pt, minimum size=0pt] (b0) at (1,0) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b1) at (1,-1) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b2) at (1,-2) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b3) at (1,-3) {$\sbullet$};
+    \node (D) at (.5,-4.5) {$D_N$};
+    \node[rectangle,draw,minimum height=3em] (F) at (2,-2) {$F_{N/2}$};
+    \node[inner sep=0pt, minimum size=0pt] (r0) at (4,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (r1) at (4,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (r2) at (4,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (r3) at (4,-3) {};
+    \node[inner sep=0pt, minimum size=0pt] (s0) at (3,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (s1) at (3,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (s2) at (3,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (s3) at (3,-3) {};
+    \draw (b0) -- (D);
+    \draw (b1) -- (D);
+    \draw (b2) -- (D);
+    \draw (b3) -- (D);
+    \draw (L0) -- (H) -- (b0) -- (s0) -- (r3);
+    \draw (L1) -- (l1) -- (b1) -- (F) -- (s1) -- (r0);
+    \draw (L2) -- (l2) -- (b2) -- (F) -- (s2) -- (r1);
+    \draw (L3) -- (l3) -- (b3) -- (F) -- (s3) -- (r2);
+\end{tikzpicture}
+=
+\begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
+    \node[rectangle,draw] (H) at (0,0) {$H_2$};
+    \node[rectangle,draw] (H2) at (2,-1) {$H_2$};
+    \node[rectangle,draw] (H3) at (4,-2) {$H_2$};
+    \node[rectangle,draw] (H4) at (6,-3) {$H_2$};
+    \node[inner sep=0pt, minimum size=0pt] (l1) at (0,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (l2) at (0,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (l3) at (0,-3) {};
+    \node[inner sep=0pt, minimum size=0pt] (L0) at (-1,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (L1) at (-1,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (L2) at (-1,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (L3) at (-1,-3) {};
+    \node[inner sep=0pt, minimum size=0pt] (b0) at (1,0) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b1) at (1,-1) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b2) at (1,-2) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b3) at (1,-3) {$\sbullet$};
+    \node (D) at (.5,-4.5) {$D_N$};
+    \node[inner sep=0pt, minimum size=0pt] (b10) at (3,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (b11) at (3,-1) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b12) at (3,-2) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b13) at (3,-3) {$\sbullet$};
+    \node (D2) at (2.5,-4.5) {$D_{N/2}$};
+    \node[inner sep=0pt, minimum size=0pt] (b20) at (5,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (b21) at (5,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (b22) at (5,-2) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt] (b23) at (5,-3) {$\sbullet$};
+    \node (D3) at (4.5,-4.5) {$D_{N/4}$};
+    \node[inner sep=0pt, minimum size=0pt] (r0) at (8,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (r1) at (8,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (r2) at (8,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (r3) at (8,-3) {};
+    \node[inner sep=0pt, minimum size=0pt] (s0) at (7,0) {};
+    \node[inner sep=0pt, minimum size=0pt] (s1) at (7,-1) {};
+    \node[inner sep=0pt, minimum size=0pt] (s2) at (7,-2) {};
+    \node[inner sep=0pt, minimum size=0pt] (s3) at (7,-3) {};
+    \draw (b0) -- (D);
+    \draw (b1) -- (D);
+    \draw (b2) -- (D);
+    \draw (b3) -- (D);
+    \draw (b11) -- (D2);
+    \draw (b12) -- (D2);
+    \draw (b13) -- (D2);
+    \draw (b22) -- (D3);
+    \draw (b23) -- (D3);
+    \draw (L0) -- (H) -- (b0) -- (s0) -- (r3);
+    \draw (L1) -- (l1) -- (b1) -- (H2) -- (b11) -- (s1) -- (r2);
+    \draw (L2) -- (l2) -- (b2) -- (b12) -- (H3) -- (b22) -- (s2) -- (r1);
+    \draw (L3) -- (l3) -- (b3) -- (b13) -- (b23) -- (H4) -- (s3) -- (r0);
+\end{tikzpicture}
+.
+\]
+Since one can multiply with the permutation and diagonal matrices in linear time, the $O(n\log n)$ time complexity follows from the same argument as for Hadamard.
+
+TODO: We can also talk about the row/column version of Cooley-Tukey (Bailey's FFT algorithm).
+The nice thing is that we can compose arbitrarily (not necessarily in $H_2$ chunks), and the $D_N$ matrices have a nice form (they are just fourier matrices!)
+So they could in principle be decomposed too, by the same algorithm...
+
+Note that this figure may look different from some FFT diagrams you have seen.
+These typically look like this:
+\[
+\begin{tikzpicture}
+  % Draw N/2-point DFT blocks
+  \draw (0, 1) rectangle (3, 5) node[midway] {$\frac{N}{2}$-point DFT};
+  \draw (0, -3) rectangle (3, 1) node[midway] {$\frac{N}{2}$-point DFT};
+
+  % Input nodes
+  \foreach \i in {0,2,4,6} {
+    \node at (-1, 4.5 - \i*0.5) {$x[\i]$};
+    \draw[->] (-0.5, 4.5 - \i*0.5) -- (0, 4.5 - \i*0.5);
+  }
+  
+  \foreach \i in {1,3,5,7} {
+    \node at (-1, 4.5 - \i*0.5 - 4) {$x[\i]$};
+    \draw[->] (-0.5, 4.5 - \i*0.5 - 4) -- (0, 4.5 - \i*0.5 - 4);
+  }
+
+  % Intermediate outputs E and O
+  \foreach \i in {0,1,2,3} {
+    \node at (3.5, 4.5 - \i*0.5) {$E[\i]$};
+    \draw[->] (3, 4.5 - \i*0.5) -- (4, 4.5 - \i*0.5);
+  }
+  
+  \foreach \i in {0,1,2,3} {
+    \node at (3.5, 4.5 - \i*0.5 - 4) {$O[\i]$};
+    \draw[->] (3, 4.5 - \i*0.5 - 4) -- (4, 4.5 - \i*0.5 - 4);
+  }
+
+  % Output nodes X
+  \foreach \i in {0,...,7} {
+    \node at (8.5, 4.5 - \i*0.5) {$X[\i]$};
+  }
+  
+  % W_N terms
+  \foreach \i in {0,...,7} {
+    \node at (6.5, 4.5 - \i*0.5) {$W_N^{\i}$};
+  }
+
+  % Connections from E and O to X
+  \foreach \i in {0,...,3} {
+    \draw[->] (4, 4.5 - \i*0.5) -- (8, 4.5 - \i*0.5);
+    \draw[->] (4, 4.5 - \i*0.5) -- (8, 4.5 - \i*0.5 - 2);
+  }
+  
+  \foreach \i in {0,...,3} {
+    \draw[->] (4, 4.5 - \i*0.5 - 4) -- (8, 4.5 - \i*0.5 - 1);
+    \draw[->] (4, 4.5 - \i*0.5 - 4) -- (8, 4.5 - \i*0.5 - 5);
+  }
+\end{tikzpicture}
+\]
+and have $2^n$ rows.
+The tensor diagram only has $n$ rows (or $\log_2 N$).
+
+\subsubsection{Multi-dimensional Fourier Transform}
+This is just taking the Fourier transform along each axis.
+
+\newpage
+
+
 \subsection{Hermitian Matrices and skew-Hermitian}
 Complex. Skip
 \subsection{Idempotent Matrices}
@@ -2532,6 +3568,215 @@ Not that interesting...
 \subsection{Vandermonde Matrices}
 Does this have a nice description?
 Not a lot of properties are given in the Cookbook.
+
+
+\chapter{Decompositions}
+
+
+\section{Higher-order singular value decomposition}
+Say we have an order $n$ tensor $A$.
+We ``unfold'' $A$ along each dimension.
+This means pulling the edge $i$ to the left, and flattening the rest to the right.
+Then we compute the SVD, $USV$.
+Here $U$ is a square matrix, which we keep.
+We multiply the $i$th edge of $A$ by $U^T$ (which is also the inverse of $U$).
+The result is a ``core'' tensor as well as a sequence of $U$ tensors.
+If we want a more compact SVD, we can make each $U$ low rank, like normal SVD.
+There is also the ``Interlacing computation`` where we multiply the $U^T$s onto $A$ as we go along.
+
+For order $3$ tensors, this method is called a ``Tucker decomposition''.
+
+% This paper has some reasonably good explanations of improved methods, such as HOOI:
+% https://www-users.cse.umn.edu/~saad/PDF/umsi-2006-132.pdf
+If the ``core matrix'' is diagonal, this is called tensor rank decomposition.
+If we were good at that, we could use it to factor $I^{\otimes 3}$ to get better matrix multiplication algorithms.
+Unfortunately tensor rank decomposition is NP hard.
+
+I guess HOSVD gives a rank decomposition if we diagonalize the core tensor.
+It just won't be an efficient one.
+%What about a method where we first compute a (lower rank) HOSVD, then 
+
+\section{Rank Decomposition}
+
+\section{Fast Matrix Multiplication}
+
+Strassen defines 3 tensors of shape $7\times 2\times 2$:
+\begin{align*}
+S_A &= \begin{bmatrix}
+\begin{bmatrix}1 & 0\\0 & 1\end{bmatrix}, &
+\begin{bmatrix}0 & 0\\1 & 1\end{bmatrix}, &
+\begin{bmatrix}1 & 0\\0 & 0\end{bmatrix}, &
+\begin{bmatrix}0 & 0\\0 & 1\end{bmatrix}, &
+\begin{bmatrix}1 & 1\\0 & 0\end{bmatrix}, &
+\begin{bmatrix}-1 & 0\\1 & 0\end{bmatrix}, &
+\begin{bmatrix}0 & 1\\0 & -1\end{bmatrix}
+\end{bmatrix}
+\\
+S_B &= \begin{bmatrix}
+\begin{bmatrix}1 & 0\\0 & 1\end{bmatrix}, &
+\begin{bmatrix}1 & 0\\0 & 0\end{bmatrix}, &
+\begin{bmatrix}0 & 1\\0 & -1\end{bmatrix}, &
+\begin{bmatrix}-1 & 0\\1 & 0\end{bmatrix}, &
+\begin{bmatrix}0 & 0\\0 & 1\end{bmatrix}, &
+\begin{bmatrix}1 & 1\\0 & 0\end{bmatrix}, &
+\begin{bmatrix}0 & 0\\1 & 1\end{bmatrix}
+\end{bmatrix}
+\\
+W &= \begin{bmatrix}
+\begin{bmatrix}1 & 0\\0 & 1\end{bmatrix}, &
+\begin{bmatrix}0 & 1\\0 & -1\end{bmatrix}, &
+\begin{bmatrix}0 & 0\\1 & 1\end{bmatrix}, &
+\begin{bmatrix}1 & 1\\0 & 0\end{bmatrix}, &
+\begin{bmatrix}-1 & 0\\1 & 0\end{bmatrix}, &
+\begin{bmatrix}0 & 0\\0 & 1\end{bmatrix}, &
+\begin{bmatrix}1 & 0\\0 & 0\end{bmatrix}
+\end{bmatrix}
+\end{align*}
+These tensors have the neat property that they factor $I_2\otimes I_2\otimes I_2$:
+\[
+\begin{tikzpicture}[inner sep=1pt, baseline=.0em]
+    \node (m) at (0,0) {$\sbullet$};
+    \node (W) at (0,.5) {$W$};
+    \node (SB) at (-30:.5) {$S_B$};
+    \node (SA) at (-150:.5) {$S_A$};
+    \node (w1) at (60:1) {};
+    \node (w2) at (120:1) {};
+    \node (sa1) at (-120:1) {};
+    \node (sa2) at (-180:1) {};
+    \node (sb1) at (-0:1) {};
+    \node (sb2) at (-60:1) {};
+    \draw (m) -- (W);
+    \draw (m) -- (SA);
+    \draw (m) -- (SB);
+    \draw (W) -- (w1) {};
+    \draw (W) -- (w2) {};
+    \draw (SB) -- (sb1) {};
+    \draw (SB) -- (sb2) {};
+    \draw (SA) -- (sa1) {};
+    \draw (SA) -- (sa2) {};
+\end{tikzpicture}
+=
+\begin{tikzpicture}[inner sep=1pt, baseline=.0em]
+    \node (m) at (0,0) {};
+    \node (W) at (0,.5) {};
+    \node (SB) at (-30:.5) {};
+    \node (SA) at (-150:.5) {};
+    \node (w1) at (60:1) {};
+    \node (w2) at (120:1) {};
+    \node (sa1) at (-120:1) {};
+    \node (sa2) at (-180:1) {};
+    \node (sb1) at (-0:1) {};
+    \node (sb2) at (-60:1) {};
+    \draw (sa2) .. controls (SA) and (W) .. (w2);
+    \draw (sa1) .. controls (SA) and (SB) .. (sb2);
+    \draw (sb1) .. controls (SB) and (W) .. (w1);
+\end{tikzpicture}
+.
+\]
+% TODO: This actually looks like one of the weird plots Penrose makes. Just without the `symmetrization'. Could it be relevant?
+%We say that the tensor $I_2\otimes I_2\otimes I_2$ has rank 7, because it can be written as a sum of 7 simple tensors.
+%
+To multiply two matrices, $A$ and $B$, faster than the normal $n^3$ time,
+we reshape them as block matrices, shape $(2,\frac n 2,2,\frac n 2)$ and use Strassen's tensor:
+%This means that if we have two $n\times n$ matrices, $A$ and $B$, and we write them as block matrices, shape $2\times \frac n2\times 2\times \frac n2$, we get
+\[
+\begin{tikzpicture}[inner sep=1pt, baseline=.0em]
+    \node (A) at (-.35, 0) {$A$};
+    \node (B) at (.35, 0) {$B$};
+    \draw[double] (B) -- ++(.5, 0) {};
+    \draw[double] (A) -- ++(-.5, 0) {};
+    \draw[double] (A) -- (B) {};
+\end{tikzpicture}
+=
+\begin{tikzpicture}[inner sep=1pt, baseline=-1em]
+    \node (m) at (0,0) {};
+    \node (W) at (0,.4) {};
+    \node (SB) at (-30:.5) {};
+    \node (SA) at (-150:.5) {};
+    \node (w1) at (.8, 0) {};
+    \node (w2) at (-.8, 0) {};
+    \node[below=.6em of SA] (A) {$A$};
+    \node[below=.6em of SB] (B) {$B$};
+    \draw (A) .. controls (-.75,-.5) and (0, 0) .. (w2);
+    \draw (A) edge[out=50, in=130] (B);
+    \draw (B) .. controls (.75, -.5) and (0, 0) .. (w1);
+    \draw (B) -- ++(.5, 0) {};
+    \draw (A) -- ++(-.5, 0) {};
+    \draw (A) -- (B) {};
+\end{tikzpicture}
+=
+\begin{tikzpicture}[inner sep=1pt, baseline=.0em]
+    \node (m) at (0,0) {$\sbullet$};
+    \node (W) at (0,.4) {$W$};
+    \node (SB) at (-30:.5) {$S_B$};
+    \node (SA) at (-150:.5) {$S_A$};
+    \node (w1) at (60:1) {};
+    \node (w2) at (120:1) {};
+    \node (sa1) at (-120:1) {};
+    \node (sa2) at (-180:1) {};
+    \node (sb1) at (-0:1) {};
+    \node (sb2) at (-60:1) {};
+    \node[below=.6em of SA] (A) {$A$};
+    \node[below=.6em of SB] (B) {$B$};
+    \draw (m) -- (W);
+    \draw (m) -- (SA);
+    \draw (m) -- (SB);
+    \draw (W) -- ++(1, 0) {};
+    \draw (W) -- ++(-1, 0) {};
+    \draw (SB) edge[bend left] (B) {};
+    \draw (SB) edge[bend right] (B) {};
+    \draw (SA) edge[bend left] (A) {};
+    \draw (SA) edge[bend right] (A) {};
+    \draw (B) -- ++(.5, 0) {};
+    \draw (A) -- ++(-.5, 0) {};
+    \draw (A) -- (B) {};
+\end{tikzpicture}
+.
+\]
+Contracting the edges in the right order, uses only $7/8 n^3 + O(n^2)$ operations.
+
+If we instead reshape to $(2,2,\dots,2)$,
+\[
+AB = 
+   \begin{tikzpicture}[baseline=-1em, y=1.7em]
+      \node (P1) at (0,-.5) {$A$};
+      \node (A) at (1,1) {};
+      \node (P2) at (2,-.5) {$B$};
+      \node (B) at (1,0) {};
+      \node (C) at (1,-.8) {};
+      \node (D) at (1,-2) {};
+      \draw (-1,1) -- (P1) -- (A) -- (P2) -- (3, 1);
+      \draw (-1,0) -- (P1) -- (B) -- (P2) -- (3, 0);
+      \draw (-1,-1) -- (P1) -- (C) -- (P2) -- (3, -1);
+      \draw (-1,-2) -- (P1) -- (D) -- (P2) -- (3, -2);
+   \end{tikzpicture}
+   \,,
+\]
+and using Strassen's tensor along each axis reduces the work by $(7/8)^{\log_2(n)}$, giving us matrix multiplication in time $n^{3 + \log_2(7/8)} = n^{2.80735}$.
+
+
+\newpage
+
+Contracting the double edges, $S_A - A$ and $S_B - B$, is both $O(n^2)$ time.
+
+It remains to verify that this is actually faster than the naive matrix multiplication:
+Contracting $S_A - A$ takes $7\cdot 2^2 (n/2)^2$ operations, and likewise $S_B - B$.
+Next we contract $S_AA - S_BB$ which takes $7(n/2)^3$ time.
+And finally we contract the edge with $W$ which takes $2^2 \cdot 7 (n/2)^2$.
+The important term is the cubic $7/8 n^3$, which if instead done recursively, leads to the classical $O(n^{\log_2 7})$ algorithm.
+
+FIXME: What ``edge with $W$''? I think we have to/want to contract the hyperedge with $W$ immediately?
+
+\subsubsection{Other}
+
+If we instead wrote $A$ and $B$ using $(n,m)$ and $(m,p)$ shaped blocks, we could factor $I_n\otimes I_m\otimes I_p$ and get a matrix multiplication algorithm using the same approach as the Strassen $(2,2,2)$ tensors above.
+Lots of papers have investigated this problem, which has led to the best algorithms by Josh Alman and others.
+For example, Deep Mind found a rank 47 factorization of $I_3\otimes I_4\otimes I_5$.
+
+Maybe a more interesting example is the $(4,4,4)$ tensor, for which they find a rank 47 factorization.
+This an easy way to create a rank 49 is to take Strassen and double it.
+Would this be a nice thing to show? Maybe too messy?
+Well, actually their rank 47 construction only works in the ``modular'' case. Then $(3,4,5)$ is general.
 
 
 
