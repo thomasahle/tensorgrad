@@ -276,7 +276,7 @@ def save_steps(expr, slow_grad=False):
                 args["expand"] = True
             new = expr.simplify(args).simplify()
         except Exception as e:
-            print(e)
+            print("ERROR:", e)
             break
         if new == expr:
             if not expand:
@@ -310,6 +310,29 @@ def main():
     # expr = expr.grad(logits)
     # expr = expr.full_simplify()
 
+    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
+    x = Variable("x", ["i"])
+    A = Function("A", ["i", "j"], (x, "i"))
+    expr = Derivative(A @ x, x)
+
+    # Randomized Strassen
+    SA = Variable("SA", "i, j, p1")
+    SB = Variable("SB", "m, n, p2")
+    W = Variable("W", "r, s, p3")
+    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
+    expr = Expectation(expr, SA, Variable("ma", "i, j, p1"), Variable("CA", "i, j, p1, i2, j2, q1"))
+    expr = Expectation(expr, SB, Variable("mb", "m, n, p2"), Variable("CB", "m, n, p2, m2, n2, q2"))
+    expr = Expectation(expr, W, Variable("mw", "r, s, p3"), Variable("CW", "r, s, p3, r2, s2, q3"))
+
+    # Same tensor
+    S = Variable("S", "i, j, p")
+    SA = S.rename({"p":"p1"})
+    SB = S.rename({"p":"p2", "i":"m", "j":"n"})
+    W = S.rename({"p":"p3", "i":"r", "j":"s"})
+    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
+    # expr = Expectation(expr, S, Variable("ma", "i, j, p"), Variable("CA", "i, j, p, i2, j2, p2"))
+    cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
+    expr = Expectation(expr, S, Copy("i, j, p"), cov)
 
     # X = Variable("X", "b, x")
     # Y = Variable("Y", "b, y")
@@ -319,14 +342,14 @@ def main():
     # expr = Derivative(l2, W)
     # expr = expr.simplify()
 
-    X = Variable("X", "b, x")
-    Y = Variable("Y", "b, y")
-    W = Variable("W", "x, y")
-    mu = Variable("mu", "x, y")
-    covar = Variable("C", "x, y, x2, y2")
-    XWmY = X @ W - Y
-    l2 = F.sum(XWmY * XWmY)
-    expr = Expectation(l2, W, mu, covar)
+    # X = Variable("X", "b, x")
+    # Y = Variable("Y", "b, y")
+    # W = Variable("W", "x, y")
+    # mu = Variable("mu", "x, y")
+    # covar = Variable("C", "x, y, x2, y2")
+    # XWmY = X @ W - Y
+    # l2 = F.sum(XWmY * XWmY)
+    # expr = Expectation(l2, W, mu, covar)
 
     #a = Variable("a", [])
     #x = Variable("x", ["i"])
@@ -348,9 +371,9 @@ def main():
     #expr, _, _ = generate_random_tensor_expression(20)
     #expr = expr.simplify()
 
-    #x = Variable("x", ["i"])
-    #expr = Derivative(F.softmax(x, ["i"]), x)
-    #expr = Derivative(expr, x)
+    # x = Variable("x", ["i"])
+    # expr = Derivative(F.softmax(x, ["i"]), x)
+    # expr = Derivative(expr, x)
 
     # x = Variable("x", ["i"])
     # y = Variable("y", ["i"])
