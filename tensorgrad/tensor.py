@@ -841,55 +841,6 @@ class Derivative(Tensor):
         return self.tensor.depends_on(x)
 
 
-# Function(
-#    "pow(-1)",
-#    [],
-#    (
-#        Product(
-#            [Product([Function("exp", [], (Variable("x", ["i"]),)), Copy(["i"])]), Product([Copy(["i_1_"])])]
-#        ),
-#    ),
-# )
-
-
-# Product(
-#    [
-#        Sum(
-#            [
-#                Function(
-#                    "pow(-2)",
-#                    [],
-#                    (Product([Function("exp", [], (Variable("logits", ["C"]),)), Copy(["C"])]),),
-#                )
-#            ],
-#            (-1,),
-#        ),
-#        Sum(
-#            [
-#                Product(
-#                    [
-#                        Derivative(
-#                            Function("exp", [], (Variable("logits", ["C__"], orig=["C"]),)),
-#                            Variable("logits", ["C"]),
-#                            ["C_"],
-#                        ),
-#                        Copy(["C__"]),
-#                    ]
-#                ),
-#                Product(
-#                    [
-#                        Function("exp", [], (Variable("logits", ["C__"], orig=["C"]),)),
-#                        Derivative(Copy(["C__"]), Variable("logits", ["C"]), ["C_"]),
-#                    ]
-#                ),
-#            ],
-#            (1, 1),
-#        ),
-#        Function("exp", [], (Variable("logits", ["C_1__1_"], orig=["C"]),)),
-#    ]
-# )
-
-
 ################################################################################
 # Product
 ################################################################################

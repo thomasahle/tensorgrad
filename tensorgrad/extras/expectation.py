@@ -115,3 +115,6 @@ class Expectation(Tensor):
         )
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
+
+    def depends_on(self, x: "Variable") -> bool:
+        return self.tensor.depends_on(x)

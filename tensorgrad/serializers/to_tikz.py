@@ -122,6 +122,8 @@ class TikzGraph:
             style = "var"
             if degree is not None and degree < 5:
                 style = f"degree{degree}"
+            if label:
+                label = f"${label}$"
             self.lines.append(f"  {node_id}[{style},as={label},{nudge}];")
         elif node_type == "zero":
             self.lines.append(f"  {node_id}[zero,as=0,{nudge}];")
@@ -169,8 +171,17 @@ class TikzGraph:
         # angle = 0, -10, 10, -20, -20 depending on multiplicity
         angle = (-1) ** multiplicity * 20 * (multiplicity // 2)
         side = "left" if multiplicity % 2 == 0 else "right"
+
+        # Wrap in math mode, but not empty strings
+        if label:
+            label = f"${label}$"
+        if start_text:
+            start_text = f"${start_text}$"
+        if end_text:
+            end_text = f"${end_text}$"
+
         self.lines.append(
-            f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "${label}$", "${start_text}$"  at start, "${end_text}$"  at end] ({id2});'
+            f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "{label}", "{start_text}"  at start, "{end_text}"  at end] ({id2});'
         )
 
     def add_subgraph(self, subgraph, style: str, layout: str, cluster_id: str):
