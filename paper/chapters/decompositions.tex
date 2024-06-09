@@ -34,34 +34,35 @@ TODO: Example where the border rank is much smaller than the rank.
 
 Strassen defines 3 tensors of shape $7\times 2\times 2$:
 \begin{align*}
+   \renewcommand*{\arraystretch}{1}
 S_A &= \begin{bmatrix}
-\begin{bmatrix}1 & 0\\0 & 1\end{bmatrix}, &
-\begin{bmatrix}0 & 0\\1 & 1\end{bmatrix}, &
-\begin{bmatrix}1 & 0\\0 & 0\end{bmatrix}, &
-\begin{bmatrix}0 & 0\\0 & 1\end{bmatrix}, &
-\begin{bmatrix}1 & 1\\0 & 0\end{bmatrix}, &
-\begin{bmatrix}-1 & 0\\1 & 0\end{bmatrix}, &
-\begin{bmatrix}0 & 1\\0 & -1\end{bmatrix}
+\smat{1 & 0\\0 & 1}, &
+\smat{0 & 0\\1 & 1}, &
+\smat{1 & 0\\0 & 0}, &
+\smat{0 & 0\\0 & 1}, &
+\smat{1 & 1\\0 & 0}, &
+\smat{-1 & 0\\1 & 0}, &
+\smat{0 & 1\\0 & -1}
 \end{bmatrix}
 \\
 S_B &= \begin{bmatrix}
-\begin{bmatrix}1 & 0\\0 & 1\end{bmatrix}, &
-\begin{bmatrix}1 & 0\\0 & 0\end{bmatrix}, &
-\begin{bmatrix}0 & 1\\0 & -1\end{bmatrix}, &
-\begin{bmatrix}-1 & 0\\1 & 0\end{bmatrix}, &
-\begin{bmatrix}0 & 0\\0 & 1\end{bmatrix}, &
-\begin{bmatrix}1 & 1\\0 & 0\end{bmatrix}, &
-\begin{bmatrix}0 & 0\\1 & 1\end{bmatrix}
+\smat{1 & 0\\0 & 1}, &
+\smat{1 & 0\\0 & 0}, &
+\smat{0 & 1\\0 & -1}, &
+\smat{-1 & 0\\1 & 0}, &
+\smat{0 & 0\\0 & 1}, &
+\smat{1 & 1\\0 & 0}, &
+\smat{0 & 0\\1 & 1}
 \end{bmatrix}
 \\
 W &= \begin{bmatrix}
-\begin{bmatrix}1 & 0\\0 & 1\end{bmatrix}, &
-\begin{bmatrix}0 & 1\\0 & -1\end{bmatrix}, &
-\begin{bmatrix}0 & 0\\1 & 1\end{bmatrix}, &
-\begin{bmatrix}1 & 1\\0 & 0\end{bmatrix}, &
-\begin{bmatrix}-1 & 0\\1 & 0\end{bmatrix}, &
-\begin{bmatrix}0 & 0\\0 & 1\end{bmatrix}, &
-\begin{bmatrix}1 & 0\\0 & 0\end{bmatrix}
+\smat{1 & 0\\0 & 1}, &
+\smat{0 & 1\\0 & -1}, &
+\smat{0 & 0\\1 & 1}, &
+\smat{1 & 1\\0 & 0}, &
+\smat{-1 & 0\\1 & 0}, &
+\smat{0 & 0\\0 & 1}, &
+\smat{1 & 0\\0 & 0}
 \end{bmatrix}
 \end{align*}
 These tensors have the neat property that they factor $I_2\otimes I_2\otimes I_2$:

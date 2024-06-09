@@ -63,10 +63,19 @@ H_{2^n}
 = H_2^{\otimes n}
 = H_2 \otimes \dots\otimes H_2
 $
-where $H_2=\begin{bmatrix}1 & 1 \\ 1 & -1\end{bmatrix}$.
+where $H_2=\smat{1 & 1 \\ 1 & -1}$.
 For example
 \[
-  H_4 = \begin{bmatrix}
+  \renewcommand*{\arraystretch}{1}
+  H_4 =
+  H_2 \otimes H_2
+= \begin{bmatrix}
+   H_{2}
+   & H_{2}
+   \\ H_{2}
+   & -H_{2}
+\end{bmatrix}
+=  \begin{bmatrix}
     1 &  1 &  1 &  1\\
     1 & -1 &  1 & -1\\
     1 &  1 & -1 & -1\\
@@ -92,6 +101,7 @@ H_{2^n} =
 \]
 The Fast Hadamard Transform (FHT) transform is usually described recursively by:
 \[
+   \renewcommand*{\arraystretch}{1.3}
 H_{2^n} x
 = \begin{bmatrix}
    H_{2^{n-1}} 
@@ -115,20 +125,36 @@ Then the ``fast Kronecker multiplication'' method takes time $(a_1 a_2\cdots a_n
 
 \subsubsection{Fourier}
 
-A more common matrix is the Discrete Fourier Matrix.
-It is defined by $(F_N)_{i,j}=\omega^{ij}$, 
-where $\omega = e^{-2\pi i/N}$.
-We can write it out as 
+% A more common matrix is the Discrete Fourier Matrix.
+\\
+\\
+The Discrete Fourier Matrix is defined by $(F_N)_{i,j}=\omega^{ij}$,
+where $\omega = e^{-2\pi i/N}$:
+%We can write it out as
 \[
-F_N =  \begin{bmatrix}
-1&1&1&1&\cdots &1 \\
-1&\omega&\omega^2&\omega^3&\cdots&\omega^{N-1} \\
-1&\omega^2&\omega^4&\omega^6&\cdots&\omega^{2(N-1)}\\ 1&\omega^3&\omega^6&\omega^9&\cdots&\omega^{3(N-1)}\\
-\vdots&\vdots&\vdots&\vdots&\ddots&\vdots\\
-1&\omega^{N-1}&\omega^{2(N-1)}&\omega^{3(N-1)}&\cdots&\omega^{(N-1)(N-1)}
-\end{bmatrix}
+   \renewcommand*{\arraystretch}{1}
+F_N =
+   \begin{bmatrix}
+      1&1&1&1&\cdots &1 \\
+      1&\omega&\omega^2&\omega^3&\cdots&\omega^{N-1} \\
+      1&\omega^2&\omega^4&\omega^6&\cdots&\omega^{2(N-1)}\\ 1&\omega^3&\omega^6&\omega^9&\cdots&\omega^{3(N-1)}\\
+      \vdots&\vdots&\vdots&\vdots&\ddots&\vdots\\
+      1&\omega^{N-1}&\omega^{2(N-1)}&\omega^{3(N-1)}&\cdots&\omega^{(N-1)(N-1)}
+   \end{bmatrix}
 .
 \]
+\[
+   =
+   \begin{tikzpicture}[baseline=-.25em, y=1.3em, inner sep=1pt]
+      \node at (0,0) {$\bigg\{\mathrm{exp} \,\, 2\pi i/N$};
+      \node (a) at (1,1) {$\mathrm{arange}(N)$};
+      \node (b) at (1,-1) {$\mathrm{arange}(N)$};
+      \node at (2,0) {$\bigg\}$};
+      \draw (a.north) -- ++(0, .5);
+      \draw (b.south) -- ++(0, -.5);
+   \end{tikzpicture}
+\]
+TODO: Show how the matrix can be written with the function notation.
 
 The Good-Thomas Fast Fourier Transformer (FFT) uses a decomposition based on the Chinese Remainder Theorem:
 \[
@@ -156,6 +182,7 @@ Next we will see how to reduce this to $O(N\log N)$.
 
 The classical Cooley-Tukey FFT algorithm uses a recursion:
 \[
+   \renewcommand*{\arraystretch}{1.3}
 F_N =
 \begin{bmatrix}
 I & I \\
@@ -190,7 +217,7 @@ or in pytorch: \texttt{x.permute([3,0,1,2])}.
 Also note that
 $\smat{I&I\\I&-I} = H_2 \otimes I$ and $\smat{F_{N/2} & 0\\0&F_{N/2}}=I_2 \otimes F_{N/2}$.
 So we can write in tensor diagram notation:
-\[
+\begin{align*}
 F_N =
 \begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
     \node[rectangle,draw] (H) at (0,0) {$H_2$};
@@ -224,63 +251,136 @@ F_N =
     \draw (L2) -- (l2) -- (b2) -- (F) -- (s2) -- (r1);
     \draw (L3) -- (l3) -- (b3) -- (F) -- (s3) -- (r2);
 \end{tikzpicture}
-=
+&=
 \begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
-    \node[rectangle,draw] (H) at (0,0) {$H_2$};
-    \node[rectangle,draw] (H2) at (2,-1) {$H_2$};
-    \node[rectangle,draw] (H3) at (4,-2) {$H_2$};
-    \node[rectangle,draw] (H4) at (6,-3) {$H_2$};
-    \node[inner sep=0pt, minimum size=0pt] (l1) at (0,-1) {};
-    \node[inner sep=0pt, minimum size=0pt] (l2) at (0,-2) {};
-    \node[inner sep=0pt, minimum size=0pt] (l3) at (0,-3) {};
-    \node[inner sep=0pt, minimum size=0pt] (L0) at (-1,0) {};
-    \node[inner sep=0pt, minimum size=0pt] (L1) at (-1,-1) {};
-    \node[inner sep=0pt, minimum size=0pt] (L2) at (-1,-2) {};
-    \node[inner sep=0pt, minimum size=0pt] (L3) at (-1,-3) {};
-    \node[inner sep=0pt, minimum size=0pt] (b0) at (1,0) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b1) at (1,-1) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b2) at (1,-2) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b3) at (1,-3) {$\sbullet$};
-    \node (D) at (.5,-4.5) {$D_N$};
-    \node[inner sep=0pt, minimum size=0pt] (b10) at (3,0) {};
-    \node[inner sep=0pt, minimum size=0pt] (b11) at (3,-1) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b12) at (3,-2) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b13) at (3,-3) {$\sbullet$};
-    \node (D2) at (2.5,-4.5) {$D_{N/2}$};
-    \node[inner sep=0pt, minimum size=0pt] (b20) at (5,0) {};
-    \node[inner sep=0pt, minimum size=0pt] (b21) at (5,-1) {};
-    \node[inner sep=0pt, minimum size=0pt] (b22) at (5,-2) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b23) at (5,-3) {$\sbullet$};
-    \node (D3) at (4.5,-4.5) {$D_{N/4}$};
-    \node[inner sep=0pt, minimum size=0pt] (r0) at (8,0) {};
-    \node[inner sep=0pt, minimum size=0pt] (r1) at (8,-1) {};
-    \node[inner sep=0pt, minimum size=0pt] (r2) at (8,-2) {};
-    \node[inner sep=0pt, minimum size=0pt] (r3) at (8,-3) {};
-    \node[inner sep=0pt, minimum size=0pt] (s0) at (7,0) {};
-    \node[inner sep=0pt, minimum size=0pt] (s1) at (7,-1) {};
-    \node[inner sep=0pt, minimum size=0pt] (s2) at (7,-2) {};
-    \node[inner sep=0pt, minimum size=0pt] (s3) at (7,-3) {};
-    \draw (b0) -- (D);
-    \draw (b1) -- (D);
-    \draw (b2) -- (D);
-    \draw (b3) -- (D);
-    \draw (b11) -- (D2);
-    \draw (b12) -- (D2);
-    \draw (b13) -- (D2);
-    \draw (b22) -- (D3);
-    \draw (b23) -- (D3);
-    \draw (L0) -- (H) -- (b0) -- (s0) -- (r3);
-    \draw (L1) -- (l1) -- (b1) -- (H2) -- (b11) -- (s1) -- (r2);
-    \draw (L2) -- (l2) -- (b2) -- (b12) -- (H3) -- (b22) -- (s2) -- (r1);
-    \draw (L3) -- (l3) -- (b3) -- (b13) -- (b23) -- (H4) -- (s3) -- (r0);
+    % Draw H nodes and connections
+    \foreach \i in {0,...,3} {
+        \node[rectangle,draw] (H\i) at (2*\i,-\i) {$H_2$};
+        \node[inner sep=0pt, minimum size=0pt] (l\i) at (0,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (L\i) at (-1,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (s\i) at (7,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (r\i) at (8,-\i) {};
+    }
+    % Draw D nodes and connections to sbullets
+    \foreach \i in {0, 1, 2} {
+        \node (D\i) at (0.5+\i*2,-4.5) {$D_{N/2^\i}$};
+        \foreach \k in {\i,...,3} {
+            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1+\i*2,-\k) {$\sbullet$};
+            \draw (b\i\k) -- (D\i);
+        }
+    }
+    \draw (L0) -- (H0) -- (b0) -- (s0) -- (r3);
+    \draw (L1) -- (l1) -- (b1) -- (H1) -- (b11) -- (s1) -- (r2);
+    \draw (L2) -- (l2) -- (b2) -- (b12) -- (H2) -- (b22) -- (s2) -- (r1);
+    \draw (L3) -- (l3) -- (b3) -- (b13) -- (b23) -- (H3) -- (s3) -- (r0);
+\end{tikzpicture}
+%\\&=
+%\begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
+%    % Draw H nodes and connections
+%    \foreach \i in {0,...,3} {
+%        \node[rectangle,draw] (H\i) at (2*\i,-3+\i) {$H_2$};
+%        \node[inner sep=0pt, minimum size=0pt] (l\i) at (0,-\i) {};
+%        \node[inner sep=0pt, minimum size=0pt] (L\i) at (-1,-\i) {};
+%        \node[inner sep=0pt, minimum size=0pt] (s\i) at (7,-\i) {};
+%        \node[inner sep=0pt, minimum size=0pt] (r\i) at (-2,-\i) {};
+%    }
+%    % Draw D nodes and connections to sbullets
+%    \foreach \i in {0, 1, 2} {
+%        \node (D\i) at (0.5+\i*2,-4.5) {$D_{N/2^\i}$};
+%        \foreach \k in {\i,...,3} {
+%            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1+\i*2,-\k) {$\sbullet$};
+%            \draw (b\i\k) -- (D\i);
+%        }
+%    }
+%    \draw (r3) -- (L0) -- (H3) -- (b0) -- (s0);
+%    \draw (r2) -- (L1) -- (l1) -- (b1) -- (H2) -- (b11) -- (s1);
+%    \draw (r1) -- (L2) -- (l2) -- (b2) -- (H1) -- (b12) -- (b22) -- (s2);
+%    \draw (r0) -- (L3) -- (H0) -- (l3) -- (b3) -- (b13) -- (b23) -- (s3);
+%\end{tikzpicture}
+.
+\end{align*}
+Since one can multiply with the permutation and diagonal matrices in linear time, the $O(n\log n)$ time complexity follows from the same argument as for Hadamard.
+
+Note there are a bunch of symmetries, such as by transposing (horizontal flip), since the matrix is symmetric.
+Or by pushing the permutation to the left side.
+
+We don't have to split the matrix in half, we can also split it in thirds, fourths, etc.
+With this generalized Cooley-Tukey algorithm, we get the following diagram:
+\[
+   F_N =
+\begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
+    % Draw H nodes and connections
+    \foreach \i in {0,...,3} {
+        \node[rectangle,draw] (H\i) at (2*\i,-\i) {$F_{n_\i}$};
+        \node[inner sep=0pt, minimum size=0pt] (L\i) at (-1,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (s\i) at (7,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (r\i) at (8,-\i) {};
+    }
+    % Draw D nodes and connections to sbullets
+    \node (D0) at (0.5+0*2,-4.5) {$\scriptstyle F^{(n_0, n_1n_2n_3)}$};
+    \node (D1) at (0.5+2.2,-4.5) {$\scriptstyle F^{(n_1, n_2n_3)}$};
+    \node (D2) at (0.5+2*2,-4.5) {$\scriptstyle F^{(n_2, n_3)}$};
+    \foreach \i in {0, 1, 2} {
+        \foreach \k in {\i,...,3} {
+            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1+\i*2,-\k) {$\sbullet$};
+            \draw (b\i\k) -- (D\i);
+        }
+    }
+    \draw (L0) -- (H0) -- (b0) -- (s0) -- (r3);
+    \draw (L1) -- (b1) -- (H1) -- (b11) -- (s1) -- (r2);
+    \draw (L2) -- (b2) -- (b12) -- (H2) -- (b22) -- (s2) -- (r1);
+    \draw (L3) -- (b3) -- (b13) -- (b23) -- (H3) -- (s3) -- (r0);
+\end{tikzpicture}
+,
+\]
+where $n_0n_1n_2n_3 = N$.
+Here we replaced the $D_N$ matrix with the ``generalized'' Fourier matrix $F^{(a,b)}$ matrix, which is defined as $F^{(a,b)}_{j,k} = e^{-2\pi i j k/(ab)}$, and we reshaped as necessary.
+In the simple case of where we split in just two parts of roughly $n_1=n_2=\sqrt{N}$, this is also called ``Four step FFT'' or Bailey's FFT algorithm.
+
+We can use the property $F_{a,bc} = F_{a,b} \bullet F_{a,c}^{1/b}$ to simplify the diagram further:
+\[
+   F_N =
+\begin{tikzpicture}[baseline=-2em, x=2.5em, y=1.5em, inner sep=1pt]
+    % Draw H nodes and connections
+    \foreach \i in {0,...,3} {
+        \node[rectangle,draw] (H\i) at (3.25*\i-\i*\i/4,-\i) {$F_{n_\i}$};
+        \node[inner sep=0pt, minimum size=0pt] (L\i) at (-1,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (s\i) at (8.5,-\i) {};
+        \node[inner sep=0pt, minimum size=0pt] (r\i) at (9.5,-\i) {};
+    }
+    % Draw D nodes and connections to sbullets
+    \foreach \i in {0, 1, 2} {
+        \pgfmathtruncatemacro{\j}{\i+1}
+        \foreach \k in {\j,...,3} {
+            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\i) {$\sbullet$};
+            \node[inner sep=0pt, minimum size=0pt] (c\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\k) {$\sbullet$};
+        }
+    }
+    \node (D00) at (1,-.5) {$\scriptscriptstyle F^{n_0, n_1}$};
+    \node (D01) at (1.5,-1.5) {$\scriptscriptstyle F^{n_0, n_2}$};
+    \node (D02) at (2,-2.5) {$\scriptscriptstyle F^{n_0, n_3}$};
+    \draw (b01) -- (D00) -- (c01);
+    \draw (b02) -- (D01) -- (c02);
+    \draw (b03) -- (D02) -- (c03);
+    \node (D10) at (4,-1.5) {$\scriptscriptstyle F^{n_1, n_2}$};
+    \node (D11) at (4.5,-2.5) {$\scriptscriptstyle F^{n_1, n_3}$};
+    \draw (b12) -- (D10) -- (c12);
+    \draw (b13) -- (D11) -- (c13);
+    \node (D20) at (6.5,-2.5) {$\scriptscriptstyle F^{n_2, n_3}$};
+    \draw (b23) -- (D20) -- (c23);
+    % Horizontal connections
+    \draw (L0) -- (H0) -- (b01) -- (b02) -- (b03) -- (s0) -- (r3);
+    \draw (L1) -- (c01) -- (H1) -- (b12) -- (b13) -- (s1) -- (r2);
+    \draw (L2) -- (c02) -- (c12) -- (H2) -- (b23) -- (s2) -- (r1);
+    \draw (L3) -- (c03) -- (c13) -- (c23) -- (H3) -- (s3) -- (r0);
 \end{tikzpicture}
 .
 \]
-Since one can multiply with the permutation and diagonal matrices in linear time, the $O(n\log n)$ time complexity follows from the same argument as for Hadamard.
+% This algorithm is actually slower (n (log n)^2), because the pair-wise D matrices are not actually faster.
+In the simple case where we split in $2$ every time, this is also called the ``Quantum FFT'' algorithm.
 
-TODO: We can also talk about the row/column version of Cooley-Tukey (Bailey's FFT algorithm).
-The nice thing is that we can compose arbitrarily (not necessarily in $H_2$ chunks), and the $D_N$ matrices have a nice form (they are just fourier matrices!)
-So they could in principle be decomposed too, by the same algorithm...
+We hid some stuff above, namely that the matrices should be divided by different $N$s.
+
 
 Note that this figure may look different from some FFT diagrams you have seen.
 These typically look like this:
@@ -355,7 +455,9 @@ Skip
 Describes the matrix $J$.
 All of this is trivial with diagrams.
 \subsection{Symmetric, Skew-symmetric/Antisymmetric}
+
 Could introduce Penrose's symmetric tensors here?
+
 \subsection{Toeplitz Matrices}
 Could talk about the convolution tensor here...
 \subsection{Units, Permutation and Shift}
