@@ -1131,27 +1131,29 @@ class Product(Tensor):
     def components(self) -> list["Product"]:
         """Find all disjoint components, that is, subgraphs that are not connected by an edge."""
         edges = defaultdict(list)
-        for t in self.tensors:
+        for i, t in enumerate(self.tensors):
             for e in t.edges:
-                edges[e].append(t)
+                edges[e].append(i)
         # Flood fill
-        colors = TensorDict(key_fn=id)
-        queue = deque(self.tensors)
+        # We can't use id as a key, since the same tensor can appear in multiple components.
+        # But we can use the "number" of the tensor, which is unique.
+        colors: dict[int, int] = {}
+        queue = deque(range(len(self.tensors)))
         while queue:
-            t = queue.pop()  # We actually use the queue as a stack
-            if t not in colors:
-                colors[t] = len(colors)
-            for e in t.edges:
-                for v in edges[e]:
-                    if v not in colors:
-                        colors[v] = colors[t]
-                        queue.append(v)
+            i = queue.pop()  # We actually use the queue as a stack
+            if i not in colors:
+                colors[i] = len(colors)
+            for e in self.tensors[i].edges:
+                for j in edges[e]:
+                    if j not in colors:
+                        colors[j] = colors[i]
+                        queue.append(j)
         # Then we group
         components = defaultdict(list)
-        for tensor, color in colors.items():
-            components[color].append(tensor)
+        for i, color in colors.items():
+            components[color].append(self.tensors[i])
         res = [Product(sub) for sub in components.values()]
-        assert set(Product(res).edges) == set(self.edges)
+        assert set(Product(res).edges) == set(self.edges), f"{self.edges=}, {Product(res).edges=}"
         return res
 
     def _compute_canonical(self):

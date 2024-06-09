@@ -249,27 +249,53 @@ def main():
     expr = act @ Copy("dout1, dout2, dout") @ W2
 
 
-    vectors, variables = make_random_tree(3)
+    vectors, variables = make_random_tree(1)
     for vec in vectors:
         print(vec)
     for var in variables:
         print(var)
     expr = Product(vectors + variables)
     expr = F.frobenius2(expr)
-    expr = expr - sum([v @ v for v in vectors], Zero(expr.edges))
-    expr = expr @ expr
+    expected = 1
+    for v in vectors:
+        expected = expected * v @ v
+    expr = expr - expected
+    # expr = expr @ expr
     for v in variables:
-        mu = Zero(v.edges)
-        covar = Product([Copy([e, f"{e}'"]) for e in v.edges])
-        expr = Expectation(expr, v, mu, covar)
-    expr = expr.full_simplify()
+        expr = Expectation(expr, v)
+    # expr = expr.full_simplify()
+    # expr = expr.full_simplify()
+    # expr = expr.full_simplify()
 
-    x = Variable("x", "batch, din")
-    W1 = Variable("W", "din1, dout1, k")
-    act = x @ Copy("din, din1, din2") @ W1
-    act = Function("f", [], (act,))
-    W2 = Variable("W2", "din2, dout2, k")
-    expr = act @ Copy("dout1, dout2, dout") @ W2
+
+    # A = Variable('A', 'i')
+    # B = Variable('V', 'i')
+    # expr = A @ B
+    # expr = expr @ expr - B @ B
+    # expr = Expectation(expr, A)
+
+    # KAN network:
+    # x = Variable("x", "batch, din")
+    # W1 = Variable("W", "din1, dout1, k")
+    # act = x @ Copy("din, din1, din2") @ W1
+    # act = Function("f", [], (act,))
+    # W2 = Variable("W2", "din2, dout2, k")
+    # expr = act @ Copy("dout1, dout2, dout") @ W2
+
+    # S = Variable("S", "i, j, p")
+    # SA = S.rename({"p":"p1"})
+    # SB = S.rename({"p":"p2", "i":"m", "j":"n"})
+    # W = S.rename({"p":"p3", "i":"r", "j":"s"})
+    # expr = Product([SA, SB, W, Copy("p1, p2, p3")])
+    # # expr = Expectation(expr, S, Copy("i, j, p"))
+    # # expr.full_simplify()
+
+    # S = Variable("S", "p")
+    # S1 = S.rename({"p":"p1"})
+    # expr = Product([S, S1, Copy("p, p1, p2")])
+    # expr = Expectation(expr, S)
+    # # expr.full_simplify()
+
 
     # x = Variable("x", ["i"])
     # eps = Variable("eps", ["j"])

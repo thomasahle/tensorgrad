@@ -96,6 +96,10 @@ class Edge:
     style: str
 
 
+# Global name dict, to avoid bad characters in Tikz names
+name_dict = defaultdict(lambda: str(len(name_dict)))
+
+
 class TikzGraph:
     def __init__(self):
         self.lines = []
@@ -105,7 +109,7 @@ class TikzGraph:
         # print(f"adding node {node_id} of type {node_type} with label {label}")
         if isinstance(node_id, dict):
             node_id = node_id["node_id"]
-        node_id = node_id.replace("_", "+")
+        node_id = name_dict[node_id]
         if node_id in self.node_ids:
             print("Warning: Node already exists. Ignoring")
             return
@@ -156,8 +160,8 @@ class TikzGraph:
             style = id2.get("style", "")
             end_text = id2.get("text", "")
             id2 = id2["node_id"]
-        id1 = id1.replace("_", "+")
-        id2 = id2.replace("_", "+")
+        id1 = name_dict[id1]
+        id2 = name_dict[id2]
         if isinstance(label, str):
             label, _style = format_label(label)
         assert id1 in self.node_ids, f"Node {id1} does not exist in {self.node_ids}"
@@ -185,6 +189,7 @@ class TikzGraph:
         )
 
     def add_subgraph(self, subgraph, style: str, layout: str, cluster_id: str):
+        cluster_id = name_dict[cluster_id]
         self.lines.append(f"{cluster_id}[{style}] // [{layout}] {{")
         self.lines += subgraph.lines
         self.lines.append("},")

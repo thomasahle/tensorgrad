@@ -9,6 +9,7 @@ from tensorgrad.serializers.to_d3 import to_d3
 from tensorgrad import Derivative
 
 def compile_latex(expr, suffix=""):
+    print(expr)
     latex_code = to_tikz(expr)
     print(latex_code)
 

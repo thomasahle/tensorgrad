@@ -1,8 +1,8 @@
-from tensorgrad.tensor import Constant, Derivative, Product, Sum, Tensor, Variable, unused_edge_names, Function
+from tensorgrad.tensor import Constant, Derivative, Product, Sum, Tensor, Variable, unused_edge_names, Function, Copy, Zero
 
 
 class Expectation(Tensor):
-    def __init__(self, tensor: Tensor, wrt: Variable, mu: Tensor, covar: Tensor):
+    def __init__(self, tensor: Tensor, wrt: Variable, mu: Tensor = None, covar: Tensor = None):
         """
         Take the Expectation of a tensor with respect to a variable, assumed to have a multi-normal
         distribution with the given expectation and covariance.
@@ -16,8 +16,8 @@ class Expectation(Tensor):
         Args:
             tensor (Tensor): The input tensor.
             wrt (Variable): The variable with respect to which the expectation is computed.
-            mu (Tensor): The mean tensor.
-            covar (Tensor): The covariance tensor.
+            mu (Tensor): The mean tensor. Defaults to the zero tensor.
+            covar (Tensor): The covariance tensor. Defaults to the identity tensor.
 
         Raises:
             ValueError: If `mu` does not have the same edges as `wrt` in the same order.
@@ -27,6 +27,11 @@ class Expectation(Tensor):
         self.tensor = tensor
         self.edges = tensor.edges
         self.wrt = wrt
+        if mu is None:
+            mu = Zero(wrt.edges)
+        if covar is None:
+            new_names, _ = unused_edge_names(wrt.edges, wrt.edges)
+            covar = Product([Copy([e, e2]) for e, e2 in zip(wrt.edges, new_names)])
         self.mu = mu
         self.covar = covar
         if mu.edges != wrt.edges:
