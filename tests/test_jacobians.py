@@ -2,7 +2,7 @@ import torch
 from torch.autograd.functional import jacobian
 
 from tensorgrad.tensor import Variable
-from tensorgrad.utils import rand_values, assert_close
+from tensorgrad.testutils import rand_values, assert_close
 
 
 def test_simple_vector():

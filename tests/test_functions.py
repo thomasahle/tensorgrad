@@ -5,7 +5,7 @@ import torch.nn.functional as tF
 from tensorgrad.tensor import Variable
 import tensorgrad.functions as F
 
-from tensorgrad.utils import rand_values, assert_close
+from tensorgrad.testutils import rand_values, assert_close
 
 
 def test_frobenius2():

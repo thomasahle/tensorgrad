@@ -1,7 +1,7 @@
 import pytest
 from tensorgrad.functions import frobenius2
 from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
-from tensorgrad.utils import assert_close, rand_values
+from tensorgrad.testutils import assert_close, rand_values
 
 
 def test_x():

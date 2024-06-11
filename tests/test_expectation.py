@@ -3,7 +3,7 @@ from einops import einsum
 from tensorgrad import Variable
 from tensorgrad.extras.expectation import Expectation
 from tensorgrad import Copy, Product, Zero
-from tensorgrad.utils import assert_close, rand_values
+from tensorgrad.testutils import assert_close, rand_values
 
 
 def test_names():

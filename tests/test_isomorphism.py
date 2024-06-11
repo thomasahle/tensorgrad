@@ -1,7 +1,7 @@
 import torch
 from tensorgrad import Variable
 from tensorgrad.tensor import Copy, Product, Sum
-from tensorgrad.utils import assert_close, rand_values
+from tensorgrad.testutils import assert_close, rand_values
 import tensorgrad.functions as F
 
 

@@ -265,16 +265,8 @@ def main():
         expr = Expectation(expr, v)
     # expr = expr.full_simplify()
     # expr = expr.full_simplify()
-    # expr = expr.full_simplify()
+    expr = expr.full_simplify()
 
-
-    # S = Variable("S", "i, j, p")
-    # SA = S.rename({"p":"p1"})
-    # SB = S.rename({"p":"p2", "i":"m", "j":"n"})
-    # W = S.rename({"p":"p3", "i":"r", "j":"s"})
-    # expr = Product([SA, SB, W, Copy("p1, p2, p3")])
-    # cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
-    # expr = Expectation(expr, S, Copy("i, j, p"), cov)
 
     # A = Variable('A', 'i')
     # B = Variable('V', 'i')
