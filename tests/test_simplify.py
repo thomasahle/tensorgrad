@@ -29,3 +29,8 @@ def test_copy_loop():
     # But the copy simplification happens in Product.simplify, and does that even know about linked variables?
     # And how do we choose which of the linked variables to keep?
     # Maybe the best solution is to just keep the loop alive...
+
+
+def test_copy_double():
+    expr = Copy("p0, p2, p0_") @ Copy("p0, p0_")
+    assert expr.simplify() == Copy("p2")

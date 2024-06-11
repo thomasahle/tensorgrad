@@ -7,6 +7,7 @@ from tensorgrad.serializers.to_tikz import to_tikz
 from tensorgrad.serializers.to_d3 import to_d3
 
 from tensorgrad import Derivative
+from tensorgrad.extras import Expectation
 
 def compile_latex(expr, suffix=""):
     print(expr)
@@ -98,7 +99,7 @@ def save_steps(expr, slow_grad=False):
     # TODO: This is still not good enough, since there may be a double derivative somewhere inside the tensor.
     cnt_derivatives = 0
     d = expr
-    while isinstance(d, Derivative):
+    while isinstance(d, Derivative) or isinstance(d, Expectation):
         cnt_derivatives += 1
         d = d.tensor
     if cnt_derivatives > 1:

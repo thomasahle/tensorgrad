@@ -2,7 +2,7 @@ import torch
 from einops import einsum
 from tensorgrad import Variable
 from tensorgrad.extras.expectation import Expectation
-from tensorgrad.tensor import Copy, Zero
+from tensorgrad import Copy, Product, Zero
 from tensorgrad.utils import assert_close, rand_values
 
 
@@ -127,3 +127,46 @@ def test_quartic2():
 
     res = expr.evaluate(ts, dims={"i": i})
     assert_close(res, expected, rtol=0.05, atol=0.01)
+
+
+def test_x():
+    S = Variable("S", "p0")
+    S1 = S.rename({"p0": "p1"})
+    # out_p2 = sum_{p1, p1} S_{p0} S_{p1} [p0 = p1 = p2]
+    #        = S_{p2} S_{p2}
+    #        = S_{p2}^2
+    # E[out]_p2 = E[out_p2] = E[S_{p2}^2] = 1
+    expr = Product([S, S1, Copy("p0, p1, p2")])
+    expr = Expectation(expr, S)
+    assert expr.simplify() == Copy("p2")
+
+
+def test_triple_S():
+    # This test comes from a failed attempt to give an "expected value" Strassen algorithm
+    # out_{i, j, m, n, r, s}
+    # = sum_p E[S_ijp S_mnp S_rsp]
+    # = sum_p E[(T_ijp+[i=j=p]) (T_mnp+[m=n=p]) (T_rsp+[r=s=p])]
+    # = sum_p E[
+    #     [i=j=p][m=n=p][r=s=p]
+    #     + [i=j=p][m=n=p] T_rsp + [m=n=p][r=s=p] T_ijp + [i=j=p][r=s=p]T_mnp
+    #     + [r=s=p] T_ijp T_mnp + [m=n=p] T_ijp T_rsp + [i=j=p] T_mnp T_rsp
+    #     + T_ijp T_mnp T_rsp
+    #     ]
+    # = [i=j=m=n=r=s]
+    # + 0
+    # + [r=s][i=m][j=n] + [m=n][i=r][j=s] + [i=j][m=r][n=s]
+    # + 0
+    S = Variable("S", "i, j, p")
+    SA = S.rename({"p": "p1"})
+    SB = S.rename({"p": "p2", "i": "m", "j": "n"})
+    W = S.rename({"p": "p3", "i": "r", "j": "s"})
+    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
+    cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
+    expr = Expectation(expr, S, Copy("i, j, p"), cov)
+    expr = expr.full_simplify()
+    assert expr == (
+        Copy("i, j, m, n, r, s")
+        + Copy("r, s") @ Copy("i, m") @ Copy("j, n")
+        + Copy("m, n") @ Copy("i, r") @ Copy("j, s")
+        + Copy("i, j") @ Copy("m, r") @ Copy("n, s")
+    )

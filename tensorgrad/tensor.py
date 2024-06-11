@@ -1015,7 +1015,8 @@ class Product(Tensor):
                         # We could reduce the number of edges here, but then we'd have to check which
                         # are linked to variables, so we can still evaluate the copy tensor.
                         continue
-                    new = Copy(list(set(t1.edges + t2.edges) - {e}))
+                    # Don't just remove e, but remove all shared edges
+                    new = Copy(list(set(t1.edges) ^ set(t2.edges)))
                     # Can't use children.remove(t1) since we've overloaded equality to mean isomorphic...
                     tensors = [t for t in tensors if t is not t1]
                     tensors = [t for t in tensors if t is not t2]
@@ -1128,8 +1129,13 @@ class Product(Tensor):
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
 
-    def components(self) -> list["Product"]:
-        """Find all disjoint components, that is, subgraphs that are not connected by an edge."""
+    def components(self, return_colors=False) -> list["Product"]:
+        """Find all disjoint components, that is, subgraphs that are not connected by an edge.
+
+        Returns either:
+            - A list of disjoint components, each represented by a Product tensor.
+            - A dictionary mapping each position in self.tensors to a component number.
+        """
         edges = defaultdict(list)
         for i, t in enumerate(self.tensors):
             for e in t.edges:
@@ -1137,12 +1143,14 @@ class Product(Tensor):
         # Flood fill
         # We can't use id as a key, since the same tensor can appear in multiple components.
         # But we can use the "number" of the tensor, which is unique.
+        n_colors = 0
         colors: dict[int, int] = {}
         queue = deque(range(len(self.tensors)))
         while queue:
             i = queue.pop()  # We actually use the queue as a stack
             if i not in colors:
-                colors[i] = len(colors)
+                colors[i] = n_colors
+                n_colors += 1
             for e in self.tensors[i].edges:
                 for j in edges[e]:
                     if j not in colors:
@@ -1154,6 +1162,10 @@ class Product(Tensor):
             components[color].append(self.tensors[i])
         res = [Product(sub) for sub in components.values()]
         assert set(Product(res).edges) == set(self.edges), f"{self.edges=}, {Product(res).edges=}"
+        # If we only want the colors, we can exit here
+        if return_colors:
+            mapping = [[j for j in range(len(self.tensors)) if colors[j] == i] for i in range(n_colors)]
+            return res, colors, mapping
         return res
 
     def _compute_canonical(self):
@@ -1197,19 +1209,26 @@ class Product(Tensor):
             # Hm, actually it seams that no, we actually want them to have the same hash?
             # This is related to test_isomorphism/test_transpose_grad. It just isn't possible to get a perfect answer
             # unless we actually start using automorphism groups. :(
-            numbers = TensorDict([(t, i) for i, t in enumerate(tensors)], key_fn=id)
+
+            # Compute the connected components
+            _comps, _colors, mapping = Product(tensors).components(return_colors=True)
+            # Identify components that are identical
             identical_components = defaultdict(list)
-            # Group by certificate
-            for prod in Product(tensors).components():
-                p_cert = tuple(sorted(hashes[numbers[t]] for t in prod.tensors))
-                identical_components[p_cert].append(prod.tensors)
-            # The tensors's hash get combined with a number
-            for p_cert, comps in identical_components.items():
-                for i, ts in enumerate(comps):
-                    for t in ts:
-                        # Hack
-                        if t.rank > 1:
-                            hashes[numbers[t]] = hash((i, hashes[numbers[t]]))
+            for ids in mapping:
+                p_cert = tuple(sorted(hashes[i] for i in ids))
+                identical_components[p_cert].append(ids)
+            for p_cert, idss in identical_components.items():
+                # If two components are identical, we have to distinguish them
+                # We do this by combining the hash of each tensor with the component number
+                for j, ids in enumerate(idss):
+                    for i in ids:
+                        # We try to compromise with our limited representation capacity
+                        # for symmetries by only disambiguating rank >= 2 tensors.
+                        if tensors[i].rank > 1:
+                            hashes[i] = hash((j, hashes[i]))
+
+            # One more Weisfeller Lehman iteration to update the outer hashes
+            # hashes = [hash((h,) + tuple(sorted(hashes[j] for j in row))) for row, h in zip(adj, hashes)]
 
         # The last hashes are for the new nodes we created on the free tensors. They can be used to match two graphs.
         # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
@@ -1388,9 +1407,17 @@ class Sum(Tensor):
 
 class TensorDict(UserDict):
     def __init__(self, items=(), *, key_fn: Callable, default_fn: Callable = None):
+        """A dictionary that calls key_fn on the keys before storing/retrieving them.
+
+        Args:
+            items: Initial (key, value) paiurs to store in the dictionary.
+            key_fn: A function that takes a key and returns a new key.
+            default_fn: A function that returns a default value when a key is not found.
+        """
         super().__init__()
         self.default_fn = default_fn
         self.key_fn = key_fn
+        # assert key_fn is not id, "Using id as key_fn is usually not what you want."
         for k, v in items:
             self[k] = v
 
@@ -1469,17 +1496,6 @@ def make_distinct(*tensors: list["Tensor"], used_names=None) -> list["Tensor"]:
         res.append(t.rename(rename))
         renames.append(rename)
     return res, renames
-
-
-def join_dicts(all_shapes: Iterable[dict[str, int]]) -> dict[str, int]:
-    shapes = {}
-    for s in all_shapes:
-        for k, v in s.items():
-            if k in shapes:
-                if shapes[k] != v:
-                    raise ValueError(f"Shapes mismatch: {shapes[k]} != {v}")
-        shapes |= s
-    return shapes
 
 
 def compute_edge_dims(
