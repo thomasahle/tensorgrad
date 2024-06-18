@@ -3,10 +3,9 @@ from tensorgrad.tensor import TensorDict
 from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
-from tensorgrad.utils import generate_random_tensor_expression
+from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
 from tensorgrad.extras.expectation import Expectation
 from tensorgrad.imgtools import save_steps
-from tensorgrad.random_tree import make_random_tree
 
 
 def l2_grad_x():
@@ -249,24 +248,30 @@ def main():
     expr = act @ Copy("dout1, dout2, dout") @ W2
 
 
-    vectors, variables = make_random_tree(2)
-    for vec in vectors:
-        print(vec)
-    for var in variables:
-        print(var)
-    expr = Product(vectors + variables)
-    expr = F.frobenius2(expr)
-    expected = 1
-    for v in vectors:
-        expected = expected * v @ v
-    expr = expr - expected
+    # vectors, variables = make_random_tree(2)
+    # for vec in vectors:
+    #     print(vec)
+    # for var in variables:
+    #     print(var)
+    # expr = Product(vectors + variables)
+    # expr = F.frobenius2(expr)
+    # expected = 1
+    # for v in vectors:
+    #     expected = expected * v @ v
+    # expr = expr - expected
     # expr = expr @ expr
-    for v in variables:
-        expr = Expectation(expr, v)
+    # for v in variables:
+    #     expr = Expectation(expr, v)
     # expr = expr.full_simplify()
-    # expr = expr.full_simplify()
-    expr = expr.full_simplify()
 
+    S = Variable("S", "i, j, p")
+    SA = S.rename({"p": "p1"})
+    SB = S.rename({"p": "p2", "i": "m", "j": "n"})
+    W = S.rename({"p": "p3", "i": "r", "j": "s"})
+    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
+    cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
+    expr = Expectation(expr, S, Copy("i, j, p"), cov)
+    expr = expr.full_simplify()
 
     # A = Variable('A', 'i')
     # B = Variable('V', 'i')

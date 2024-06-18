@@ -6,20 +6,20 @@ from abc import ABC
 from fractions import Fraction
 from numbers import Number
 import networkx as nx
+import pynauty
 
 import torch
 
 # TODO:
-# - Use a real algorithm to check isomorphism, like nauty.
-#   Part of this is creating a completely new symmetry structure.
-# - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
-#   Can't you just user Copy tensors?
+# - Support symmetric Variables
 # - Code generation (e.g. Triton, Pytorch)
 # - Prettier printing
-# - Taking the derivative with respect to multiple variables at the same time (full backprop)
-#   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
+# - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
+#   Can't you just user Copy tensors?
+# - Taking the derivative with respect to multiple variables at the same time (full backprop)
+#   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
 # More simplification rules:
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
@@ -32,6 +32,8 @@ import torch
 # X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
 # X Optional "expand" setting that expands the expression to a sum of products
 # X Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
+# X Use a real algorithm to check isomorphism, like nauty.
+#   Part of this is creating a completely new symmetry structure.
 
 
 class Tensor(ABC):
@@ -121,6 +123,34 @@ class Tensor(ABC):
             - "edges", a dict of edge_name -> node id
         """
         raise NotImplementedError
+
+    def autgrp(self):
+        G, edges = self.structural_graph()
+        n = G.number_of_nodes()
+        # Add nodes for the outer edges
+        for i, (e, node) in enumerate(edges.items()):
+            G.add_node(i + n, name="Outer Edge")
+            G.add_edge(i + n, node)
+        # Nauty takes coloring as a list of equivalence classes
+        colors = defaultdict(lambda: len(colors))
+        classes = defaultdict(set)
+        for i, data in G.nodes(data=True):
+            classes[colors[data.get("name")]].add(i)
+        # The main outputs we want are the group generators and the orbits
+        generators, _grpsize1, _grpsize2, orbits, _numorbits = pynauty.autgrp(
+            pynauty.Graph(
+                number_of_vertices=G.number_of_nodes(),
+                directed=True,
+                adjacency_dict={i: list(vs.keys()) for i, vs in G.adj.items()},
+                vertex_coloring=list(classes.values()),
+            )
+        )
+        # Extract the orbits of the outer edges
+        symmetries = defaultdict(list)
+        for i, label in enumerate(orbits):
+            if i >= n:
+                symmetries[label].append(self.edges[i - n])
+        return symmetries
 
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         """
@@ -457,7 +487,10 @@ class Constant(Tensor, ABC):
         # necessarily use this same graph to replace edge_equivalences()...
         G = nx.DiGraph()
         # We don't need to include len(self.edges) here, since we can just count the out-edges
-        G.add_node(0, name=((type(self).__name__, self.tag)), tensor=self)
+        name = type(self).__name__
+        if self.tag is not None:
+            name += f" ({self.tag})"
+        G.add_node(0, name=name, tensor=self)
         edges = {e: 0 for e in self.edges}
         return G, edges
 
@@ -778,7 +811,7 @@ class Function(Tensor):
         # We add a node for the "function" tensor itself
         G.add_node(1, name=("f", self.fn_info.name), tensor=self)
         G.add_edge(1, 0)
-        for i, (o, e) in enumerate(zip(self.edges_out, self.orig_edges_out)):
+        for i, (e, o) in enumerate(zip(self.edges_out, self.orig_edges_out)):
             G.add_node(i + 2, name=("Original Edge Out", o))
             G.add_edge(i + 2, 1)
             edges[e] = i + 2
@@ -789,9 +822,12 @@ class Function(Tensor):
             # Connect tensor to function. This is another place we need to label the edges
             # with original names, since argument order matters.
             for e, o in zip(input_edges, oes):
+                # Create labeled edge
                 n = G.number_of_nodes()
                 G.add_node(n, name=("Function Input Edge", o))
                 G.add_edge(t_edges[e], n)
+                # Connect to function
+                G.add_edge(n, 1)
             # Finally register free edges
             # TODO: Do we need self.original_edges_ts here somehow? I don't see it..
             # I think they are just needed for eval, and only because we somehow assume
@@ -911,11 +947,11 @@ class Derivative(Tensor):
         G.add_node(0, name="Derivative", tensor=self)
         edges = {}
         # We add a node for the "wrt" tensor
-        G, x_edges = add_structural_graph(G, self.x)
+        G, x_edges = add_structural_graph(G, self.x, root_edge_label="self.x")
         # This might be controversial, but we'll have new_edges point to the respective edges in self.x
         edges |= {e: x_edges[xe] for e, xe in zip(self.new_names, self.x.edges)}
         # Then we add the differentiated tensor
-        G, t_edges = add_structural_graph(G, self.tensor)
+        G, t_edges = add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
         edges |= t_edges
         return G, edges
 
@@ -1362,6 +1398,13 @@ class Product(Tensor):
         return any(t.depends_on(x) for t in self.tensors)
 
 
+Product(
+    [
+        Function("D_0g", ["j_", "i_"], (Variable("x", ["i"]), "i"), orig_edges_out=["j", "i_"]),
+        Function("D_0f", ["k", "j_"], (Function("g", ["j"], (Variable("x", ["i"]), "i")), "j")),
+    ]
+)
+
 ################################################################################
 # Sum
 ################################################################################
@@ -1569,6 +1612,7 @@ def add_structural_graph(G, tensor, root_edge_label=None):
         G.add_edge(e, 0)
     else:
         G.add_edge(x_root, 0)
+    assert set(x_edges.keys()) == set(tensor.edges), f"{x_edges.keys()} != {tensor.edges}"
     return G, x_edges
 
 

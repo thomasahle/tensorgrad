@@ -322,10 +322,8 @@ def test_transpose_grad():
     expected = Copy("j, a") @ Copy("i, b")
     # The automorphism group here is more complicated than what we are allowing with "symmetries".
     # E.g. {i -> j, j -> i} is not allowed, but {i -> j, a -> b; j -> i, b -> a} _is_ allowed.
-    # So the set of symmetries {{i, a}, {j, b}} is too weak. (Or is it?)
-    # But (unless we support full automorphism groups) we should always give a conservative set
-    # of symmetries here.
-    assert expected.symmetries == [{"j", "a"}, {"i", "b"}]
+    # Here we define symmetires by the "orbits" as calculated by pynauty
+    assert expected.symmetries == [{"j", "a", "i", "b"}]
     assert res.is_isomorphic(expected, match_edges=True)
 
 

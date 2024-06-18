@@ -1,4 +1,17 @@
-from tensorgrad.tensor import Constant, Derivative, Product, Sum, Tensor, Variable, unused_edge_names, Function, Copy, Zero
+from tensorgrad.tensor import (
+    Constant,
+    Derivative,
+    Product,
+    Sum,
+    Tensor,
+    Variable,
+    add_structural_graph,
+    unused_edge_names,
+    Function,
+    Copy,
+    Zero,
+)
+import networkx as nx
 
 
 class Expectation(Tensor):
@@ -104,6 +117,15 @@ class Expectation(Tensor):
 
     def __repr__(self):
         return f"E[{self.tensor}]"
+
+    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
+        G = nx.DiGraph()
+        G.add_node(0, name=type(self).__name__, tensor=self)
+        G, t_edges = add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
+        G, _ = add_structural_graph(G, self.wrt, root_edge_label="self.wrt")
+        G, _ = add_structural_graph(G, self.mu, root_edge_label="self.mu")
+        G, _ = add_structural_graph(G, self.covar, root_edge_label="self.covar")
+        return G, t_edges
 
     def _compute_canonical(self):
         base = hash(("Expectation", self.tensor, self.wrt, self.mu, self.covar))
