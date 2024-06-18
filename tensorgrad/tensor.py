@@ -5,28 +5,33 @@ from typing import Any, Callable, Generator, Iterable, Optional
 from abc import ABC
 from fractions import Fraction
 from numbers import Number
+import networkx as nx
 
 import torch
 
 # TODO:
-# - Code generation (e.g. Triton)
-# - Prettier printing
 # - Use a real algorithm to check isomorphism, like nauty.
+#   Part of this is creating a completely new symmetry structure.
+# - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
+#   Can't you just user Copy tensors?
+# - Code generation (e.g. Triton, Pytorch)
+# - Prettier printing
 # - Taking the derivative with respect to multiple variables at the same time (full backprop)
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
-# - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
-# X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
 # More simplification rules:
-# - Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
-# X Optional "expand" setting that expands the expression to a sum of products
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
 # - We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and include it in a product.
+#   It's nice for pretty printing though, and for simplification rules...
 # - Stuff from https://en.wikipedia.org/wiki/Penrose_graphical_notation
 #   - Symmetrization/Antisymmetrization
 #   - Matrix inverses
+# Done:
+# X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
+# X Optional "expand" setting that expands the expression to a sum of products
+# X Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
 
 
 class Tensor(ABC):
@@ -104,6 +109,19 @@ class Tensor(ABC):
         """Check if this tensor depends on the variable x."""
         raise NotImplementedError
 
+    def structural_graph(self) -> tuple[nx.DiGraph, str, dict[str, str]]:
+        """Create a graph representation of the tensor, which can be used for isomorphism testing.
+
+        Returns:
+            A tuple with the following values:
+            - A NetworkX directed graph.
+                - Each node in the top tree is labeled with the producing tensor.
+                - Use name=hashable to label vertices
+            - "root", the top of the top tree
+            - "edges", a dict of edge_name -> node id
+        """
+        raise NotImplementedError
+
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         """
         Return a list of equivalent edges in this tensor.
@@ -154,7 +172,21 @@ class Tensor(ABC):
             raise ValueError("Only integer powers are supported.")
         return pow(self, other)
 
-    def is_isomorphic(self, other, match_edges=False) -> Optional[dict[str, str]]:
+    def is_isomorphic(self, other, match_edges=False) -> bool:
+        G1, edges_1 = self.structural_graph()
+        G2, edges_2 = other.structural_graph()
+        # Add nodes for the outer edges
+        for e, node in edges_1.items():
+            n = G1.number_of_nodes()
+            G1.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
+            G1.add_edge(n, node)
+        for e, node in edges_2.items():
+            n = G2.number_of_nodes()
+            G2.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
+            G2.add_edge(n, node)
+        return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
+
+    def is_isomorphic_old(self, other, match_edges=False) -> bool:
         if not match_edges:
             return self.canon == other.canon
 
@@ -352,6 +384,16 @@ class Variable(Tensor):
             args.append(f"orig={self.original_edges}")
         return f"Variable({', '.join(args)})"
 
+    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
+        G = nx.DiGraph()
+        G.add_node(0, name=("Variable", self.name), tensor=self)
+        edges = {}
+        for i, (o, e) in enumerate(zip(self.original_edges, self.edges)):
+            G.add_node(i + 1, name=("Original Edge Name", o))
+            G.add_edge(i + 1, 0)
+            edges[e] = i + 1
+        return G, edges
+
     def _compute_canonical(self):
         # We can add two variables if they have the same edges, in any order.
         # We use self.original_edges as canonical edge names, since they should be the same whenever
@@ -407,6 +449,17 @@ class Constant(Tensor, ABC):
         if self.tag is not None:
             extra += f", tag={self.tag}"
         return f"{type(self).__name__}({self.edges}{extra})"
+
+    def structural_graph(self) -> tuple[nx.DiGraph, int, dict[str, int]]:
+        # This method assumes the constant is completely symmetric in the edges.
+        # That's true for all of Copy, Zero and Ones
+        # Note: it might not be true once edge dimensions are introduced, so we can't
+        # necessarily use this same graph to replace edge_equivalences()...
+        G = nx.DiGraph()
+        # We don't need to include len(self.edges) here, since we can just count the out-edges
+        G.add_node(0, name=((type(self).__name__, self.tag)), tensor=self)
+        edges = {e: 0 for e in self.edges}
+        return G, edges
 
     def _compute_canonical(self):
         # TODO: Do we need to include the link in the hash?
@@ -544,7 +597,7 @@ class Function(Tensor):
         Args:
             fn_info: The FunctionInfo defining this function, or a string giving the function name.
             edges_out: The names of the output edges of this function.
-            *inputs: The input tensors and their input edge names.
+            *inputs: The input tensors and their input edge names. [(t0, e00, e01, ...), (t1, e10, ...), ...]
             orig_edges_out: The original output edge names. If not provided, `edges_out` is used.
             orig_edges_in: The original input edge names for each input. If not provided, the actual input edge names are used.
             orig_edges_ts: The original edges of each complete input tensor. If not provided, the actual tensor edges are used.
@@ -718,6 +771,37 @@ class Function(Tensor):
         assert set(res.edges) == set(self.edges + new_names), f"{res.edges} != {self.edges + new_names}"
         return res
 
+    def structural_graph(self) -> tuple[nx.DiGraph, int, dict[str, int]]:
+        G = nx.DiGraph()
+        G.add_node(0, name=(type(self).__name__, self.fn_info.name), tensor=self)
+        edges = {}
+        # We add a node for the "function" tensor itself
+        G.add_node(1, name=("f", self.fn_info.name), tensor=self)
+        G.add_edge(1, 0)
+        for i, (o, e) in enumerate(zip(self.edges_out, self.orig_edges_out)):
+            G.add_node(i + 2, name=("Original Edge Out", o))
+            G.add_edge(i + 2, 1)
+            edges[e] = i + 2
+        # And we add nodes for all the input tensors
+        for (t, *input_edges), oes in zip(self.inputs, self.orig_edges_in):
+            # Compute graph from input tensor, and ensure it uses distinct node numbers
+            G, t_edges = add_structural_graph(G, t)
+            # Connect tensor to function. This is another place we need to label the edges
+            # with original names, since argument order matters.
+            for e, o in zip(input_edges, oes):
+                n = G.number_of_nodes()
+                G.add_node(n, name=("Function Input Edge", o))
+                G.add_edge(t_edges[e], n)
+            # Finally register free edges
+            # TODO: Do we need self.original_edges_ts here somehow? I don't see it..
+            # I think they are just needed for eval, and only because we somehow assume
+            # functions get confused if edges are renamed. Which I don't actually think
+            # they do, when it's not the input dimensions.
+            for e in t.edges:
+                if e not in input_edges:
+                    edges[e] = t_edges[e]
+        return G, edges
+
     def _compute_canonical(self):
         # One issue is that while the original names are usually part of the function definition,
         # the new edges added by differentiation are often automatically generated based on the context,
@@ -756,6 +840,8 @@ class Function(Tensor):
             assert inner_value.names == tuple(t.edges), f"Expected {t.edges}, got {inner_value.names}"
             # After evaluation we need to rename the output edges to the original names of the function,
             # as they are expected by fn_info.eval.
+            # TODO: Are they really? Shouldnt it just be the input edges that need to be consistent?
+            # Could I do rename(input_edges: orig_edges_in)?
             inner_values.append(inner_value.rename(*oes))
         out = self.fn_info.eval(*inner_values)
         # After evaluation we need to rename the output edges back to their current values.
@@ -819,6 +905,19 @@ class Derivative(Tensor):
         )
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
+
+    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
+        G = nx.DiGraph()
+        G.add_node(0, name="Derivative", tensor=self)
+        edges = {}
+        # We add a node for the "wrt" tensor
+        G, x_edges = add_structural_graph(G, self.x)
+        # This might be controversial, but we'll have new_edges point to the respective edges in self.x
+        edges |= {e: x_edges[xe] for e, xe in zip(self.new_names, self.x.edges)}
+        # Then we add the differentiated tensor
+        G, t_edges = add_structural_graph(G, self.tensor)
+        edges |= t_edges
+        return G, edges
 
     def _compute_canonical(self):
         base = hash(("Derivative", self.tensor, self.x))
@@ -1168,6 +1267,29 @@ class Product(Tensor):
             return res, colors, mapping
         return res
 
+    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
+        G = nx.DiGraph()
+        G.add_node(0, name=self.__class__.__name__, tensor=self)
+        edges = {}
+        inner_edges = defaultdict(list)
+        for t in self.tensors:
+            G, t_edges = add_structural_graph(G, t)
+            for e, node in t_edges.items():
+                inner_edges[e].append(node)
+        for e, nodes in inner_edges.items():
+            if len(nodes) == 2:
+                # Note that inner edges are bidirectional, since tensor products
+                # are associative.
+                n1, n2 = nodes
+                G.add_edge(n1, n2)
+                G.add_edge(n2, n1)
+            else:
+                # If the edge is only present once, it's an outer edge
+                assert e in self.edges, f"{e} not in {self.edges}"
+                (n1,) = nodes
+                edges[e] = n1
+        return G, edges
+
     def _compute_canonical(self):
         # We need to give the edges a value corresponding to the canonical_edge_name.
         # But we can't give edges values, so instead we "surround" each tensor in rank-2 Copy's.
@@ -1234,45 +1356,6 @@ class Product(Tensor):
         # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
         outer = hashes[-len(self.edges) :]
         base = hash(("Product", tuple(sorted(hashes))))
-        return base, [hash((base, h)) for h in outer]
-
-    def _compute_canonical_with_nauty(self):
-        """Not currently working."""
-        import pynauty
-
-        # Surround each tensor with rank-2 Copy's.
-        tensors = []
-        all_edges = {e for t in self.tensors for e in t.edges}
-        for tensor in self.tensors:
-            new_names, rename = unused_edge_names(tensor.edges, all_edges)
-            all_edges |= set(new_names)
-            tensors.append(tensor.rename(rename))
-            for e, e_new, h in zip(tensor.edges, new_names, tensor.canonical_edge_names):
-                tensors.append(Copy([e, e_new], tag=h))
-
-        # Create dummy nodes for the free edges.
-        tensors += [Copy([e]) for e in self.edges]
-
-        # Build the graph for pynauty.
-        g = pynauty.Graph(number_of_vertices=len(tensors), directed=False)
-        for i, t1 in enumerate(tensors):
-            for j, t2 in enumerate(tensors):
-                if i < j and set(t1.edges) & set(t2.edges):
-                    g.connect_vertex(i, [j])
-
-        # Set node colors based on the hash of each tensor.
-        partition = defaultdict(set)
-        for i, t in enumerate(tensors):
-            partition[t.canon].add(i)
-        g.set_vertex_coloring(partition.values())
-
-        # Compute the canonical labeling using pynauty.
-        # cert = pynauty.certificate(g)
-        labels = pynauty.canon_label(g)
-
-        # Extract the part corresponding to the free edges.
-        outer = labels[-len(self.edges) :]
-        base = hash(("Product", tuple(sorted(labels))))
         return base, [hash((base, h)) for h in outer]
 
     def depends_on(self, x: "Variable") -> bool:
@@ -1370,6 +1453,23 @@ class Sum(Tensor):
     def __repr__(self):
         return f"Sum({self.tensors}, {self.weights})"
 
+    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
+        G = nx.DiGraph()
+        G.add_node(0, name=self.__class__.__name__, tensor=self)
+        edges = {}
+        # Create special "Plus nodes" to collect common edges
+        for i, e in enumerate(self.edges):
+            G.add_node(i + 1, name="Plus Node")
+            edges[e] = i + 1
+        for t, w in zip(self.tensors, self.weights):
+            # The weights are a little akward. There a lot of options for how to handle them.
+            # E.g. the idea of just using a weighted Copy([]) somehow. But this works.
+            G, t_edges = add_structural_graph(G, t, root_edge_label=f"Weight {w}")
+            # Connect tensor edges to the plus nodes
+            for e, node in t_edges.items():
+                G.add_edge(node, edges[e])
+        return G, edges
+
     def _compute_canonical(self):
         hashes = []
         for e in self.edges:
@@ -1448,6 +1548,28 @@ class TensorDict(UserDict):
 
     def items(self) -> Generator[tuple[Tensor, Any], None, None]:
         return self.data.values()
+
+
+def add_structural_graph(G, tensor, root_edge_label=None):
+    """Computes the structural graph of tensor, and unions it with G."""
+    # We assert that Gx has nodes named [0, Gx.number_of_nodes())
+    assert set(G.nodes()) == set(range(G.number_of_nodes())), f"{G.nodes()}"
+    Gx, x_edges = tensor.structural_graph()
+    assert set(Gx.nodes()) == set(range(Gx.number_of_nodes())), f"{Gx.nodes()}"
+    # We also assume that 0 is the root
+    Gx = nx.relabel_nodes(Gx, {i: i + G.number_of_nodes() for i in range(Gx.number_of_nodes())})
+    x_root = G.number_of_nodes()
+    x_edges = {e: i + G.number_of_nodes() for e, i in x_edges.items()}
+    G = nx.union(G, Gx)
+    # Make sure to connect the root of Gx to the root of G, possibly with an "edge label"
+    if root_edge_label is not None:
+        e = G.number_of_nodes()
+        G.add_node(e, name=root_edge_label)
+        G.add_edge(x_root, e)
+        G.add_edge(e, 0)
+    else:
+        G.add_edge(x_root, 0)
+    return G, x_edges
 
 
 def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = ""):

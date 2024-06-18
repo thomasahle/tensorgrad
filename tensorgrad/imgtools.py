@@ -9,6 +9,10 @@ from tensorgrad.serializers.to_d3 import to_d3
 from tensorgrad import Derivative
 from tensorgrad.extras import Expectation
 
+import networkx as nx
+import numpy as np
+
+
 def compile_latex(expr, suffix=""):
     print(expr)
     latex_code = to_tikz(expr)
@@ -24,9 +28,9 @@ def compile_latex(expr, suffix=""):
 
     # Compile the LaTeX file to PDF
     subprocess.run(
-            ["lualatex", "-output-directory", output_dir, tex_file_path],
-            check=True,
-            )
+        ["lualatex", "-output-directory", output_dir, tex_file_path],
+        check=True,
+    )
 
     # Convert the PDF to an image
     pdf_path = tex_file_path.replace(".tex", ".pdf")
@@ -39,11 +43,18 @@ def compile_latex(expr, suffix=""):
     return image_path
 
 
-def combine_images_vertically(image_paths, padding=10, line_padding=5, background_color="white", line_color="black", line_width=2):
+def combine_images_vertically(
+    image_paths, padding=10, line_padding=5, background_color="white", line_color="black", line_width=2
+):
     images = [Image.open(x) for x in image_paths]
 
     # Calculate total height considering padding, maximum width, separating lines, and line padding
-    total_height = sum(image.height for image in images) + padding * (len(images) + 1) + line_width * (len(images) - 1) + line_padding * 2 * (len(images) - 1)
+    total_height = (
+        sum(image.height for image in images)
+        + padding * (len(images) + 1)
+        + line_width * (len(images) - 1)
+        + line_padding * 2 * (len(images) - 1)
+    )
     max_width = max(image.width for image in images) + padding * 2
 
     # Create a new image with a white background
@@ -75,6 +86,7 @@ def combine_images_vertically(image_paths, padding=10, line_padding=5, backgroun
     combined_image.save(combined_image_path)
 
     return combined_image_path
+
 
 def save_steps_old(expr, min_steps=None):
     images = []
@@ -127,3 +139,11 @@ def save_steps(expr, slow_grad=False):
 
     output_path = combine_images_vertically(images)
     print(f"Combined image saved to {output_path}")
+
+
+def draw_structural_graph(tensor):
+    G, edges = tensor.structural_graph()
+    for e, node in edges.items():
+        n = G.number_of_nodes()
+        G.add_node(n, name="{e}")
+        G.add_edge(n, node)

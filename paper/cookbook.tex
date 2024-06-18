@@ -10,6 +10,24 @@
 \usepackage{graphicx}
 \usepackage{adjustbox}
 
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{red},
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  frame=single,
+  captionpos=b,
+  tabsize=2,
+}
+
 \usepackage{geometry}
 \geometry{hmargin=4cm,vmargin=4cm}
 
@@ -38,15 +56,15 @@
 \maketitle
 
 \input{chapters/intro.tex}
-\input{chapters/simple_derivatives.tex}
-\input{chapters/statistics.tex}
-\input{chapters/kronecker.tex}
-\input{chapters/functions.tex}
-\input{chapters/determinant.tex}
-\input{chapters/advanced_derivatives.tex}
-\input{chapters/special_matrices.tex}
-\input{chapters/decompositions.tex}
-\input{chapters/ml.tex}
+% \input{chapters/simple_derivatives.tex}
+% \input{chapters/statistics.tex}
+% \input{chapters/kronecker.tex}
+% \input{chapters/functions.tex}
+% \input{chapters/determinant.tex}
+% \input{chapters/advanced_derivatives.tex}
+% \input{chapters/special_matrices.tex}
+% \input{chapters/decompositions.tex}
+% \input{chapters/ml.tex}
 \input{chapters/tensorgrad.tex}
 \input{chapters/appendix.tex}
 

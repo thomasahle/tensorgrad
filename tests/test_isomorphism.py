@@ -3,6 +3,7 @@ from tensorgrad import Variable
 from tensorgrad.tensor import Copy, Product, Sum
 from tensorgrad.testutils import assert_close, rand_values
 import tensorgrad.functions as F
+import networkx as nx
 
 
 def test_hash_counterexample():
@@ -35,6 +36,8 @@ def test_hash_counterexample2():
     expr2 = half2 @ half2
 
     assert expr1 != expr2
+
+    expr1.structural_graph()
 
 
 def test_6cycle_vs_two_3cycles():
@@ -323,8 +326,6 @@ def test_transpose_grad():
     # But (unless we support full automorphism groups) we should always give a conservative set
     # of symmetries here.
     assert expected.symmetries == [{"j", "a"}, {"i", "b"}]
-    print(f"{res=}")
-    print(f"{expected=}")
     assert res.is_isomorphic(expected, match_edges=True)
 
 
