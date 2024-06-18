@@ -102,7 +102,12 @@ class Tensor(ABC):
         return expr
 
     def __hash__(self):
-        return self.canon
+        # TODO: Could cache this
+        return hash(
+            nx.algorithms.weisfeiler_lehman_graph_hash(
+                edge_structural_graph(self, match_edges=False), node_attr="name"
+            )
+        )
 
     def __eq__(self, other):
         return self.is_isomorphic(other)
@@ -111,7 +116,7 @@ class Tensor(ABC):
         """Check if this tensor depends on the variable x."""
         raise NotImplementedError
 
-    def structural_graph(self) -> tuple[nx.DiGraph, str, dict[str, str]]:
+    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, str]]:
         """Create a graph representation of the tensor, which can be used for isomorphism testing.
 
         Returns:
@@ -119,38 +124,10 @@ class Tensor(ABC):
             - A NetworkX directed graph.
                 - Each node in the top tree is labeled with the producing tensor.
                 - Use name=hashable to label vertices
-            - "root", the top of the top tree
             - "edges", a dict of edge_name -> node id
+            - Node 0 should be the root
         """
         raise NotImplementedError
-
-    def autgrp(self):
-        G, edges = self.structural_graph()
-        n = G.number_of_nodes()
-        # Add nodes for the outer edges
-        for i, (e, node) in enumerate(edges.items()):
-            G.add_node(i + n, name="Outer Edge")
-            G.add_edge(i + n, node)
-        # Nauty takes coloring as a list of equivalence classes
-        colors = defaultdict(lambda: len(colors))
-        classes = defaultdict(set)
-        for i, data in G.nodes(data=True):
-            classes[colors[data.get("name")]].add(i)
-        # The main outputs we want are the group generators and the orbits
-        generators, _grpsize1, _grpsize2, orbits, _numorbits = pynauty.autgrp(
-            pynauty.Graph(
-                number_of_vertices=G.number_of_nodes(),
-                directed=True,
-                adjacency_dict={i: list(vs.keys()) for i, vs in G.adj.items()},
-                vertex_coloring=list(classes.values()),
-            )
-        )
-        # Extract the orbits of the outer edges
-        symmetries = defaultdict(list)
-        for i, label in enumerate(orbits):
-            if i >= n:
-                symmetries[label].append(self.edges[i - n])
-        return symmetries
 
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         """
@@ -203,66 +180,52 @@ class Tensor(ABC):
         return pow(self, other)
 
     def is_isomorphic(self, other, match_edges=False) -> bool:
-        G1, edges_1 = self.structural_graph()
-        G2, edges_2 = other.structural_graph()
-        # Add nodes for the outer edges
-        for e, node in edges_1.items():
-            n = G1.number_of_nodes()
-            G1.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
-            G1.add_edge(n, node)
-        for e, node in edges_2.items():
-            n = G2.number_of_nodes()
-            G2.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
-            G2.add_edge(n, node)
+        G1 = edge_structural_graph(self, match_edges=match_edges)
+        G2 = edge_structural_graph(other, match_edges=match_edges)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
-
-    def is_isomorphic_old(self, other, match_edges=False) -> bool:
-        if not match_edges:
-            return self.canon == other.canon
-
-        # If match_edges, we require the edge names to match.
-        # We don't require the order to match, but we do require the canonical order to match.
-        if set(self.edges) != set(other.edges):
-            return False
-        return all(k == v for k, v in self.get_isomorphism(other).items())
 
     def get_isomorphism(self, other):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
-        if sorted(self.canonical_edge_names) != sorted(other.canonical_edge_names):
+        G1 = edge_structural_graph(self, match_edges=False)
+        G2 = edge_structural_graph(other, match_edges=False)
+        matching = next(
+            nx.algorithms.isomorphism.DiGraphMatcher(
+                G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
+            ).isomorphisms_iter(),
+            None,
+        )
+        if matching is None:
             raise ValueError("Graphs must be isomorphic (with edges)")
-        # Note that the canonical_edge_names may have repetitions
+        # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
+        # We are only interested in then `len(self.edges)` last nodes, which correspond to the outer edges
+        start_i = G1.number_of_nodes() - len(self.edges)
+        start_j = G2.number_of_nodes() - len(self.edges)
         return {
-            se: oe
-            for (_h, oe), (_h, se) in zip(
-                sorted(zip(other.canonical_edge_names, other.edges)),
-                sorted(zip(self.canonical_edge_names, self.edges)),
-            )
+            self.edges[i - start_i]: other.edges[j - start_j] for i, j in matching.items() if i >= start_i
         }
 
     @property
-    def canon(self) -> int:
+    def _canon(self) -> int:
         if not hasattr(self, "_base"):
-            self._base, self._edge_canons = self._compute_canonical()
-        return hash((self._base,) + tuple(sorted(self.canonical_edge_names)))
+            G = edge_structural_graph(self, match_edges=False)
+            self._base = tuple(pynauty.canon_label(graph_to_pynauty(G)))
+        return hash(self._base)
 
-    @property
-    def canonical_edge_names(self) -> int:
-        if not hasattr(self, "_edge_canons"):
-            self._base, self._edge_canons = self._compute_canonical()
-        return self._edge_canons
+    def autgrp(self):
+        G = edge_structural_graph(self, match_edges=False)
+        # The main outputs we want are the group generators and the orbits
+        generators, _grpsize1, _grpsize2, orbits, _numorbits = pynauty.autgrp(graph_to_pynauty(G))
+        # Extract the orbits of the outer edges
+        symmetries = defaultdict(set)
+        for i, label in enumerate(orbits):
+            start_i = G.number_of_nodes() - len(self.edges)
+            if i >= start_i:
+                symmetries[label].add(self.edges[i - start_i])
+        return set(map(frozenset, symmetries.values()))
 
     @property
     def symmetries(self) -> list[set[str]]:
-        res = defaultdict(set)
-        for c, e in zip(self.canonical_edge_names, self.edges):
-            res[c].add(e)
-        return sorted(res.values(), key=lambda s: sorted(s))
-
-    def _compute_canonical(self) -> list[int]:
-        """Return a canonical form of the tensor, and a list of edge canons.
-        The canonical edge names should be aligned with self.edges, such that self.edges[i]
-        """
-        raise NotImplementedError
+        return self.autgrp()
 
     def evaluate(
         self,
@@ -384,22 +347,22 @@ class Tensor(ABC):
 
 
 class Variable(Tensor):
-    def __init__(self, name, edges: str | Iterable[str], surface_edges=None):
+    def __init__(self, name, edges: str | Iterable[str], orig=None):
         """
         A tensor holding a variable.
 
         Args:
             name: The name of this variable.
             edges: The names of the edges of this variable. Can be a comma-delimited string or iterable of strings.
-            surface_edges: The actual edge names to use. If not provided, the names in `edges` are used directly.
+            orig: The actual edge names to use. If not provided, the names in `edges` are used directly.
         """
         edges = self._check_edges(edges)
         self.name = name
         # The original edges are saved so evaluation can happen with the original
         # edge names given to the variable, without caring about what renaming we
         # might have done in the meantime.
-        self.original_edges = list(edges)
-        self.edges = self.original_edges if surface_edges is None else surface_edges
+        self.edges = list(edges)
+        self.original_edges = list(orig) if orig is not None else edges
 
     def grad(self, x: "Variable", new_names: Optional[list[str]] = None):
         new_names = self._check_grad(x, new_names)
@@ -424,13 +387,6 @@ class Variable(Tensor):
             edges[e] = i + 1
         return G, edges
 
-    def _compute_canonical(self):
-        # We can add two variables if they have the same edges, in any order.
-        # We use self.original_edges as canonical edge names, since they should be the same whenever
-        # two variables are the same, and they should never be renamed.
-        base = hash(("Variable", self.name))
-        return base, [hash((base, e)) for e in self.original_edges]
-
     def simplify(self, args: dict[str, Any] = None):
         return self
 
@@ -438,8 +394,8 @@ class Variable(Tensor):
         kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
         return Variable(
             self.name,
-            self.original_edges,
-            [kwargs.get(e, e) for e in self.edges],
+            edges=[kwargs.get(e, e) for e in self.edges],
+            orig=self.original_edges,
         )
 
     def edge_equivalences(self):
@@ -486,22 +442,12 @@ class Constant(Tensor, ABC):
         # Note: it might not be true once edge dimensions are introduced, so we can't
         # necessarily use this same graph to replace edge_equivalences()...
         G = nx.DiGraph()
-        # We don't need to include len(self.edges) here, since we can just count the out-edges
         name = type(self).__name__
         if self.tag is not None:
             name += f" ({self.tag})"
+        # TODO: Should we also include link here?
         G.add_node(0, name=name, tensor=self)
-        edges = {e: 0 for e in self.edges}
-        return G, edges
-
-    def _compute_canonical(self):
-        # TODO: Do we need to include the link in the hash?
-        # Presumably if we ever want to compare two constants with links, they'll have the same origin and link...
-        # return [hash((type(self).__name__, i, self.tag)) for i in range(len(self.edges))]
-
-        # All the edges have the same hash, since the tensor is completely symmetric.
-        base = hash((type(self).__name__, len(self.edges), self.tag))
-        return base, [base] * len(self.edges)
+        return G, {e: 0 for e in self.edges}
 
     def rename(self, kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
@@ -838,22 +784,6 @@ class Function(Tensor):
                     edges[e] = t_edges[e]
         return G, edges
 
-    def _compute_canonical(self):
-        # One issue is that while the original names are usually part of the function definition,
-        # the new edges added by differentiation are often automatically generated based on the context,
-        # so they shouldn't really be part of the canonical form.
-        hashes = [e for e in self.orig_edges_out]
-        for e in self.edges:
-            canons = []
-            for t, *input_edges in self.inputs:
-                if e in t.edges and e not in input_edges:
-                    canons.append(t.canonical_edge_names[t.edges.index(e)])
-            # In contrast to Sum, we don't sort the canons here, since the order of the inputs matters.
-            hashes.append(tuple(canons))
-        base = hash(("Function", self.fn_info.name))
-        hashes = [hash((base, h)) for h in hashes]
-        return base, hashes
-
     def __repr__(self):
         extras = []
         if self.edges_out != self.orig_edges_out:
@@ -954,11 +884,6 @@ class Derivative(Tensor):
         G, t_edges = add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
         edges |= t_edges
         return G, edges
-
-    def _compute_canonical(self):
-        base = hash(("Derivative", self.tensor, self.x))
-        edges = self.tensor.canonical_edge_names + list(range(len(self.new_names)))
-        return base, [hash((base, e)) for e in edges]
 
     def __repr__(self):
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
@@ -1213,7 +1138,8 @@ class Product(Tensor):
                     tensors.append(Ones(t.edges))
 
             # Just a tempoary solution to cancel separate components until we have a better way to do it.
-            partition = TensorDict(default_fn=int, key_fn=lambda t: (t.canon, tuple(sorted(t.edges))))
+            # partition = TensorDict(default_fn=int, key_fn=lambda t: (t.canon, tuple(sorted(t.edges))))
+            partition = defaultdict(int)
             for p in Product(tensors).components():
                 power_weight = 1
                 if len(p.tensors) == 1:
@@ -1223,9 +1149,10 @@ class Product(Tensor):
                         t, *_es = t.inputs[0]
                 else:
                     t = p
-                partition[t] += power_weight
+                partition[MatchEdgesKey(t)] += power_weight
             tensors = []
-            for t, w in partition.items():
+            for key, w in partition.items():
+                t = key.value
                 if w == 0:
                     tensors.append(Ones(t.edges))
                 elif w == 1:
@@ -1326,84 +1253,9 @@ class Product(Tensor):
                 edges[e] = n1
         return G, edges
 
-    def _compute_canonical(self):
-        # We need to give the edges a value corresponding to the canonical_edge_name.
-        # But we can't give edges values, so instead we "surround" each tensor in rank-2 Copy's.
-        tensors = []
-        all_edges = {e for t in self.tensors for e in t.edges}
-        for tensor in self.tensors:
-            new_names, rename = unused_edge_names(tensor.edges, all_edges)
-            all_edges |= set(new_names)
-            tensors.append(tensor.rename(rename))  # Altnernative: Copy(new_names)
-            for e, e_new, h in zip(tensor.edges, new_names, tensor.canonical_edge_names):
-                tensors.append(Copy([e, e_new], tag=h))
-
-        # We are interested in the values of the free edges. We capture those be creating some
-        # dummy nodes at their ends.
-        tensors += [Copy([e]) for e in self.edges]
-        hashes = [t.canon for t in tensors]
-
-        # Prepare graph for canonicalization
-        e2t = defaultdict(list)
-        for i, t in enumerate(tensors):
-            for e in t.edges:
-                e2t[e].append(i)
-        adj = [[] for _ in tensors]
-        for i1, i2 in e2t.values():
-            adj[i1].append(i2)
-            adj[i2].append(i1)
-
-        # Weisfeller Lehman algorithm
-        n_parts = len(set(hashes))
-        while True:
-            hashes = [hash((h,) + tuple(sorted(hashes[j] for j in row))) for row, h in zip(adj, hashes)]
-            if len(set(hashes)) == n_parts:
-                break
-            n_parts = len(set(hashes))
-
-        if True:
-            # If we have disjoint components of isomorphic graphs, we need to distinguish their output
-            # edges, so they don't get mixed up when computing isomorphic mappings etc.
-            # Hm, actually it seams that no, we actually want them to have the same hash?
-            # This is related to test_isomorphism/test_transpose_grad. It just isn't possible to get a perfect answer
-            # unless we actually start using automorphism groups. :(
-
-            # Compute the connected components
-            _comps, _colors, mapping = Product(tensors).components(return_colors=True)
-            # Identify components that are identical
-            identical_components = defaultdict(list)
-            for ids in mapping:
-                p_cert = tuple(sorted(hashes[i] for i in ids))
-                identical_components[p_cert].append(ids)
-            for p_cert, idss in identical_components.items():
-                # If two components are identical, we have to distinguish them
-                # We do this by combining the hash of each tensor with the component number
-                for j, ids in enumerate(idss):
-                    for i in ids:
-                        # We try to compromise with our limited representation capacity
-                        # for symmetries by only disambiguating rank >= 2 tensors.
-                        if tensors[i].rank > 1:
-                            hashes[i] = hash((j, hashes[i]))
-
-            # One more Weisfeller Lehman iteration to update the outer hashes
-            # hashes = [hash((h,) + tuple(sorted(hashes[j] for j in row))) for row, h in zip(adj, hashes)]
-
-        # The last hashes are for the new nodes we created on the free tensors. They can be used to match two graphs.
-        # If some of them are the same, it should mean that two two edges are interchangeable. Like a diagonal matrix.
-        outer = hashes[-len(self.edges) :]
-        base = hash(("Product", tuple(sorted(hashes))))
-        return base, [hash((base, h)) for h in outer]
-
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.tensors)
 
-
-Product(
-    [
-        Function("D_0g", ["j_", "i_"], (Variable("x", ["i"]), "i"), orig_edges_out=["j", "i_"]),
-        Function("D_0f", ["k", "j_"], (Function("g", ["j"], (Variable("x", ["i"]), "i")), "j")),
-    ]
-)
 
 ################################################################################
 # Sum
@@ -1436,7 +1288,6 @@ class Sum(Tensor):
         kwargs = self._check_rename(kwargs)
         res = Sum([t.rename(kwargs) for t in self.tensors], self.weights)
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
-        assert res.canon == self.canon
         return res
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
@@ -1467,15 +1318,10 @@ class Sum(Tensor):
             # (o-i o-<jk) is isomorphic with (o-j o-<ik), but they shouldn't be combined. This example comes up in the
             # Hessian of softmax.
 
-            def key_fn(t: Tensor):
-                # Align tensor edges to have the same order, using Sum's order as reference.
-                canons = [t.canonical_edge_names[t.edges.index(e)] for e in self.edges]
-                return hash((t.canon,) + tuple(canons))
-
-            ws_tensors = TensorDict(key_fn=key_fn, default_fn=int)
+            ws_tensors = defaultdict(int)
             for w, t in zip(weights, tensors):
-                ws_tensors[t] += w
-            ws_tensors = [(w, t) for t, w in ws_tensors.items()]
+                ws_tensors[MatchEdgesKey(t)] += w
+            ws_tensors = [(w, key.value) for key, w in ws_tensors.items()]
         else:
             ws_tensors = [(w, t) for w, t in zip(weights, tensors)]
 
@@ -1513,18 +1359,6 @@ class Sum(Tensor):
                 G.add_edge(node, edges[e])
         return G, edges
 
-    def _compute_canonical(self):
-        hashes = []
-        for e in self.edges:
-            # The edges in each child may be in different orders, so we use t.canonical_edge_names[t.edges.index(e)]
-            # to find the sub canonical edge name corresponding to e.
-            canons = [t.canonical_edge_names[t.edges.index(e)] for t in self.tensors]
-            # We sort the canons, since Sum is invariant to the order of self.tensors. We also include weights.
-            hashes.append(hash(("Sum",) + tuple(sorted(zip(self.weights, canons)))))
-        base = hash(("Sum", len(self.tensors)))
-        hashes = [hash((base, h)) for h in hashes]
-        return base, hashes
-
     def edge_equivalences(self):
         for t in self.tensors:
             yield from t.edge_equivalences()
@@ -1548,49 +1382,22 @@ class Sum(Tensor):
 ################################################################################
 
 
-class TensorDict(UserDict):
-    def __init__(self, items=(), *, key_fn: Callable, default_fn: Callable = None):
-        """A dictionary that calls key_fn on the keys before storing/retrieving them.
+class MatchEdgesKey:
+    """Normally Tensors use isomorphism as their test for equality, but they don't include
+    the edge names in the comparison. This class is used to compare tensors based on their
+    edge names. It is used in the Sum tensor to combine tensors with the same edge names."""
 
-        Args:
-            items: Initial (key, value) paiurs to store in the dictionary.
-            key_fn: A function that takes a key and returns a new key.
-            default_fn: A function that returns a default value when a key is not found.
-        """
-        super().__init__()
-        self.default_fn = default_fn
-        self.key_fn = key_fn
-        # assert key_fn is not id, "Using id as key_fn is usually not what you want."
-        for k, v in items:
-            self[k] = v
+    def __init__(self, value):
+        self.value = value
+        self.hash = hash(value)
 
-    def __getitem__(self, tensor: Tensor):
-        key = self.key_fn(tensor)
-        if key not in self.data:
-            return self.default_fn()
-        _, value = super().__getitem__(key)
-        return value
+    def __eq__(self, other):
+        if isinstance(other, MatchEdgesKey):
+            return self.value.is_isomorphic(other.value, match_edges=True)
+        return False
 
-    def __setitem__(self, tensor: Tensor, value: Any):
-        super().__setitem__(self.key_fn(tensor), (tensor, value))
-
-    def __delitem__(self, tensor):
-        super().__delitem__(self.key_fn(tensor))
-
-    def __contains__(self, tensor: Tensor) -> bool:
-        return super().__contains__(self.key_fn(tensor))
-
-    def __iter__(self) -> Generator[Tensor, None, None]:
-        return self.keys()
-
-    def keys(self) -> Generator[Tensor, None, None]:
-        return (tensor for tensor, _ in self.data.values())
-
-    def values(self) -> Generator[Any, None, None]:
-        return (value for _, value in self.data.values())
-
-    def items(self) -> Generator[tuple[Tensor, Any], None, None]:
-        return self.data.values()
+    def __hash__(self):
+        return self.hash
 
 
 def add_structural_graph(G, tensor, root_edge_label=None):
@@ -1614,6 +1421,31 @@ def add_structural_graph(G, tensor, root_edge_label=None):
         G.add_edge(x_root, 0)
     assert set(x_edges.keys()) == set(tensor.edges), f"{x_edges.keys()} != {tensor.edges}"
     return G, x_edges
+
+
+def edge_structural_graph(tensor, match_edges=True):
+    # Add nodes for the outer edges
+    G, edges = tensor.structural_graph()
+    for e, node in edges.items():
+        n = G.number_of_nodes()
+        G.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
+        G.add_edge(n, node)
+    return G
+
+
+def graph_to_pynauty(G):
+    # Nauty takes coloring as a list of equivalence classes
+    colors = defaultdict(lambda: len(colors))
+    classes = defaultdict(set)
+    for i, data in G.nodes(data=True):
+        classes[colors[data.get("name")]].add(i)
+    # The main outputs we want are the group generators and the orbits
+    return pynauty.Graph(
+        number_of_vertices=G.number_of_nodes(),
+        directed=True,
+        adjacency_dict={i: list(vs.keys()) for i, vs in G.adj.items()},
+        vertex_coloring=list(classes.values()),
+    )
 
 
 def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = ""):

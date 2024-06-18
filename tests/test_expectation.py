@@ -3,6 +3,7 @@ from einops import einsum
 from tensorgrad import Variable
 from tensorgrad.extras.expectation import Expectation
 from tensorgrad import Copy, Product, Zero
+from tensorgrad.tensor import Sum
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -164,9 +165,12 @@ def test_triple_S():
     cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
     expr = Expectation(expr, S, Copy("i, j, p"), cov)
     expr = expr.full_simplify()
-    assert expr == (
-        Copy("i, j, m, n, r, s")
-        + Copy("r, s") @ Copy("i, m") @ Copy("j, n")
-        + Copy("m, n") @ Copy("i, r") @ Copy("j, s")
-        + Copy("i, j") @ Copy("m, r") @ Copy("n, s")
+    expected = Sum(
+        [
+            Copy(["i", "j", "m", "n", "r", "s"]),
+            Product([Copy(["j", "i"]), Copy(["r", "m"]), Copy(["s", "n"])]),
+            Product([Copy(["r", "s"]), Copy(["n", "j"]), Copy(["m", "i"])]),
+            Product([Copy(["m", "n"]), Copy(["s", "j"]), Copy(["r", "i"])]),
+        ],
     )
+    assert expr == expected

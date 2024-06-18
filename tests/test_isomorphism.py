@@ -79,13 +79,11 @@ def test_symmetry():
     x = Variable("x", "i")
     expr = x @ x.rename({"i": "j"})
     assert expr.edges == ["i", "j"]
-    name_i, name_j = expr.canonical_edge_names
-    assert name_i == name_j
+    assert expr.symmetries == {frozenset({"i", "j"})}
 
     expr = x @ Copy("i, j, k")
     assert expr.edges == ["j", "k"]
-    name_j, name_k = expr.canonical_edge_names
-    assert name_j == name_k
+    assert expr.symmetries == {frozenset({"j", "k"})}
 
 
 def test_example_from_softmax_hessian():
@@ -130,25 +128,25 @@ def test_symmetries():
     A = Variable("A", "i")
     B = Variable("B", "l")
     graph = A @ B @ Copy("l, j, k")
-    assert graph.symmetries == [{"i"}, {"j", "k"}]
+    assert graph.symmetries == {frozenset({"i"}), frozenset({"j", "k"})}
 
     #    A   B      A   B
     #    |   ⅄   +  |   ⅄
     #    i  j k     i  k j
     graph2 = graph + graph.rename({"j": "k", "k": "j"})
-    assert graph2.symmetries == [{"i"}, {"j", "k"}]
+    assert graph2.symmetries == {frozenset({"i"}), frozenset({"j", "k"})}
 
     #    A   B      A   B
     #    |   ⅄   +  |   ⅄
     #    i  j k     k  j i
     graph3 = graph + graph.rename({"i": "k", "k": "i"})
-    assert graph3.symmetries == [{"i", "k"}, {"j"}]
+    assert graph3.symmetries == {frozenset({"i", "k"}), frozenset({"j"})}
 
     #    A   B      A   B      A   B
     #    |   ⅄   +  |   ⅄   +  |   ⅄
     #    i  j k     j  i k     k  j i
     graph4 = Sum([graph, graph.rename({"i": "j", "j": "i"}), graph.rename({"i": "k", "k": "i"})])
-    assert graph4.symmetries == [{"i", "j", "k"}]
+    assert graph4.symmetries == {frozenset({"i", "j", "k"})}
 
 
 def test_symmetries_simplify_sum():
@@ -293,8 +291,8 @@ def test_broadcasted():
             Copy(["y_"]),
             Sum(
                 [
-                    Product([Variable("x", ["x"], ["x_"]), Copy(["y_"])]),
-                    Product([Variable("y", ["y"], ["y_"]), Copy(["x_"])]),
+                    Product([Variable("x", ["x_"], ["x"]), Copy(["y_"])]),
+                    Product([Variable("y", ["y_"], ["y"]), Copy(["x_"])]),
                 ],
                 (1, 1),
             ),
@@ -304,7 +302,7 @@ def test_broadcasted():
         [
             Sum(
                 [
-                    Product([Variable("x", ["x"], ["x_"]), Copy(["y"])]),
+                    Product([Variable("x", ["x_"], ["x"]), Copy(["y"])]),
                     Product([Variable("y", ["y"], ["y"]), Copy(["x_"])]),
                 ],
                 (1, 1),
@@ -323,7 +321,7 @@ def test_transpose_grad():
     # The automorphism group here is more complicated than what we are allowing with "symmetries".
     # E.g. {i -> j, j -> i} is not allowed, but {i -> j, a -> b; j -> i, b -> a} _is_ allowed.
     # Here we define symmetires by the "orbits" as calculated by pynauty
-    assert expected.symmetries == [{"j", "a", "i", "b"}]
+    assert expected.symmetries == {frozenset({"j", "a", "i", "b"})}
     assert res.is_isomorphic(expected, match_edges=True)
 
 
@@ -347,12 +345,8 @@ def test_symmetries_simplify_sum2():
         ],
     )
     assert sorted(expr.tensors[0].edges) == sorted(expr.tensors[1].edges)
-    print([hash(t) for t in expr.tensors])
-    print([t.canonical_edge_names for t in expr.tensors])
-    for t in expr.tensors:
-        print([t.canonical_edge_names[t.edges.index(e)] for e in expr.edges])
     assert len({hash(t) for t in expr.tensors}) == 1
-    assert expr.symmetries == [{"C_", "C__"}]
+    assert expr.symmetries == {frozenset({"C_", "C__"})}
     for t in expr.tensors:
-        assert t.symmetries == [{"C_", "C__"}]
+        assert t.symmetries == {frozenset({"C_", "C__"})}
     assert len(expr.simplify().tensors) == 1

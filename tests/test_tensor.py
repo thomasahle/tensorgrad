@@ -213,7 +213,7 @@ def test_quadratic_grad():
 def test_equality():
     p1 = Product(
         [
-            Variable("A", ["j", "i"], ["j", "i_"]),
+            Variable("A", ["j", "i_"], ["j", "i"]),
             Variable("A", ["j", "i"], ["j", "i"]),
             Variable("x", ["i"], ["i"]),
         ]
@@ -222,7 +222,7 @@ def test_equality():
         [
             Variable("A", ["j", "i"], ["j", "i"]),
             Variable("x", ["i"], ["i"]),
-            Variable("A", ["j", "i"], ["j", "i_"]),
+            Variable("A", ["j", "i_"], ["j", "i"]),
         ]
     )
     assert p1 == p2

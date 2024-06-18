@@ -1,5 +1,4 @@
 from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy, Zero, Ones, Unfold
-from tensorgrad.tensor import TensorDict
 from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
@@ -271,7 +270,7 @@ def main():
     expr = Product([SA, SB, W, Copy("p1, p2, p3")])
     cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
     expr = Expectation(expr, S, Copy("i, j, p"), cov)
-    expr = expr.full_simplify()
+    # expr = expr.full_simplify()
 
     # A = Variable('A', 'i')
     # B = Variable('V', 'i')
