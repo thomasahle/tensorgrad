@@ -204,13 +204,6 @@ class Tensor(ABC):
             self.edges[i - start_i]: other.edges[j - start_j] for i, j in matching.items() if i >= start_i
         }
 
-    @property
-    def _canon(self) -> int:
-        if not hasattr(self, "_base"):
-            G = edge_structural_graph(self, match_edges=False)
-            self._base = tuple(pynauty.canon_label(graph_to_pynauty(G)))
-        return hash(self._base)
-
     def autgrp(self):
         G = edge_structural_graph(self, match_edges=False)
         # The main outputs we want are the group generators and the orbits
@@ -1138,7 +1131,6 @@ class Product(Tensor):
                     tensors.append(Ones(t.edges))
 
             # Just a tempoary solution to cancel separate components until we have a better way to do it.
-            # partition = TensorDict(default_fn=int, key_fn=lambda t: (t.canon, tuple(sorted(t.edges))))
             partition = defaultdict(int)
             for p in Product(tensors).components():
                 power_weight = 1
