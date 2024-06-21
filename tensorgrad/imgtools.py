@@ -13,11 +13,7 @@ import networkx as nx
 import numpy as np
 
 
-def compile_latex(expr, suffix=""):
-    print(expr)
-    latex_code = to_tikz(expr)
-    print(latex_code)
-
+def compile_latex(latex_code, suffix=""):
     output_dir = "output_files"
     os.makedirs(output_dir, exist_ok=True)
 
@@ -90,6 +86,7 @@ def combine_images_vertically(
 
 def save_steps_old(expr, min_steps=None):
     images = []
+    latex_code = to_tikz(expr)
     images.append(compile_latex(expr, suffix=f"0"))
     old = expr
     while True:
@@ -98,7 +95,7 @@ def save_steps_old(expr, min_steps=None):
             print(f"{new=} = {old=}")
             break
         old = new
-        images.append(compile_latex(new, suffix=f"{len(images)}"))
+        images.append(compile_latex(to_tikz(new), suffix=f"{len(images)}"))
 
     output_path = combine_images_vertically(images)
     print(f"Combined image saved to {output_path}")
@@ -106,7 +103,7 @@ def save_steps_old(expr, min_steps=None):
 
 def save_steps(expr, slow_grad=False):
     images = []
-    images.append(compile_latex(expr, suffix=f"0"))
+    images.append(compile_latex(to_tikz(expr), suffix=f"0"))
 
     # TODO: This is still not good enough, since there may be a double derivative somewhere inside the tensor.
     cnt_derivatives = 0
@@ -116,7 +113,7 @@ def save_steps(expr, slow_grad=False):
         d = d.tensor
     if cnt_derivatives > 1:
         expr = expr.simplify({"grad_steps": cnt_derivatives})
-        images.append(compile_latex(expr, suffix=f"{len(images)}"))
+        images.append(compile_latex(to_tikz(expr), suffix=f"{len(images)}"))
 
     expand = False
     while True:
@@ -134,7 +131,7 @@ def save_steps(expr, slow_grad=False):
                 continue
             break
         print(new)
-        images.append(compile_latex(new, suffix=f"{len(images)}"))
+        images.append(compile_latex(to_tikz(new), suffix=f"{len(images)}"))
         expr = new
 
     output_path = combine_images_vertically(images)
