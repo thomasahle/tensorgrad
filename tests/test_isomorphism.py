@@ -350,3 +350,44 @@ def test_symmetries_simplify_sum2():
     for t in expr.tensors:
         assert t.symmetries == {frozenset({"C_", "C__"})}
     assert len(expr.simplify().tensors) == 1
+
+
+def test_links():
+    x = Variable("x", "i")
+    y = Variable("y", "j")
+    xy = x @ y
+    trans = {"j": "i", "i": "j"}
+    xt = x.rename(trans)
+    yt = y.rename(trans)
+    yx = yt @ xt
+    I1 = xy.grad(x).grad(y).simplify()
+    I2 = yx.grad(xt).grad(yt).simplify()
+    print(I1)
+    print(I2)
+    print((I1 - I2).simplify())
+    assert not I1.is_isomorphic(I2, match_edges=True)
+
+
+# Product([Copy(["i", "i_"], link=Variable("x", ["i"])), Copy(["j", "j_"], link=Variable("y", ["j"]))])
+# Product(
+#     [
+#         Copy(["j", "i_"], link=Variable("x", ["j"], orig=["i"])),
+#         Copy(["i", "j_"], link=Variable("y", ["i"], orig=["j"])),
+#     ]
+# )
+#
+# Product(
+#     [
+#         Copy(["j", "j_"], link=Variable("y", ["j"]))
+#         Copy(["i", "i_"], link=Variable("x", ["i"])),
+#     ]
+# )
+# Product(
+#     [
+#         Copy(["j", "j_"], link=Variable("x", ["j"], orig=["i"])),
+#         Copy(["i", "i_"], link=Variable("y", ["i"], orig=["j"])),
+#     ]
+# )
+
+# Product([Variable("z", ["i_"], orig=["i"]), Copy(["j", "j_"], link=Variable("y", ["j"]))])
+# Product([Variable("z", ["i_"], orig=["i"]), Copy(["j", "j_"], link=Variable("x", ["j"], orig=["i"]))])

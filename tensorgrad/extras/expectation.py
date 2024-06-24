@@ -80,7 +80,7 @@ class Expectation(Tensor):
             return inner.simplify(args=args)
         if isinstance(inner, Variable):
             assert inner == self.wrt, "A variable can only depend on wrt if they are the same"
-            iso_rename = self.wrt.get_isomorphism(inner)
+            iso_rename = next(self.wrt.isomorphisms(inner))
             return self.mu.rename(iso_rename)
         if isinstance(inner, Product):
             prod = inner
@@ -89,7 +89,7 @@ class Expectation(Tensor):
                 x = next(x for x in prod.tensors if x == self.wrt)
                 # Rename the mu and covar to match the actual edges of x
                 # E.g. if x is actually the transpose of wrt
-                iso_rename = self.wrt.get_isomorphism(x)
+                iso_rename = next(self.wrt.isomorphisms(x))
                 mu = self.mu.rename(iso_rename)
                 # 2) Form x * rest by removing x from the product
                 subs = prod.tensors[:]

@@ -174,3 +174,42 @@ def test_triple_S():
         ],
     )
     assert expr == expected
+
+
+def test_strassen():
+    S = Variable("S", "i, p")
+    T = Variable("T", "k, p")
+    U = Variable("U", "m, p")
+
+    ST = S * T.rename({"k": "l"})
+    TU = T * U.rename({"m": "n"})
+    US = U * S.rename({"i": "j"})
+
+    expr = Product(
+        [
+            ST.rename({"p": "p1"}),
+            TU.rename({"p": "p2"}),
+            US.rename({"p": "p3"}),
+            Copy("p1, p2, p3"),
+        ]
+    )
+    expr = Expectation(Expectation(Expectation(expr, S), T), U)
+    expr = expr.full_simplify()
+    assert expr == Product(
+        [
+            Copy("i, j"),
+            Copy("k, l"),
+            Copy("m, n"),
+        ]
+    )
+
+
+Product(
+    [
+        Copy(["i", "j"]),
+        Copy(["k", "l"]),
+        Copy(["p_0_____", "p_"], link=Variable("U", ["n", "p_0_____"], orig=["m", "p"])),
+        Copy(["p_0_____", "p_"]),
+        Copy(["m", "n"]),
+    ]
+) == Product([Copy(["i", "j"]), Copy(["k", "l"]), Copy(["m", "n"])])

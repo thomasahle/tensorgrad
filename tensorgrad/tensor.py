@@ -1,17 +1,17 @@
-from collections import Counter, UserDict, defaultdict, deque
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from functools import cached_property
+from itertools import combinations
 import math
 from typing import Any, Callable, Generator, Iterable, Optional
 from abc import ABC
 from fractions import Fraction
 from numbers import Number
 import networkx as nx
-import pynauty
 
 import torch
 
 # TODO:
-# - Support symmetric Variables
 # - Code generation (e.g. Triton, Pytorch)
 # - Prettier printing
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
@@ -34,6 +34,7 @@ import torch
 # X Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
 # X Use a real algorithm to check isomorphism, like nauty.
 #   Part of this is creating a completely new symmetry structure.
+# X Support symmetric Variables
 
 
 class Tensor(ABC):
@@ -41,6 +42,7 @@ class Tensor(ABC):
 
     @property
     def rank(self):
+        """The number of edges the tensor has."""
         return len(self.edges)
 
     def grad(self, x: "Variable", new_names: Optional[list[str]]) -> "Tensor":
@@ -62,7 +64,7 @@ class Tensor(ABC):
         new_names = self._check_grad(x, new_names)
         raise NotImplementedError
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, kwargs: dict[str, str]) -> "Tensor":
         """
         Rename the free edges of this tensor.
 
@@ -77,7 +79,7 @@ class Tensor(ABC):
         kwargs = self._check_rename(kwargs)
         raise NotImplementedError
 
-    def simplify(self, args: dict[str, Any] = None):
+    def simplify(self, args: dict[str, Any] = None) -> "Tensor":
         """
         Apply simplification rules to this tensor.
 
@@ -101,21 +103,25 @@ class Tensor(ABC):
             expr = new
         return expr
 
-    def __hash__(self):
-        # TODO: Could cache this
-        return hash(
-            nx.algorithms.weisfeiler_lehman_graph_hash(
-                edge_structural_graph(self, match_edges=False), node_attr="name"
-            )
+    def __hash__(self) -> int:
+        return hash(self.weisfeiler_lehman)
+
+    @cached_property
+    def weisfeiler_lehman(self) -> str:
+        """Hexadecimal string corresponding to hash of the input graph."""
+        return nx.algorithms.weisfeiler_lehman_graph_hash(
+            self._edge_structural_graph(match_edges=False),
+            node_attr="name",
         )
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return self.is_isomorphic(other)
 
     def depends_on(self, x: "Variable") -> bool:
         """Check if this tensor depends on the variable x."""
         raise NotImplementedError
 
+    @cached_property
     def structural_graph(self) -> tuple[nx.DiGraph, dict[str, str]]:
         """Create a graph representation of the tensor, which can be used for isomorphism testing.
 
@@ -129,6 +135,15 @@ class Tensor(ABC):
         """
         raise NotImplementedError
 
+    def _edge_structural_graph(self, match_edges=True) -> nx.DiGraph:
+        """Like structural_graph, but adds dummy nodes for the outer edges."""
+        G, edges = self.structural_graph()
+        for e, node in edges.items():
+            n = G.number_of_nodes()
+            G.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
+            G.add_edge(n, node)
+        return G
+
     def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         """
         Return a list of equivalent edges in this tensor.
@@ -138,22 +153,22 @@ class Tensor(ABC):
         """
         return []
 
-    def __add__(self, other):
+    def __add__(self, other) -> "Tensor":
         return Sum([self, other])
 
-    def __sub__(self, other):
+    def __sub__(self, other) -> "Tensor":
         return Sum([self, other], [1, -1])
 
-    def __neg__(self):
+    def __neg__(self) -> "Tensor":
         return Sum([self], [-1])
 
-    def __matmul__(self, other):
+    def __matmul__(self, other) -> "Tensor":
         return Product([self, other])
 
-    def __rmul__(self, other):
+    def __rmul__(self, other) -> "Tensor":
         return self * other
 
-    def __mul__(self, other):
+    def __mul__(self, other) -> "Tensor":
         """Contract self and other, but use a 3d-identity to keep the shared edges free."""
         if isinstance(other, Number):
             return Sum([self], [other])
@@ -163,7 +178,7 @@ class Tensor(ABC):
         (t0, t1), (rename0, rename1) = make_distinct(self, other, used_names=shared_edges)
         return Product([t0, t1] + [Copy([e, rename0[e], rename1[e]]) for e in shared_edges])
 
-    def __truediv__(self, other):
+    def __truediv__(self, other) -> "Tensor":
         from tensorgrad.functions import pow  # Avoid circular import
 
         if isinstance(other, int):
@@ -180,32 +195,46 @@ class Tensor(ABC):
         return pow(self, other)
 
     def is_isomorphic(self, other, match_edges=False) -> bool:
-        G1 = edge_structural_graph(self, match_edges=match_edges)
-        G2 = edge_structural_graph(other, match_edges=match_edges)
+        G1 = self._edge_structural_graph(match_edges=match_edges)
+        G2 = other._edge_structural_graph(match_edges=match_edges)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
 
-    def get_isomorphism(self, other):
+    def isomorphisms(self, other):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
-        G1 = edge_structural_graph(self, match_edges=False)
-        G2 = edge_structural_graph(other, match_edges=False)
-        matching = next(
-            nx.algorithms.isomorphism.DiGraphMatcher(
-                G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
-            ).isomorphisms_iter(),
-            None,
-        )
-        if matching is None:
-            raise ValueError("Graphs must be isomorphic (with edges)")
-        # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
-        # We are only interested in then `len(self.edges)` last nodes, which correspond to the outer edges
-        start_i = G1.number_of_nodes() - len(self.edges)
-        start_j = G2.number_of_nodes() - len(self.edges)
-        return {
-            self.edges[i - start_i]: other.edges[j - start_j] for i, j in matching.items() if i >= start_i
-        }
+        G1 = self._edge_structural_graph(match_edges=False)
+        G2 = other._edge_structural_graph(match_edges=False)
+        for matching in nx.algorithms.isomorphism.DiGraphMatcher(
+            G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
+        ).isomorphisms_iter():
+            # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
+            # We are only interested in then `len(self.edges)` last nodes, which correspond to the outer edges
+            start_i = G1.number_of_nodes() - len(self.edges)
+            start_j = G2.number_of_nodes() - len(self.edges)
+            yield {
+                self.edges[i - start_i]: other.edges[j - start_j] for i, j in matching.items() if i >= start_i
+            }
 
-    def autgrp(self):
-        G = edge_structural_graph(self, match_edges=False)
+    def nauty_autgrp(self) -> set[frozenset[str]]:
+        """Like self.symmetries(), but uses Nauty to compute it instead of vf2.
+        This also allows you to get the actual automorphism group instead of just
+        the simple symmetries"""
+        import pynauty
+
+        def graph_to_pynauty(G):
+            # Nauty takes coloring as a list of equivalence classes
+            colors = defaultdict(lambda: len(colors))
+            classes = defaultdict(set)
+            for i, data in G.nodes(data=True):
+                classes[colors[data.get("name")]].add(i)
+            # The main outputs we want are the group generators and the orbits
+            return pynauty.Graph(
+                number_of_vertices=G.number_of_nodes(),
+                directed=True,
+                adjacency_dict={i: list(vs.keys()) for i, vs in G.adj.items()},
+                vertex_coloring=list(classes.values()),
+            )
+
+        G = self._edge_structural_graph(match_edges=False)
         # The main outputs we want are the group generators and the orbits
         generators, _grpsize1, _grpsize2, orbits, _numorbits = pynauty.autgrp(graph_to_pynauty(G))
         # Extract the orbits of the outer edges
@@ -216,9 +245,19 @@ class Tensor(ABC):
                 symmetries[label].add(self.edges[i - start_i])
         return set(map(frozenset, symmetries.values()))
 
-    @property
-    def symmetries(self) -> list[set[str]]:
-        return self.autgrp()
+    @cached_property
+    def symmetries(self) -> set[frozenset[str]]:
+        G = self._edge_structural_graph(match_edges=False)
+        iso = nx.isomorphism.GraphMatcher(G, G, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
+
+        symmetries = defaultdict(set)
+        start_i = G.number_of_nodes() - len(self.edges)
+        for auto in iso.isomorphisms_iter():
+            for i, j in auto.items():
+                if i >= start_i:
+                    symmetries[i - start_i].add(self.edges[j - start_i])
+
+        return set(map(frozenset, symmetries.values()))
 
     def evaluate(
         self,
@@ -246,7 +285,7 @@ class Tensor(ABC):
             extras["cached_values"] = {}
         if id(self) not in extras["edge_dims"]:
             shapes = {v: dict(zip(t.names, t.shape)) for v, t in values.items() if isinstance(v, Variable)}
-            extras["edge_dims"] |= compute_edge_dims(self, shapes, extra_dims=dims)
+            extras["edge_dims"] |= self._compute_edge_dims(shapes, extra_dims=dims)
         edge_dims = extras["edge_dims"].get(id(self), {})
         if not edge_dims and self.edges:
             print("Warning: Unable to compute edge dimensions for", self)
@@ -263,7 +302,9 @@ class Tensor(ABC):
         if key in cached_values:
             # Take over the isomorphic representative
             other, value = next((t, v) for (t, ed), v in cached_values.items() if (t, ed) == key)
-            rename = other.get_isomorphism(self)
+            rename = next(other.isomorphisms(self), None)
+            if rename is None:
+                raise ValueError("Graphs must be isomorphic (with edges)")
             res = value.rename(*(rename[e] for e in other.edges)).align_to(*self.edges)
             # Enable this to debug the isomorphic cache
             expected = self.inner_evaluate(edge_dims, values, extras)
@@ -274,6 +315,48 @@ class Tensor(ABC):
         res = self.inner_evaluate(edge_dims, values, extras)
         assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
         cached_values[key] = res
+        return res
+
+    def _compute_edge_dims(
+        self,
+        shapes: dict["Variable", dict[str, int]],
+        extra_dims: dict[str, int] | None = None,
+    ):
+        G = nx.Graph()
+        var_ids = defaultdict(list)
+
+        # Make keys using ids, since we want to distinguish between isomorphic tensors
+        for (t1, e1), (t2, e2) in self.edge_equivalences():
+            G.add_edge((id(t1), e1), (id(t2), e2))
+
+            # Make sure we have the updated variable ids. The same variable can have multiple ids,
+            # as it has been renamed differently throughout the graph.
+            # Note: Since variables set (v, ("Original", o)) = (v, e) we are guaranteed that all
+            # variables show up when calling edge_equivalences.
+            for t in [t1, t2]:
+                if isinstance(t, Variable):
+                    var_ids[t].append(id(t))
+
+        res = defaultdict(dict)
+        for v, edges in shapes.items():
+            for v_id in var_ids[v]:
+                for o, d in edges.items():
+                    res[v_id][("Original", o)] = d
+
+        if extra_dims:
+            res[id(self)].update(extra_dims)
+
+        # The graph is really a graph of "edges between edges". Hence the
+        # connected components of the graph all have the same dimension.
+        for component in nx.connected_components(G):
+            sizes = [res[t_id].get(e) for t_id, e in component if e in res[t_id]]
+            if sizes and len(set(sizes)) > 1:
+                raise ValueError(f"Size mismatch in component: {sizes}")
+            if sizes:
+                size = sizes[0]
+                for t_id, e in component:
+                    res[t_id][e] = size
+
         return res
 
     def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
@@ -340,7 +423,13 @@ class Tensor(ABC):
 
 
 class Variable(Tensor):
-    def __init__(self, name, edges: str | Iterable[str], orig=None):
+    def __init__(
+        self,
+        name,
+        edges: str | Iterable[str],
+        orig: None | str | Iterable[str] = None,
+        symmetries: None | str | set[frozenset[str]] = None,
+    ):
         """
         A tensor holding a variable.
 
@@ -348,36 +437,54 @@ class Variable(Tensor):
             name: The name of this variable.
             edges: The names of the edges of this variable. Can be a comma-delimited string or iterable of strings.
             orig: The actual edge names to use. If not provided, the names in `edges` are used directly.
+            symmetries: Sets of edges (original names) that should be considered equivalent.
         """
         edges = self._check_edges(edges)
         self.name = name
+
         # The original edges are saved so evaluation can happen with the original
         # edge names given to the variable, without caring about what renaming we
         # might have done in the meantime.
         self.edges = list(edges)
-        self.original_edges = list(orig) if orig is not None else edges
+        self.original_edges = self._check_edges(orig) if orig is not None else edges
+
+        if symmetries is None:
+            symmetries = {frozenset({o}) for o in self.original_edges}
+        if isinstance(symmetries, str):
+            symmetries = {frozenset(word.split()) for word in symmetries.split(",")}
+        assert all(
+            e in self.original_edges for group in symmetries for e in group
+        ), f"{symmetries} not in {self.original_edges}"
+        # Note that self.symmetries is the Tensor property, which concerns current edge names,
+        # not original edge names.
+        self.o_symmetries = symmetries
 
     def grad(self, x: "Variable", new_names: Optional[list[str]] = None):
         new_names = self._check_grad(x, new_names)
         if x == self:
-            # assert x.original_edges == self.original_edges
+            assert x.original_edges == self.original_edges
             return Product(Copy([e, new], link=self) for e, new in zip(self.edges, new_names))
         return Zero(self.edges + new_names)
 
     def __repr__(self):
-        args = [f"'{self.name}', {self.edges}"]
+        args = [f"\"{self.name}\", \"{', '.join(self.edges)}\""]
         if self.edges != self.original_edges:
-            args.append(f"orig={self.original_edges}")
+            args.append(f"orig=\"{', '.join(self.original_edges)}\"")
+        if self.o_symmetries != {frozenset({o}) for o in self.original_edges}:
+            groups = ", ".join(sorted(" ".join(sorted(group)) for group in self.o_symmetries))
+            args.append(f'symmetries="{groups}"')
         return f"Variable({', '.join(args)})"
 
     def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
         G = nx.DiGraph()
         G.add_node(0, name=("Variable", self.name), tensor=self)
         edges = {}
-        for i, (o, e) in enumerate(zip(self.original_edges, self.edges)):
-            G.add_node(i + 1, name=("Original Edge Name", o))
+        name_map = dict(zip(self.original_edges, self.edges))
+        for i, group in enumerate(self.o_symmetries):
+            G.add_node(i + 1, name=("Original Edge Name", " ".join(sorted(group))))
             G.add_edge(i + 1, 0)
-            edges[e] = i + 1
+            for o in group:
+                edges[name_map[o]] = i + 1
         return G, edges
 
     def simplify(self, args: dict[str, Any] = None):
@@ -389,13 +496,22 @@ class Variable(Tensor):
             self.name,
             edges=[kwargs.get(e, e) for e in self.edges],
             orig=self.original_edges,
+            symmetries=self.o_symmetries,
         )
 
     def edge_equivalences(self):
         # Since the user gives edge dimensions in terms of variables, it's important to keep track
         # of renamed edge names.
-        for e1, e2 in zip(self.original_edges, self.edges):
-            yield (self, e1), (self, e2)
+        for o, e in zip(self.original_edges, self.edges):
+            yield (self, ("Original", o)), (self, e)
+
+        # Next make a complete graph for each symmetry class
+        name_map = dict(zip(self.original_edges, self.edges))
+        for group in self.o_symmetries:
+            for o1, o2 in combinations(group, 2):
+                # Sorting makes it easier to write unit tests
+                e1, e2 = sorted([name_map[o1], name_map[o2]])
+                yield (self, e1), (self, e2)
 
     def depends_on(self, x: "Variable") -> bool:
         return x == self
@@ -438,8 +554,10 @@ class Constant(Tensor, ABC):
         name = type(self).__name__
         if self.tag is not None:
             name += f" ({self.tag})"
-        # TODO: Should we also include link here?
         G.add_node(0, name=name, tensor=self)
+        # TODO: Should we also include link here?
+        if self.link is not None:
+            add_structural_graph(G, self.link, root_edge_label="self.link")
         return G, {e: 0 for e in self.edges}
 
     def rename(self, kwargs: dict[str, str]):
@@ -1183,44 +1301,31 @@ class Product(Tensor):
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
 
-    def components(self, return_colors=False) -> list["Product"]:
+    def components(self, return_colors=False):
         """Find all disjoint components, that is, subgraphs that are not connected by an edge.
 
-        Returns either:
+        Returns:
             - A list of disjoint components, each represented by a Product tensor.
-            - A dictionary mapping each position in self.tensors to a component number.
+            - If return_colors is True, also returns color mapping and grouping.
         """
-        edges = defaultdict(list)
-        for i, t in enumerate(self.tensors):
-            for e in t.edges:
-                edges[e].append(i)
-        # Flood fill
-        # We can't use id as a key, since the same tensor can appear in multiple components.
-        # But we can use the "number" of the tensor, which is unique.
-        n_colors = 0
-        colors: dict[int, int] = {}
-        queue = deque(range(len(self.tensors)))
-        while queue:
-            i = queue.pop()  # We actually use the queue as a stack
-            if i not in colors:
-                colors[i] = n_colors
-                n_colors += 1
-            for e in self.tensors[i].edges:
-                for j in edges[e]:
-                    if j not in colors:
-                        colors[j] = colors[i]
-                        queue.append(j)
-        # Then we group
-        components = defaultdict(list)
-        for i, color in colors.items():
-            components[color].append(self.tensors[i])
-        res = [Product(sub) for sub in components.values()]
-        assert set(Product(res).edges) == set(self.edges), f"{self.edges=}, {Product(res).edges=}"
-        # If we only want the colors, we can exit here
+        # Create graph of tensor connections
+        G = nx.Graph()
+        G.add_nodes_from(range(len(self.tensors)))
+        for i, t1 in enumerate(self.tensors):
+            for j, t2 in enumerate(self.tensors[i + 1 :], i + 1):
+                if set(t1.edges) & set(t2.edges):
+                    G.add_edge(i, j)
+
+        # Find connected components
+        component_sets = list(nx.connected_components(G))
+        components = [Product([self.tensors[i] for i in comp]) for comp in component_sets]
+        assert {e for c in components for e in c.edges} == set(self.edges)
+
         if return_colors:
-            mapping = [[j for j in range(len(self.tensors)) if colors[j] == i] for i in range(n_colors)]
-            return res, colors, mapping
-        return res
+            colors = {i: c for c, comp in enumerate(component_sets) for i in comp}
+            return components, colors, component_sets
+
+        return components
 
     def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
         G = nx.DiGraph()
@@ -1292,30 +1397,27 @@ class Sum(Tensor):
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
-        tensors = [t.simplify(args=args) for t in self.tensors]
-        weights = self.weights[:]
+        term_counter = Counter()
 
-        if args["associative_sums"]:
-            new_tensors = []
-            for w, t in zip(weights, tensors):
-                if isinstance(t, Sum):
-                    new_tensors.extend((w1 * w, t1) for w1, t1 in zip(t.weights, t.tensors))
-                else:
-                    new_tensors.append((w, t))
-            weights, tensors = zip(*new_tensors)
+        for w, t in zip(self.weights, (t.simplify(args=args) for t in self.tensors)):
+            if args["associative_sums"] and isinstance(t, Sum):
+                for w1, t1 in zip(t.weights, t.tensors):
+                    term_counter[MatchEdgesKey(t1)] += w * w1
+            else:
+                term_counter[MatchEdgesKey(t)] += w
 
         if args["sum_combine_terms"]:
             # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
             # It is important that isomorphic tensors with different outer edge labels don't get matched. For example
             # (o-i o-<jk) is isomorphic with (o-j o-<ik), but they shouldn't be combined. This example comes up in the
             # Hessian of softmax.
-
-            ws_tensors = defaultdict(int)
-            for w, t in zip(weights, tensors):
-                ws_tensors[MatchEdgesKey(t)] += w
-            ws_tensors = [(w, key.value) for key, w in ws_tensors.items()]
+            ws_tensors = [
+                (w, key.value)
+                for key, w in term_counter.items()
+                if w != 0 and not isinstance(key.value, Zero)
+            ]
         else:
-            ws_tensors = [(w, t) for w, t in zip(weights, tensors)]
+            ws_tensors = [(w, t.value) for t, w in term_counter.items()]
 
         # Remove zero tensors or zero weights.
         # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
@@ -1415,31 +1517,6 @@ def add_structural_graph(G, tensor, root_edge_label=None):
     return G, x_edges
 
 
-def edge_structural_graph(tensor, match_edges=True):
-    # Add nodes for the outer edges
-    G, edges = tensor.structural_graph()
-    for e, node in edges.items():
-        n = G.number_of_nodes()
-        G.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
-        G.add_edge(n, node)
-    return G
-
-
-def graph_to_pynauty(G):
-    # Nauty takes coloring as a list of equivalence classes
-    colors = defaultdict(lambda: len(colors))
-    classes = defaultdict(set)
-    for i, data in G.nodes(data=True):
-        classes[colors[data.get("name")]].add(i)
-    # The main outputs we want are the group generators and the orbits
-    return pynauty.Graph(
-        number_of_vertices=G.number_of_nodes(),
-        directed=True,
-        adjacency_dict={i: list(vs.keys()) for i, vs in G.adj.items()},
-        vertex_coloring=list(classes.values()),
-    )
-
-
 def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = ""):
     """Given a list of edges, return a list of new names that are not in used_names.
     They also won't be translated to the same names.
@@ -1486,48 +1563,3 @@ def make_distinct(*tensors: list["Tensor"], used_names=None) -> list["Tensor"]:
         res.append(t.rename(rename))
         renames.append(rename)
     return res, renames
-
-
-def compute_edge_dims(
-    root: "Tensor",
-    shapes: dict["Variable", dict[str, int]],
-    extra_dims: dict[str, int] | None = None,
-) -> dict[int, dict[str, int]]:
-    graph = defaultdict(list)
-    v_ids = defaultdict(list)
-    for (t1, e1), (t2, e2) in root.edge_equivalences():
-        # Make keys using ids, since we want to distinguish between isomorphic tensors
-        key1 = (id(t1), e1)
-        key2 = (id(t2), e2)
-        graph[key1].append(key2)
-        graph[key2].append(key1)
-        # Make sure we have the updated variable ids. The same variable can have multiple ids,
-        # as it has been renamed differently throughout the graph.
-        for t in [t1, t2]:
-            if isinstance(t, Variable):
-                v_ids[t].append(id(t))
-    # Add the initial known values
-    res = defaultdict(dict)
-    queue = deque()
-    for v, edges in shapes.items():
-        for e, size in edges.items():
-            if v not in v_ids:
-                print(f"Info: Variable {v} was not found in graph {v_ids}.")
-                continue
-            for v_id in v_ids[v]:
-                res[v_id][e] = size
-                queue.append((v_id, e, size))
-    if extra_dims is not None:
-        for e, size in extra_dims.items():
-            res[id(root)][e] = size
-            queue.append((id(root), e, size))
-    # BFS to propagate the values
-    while queue:
-        id_t1, e, size = queue.popleft()
-        for id_t2, e2 in graph[(id_t1, e)]:
-            if e2 not in res[id_t2]:
-                res[id_t2][e2] = size
-                queue.append((id_t2, e2, size))
-            elif (size2 := res[id_t2][e2]) != size:
-                raise ValueError(f"Size mismatch: {size} != {size2}")
-    return res

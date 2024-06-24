@@ -1,6 +1,6 @@
 import pytest
 from tensorgrad.functions import frobenius2
-from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, compute_edge_dims
+from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -339,11 +339,11 @@ def test_size0():
     v = Variable("x", ["x"])
     shapes = {v: {"x": 3}}
 
-    assert compute_edge_dims(v, shapes)[id(v)] == {"x": 3}
+    assert v._compute_edge_dims(shapes)[id(v)] == {"x": 3, ("Original", "x"): 3}
 
     c = Copy(["x", "y"])
-    assert compute_edge_dims(Product([c, v]), shapes)[id(c)] == {"x": 3, "y": 3}
-    assert compute_edge_dims(Product([v, c]), shapes)[id(c)] == {"x": 3, "y": 3}
+    assert Product([c, v])._compute_edge_dims(shapes)[id(c)] == {"x": 3, "y": 3}
+    assert Product([v, c])._compute_edge_dims(shapes)[id(c)] == {"x": 3, "y": 3}
 
 
 def test_size1():
@@ -353,7 +353,7 @@ def test_size1():
     t0 = Product([v, Copy(["i1", "i2"])])
     t1 = Product([Copy(["i0", "i1"])])
 
-    assert compute_edge_dims(t0 @ t1, shapes)[id(t0)] == {"i0": 3, "i1": 3, "i2": 3}
+    assert (t0 @ t1)._compute_edge_dims(shapes)[id(t0)] == {"i0": 3, "i1": 3, "i2": 3}
 
 
 def test_size2():
@@ -362,7 +362,7 @@ def test_size2():
     t0 = Product([v, Copy(["i1", "i2"])])
     t1 = Product([Copy(["i0", "i1"]), Copy(["i2", "i3"])])
 
-    assert compute_edge_dims(t0 @ t1, shapes)[id(t1)] == {
+    assert (t0 @ t1)._compute_edge_dims(shapes)[id(t1)] == {
         "i0": 3,
         "i1": 3,
         "i2": 3,
@@ -375,7 +375,7 @@ def test_size3():
     shapes = {v: {"i0": 3}}
     t0 = Product([v, Copy(["i1", "i2"]), Copy(["i3", "i4"])])
     t1 = Product([Copy(["i0", "i1"]), Copy(["i2", "i3"]), Copy(["i4", "i5"])])
-    assert compute_edge_dims(t0 @ t1, shapes)[id(t1)] == {
+    assert (t0 @ t1)._compute_edge_dims(shapes)[id(t1)] == {
         "i0": 3,
         "i1": 3,
         "i2": 3,
@@ -393,7 +393,7 @@ def test_sizes():
     for i in range(0, 10, 2):
         t1 = t1 @ Copy([f"i{i}", f"i{i+1}"])
         t0 = t0 @ Copy([f"i{i+1}", f"i{i+2}"])
-        assert compute_edge_dims(t0 @ t1, shapes)[id(t0)] == {f"i{j}": 3 for j in range(0, i + 3)}
+        assert (t0 @ t1)._compute_edge_dims(shapes)[id(t0)] == {f"i{j}": 3 for j in range(0, i + 3)}
 
 
 def test_transpose():

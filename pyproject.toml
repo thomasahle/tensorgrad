@@ -13,7 +13,6 @@ dependencies = [
    "torch",
    "nbval",
    "pytest",
-   "pynauty",
    "pdf2image"
 ]
 

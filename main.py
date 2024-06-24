@@ -272,6 +272,26 @@ def main():
     expr = Expectation(expr, S, Copy("i, j, p"), cov)
     # expr = expr.full_simplify()
 
+    # Strassen
+    S = Variable("S", "i, p")
+    T = Variable("T", "k, p")
+    U = Variable("U", "m, p")
+    ST = S * T.rename({"k": "l"})
+    TU = T * U.rename({"m": "n"})
+    US = U * S.rename({"i": "j"})
+    expr = Product(
+        [
+            ST.rename({"p": "p1"}),
+            TU.rename({"p": "p2"}),
+            US.rename({"p": "p3"}),
+            Copy("p1, p2, p3"),
+        ]
+    )
+    for x in [S, T, U]:
+        expr = Expectation(expr, x)
+
+
+
     # A = Variable('A', 'i')
     # B = Variable('V', 'i')
     # expr = A @ B
