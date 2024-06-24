@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from itertools import combinations
 import math
-from typing import Any, Callable, Generator, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 from abc import ABC
 from fractions import Fraction
 from numbers import Number
@@ -543,7 +543,7 @@ class Constant(Tensor, ABC):
         new_names = self._check_grad(x, new_names)
         return Zero(self.edges + new_names)
 
-    def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
+    def edge_equivalences(self) -> Iterable[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
         if self.link is not None:
             yield from self.link.edge_equivalences()
             for e in self.link.edges:
