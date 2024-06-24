@@ -1,9 +1,11 @@
+from collections import defaultdict
 from typing import Any
 import torch
 from tensorgrad.tensor import (
     Constant,
     Function,
     FunctionInfo,
+    MatchEdgesKey,
     Ones,
     Sum,
     Tensor,
@@ -13,6 +15,10 @@ from tensorgrad.tensor import (
     Zero,
     make_distinct,
 )
+
+# We include a "sum" function, which overloads the python sum. So we keep a reference
+# here to the builtin, so we can use it in this module
+_sum = sum
 
 # We mostly try to follow the behavior of pytorch's named tensors:
 # https://pytorch.org/docs/stable/name_inference.html
@@ -170,6 +176,70 @@ class PowFunctionInfo(FunctionInfo):
             )
 
         return func
+
+    @classmethod
+    def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
+        # TODO: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
+        # but instead need to look for a similar subgraph. This is a bit more complicated.
+        # VF2 has an "isomorphic subgraph search" funtion we can probably use.
+
+        # First group tensors by their edges
+        hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
+        partition = defaultdict(list)
+        for t in tensors:
+            # We don't include Copy's since they have been reduced to hyper-edges
+            if isinstance(t, Copy):
+                continue
+            key = tuple(hyperedges.get(e, e) for e in t.edges)
+            if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
+                power_weight = t.fn_info.k
+                t, *_es = t.inputs[0]
+            else:
+                power_weight = 1
+            partition[key, hash(t)].append((power_weight, t))
+
+        tensors = [c for c in tensors if isinstance(c, Copy)]
+        for (edge_key, h), ts in partition.items():
+            w = _sum(w for w, t in ts)
+            t0 = ts[0][1]
+            if w == 0:
+                tensors.append(Ones(t0.edges))
+            elif w == 1:
+                tensors.append(t0)
+            else:
+                tensors.append(pow(t0, w))
+            # Replace the other tensors with Ones. This ensures the edges are preserved.
+            for _, t in ts[1:]:
+                tensors.append(Ones(t.edges))
+
+        # Just a tempoary solution to cancel separate components until we have a better way to do it.
+        partition = defaultdict(int)
+        for p in Product(tensors).components():
+            power_weight = 1
+            if len(p.tensors) == 1:
+                t = p.tensors[0]
+                if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
+                    power_weight = t.fn_info.k
+                    t, *_es = t.inputs[0]
+            else:
+                t = p
+            partition[MatchEdgesKey(t)] += power_weight
+
+        tensors = []
+        for key, w in partition.items():
+            t = key.value
+            if w == 0:
+                tensors.append(Ones(t.edges))
+            elif w == 1:
+                if isinstance(t, Product):
+                    for tt in t.tensors:
+                        tensors.append(tt)
+                else:
+                    tensors.append(t)
+            else:
+                tensors.append(pow(t, w))
+
+        return tensors
 
 
 def pow(tensor: Tensor, k: int) -> Tensor:

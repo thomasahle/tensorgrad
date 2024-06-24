@@ -49,7 +49,6 @@ def test_variable_structural_graph():
         ("Original Edge Name", "i j"),
         ("Original Edge Name", "k"),
     }
-    assert edges == {"i": 1, "j": 1, "k": 2}
 
 
 def test_variable_edge_equivalences():

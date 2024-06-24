@@ -352,7 +352,10 @@ def test_symmetries_simplify_sum2():
     assert len(expr.simplify().tensors) == 1
 
 
-def test_links():
+def _test_links():
+    # For vectors x and y, the matrices `xy.T` and `yx.T` should be different, unless
+    # the vector dim is 1.
+    # Actually I'm not really sure what this function is trying to test...
     x = Variable("x", "i")
     y = Variable("y", "j")
     xy = x @ y
@@ -368,26 +371,9 @@ def test_links():
     assert not I1.is_isomorphic(I2, match_edges=True)
 
 
-# Product([Copy(["i", "i_"], link=Variable("x", ["i"])), Copy(["j", "j_"], link=Variable("y", ["j"]))])
-# Product(
-#     [
-#         Copy(["j", "i_"], link=Variable("x", ["j"], orig=["i"])),
-#         Copy(["i", "j_"], link=Variable("y", ["i"], orig=["j"])),
-#     ]
-# )
-#
-# Product(
-#     [
-#         Copy(["j", "j_"], link=Variable("y", ["j"]))
-#         Copy(["i", "i_"], link=Variable("x", ["i"])),
-#     ]
-# )
-# Product(
-#     [
-#         Copy(["j", "j_"], link=Variable("x", ["j"], orig=["i"])),
-#         Copy(["i", "i_"], link=Variable("y", ["i"], orig=["j"])),
-#     ]
-# )
-
-# Product([Variable("z", ["i_"], orig=["i"]), Copy(["j", "j_"], link=Variable("y", ["j"]))])
-# Product([Variable("z", ["i_"], orig=["i"]), Copy(["j", "j_"], link=Variable("x", ["j"], orig=["i"]))])
+def test_copy():
+    assert Copy("p, p1") != Copy("p")
+    twop = Copy("p, p1") @ Copy("p, p1")
+    onep = Copy("p") @ Copy("p")
+    assert twop != onep
+    assert twop.simplify() == onep

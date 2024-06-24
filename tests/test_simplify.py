@@ -7,7 +7,7 @@ def test_copy_loop():
     # assert expr.simplify() == Copy()
 
     # The best way to ensure we don't lose information is to just not contract self-loops
-    assert expr.simplify() == Copy("i, j") @ Copy("i, j")
+    assert expr.simplify() == Copy("i") @ Copy("i")
 
     # Concrete example from https://stats.stackexchange.com/questions/589669/gaussian-fourth-moment-formulas
     #    (
@@ -34,3 +34,9 @@ def test_copy_loop():
 def test_copy_double():
     expr = Copy("p0, p2, p0_") @ Copy("p0, p0_")
     assert expr.simplify() == Copy("p2")
+
+
+def test_copy_trace():
+    expr = Copy("p, p1") @ Copy("p, p1")
+    expected = Copy("p") @ Copy("p")
+    assert expr.simplify() == expected.simplify()

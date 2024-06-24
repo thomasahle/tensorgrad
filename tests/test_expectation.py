@@ -200,6 +200,10 @@ def test_strassen():
             Copy("i, j"),
             Copy("k, l"),
             Copy("m, n"),
+            # The product is scaled by a factor |p| which we "implement" using
+            # two combined copy tensors
+            Copy("p"),
+            Copy("p"),
         ]
     )
 

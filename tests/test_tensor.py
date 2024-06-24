@@ -59,12 +59,8 @@ def test_contraction():
     c = Product([x, y])
     assert c.edges == ["i", "k"]
     assert c.contractions == ["j"]
-    assert (
-        c.grad(x, ["i_", "j_"]).simplify().is_isomorphic(Product([Copy(["i", "i_"]), y.rename({"j": "j_"})]))
-    )
-    assert (
-        c.grad(y, ["j_", "k_"]).simplify().is_isomorphic(Product([x.rename({"j": "j_"}), Copy(["k", "k_"])]))
-    )
+    assert c.grad(x, ["i_", "j_"]).simplify() == Copy(["i", "i_"]) @ y.rename({"j": "j_"})
+    assert c.grad(y, ["j_", "k_"]).simplify() == x.rename({"j": "j_"}) @ Copy(["k", "k_"])
 
 
 def test_linear_combination():

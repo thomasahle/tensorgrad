@@ -11,6 +11,7 @@ import networkx as nx
 
 import torch
 
+
 # TODO:
 # - Code generation (e.g. Triton, Pytorch)
 # - Prettier printing
@@ -20,6 +21,8 @@ import torch
 #   Can't you just user Copy tensors?
 # - Taking the derivative with respect to multiple variables at the same time (full backprop)
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
+# - Nested derivatives should create symmetries between the edges they create.
+#   This would probably require expanding the Derivative class to take multiple wrts?
 # More simplification rules:
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
@@ -122,7 +125,7 @@ class Tensor(ABC):
         raise NotImplementedError
 
     @cached_property
-    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, str]]:
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, str]]:
         """Create a graph representation of the tensor, which can be used for isomorphism testing.
 
         Returns:
@@ -135,7 +138,7 @@ class Tensor(ABC):
         """
         raise NotImplementedError
 
-    def _edge_structural_graph(self, match_edges=True) -> nx.DiGraph:
+    def _edge_structural_graph(self, match_edges=True) -> nx.MultiDiGraph:
         """Like structural_graph, but adds dummy nodes for the outer edges."""
         G, edges = self.structural_graph()
         for e, node in edges.items():
@@ -203,7 +206,7 @@ class Tensor(ABC):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
         G1 = self._edge_structural_graph(match_edges=False)
         G2 = other._edge_structural_graph(match_edges=False)
-        for matching in nx.algorithms.isomorphism.DiGraphMatcher(
+        for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
             G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
         ).isomorphisms_iter():
             # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
@@ -475,8 +478,8 @@ class Variable(Tensor):
             args.append(f'symmetries="{groups}"')
         return f"Variable({', '.join(args)})"
 
-    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
-        G = nx.DiGraph()
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
         G.add_node(0, name=("Variable", self.name), tensor=self)
         edges = {}
         name_map = dict(zip(self.original_edges, self.edges))
@@ -545,12 +548,12 @@ class Constant(Tensor, ABC):
             extra += f", tag={self.tag}"
         return f"{type(self).__name__}({self.edges}{extra})"
 
-    def structural_graph(self) -> tuple[nx.DiGraph, int, dict[str, int]]:
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, int, dict[str, int]]:
         # This method assumes the constant is completely symmetric in the edges.
         # That's true for all of Copy, Zero and Ones
         # Note: it might not be true once edge dimensions are introduced, so we can't
         # necessarily use this same graph to replace edge_equivalences()...
-        G = nx.DiGraph()
+        G = nx.MultiDiGraph()
         name = type(self).__name__
         if self.tag is not None:
             name += f" ({self.tag})"
@@ -610,6 +613,68 @@ class Copy(Constant):
         for idx in range(shape[0]):
             copy[(idx,) * len(self.edges)] = 1
         return copy.rename(*self.edges)
+
+    @classmethod
+    def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
+        """Simplifies a list of tensors assumed to be a product."""
+        while True:
+            tensors, done = cls._simplify_step(tensors)
+            if done:
+                break
+        # Remove empty Copy's (they are just the constant 1)
+        tensors = [t for t in tensors if not (isinstance(t, Copy) and t.rank == 0)]
+        return tensors
+
+    @classmethod
+    def _simplify_step(cls, tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
+        """Performs one step of simplification. Returns a new list if changed, or the original if not."""
+        for e in [edge for t in tensors for edge in t.edges]:
+            connected = [t for t in tensors if e in t.edges]
+            if len(connected) != 2:
+                continue
+            t1, t2 = connected
+
+            # Remove t1 and t2 from tensors.  We use the "is" operator, since we've overloaded equality to mean isomorphic.
+            other = [t for t in tensors if t is not t1 and t is not t2]
+
+            for simplification in [cls._merge_copy_tensors, cls._remove_identity_matrix]:
+                if (new := simplification(t1, t2, e)) is not None:
+                    tensors = other + new
+                    return tensors, False
+
+        return tensors, True
+
+    @staticmethod
+    def _merge_copy_tensors(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
+        if not (isinstance(t1, Copy) and isinstance(t2, Copy)):
+            return None
+
+        # Don't create a singleton Copy tensor
+        if set(t1.edges) == set(t2.edges):
+            # If the two copy's share all edges with each other, we reduce to a single
+            # shared edge, which is how we represent a constant with value = edge dim.
+            if t1.rank != 1:
+                # TODO: If there is some linked edge, we should try to let that be the one we keep
+                return [
+                    Copy([e], link=t1.link),
+                    Copy([e], link=t2.link),
+                ]
+            return None
+
+        # We don't just remove e, but remove all shared edges
+        return [Copy(list(set(t1.edges) ^ set(t2.edges)), link=t1.link or t2.link)]
+
+    @staticmethod
+    def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> bool:
+        # Make t1 the identity matrix
+        if isinstance(t2, Copy) and t2.rank == 2:
+            t1, t2 = t2, t1
+
+        if isinstance(t1, Copy) and t1.rank == 2:
+            other_edge = next(iter(set(t1.edges) - {e}))
+            # Don't create self loops. We never connect a tensor to itself.
+            if other_edge not in t2.edges:
+                return [t2.rename({e: other_edge})]
 
 
 class Zero(Constant):
@@ -861,8 +926,8 @@ class Function(Tensor):
         assert set(res.edges) == set(self.edges + new_names), f"{res.edges} != {self.edges + new_names}"
         return res
 
-    def structural_graph(self) -> tuple[nx.DiGraph, int, dict[str, int]]:
-        G = nx.DiGraph()
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, int, dict[str, int]]:
+        G = nx.MultiDiGraph()
         G.add_node(0, name=(type(self).__name__, self.fn_info.name), tensor=self)
         edges = {}
         # We add a node for the "function" tensor itself
@@ -983,8 +1048,8 @@ class Derivative(Tensor):
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
 
-    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
-        G = nx.DiGraph()
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
         G.add_node(0, name="Derivative", tensor=self)
         edges = {}
         # We add a node for the "wrt" tensor
@@ -1158,8 +1223,6 @@ class Product(Tensor):
         if args["associative_products"]:
             sub_products = [t if isinstance(t, Product) else Product([t]) for t in tensors]
             tensors = Product.merge(sub_products).tensors
-        else:
-            tensors = tensors
 
         # We can do a "small" kind of distributed products, which is handling children that are single sums
         # Also, if a child is a sum with a single element, we can pull the weight up.
@@ -1171,108 +1234,13 @@ class Product(Tensor):
             res_weight = 1
 
         # Simplify Copy Tensors
-        while True:
-            # For each internal edge
-            for e in [e for t in tensors for e in t.edges]:
-                # Find the (one or two) children using that edge
-                ts = [t for t in tensors if e in t.edges]
-                if len(ts) == 1:
-                    continue
-                t1, t2 = ts
-                # Merge connected copy tensors into one
-                if isinstance(t1, Copy) and isinstance(t2, Copy):
-                    # Don't create a singleton Copy tensor
-                    if set(t1.edges) == set(t2.edges):
-                        # We could reduce the number of edges here, but then we'd have to check which
-                        # are linked to variables, so we can still evaluate the copy tensor.
-                        continue
-                    # Don't just remove e, but remove all shared edges
-                    new = Copy(list(set(t1.edges) ^ set(t2.edges)))
-                    # Can't use children.remove(t1) since we've overloaded equality to mean isomorphic...
-                    tensors = [t for t in tensors if t is not t1]
-                    tensors = [t for t in tensors if t is not t2]
-                    tensors.append(new)
-                    break
-                # Remove identity matrices
-                if isinstance(t1, Copy) and len(t1.edges) == 2:
-                    t1, t2 = t2, t1
-                if isinstance(t2, Copy) and len(t2.edges) == 2:
-                    (other_edge,) = set(t2.edges) - {e}
-                    # Don't create self loops. We never connect a tensor to itself.
-                    if other_edge in t1.edges:
-                        continue
-                    rename = {e: other_edge}
-                    tensors = [t for t in tensors if t is not t1]
-                    tensors = [t for t in tensors if t is not t2]
-                    tensors.append(t1.rename(rename))
-                    break
-            else:
-                # If we didn't find any identity matrices to remove, we are done.
-                break
-
-        # Remove empty Copy's (they are just the constant 1)
-        tensors = [t for t in tensors if not (isinstance(t, Copy) and t.rank == 0)]
+        tensors = Copy.simplify_outer(tensors)
 
         # Combine / Cancel Product Functions
-        # First group tensors by their edges
         if args["combine_products"]:
-            # TODO: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
-            # but instead need to look for a similar subgraph. This is a bit more complicated.
+            from tensorgrad.functions import PowFunctionInfo
 
-            from tensorgrad.functions import PowFunctionInfo, pow
-
-            hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
-            partition = defaultdict(list)
-            for t in tensors:
-                # We don't include Copy's since they have been reduced to hyper-edges
-                if isinstance(t, Copy):
-                    continue
-                key = tuple(hyperedges.get(e, e) for e in t.edges)
-                if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
-                    power_weight = t.fn_info.k
-                    t, *_es = t.inputs[0]
-                else:
-                    power_weight = 1
-                partition[key, hash(t)].append((power_weight, t))
-            tensors = [c for c in tensors if isinstance(c, Copy)]
-            for (edge_key, h), ts in partition.items():
-                w = sum(w for w, t in ts)
-                t0 = ts[0][1]
-                if w == 0:
-                    tensors.append(Ones(t0.edges))
-                elif w == 1:
-                    tensors.append(t0)
-                else:
-                    tensors.append(pow(t0, w))
-                # Replace the other tensors with Ones. This ensures the edges are preserved.
-                for _, t in ts[1:]:
-                    tensors.append(Ones(t.edges))
-
-            # Just a tempoary solution to cancel separate components until we have a better way to do it.
-            partition = defaultdict(int)
-            for p in Product(tensors).components():
-                power_weight = 1
-                if len(p.tensors) == 1:
-                    t = p.tensors[0]
-                    if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
-                        power_weight = t.fn_info.k
-                        t, *_es = t.inputs[0]
-                else:
-                    t = p
-                partition[MatchEdgesKey(t)] += power_weight
-            tensors = []
-            for key, w in partition.items():
-                t = key.value
-                if w == 0:
-                    tensors.append(Ones(t.edges))
-                elif w == 1:
-                    if isinstance(t, Product):
-                        for tt in t.tensors:
-                            tensors.append(tt)
-                    else:
-                        tensors.append(t)
-                else:
-                    tensors.append(pow(t, w))
+            tensors = PowFunctionInfo.simplify_outer(tensors)
 
         # Base cases
         if not tensors:
@@ -1327,8 +1295,8 @@ class Product(Tensor):
 
         return components
 
-    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
-        G = nx.DiGraph()
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
         G.add_node(0, name=self.__class__.__name__, tensor=self)
         edges = {}
         inner_edges = defaultdict(list)
@@ -1436,8 +1404,8 @@ class Sum(Tensor):
     def __repr__(self):
         return f"Sum({self.tensors}, {self.weights})"
 
-    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
-        G = nx.DiGraph()
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
         G.add_node(0, name=self.__class__.__name__, tensor=self)
         edges = {}
         # Create special "Plus nodes" to collect common edges

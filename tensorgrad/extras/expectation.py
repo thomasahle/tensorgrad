@@ -118,8 +118,8 @@ class Expectation(Tensor):
     def __repr__(self):
         return f"E[{self.tensor}]"
 
-    def structural_graph(self) -> tuple[nx.DiGraph, dict[str, int]]:
-        G = nx.DiGraph()
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
         G.add_node(0, name=type(self).__name__, tensor=self)
         G, t_edges = add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
         G, _ = add_structural_graph(G, self.wrt, root_edge_label="self.wrt")
