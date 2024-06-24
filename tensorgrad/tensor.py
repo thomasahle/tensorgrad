@@ -168,6 +168,11 @@ class Tensor(ABC):
     def __matmul__(self, other) -> "Tensor":
         return Product([self, other])
 
+    def __rmatmul__(self, other):
+        if isinstance(other, int):
+            return self * other
+        return self @ other
+
     def __rmul__(self, other) -> "Tensor":
         return self * other
 

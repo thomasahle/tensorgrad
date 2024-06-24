@@ -393,43 +393,8 @@ def main():
 
     # expr = Ones(["a", "b", "c"]) + Ones(["a", "b", "c"])
 
-    if False:
-        X = Variable("X", "i, j")
-        A = Variable("A", "j, j1")
-        B = Variable("B", "i, i1")
-        C = Variable("C", "j, j1")
-        expr = (
-                X.rename({"i":"i0"})
-                @ A
-                @ X.rename({"j":"j1"})
-                @ B
-                @ X.rename({"i":"i1"})
-                @ C
-                @ X.rename({"j":"j1"})
-            )
-        mu = Copy(["i"]) @ Variable("m", "j")
-        covar = Copy("i, k") @ Variable("S", "j, l")
-        #mu = Zero(["i", "j"])
-        #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
-        assert covar.edges == ["i", "k", "j", "l"]
-        expr = Expectation(expr, X, mu, covar).full_simplify()
-
-
-    if False:
-        X = Variable("X", "i, j")
-        A = Variable("A", "j, j1")
-        expr = (
-                X.rename({"j":"j0"}) # (i, j0)
-                @ X # (j0, j)
-                @ A # (j0, j1)
-                @ X.rename({"j":"j1"}) # (j0, i)
-                @ X # (j0, j)
-            )
-        mu = Copy(["i"]) @ Variable("m", ["j"])
-        covar = Copy("i, k") @ Variable("S", "j, l")
-        #mu = Zero(["i", "j"])
-        #covar = Copy(["i", "k"]) @ Copy(["j", "l"])
-        expr = Expectation(expr, X, mu, covar).full_simplify()
+    a = Variable("a", "i, j")
+    expr = F.mean(a, ["i", "j"])
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")

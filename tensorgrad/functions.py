@@ -93,6 +93,14 @@ def sum(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
     return out
 
 
+def mean(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
+    s = sum(tensor, edges, keepdims)
+    normalization = 1
+    for e in edges:
+        normalization @= Copy([e]) @ Copy([e], link=tensor)
+    return s / normalization
+
+
 def dot(t1: Tensor, t2: Tensor, dims: list[str]) -> Tensor:
     """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges."""
     return (t1 * t2).sum(dims)
@@ -157,10 +165,8 @@ class PowFunctionInfo(FunctionInfo):
 
         # Base cases
         if (
-            # Pow of 1 is just 1
+            # Pow of 1 is just 1.
             isinstance(inner, Copy)
-            or isinstance(inner, Product)
-            and all(isinstance(t, Copy) for t in inner.tensors)
             # Pow of 0 is just 0
             or isinstance(inner, Zero)
         ):

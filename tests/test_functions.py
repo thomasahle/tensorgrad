@@ -77,6 +77,25 @@ def test_sum():
     torch.testing.assert_close(result.rename(None), expected.rename(None))
 
 
+def test_mean():
+    a = Variable("a", ["i", "j"])
+    t_a = torch.randn(2, 3, names=("i", "j"))
+
+    # Test sum over one dimension
+    result1 = F.mean(a, ["i"]).evaluate({a: t_a})
+    result2 = F.mean(a, ["i"]).simplify().evaluate({a: t_a})
+    expected = t_a.mean(dim="i")
+    assert_close(result1, expected)
+    assert_close(result2, expected)
+
+    # Test sum over multiple dimensions
+    result1 = F.mean(a, ["i", "j"]).evaluate({a: t_a})
+    result2 = F.mean(a, ["i", "j"]).simplify().evaluate({a: t_a})
+    expected = t_a.mean(dim=("i", "j"))
+    assert_close(result1, expected)
+    assert_close(result2, expected)
+
+
 def test_pow():
     a = Variable("a", ["i", "j"])
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
