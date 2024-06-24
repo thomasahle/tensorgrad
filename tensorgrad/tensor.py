@@ -217,37 +217,6 @@ class Tensor(ABC):
                 self.edges[i - start_i]: other.edges[j - start_j] for i, j in matching.items() if i >= start_i
             }
 
-    def nauty_autgrp(self) -> set[frozenset[str]]:
-        """Like self.symmetries(), but uses Nauty to compute it instead of vf2.
-        This also allows you to get the actual automorphism group instead of just
-        the simple symmetries"""
-        import pynauty
-
-        def graph_to_pynauty(G):
-            # Nauty takes coloring as a list of equivalence classes
-            colors = defaultdict(lambda: len(colors))
-            classes = defaultdict(set)
-            for i, data in G.nodes(data=True):
-                classes[colors[data.get("name")]].add(i)
-            # The main outputs we want are the group generators and the orbits
-            return pynauty.Graph(
-                number_of_vertices=G.number_of_nodes(),
-                directed=True,
-                adjacency_dict={i: list(vs.keys()) for i, vs in G.adj.items()},
-                vertex_coloring=list(classes.values()),
-            )
-
-        G = self._edge_structural_graph(match_edges=False)
-        # The main outputs we want are the group generators and the orbits
-        generators, _grpsize1, _grpsize2, orbits, _numorbits = pynauty.autgrp(graph_to_pynauty(G))
-        # Extract the orbits of the outer edges
-        symmetries = defaultdict(set)
-        for i, label in enumerate(orbits):
-            start_i = G.number_of_nodes() - len(self.edges)
-            if i >= start_i:
-                symmetries[label].add(self.edges[i - start_i])
-        return set(map(frozenset, symmetries.values()))
-
     @cached_property
     def symmetries(self) -> set[frozenset[str]]:
         G = self._edge_structural_graph(match_edges=False)
