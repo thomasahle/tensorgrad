@@ -2,7 +2,7 @@ import torch
 from torch.autograd.functional import jacobian, hessian
 import torch.nn.functional as tF
 
-from tensorgrad.tensor import Variable
+from tensorgrad.tensor import Derivative, Function, Variable
 import tensorgrad.functions as F
 
 from tensorgrad.testutils import rand_values, assert_close
@@ -129,6 +129,15 @@ def test_exp():
     result = F.exp(a).evaluate({a: t_a})
     expected = torch.exp(t_a.rename(None)).rename("i", "j")
     assert_close(result, expected)
+
+
+def test_relu_jac():
+    x = Variable("x", ["i"])
+    ts = rand_values([x], i=3)
+    expr = F.relu(x).grad(x).simplify()
+    res = expr.evaluate({x: ts[x]})
+    expected = jacobian(lambda x: tF.relu(x), ts[x].rename(None)).rename("i", "i_")
+    assert_close(res, expected)
 
 
 def test_softmax():
@@ -288,3 +297,73 @@ def test_trace():
     res = F.trace(x).simplify().evaluate({x: ts[x]})
     expected = ts[x].rename(None).trace()
     assert_close(res, expected)
+
+
+def test_attention():
+    X = Variable("X", "seq, dim")
+    W_q = Variable("W_q", "dim, inner, head")
+    W_k = Variable("W_k", "dim, inner, head")
+    W_v = Variable("W_v", "dim, inner, head")
+    W_o = Variable("W_o", "dim, inner, head")
+    query = (W_q @ X).rename({"seq": "seq-q"})
+    key = (W_k @ X).rename({"seq": "seq-k"})
+    value = (W_v @ X).rename({"seq": "seq-k"})
+
+    logits = F.dot(query, key, ["inner"])
+    attention_scores = Function("softmax", ["seq-k"], (logits, "seq-k"))
+    expr = F.dot(value, attention_scores, ["seq-k"])
+    expr = F.dot(W_o, expr, ["inner", "head"])
+    expr = expr.grad(X)
+
+    # TODO: Test output better
+
+
+def test_relu_hessian():
+    X = Variable("X", "batch, in_dim")
+    W = Variable("W", "in_dim, out_dim")
+    b = Variable("b", "out_dim")
+
+    Y = F.relu(X @ W + b)
+    loss = F.sum(Y * Y)
+    grad = loss.grad(W)
+    hessian = grad.grad(W)
+    # TODO: Test output better
+
+
+def test_batch_norm():
+    X = Variable("X", "batch, features")
+    gamma = Variable("gamma", "features")
+    beta = Variable("beta", "features")
+    epsilon = 1
+
+    mean = F.mean(X, edges=["batch"])
+    var = F.mean((X - mean) ** 2, edges=["batch"])
+    X_norm = (X - mean) / F.sqrt(var + epsilon)
+    Y = gamma * X_norm + beta
+
+    loss = F.sum(Y)
+    grad = loss.grad(gamma)
+
+    # TODO: Test output better
+
+
+def test_l1_reg():
+    W = Variable("W", "in_dim, out_dim")
+    l1_reg = F.sum(F.abs(W))
+    grad = l1_reg.grad(W)
+
+    # TODO: Test output better
+
+
+def test_rnn():
+    x = Variable("x", "input_dim")
+    h = Variable("h", "hidden_dim")
+    W_ih = Variable("W_ih", "input_dim, hidden_dim_out")
+    W_hh = Variable("W_hh", "hidden_dim, hidden_dim_out")
+    b = Variable("b", "hidden_dim_out")
+
+    next_h = F.tanh(W_ih @ x + W_hh @ h + b).rename({"hidden_dim_out": "hidden_dim"})
+    loss = F.sum(next_h)
+    grad = loss.grad(W_hh)
+
+    # TODO: Test output better

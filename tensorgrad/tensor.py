@@ -157,19 +157,25 @@ class Tensor(ABC):
         return []
 
     def __add__(self, other) -> "Tensor":
+        if isinstance(other, Number):
+            other = Sum([Copy([])], [1 / other])
         return Sum([self, other])
 
     def __sub__(self, other) -> "Tensor":
+        if isinstance(other, Number):
+            other = Sum([Copy([])], [1 / other])
         return Sum([self, other], [1, -1])
 
     def __neg__(self) -> "Tensor":
         return Sum([self], [-1])
 
     def __matmul__(self, other) -> "Tensor":
+        if isinstance(other, Number):
+            other = Sum([Copy([])], [1 / other])
         return Product([self, other])
 
     def __rmatmul__(self, other):
-        if isinstance(other, int):
+        if isinstance(other, Number):
             return self * other
         return self @ other
 

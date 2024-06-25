@@ -15,6 +15,7 @@ from tensorgrad.tensor import (
     Zero,
     make_distinct,
 )
+from fractions import Fraction
 
 # We include a "sum" function, which overloads the python sum. So we keep a reference
 # here to the builtin, so we can use it in this module
@@ -103,7 +104,7 @@ def mean(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
 
 def dot(t1: Tensor, t2: Tensor, dims: list[str]) -> Tensor:
     """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges."""
-    return (t1 * t2).sum(dims)
+    return sum(t1 * t2, dims)
 
 
 def trace(tensor: Tensor) -> Tensor:
@@ -120,6 +121,12 @@ def log(t: Tensor) -> Tensor:
         [],
         (t,),
     )
+
+
+def tanh(t: Tensor) -> Tensor:
+    e = exp(t)
+    em = exp(-t)
+    return (e - em) / (e + em)
 
 
 class PowFunctionInfo(FunctionInfo):
@@ -253,6 +260,11 @@ def pow(tensor: Tensor, k: int) -> Tensor:
     return Function(PowFunctionInfo(k), [], (tensor,))
 
 
+def sqrt(tensor: Tensor) -> Tensor:
+    """Elementwise sqrt"""
+    return Function(PowFunctionInfo(Fraction(1, 2)), [], (tensor,))
+
+
 def exp(t: Tensor) -> Tensor:
     return Function(
         FunctionInfo(
@@ -282,16 +294,35 @@ def cross_entropy(t: Tensor, y: Tensor, dims: list[str]) -> Tensor:
     return -sum(y * log(softmax(t, dims)), dims)
 
 
+class ReluFunctionInfo(FunctionInfo):
+    def __init__(self):
+        super().__init__("relu", eval=self.eval, derivative=self.derivative)
+
+    def eval(self, x):
+        return torch.relu(x)
+
+    def derivative(self, i, new_edges, t):
+        # TODO: The mask needs to not be symmetric, which is assumed by the current Constant Tensor
+        mask = ...
+        return mask * t
+
+
 def relu(t: Tensor) -> Tensor:
-    return Function(
-        FunctionInfo(
-            "relu",
-            eval=lambda x: torch.relu(t),
-            derivative=lambda _i, new_edges, t: None,
-        ),
-        [],
-        (t,),
-    )
+    return Function(ReluFunctionInfo(), [], (t,))
+
+
+def abs(t: Tensor) -> Tensor:
+    raise NotImplementedError
+
+
+class Mask(Constant):
+    # TODO
+    """Matrix such that Z_{i,j,k} = 0 for all i, j, k"""
+
+    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
+        if not self.edges:
+            return torch.tensor(0.0)
+        return torch.zeros([edge_dims[e] for e in self.edges]).rename(*self.edges)
 
 
 def gt(t: Tensor, dim: str) -> Tensor:

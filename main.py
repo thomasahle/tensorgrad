@@ -393,8 +393,30 @@ def main():
 
     # expr = Ones(["a", "b", "c"]) + Ones(["a", "b", "c"])
 
-    a = Variable("a", "i, j")
-    expr = F.mean(a, ["i", "j"])
+    # FIXME: This is not working right now
+    # a = Variable("a", "i, j")
+    # expr = F.mean(a, ["i", "j"])
+
+    # FIXME: This is not working right now either
+    # X = Variable("X", "i")
+    # expr = F.relu(X)
+    # expr = expr.grad(X)
+
+
+    X = Variable("X", "seq, dim")
+    W_q = Variable("W_q", "dim, inner, head")
+    W_k = Variable("W_k", "dim, inner, head")
+    W_v = Variable("W_v", "dim, inner, head")
+    W_o = Variable("W_o", "dim, inner, head")
+    query = (W_q @ X).rename({"seq": "seq-q"})
+    key = (W_k @ X).rename({"seq": "seq-k"})
+    value = (W_v @ X).rename({"seq": "seq-k"})
+
+    logits = F.dot(query, key, ["inner"])
+    attention_scores = Function("softmax", ["seq-k"], (logits, "seq-k"))
+    expr = F.dot(value, attention_scores, ["seq-k"])
+    expr = F.dot(W_o, expr, ["inner", "head"])
+    # expr = Derivative(expr, X).simplify()
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")
