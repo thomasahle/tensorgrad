@@ -13,7 +13,8 @@ dependencies = [
    "torch",
    "nbval",
    "pytest",
-   "pdf2image"
+   "pdf2image",
+   "sympy"
 ]
 
 [tool.setuptools]

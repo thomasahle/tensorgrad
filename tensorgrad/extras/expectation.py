@@ -38,20 +38,21 @@ class Expectation(Tensor):
             ValueError: If the first half of `covar` edges does not match `mu`.
         """
         self.tensor = tensor
-        self.edges = tensor.edges
+        self._shape = tensor.shape
         self.wrt = wrt
         if mu is None:
-            mu = Zero(wrt.edges)
+            mu = Zero(**wrt.shape)
         if covar is None:
-            new_names, _ = unused_edge_names(wrt.edges, wrt.edges)
-            covar = Product([Copy([e, e2]) for e, e2 in zip(wrt.edges, new_names)])
+            rename = unused_edge_names(wrt.edges, wrt.edges)
+            covar = Product([Copy([self.shape[e], e, e2]) for e, e2 in rename.items()])
         self.mu = mu
         self.covar = covar
-        if mu.edges != wrt.edges:
+        if mu.shape != wrt.shape:
             # Maybe we don't really need the same order. It just seems natural.
             raise ValueError("mu must have the same edges as wrt, in the same order")
         if len(covar.edges) != 2 * len(wrt.edges):
             raise ValueError("covar must have twice the edges of wrt")
+        # TODO: I guess I just have to give Expectation a dict to understand the mapping?
         if len(set(covar.edges) - set(mu.edges)) != len(mu.edges):
             raise ValueError("first half of covar edges must match mu")
         # Compute the mapping between the two sets of edge names in covar:

@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.3 (0e150ed, 2023-07-21)"
+   sodipodi:docname="diag.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="1.9530377"
+     inkscape:cx="195.59274"
+     inkscape:cy="161.28721"
+     inkscape:window-width="1312"
+     inkscape:window-height="1051"
+     inkscape:window-x="294"
+     inkscape:window-y="38"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       id="g1"
+       transform="matrix(0.64739388,0,0,0.64739388,43.727857,-25.712723)"
+       style="stroke:none;stroke-width:1.54465">
+      <circle
+         style="fill:none;stroke:none;stroke-width:0.408689"
+         id="circle1"
+         cx="26.302311"
+         cy="92.997452"
+         r="4.6968412" />
+      <text
+         xml:space="preserve"
+         style="font-size:9.93355px;fill:#000000;stroke:none;stroke-width:0.408692"
+         x="21.967525"
+         y="97.138084"
+         id="text1"
+         transform="scale(1.0056941,0.99433814)"><tspan
+           sodipodi:role="line"
+           id="tspan1"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:9.93355px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.408692"
+           x="21.967525"
+           y="97.138084">v</tspan></text>
+    </g>
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle4"
+       cx="75.633072"
+       cy="35.495636"
+       r="1.6454852"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <g
+       id="g8"
+       transform="matrix(0.64739388,0,0,0.64739388,43.359896,-11.237116)"
+       style="stroke:none;stroke-width:1.54465">
+      <circle
+         style="fill:none;stroke:none;stroke-width:0.408689"
+         id="circle8"
+         cx="26.302311"
+         cy="92.997452"
+         r="4.6968412" />
+      <text
+         xml:space="preserve"
+         style="font-size:9.93355px;fill:#000000;stroke:none;stroke-width:0.408692"
+         x="21.967525"
+         y="97.138084"
+         id="text8"
+         transform="scale(1.0056941,0.99433814)"><tspan
+           sodipodi:role="line"
+           id="tspan8"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:9.93355px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.408692"
+           x="21.967525"
+           y="97.138084">M</tspan></text>
+    </g>
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle9"
+       cx="77.826851"
+       cy="49.605282"
+       r="1.6454852"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 64.035215,47.996234 c 4.323662,-1.921626 8.840684,-1.530648 11.434881,-0.08943"
+       id="path10"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 63.844252,50.212758 c 5.668798,3.074604 8.647321,1.825548 11.721925,0.960816"
+       id="path12" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 61.917436,35.474816 c 4.263787,0.414533 8.290697,0.592193 11.074003,0.236876"
+       id="path13" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 77.965857,34.468087 7.047092,-3.790032"
+       id="path14" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 77.965857,35.948568 7.402406,1.658141"
+       id="path15" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 80.14544,49.139507 7.224749,-1.302824"
+       id="path17" />
+    <g
+       id="g17"
+       transform="matrix(0.64739388,0,0,0.64739388,43.097461,3.8529009)"
+       style="stroke:none;stroke-width:1.54465">
+      <circle
+         style="fill:none;stroke:none;stroke-width:0.408689"
+         id="circle17"
+         cx="26.302311"
+         cy="92.997452"
+         r="4.6968412" />
+      <text
+         xml:space="preserve"
+         style="font-size:9.93355px;fill:#000000;stroke:none;stroke-width:0.408692"
+         x="21.967525"
+         y="97.138084"
+         id="text17"
+         transform="scale(1.0056941,0.99433814)"><tspan
+           sodipodi:role="line"
+           id="tspan17"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:9.93355px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.408692"
+           x="21.967525"
+           y="97.138084">T</tspan></text>
+    </g>
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle18"
+       cx="77.564415"
+       cy="64.695297"
+       r="1.6454852"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 63.596314,62.733318 c 4.323662,-1.921626 8.840684,-1.530648 11.434881,-0.08943"
+       id="path18"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 63.464173,65.71453 c 5.668798,3.074604 8.647321,1.825548 11.721925,0.960816"
+       id="path19" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 80.177116,64.053058 7.224749,-1.302824"
+       id="path20" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 74.910888,64.671898 c -3.350069,0.150215 -6.97428,0.104614 -11.415926,-0.52487"
+       id="path21"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       d="m 80.204839,65.341558 7.085748,2.230697"
+       id="path22" />
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif';fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       x="30.923157"
+       y="34.134201"
+       id="text22"><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265"
+         x="30.923157"
+         y="34.134201"
+         id="tspan24"
+         dx="0 0 0 0 0 0 0 0 0 0.30751532">Diag(v): Matrix with</tspan><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265"
+         x="31.509682"
+         y="38.543915"
+         id="tspan25">v on the diagonal </tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif';fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       x="30.461884"
+       y="48.433662"
+       id="text28"><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265"
+         x="30.461884"
+         y="48.433662"
+         id="tspan27"
+         dx="0 0 0 0 0 0 0 0 0">Diag(M): Vector with</tspan><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265"
+         x="31.048409"
+         y="52.843376"
+         id="tspan28">the diagonal of M </tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif';fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:none"
+       x="29.539337"
+       y="63.348156"
+       id="text30"><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265"
+         x="29.539337"
+         y="63.348156"
+         id="tspan32"
+         dx="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.15375766"><tspan
+   dx="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+   id="tspan31"
+   style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265">Diag(T, [i, j]): Matrix with </tspan>the</tspan><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.265"
+         x="30.125864"
+         y="67.757866"
+         id="tspan33">diagonal of T on the diagonal </tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:2.79882px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif';text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.264999;stroke-dasharray:none"
+       x="85.479309"
+       y="62.257362"
+       id="text34"><tspan
+         sodipodi:role="line"
+         id="tspan34"
+         style="stroke-width:0.265"
+         x="85.479309"
+         y="62.257362">i</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:2.79882px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif';text-align:center;text-anchor:middle;fill:#000000;stroke:none;stroke-width:0.264999;stroke-dasharray:none"
+       x="86.118523"
+       y="69.814026"
+       id="text35"><tspan
+         sodipodi:role="line"
+         id="tspan35"
+         style="stroke-width:0.265"
+         x="86.118523"
+         y="69.814026">j</tspan></text>
+  </g>
+</svg>

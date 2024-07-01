@@ -180,13 +180,26 @@ class TikzGraph:
         if label:
             label = f"${label}$"
         if start_text:
+            start_text, _style = format_label(start_text)
             start_text = f"${start_text}$"
+        else:
+            start_text = label
         if end_text:
+            end_text, _style = format_label(end_text)
             end_text = f"${end_text}$"
+        else:
+            end_text = label
 
-        self.lines.append(
-            f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "{label}", "{start_text}"  at start, "{end_text}"  at end] ({id2});'
-        )
+        print(start_text, label, end_text)
+        if start_text == end_text:
+            assert label == start_text
+            self.lines.append(
+                f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "{label}"] ({id2});'
+            )
+        else:
+            self.lines.append(
+                f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "{start_text}"  at start, "{end_text}"  at end] ({id2});'
+            )
 
     def add_subgraph(self, subgraph, style: str, layout: str, cluster_id: str):
         cluster_id = name_dict[cluster_id]
@@ -269,10 +282,7 @@ def _to_tikz(tensor, graph, depth=0):
 
     if isinstance(tensor, Variable):
         graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
-        return {
-            e: {"node_id": node_id, "text": orig_name}
-            for e, orig_name in zip(tensor.edges, tensor.original_edges)
-        }
+        return {e: {"node_id": node_id, "text": orig_name} for e, orig_name in tensor.orig.items()}
 
     if isinstance(tensor, Zero):
         graph.add_node(node_id := str(id(tensor)), "zero", degree=len(tensor.edges))

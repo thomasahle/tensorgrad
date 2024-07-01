@@ -2,9 +2,10 @@ from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy, Zero,
 from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
+from tensorgrad.serializers.to_tikz import to_tikz
 from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
-from tensorgrad.extras.expectation import Expectation
 from tensorgrad.imgtools import save_steps
+from sympy import symbols
 
 
 def l2_grad_x():
@@ -181,30 +182,6 @@ def main():
     # expr = expr.grad(logits)
     # expr = expr.full_simplify()
 
-    # Derivation of Peyman Milanfar’s gradient, d[A(x)x]
-    x = Variable("x", ["i"])
-    A = Function("A", ["i", "j"], (x, "i"))
-    expr = Derivative(A @ x, x)
-
-    # Randomized Strassen
-    SA = Variable("SA", "i, j, p1")
-    SB = Variable("SB", "m, n, p2")
-    W = Variable("W", "r, s, p3")
-    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
-    expr = Expectation(expr, SA, Variable("ma", "i, j, p1"), Variable("CA", "i, j, p1, i2, j2, q1"))
-    expr = Expectation(expr, SB, Variable("mb", "m, n, p2"), Variable("CB", "m, n, p2, m2, n2, q2"))
-    expr = Expectation(expr, W, Variable("mw", "r, s, p3"), Variable("CW", "r, s, p3, r2, s2, q3"))
-
-    # Same tensor
-    S = Variable("S", "i, j, p")
-    SA = S.rename({"p":"p1"})
-    SB = S.rename({"p":"p2", "i":"m", "j":"n"})
-    W = S.rename({"p":"p3", "i":"r", "j":"s"})
-    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
-    # expr = Expectation(expr, S, Variable("ma", "i, j, p"), Variable("CA", "i, j, p, i2, j2, p2"))
-    cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
-    expr = Expectation(expr, S, Copy("i, j, p"), cov)
-
     # X = Variable("X", "b, x")
     # Y = Variable("Y", "b, y")
     # W = Variable("W", "x, y")
@@ -239,13 +216,6 @@ def main():
     #expr = Derivative(f, x)
     #expr = Derivative(expr, x)
 
-    x = Variable("x", "batch, din")
-    W1 = Variable("W", "din1, dout1, k")
-    #act = F.relu(x @ Copy("din, din1, din2") @ W1)
-    act = x @ Copy("din, din1, din2") @ W1
-    W2 = Variable("W2", "din2, dout2, k")
-    expr = act @ Copy("dout1, dout2, dout") @ W2
-
 
     # vectors, variables = make_random_tree(2)
     # for vec in vectors:
@@ -262,33 +232,6 @@ def main():
     # for v in variables:
     #     expr = Expectation(expr, v)
     # expr = expr.full_simplify()
-
-    S = Variable("S", "i, j, p")
-    SA = S.rename({"p": "p1"})
-    SB = S.rename({"p": "p2", "i": "m", "j": "n"})
-    W = S.rename({"p": "p3", "i": "r", "j": "s"})
-    expr = Product([SA, SB, W, Copy("p1, p2, p3")])
-    cov = Product([Copy("i, i2"), Copy("j, j2"), Copy("p, p2")])
-    expr = Expectation(expr, S, Copy("i, j, p"), cov)
-    # expr = expr.full_simplify()
-
-    # Strassen
-    S = Variable("S", "i, p")
-    T = Variable("T", "k, p")
-    U = Variable("U", "m, p")
-    ST = S * T.rename({"k": "l"})
-    TU = T * U.rename({"m": "n"})
-    US = U * S.rename({"i": "j"})
-    expr = Product(
-        [
-            ST.rename({"p": "p1"}),
-            TU.rename({"p": "p2"}),
-            US.rename({"p": "p3"}),
-            Copy("p1, p2, p3"),
-        ]
-    )
-    for x in [S, T, U]:
-        expr = Expectation(expr, x)
 
 
 
@@ -403,20 +346,49 @@ def main():
     # expr = expr.grad(X)
 
 
-    X = Variable("X", "seq, dim")
-    W_q = Variable("W_q", "dim, inner, head")
-    W_k = Variable("W_k", "dim, inner, head")
-    W_v = Variable("W_v", "dim, inner, head")
-    W_o = Variable("W_o", "dim, inner, head")
-    query = (W_q @ X).rename({"seq": "seq-q"})
-    key = (W_k @ X).rename({"seq": "seq-k"})
-    value = (W_v @ X).rename({"seq": "seq-k"})
+    # X = Variable("X", "seq, dim")
+    # W_q = Variable("W_q", "dim, inner, head")
+    # W_k = Variable("W_k", "dim, inner, head")
+    # W_v = Variable("W_v", "dim, inner, head")
+    # W_o = Variable("W_o", "dim, inner, head")
+    # query = (W_q @ X).rename({"seq": "seq-q"})
+    # key = (W_k @ X).rename({"seq": "seq-k"})
+    # value = (W_v @ X).rename({"seq": "seq-k"})
 
-    logits = F.dot(query, key, ["inner"])
-    attention_scores = Function("softmax", ["seq-k"], (logits, "seq-k"))
-    expr = F.dot(value, attention_scores, ["seq-k"])
-    expr = F.dot(W_o, expr, ["inner", "head"])
-    # expr = Derivative(expr, X).simplify()
+    # #logits = F.dot(query, key, ["inner"])
+    # logits = query.inner @ key.inner # Experimental syntax
+    # attention_scores = Function("softmax", ["seq-k"], (logits, "seq-k"))
+    # expr = F.dot(value, attention_scores, ["seq-k"])
+    # expr = F.dot(W_o, expr, ["inner", "head"]) # My new syntax wouldn't help here
+    # # expr = Derivative(expr, X).simplify()
+
+    # A few times I use Copy([]).
+    # Mostly to specify a weight, as in Sum([Copy([])], [w]).
+    # But maybe I also use it with power(-1) cancelling, in the case where everything disappears(?)
+    # Anyway, in that case I don't have a particular type I want for copy.
+    # Maybe it can just be a "null type".
+    # Ones(...) also make Copy types, but it takes a variable to get the size from.
+
+    i, j, k = symbols("i j k")
+    x = Variable("x", i)
+    g = Function("g", {"j": j}, (x, "i"))
+    f = Function("f", {"k": k}, (g, "j"))
+    expr = f.grad(x).simplify()
+
+    assert expr.edges == {"k", "i_"}
+    expected = Product(
+        [
+            Function("D_0f", {"k": k, "j_": j}, (g, "j")),
+            Function("D_0g", {"j_": j, "i_": i}, (x, "i"), orig_out={"j_": "j", "i_": "i__"}),
+        ]
+    )
+    print('expr')
+    print(expr.graph_to_string())
+    print('expected')
+    print(expected.graph_to_string())
+    print(expr == expected)
+    return
+    #expr = expected
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")
@@ -455,6 +427,7 @@ def main():
     #expr = division()
     #expr = func_max()
     #expr = softmax_func_grad()
+    print(to_tikz(expr))
     save_steps(expr)
     #save_steps_old(expr, min_steps=7)
     #print(to_pytorch(expr))

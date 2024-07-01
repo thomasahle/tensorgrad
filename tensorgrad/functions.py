@@ -1,4 +1,5 @@
 from collections import defaultdict
+import itertools
 from typing import Any
 import torch
 from tensorgrad.tensor import (
@@ -45,22 +46,37 @@ def frobenius2(t: Tensor) -> Tensor:
     return Product([t, t])
 
 
+def symmetrize(t: Tensor) -> Tensor:
+    """Sum over all permutations of the edges."""
+    edges = list(t.edges)
+    res = 0
+    for perm in itertools.permutations(edges):
+        res += t.rename(**dict(zip(edges, perm)))
+    return res
+
+
 def einsum(tensors, output_edges):
     if len(output_edges) != len(set(output_edges)):
         # We don't support einsums like "i -> ii".
         # We also don't support "ii -> i", but that's more hidden, because the input tensors can't have double edges.
         raise ValueError("Output edges must be unique.")
     # Basically like Product, but will create some Identity's to ensure only the free_edges are free afterwards.
-    all_free_edges = {e for t in tensors for e in t.edges}
+    sizes = {}
+    for t in tensors:
+        for e, s in t.shape.items():
+            if e not in sizes:
+                sizes[e] = s
+            elif sizes[e] != s:
+                raise ValueError("Mismatched sizes")
     # TODO: We only really need to rename the free edges of each tensor, so `make_distinct`` is overkill.
-    dis_tensors, renames = make_distinct(*tensors, used_names=all_free_edges)
+    dis_tensors, renames = make_distinct(*tensors, used_names=sizes.keys())
     joins = []
-    for e in all_free_edges:
+    for e, s in sizes.items():
         # We create a Copy([...]) with all the entries that have this edge
         edges = [rename[e] for rename in renames if e in rename]
         if e in output_edges:
             edges.append(e)
-        joins.append(Copy(edges))
+        joins.append(Copy(s, *edges))
     return Product(dis_tensors + joins)
 
 
@@ -74,23 +90,38 @@ def kronecker(*tensors):
 
 
 def diag(t: Tensor, new_edges: list[str]):
-    """Takes vector `t` and creates a diagonal matrix with `t` on the diagonal."""
-    if len(t.edges) != 1:
-        raise ValueError("Expected a vector, got a tensor with more than one edge.")
-    # If the vector's edge is in new_edges, we need to rename it.
-    # We assume t is a vector, so there's only one edge in it.
-    # I'm not sure how to define this function otherwise.
+    """If `t` is a vector, this creates a diagonal tensor with `t` and creates a diagonal.
+    In einsum that means "i->iii".
+    If `t` is a higher order tensor, with all dims the same size, this extracts the diagonal as a vector.
+    In einsum that means "iii->i".
+    """
+    # Rename the edges to be distinct from the new edges
     (t,), _renames = make_distinct(t, used_names=new_edges)
-    return Copy(new_edges + t.edges) @ t
+
+    if not t.shape:
+        # We can't just return t @ Copy(new_edges), since we don't know the size of the new edges.
+        raise ValueError("Cannot take the diagonal of a scalar.")
+
+    edges, sizes = zip(*t.shape.items())
+    if len(set(sizes)) != 1:
+        raise ValueError("All dimensions must be the same size for the diagonal.")
+
+    return t @ Copy(sizes[0], *edges, *new_edges)
+
+
+def trace(tensor: Tensor) -> Tensor:
+    if not tensor.edges:
+        return tensor
+    return diag(tensor, [])
 
 
 def sum(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
     """Sum the tensor over the given dimensions."""
-    edges = edges or tensor.edges
-    out = Product([tensor] + [Copy([e]) for e in edges])
+    edges = tensor.edges if edges is None else edges
+    out = Product([tensor] + [Copy(tensor.shape[e], e) for e in edges])
     # Optionally broadcast back to orignal shape
     if keepdims:
-        return out @ Ones(edges)
+        return out @ Ones(**{e: tensor.shape[e] for e in edges})
     return out
 
 
@@ -98,17 +129,13 @@ def mean(tensor: Tensor, edges: list[str] = None, keepdims=False) -> Tensor:
     s = sum(tensor, edges, keepdims)
     normalization = 1
     for e in edges:
-        normalization @= Copy([e]) @ Copy([e], link=tensor)
+        normalization @= Copy(tensor.shape[e])
     return s / normalization
 
 
 def dot(t1: Tensor, t2: Tensor, dims: list[str]) -> Tensor:
     """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges."""
     return sum(t1 * t2, dims)
-
-
-def trace(tensor: Tensor) -> Tensor:
-    return tensor @ Copy(tensor.edges)
 
 
 def log(t: Tensor) -> Tensor:
@@ -146,15 +173,11 @@ class PowFunctionInfo(FunctionInfo):
         assert not es, "Multiplicative functions should be element-wise"
 
         if self.k == 0:
-            return Ones(func.edges, link=func)
+            return Ones(**func.shape)
         if self.k == 1:
             return inner
 
-        kwargs = dict(
-            orig_edges_out=func.orig_edges_out,
-            orig_edges_in=func.orig_edges_in,
-            orig_edges_ts=func.orig_edges_ts,
-        )
+        kwargs = dict(orig_out=func.orig_out)
 
         # The pow function is multiplicative, so we can pull components out of a product apart.
         if isinstance(inner, Product):
@@ -174,12 +197,14 @@ class PowFunctionInfo(FunctionInfo):
         if (
             # Pow of 1 is just 1.
             isinstance(inner, Copy)
+            # Copy of order 0 can have values other than 1
+            and inner.order > 0
             # Pow of 0 is just 0
             or isinstance(inner, Zero)
         ):
             return inner
 
-        # Combine pows
+        # Combine nested pows
         if isinstance(inner, Function) and isinstance(inner.fn_info, PowFunctionInfo):
             return Function(
                 PowFunctionInfo(inner.fn_info.k * func.fn_info.k),
@@ -319,7 +344,7 @@ class Mask(Constant):
     # TODO
     """Matrix such that Z_{i,j,k} = 0 for all i, j, k"""
 
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
+    def _inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
         if not self.edges:
             return torch.tensor(0.0)
         return torch.zeros([edge_dims[e] for e in self.edges]).rename(*self.edges)

@@ -1,3 +1,4 @@
+from sympy import symbols
 import torch
 from tensorgrad import Variable
 from tensorgrad.tensor import Copy, Product, Sum
@@ -6,13 +7,55 @@ import tensorgrad.functions as F
 import networkx as nx
 
 
+def test_simple():
+    i = symbols("i")
+    A = Variable("A", i, j=i)
+    assert A.symmetries == {frozenset({"i"}), frozenset({"j"})}
+    # Note: F.symmetrize(A) may not have the right .symmetries before it has been simplified.
+    # This is because structure in how it is created break the symmetries.
+    ApAt = F.symmetrize(A).simplify()
+    assert ApAt.symmetries == {frozenset({"i", "j"})}
+    assert ApAt.simplify() != (2 * A).simplify()
+
+    Asym = Variable("A", i, j=i).with_symmetries("i j")
+    assert A != Asym
+    assert F.symmetrize(Asym).simplify() == (2 * Asym).simplify()
+
+
+def test_simple2():
+    x, y = symbols("x y")
+    A = Variable("A", x, y)
+    B = A.rename(x="x2", y="y2")
+    (mapping,) = A.isomorphisms(B)
+    assert mapping == {"x": "x2", "y": "y2"}
+    (mapping,) = B.isomorphisms(A)
+    assert mapping == {"x2": "x", "y2": "y"}
+
+
+def test_simple3():
+    i = symbols("i")
+    A2 = Variable("A", x=i, y=i)
+    A1 = A2.rename(x="x__", y="x_")
+    A0 = Variable("A", x__=i, x_=i, _orig={"x__": "x", "x_": "y"})
+    assert A0.orig == A1.orig
+    assert A0._symmetries == A1._symmetries
+    print(A0.graph_to_string())
+    print(A1.graph_to_string())
+    print(f"{A0=}")
+    print(f"{A1=}")
+    assert A0 == A1
+    (mapping,) = A2.isomorphisms(A0)
+    assert mapping == {"x": "x__", "y": "x_"}
+
+
 def test_hash_counterexample():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
+    i, j, k = symbols("i j k")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, i)
 
     x = (A @ B @ C) @ (A @ B @ C)
-    y = A @ B @ C.rename({"i": "i2"}) @ A.rename({"i": "i2"}) @ B @ C
+    y = A @ B @ C.rename(i="i2") @ A.rename(i="i2") @ B @ C
     x = x.simplify()
     y = y.simplify()
 
@@ -20,16 +63,12 @@ def test_hash_counterexample():
 
 
 def test_hash_counterexample2():
-    #  B B      B     B
-    # A D A    A \   / A
-    # A D A vs A  D-D  A
-    #  B B      B/   \B
-
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    D = Variable("D", ["k", "k2", "l"])
-    A2 = A.rename({"i": "i2"})
-    B2 = B.rename({"k": "k2"})
+    i, j, k, l = symbols("i j k l")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    D = Variable("D", k=k, k2=k, l=l)
+    A2 = A.rename(i="i2")
+    B2 = B.rename(k="k2")
     half1 = A @ B @ D @ B2 @ A2
     expr1 = half1 @ half1
     half2 = A @ B @ D @ B2 @ A
@@ -41,24 +80,25 @@ def test_hash_counterexample2():
 
 
 def test_6cycle_vs_two_3cycles():
+    i, j, k, i2, j2, k2 = symbols("i j k i2 j2 k2")
     one_2cycle = Product(
         [
-            Variable("A", ["i", "j"]),
-            Variable("B", ["j", "k"]),
-            Variable("C", ["k", "i2"]),
-            Variable("D", ["i2", "j2"]),
-            Variable("E", ["j2", "k2"]),
-            Variable("F", ["k2", "i"]),
+            Variable("A", i, j),
+            Variable("B", j, k),
+            Variable("C", k, i2=i),
+            Variable("D", i2=i, j2=j),
+            Variable("E", j2=j, k2=k),
+            Variable("F", k2=k, i=i),
         ]
     )
     two_3cycles = Product(
         [
-            Variable("A", ["i", "j"]),
-            Variable("B", ["j", "k"]),
-            Variable("C", ["k", "i"]),
-            Variable("D", ["i2", "j2"]),
-            Variable("E", ["j2", "k2"]),
-            Variable("F", ["k2", "i2"]),
+            Variable("A", i, j),
+            Variable("B", j, k),
+            Variable("C", k, i),
+            Variable("D", i2=i, j2=j),
+            Variable("E", j2=j, k2=k),
+            Variable("F", k2=k, i2=i),
         ]
     )
 
@@ -66,54 +106,44 @@ def test_6cycle_vs_two_3cycles():
 
 
 def test_4cycle_vs_two_2cycles():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "l"])
-    D = Variable("D", ["l", "i"])
+    i, j, k, l = symbols("i j k l")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k=i)
+    C = Variable("C", k=i, l=l)
+    D = Variable("D", l, i)
     one_4cycle = Product([A, B, C, D])
-    two_2cycles = Product([A, B.rename({"k": "i"}), C, D.rename({"i": "k"})])
+    two_2cycles = Product([A, B.rename(k="i"), C, D.rename(i="k")])
     assert one_4cycle != two_2cycles
 
 
 def test_symmetry():
-    x = Variable("x", "i")
-    expr = x @ x.rename({"i": "j"})
-    assert expr.edges == ["i", "j"]
+    i = symbols("i")
+    x = Variable("x", i)
+    expr = x @ x.rename(i="j")
+    assert expr.edges == {"i", "j"}
     assert expr.symmetries == {frozenset({"i", "j"})}
 
-    expr = x @ Copy("i, j, k")
-    assert expr.edges == ["j", "k"]
+    expr = x @ Copy(i, "i, j, k")
+    assert expr.edges == {"j", "k"}
     assert expr.symmetries == {frozenset({"j", "k"})}
 
 
 def test_example_from_softmax_hessian():
-    # The two a are isomorphic, but they can't be added / subtracted, because the edges are different.
-    #
-    #    A   B       A   B
-    #    |   ⅄   vs  |   ⅄
-    #    i  j k      j  i k
-    #
-    A = Variable("A", "i")
-    B = Variable("B", "l")
-    graph = A @ B @ Copy("l, j, k")
-    graph2 = graph.rename({"i": "j", "j": "i"})
+    i, l, j, k = symbols("i l j k")
+    A = Variable("A", i)
+    B = Variable("B", l)
+    graph = A @ B @ Copy(l, j, k)
+    graph2 = graph.rename(i=j, j=i)
     assert graph == graph2
 
-    # These two are isomorphic, but they _can_ be added because of the symmetry.
-    #
-    #    A   B       A   B
-    #    |   ⅄   vs  |   ⅄
-    #    i  j k      i  k j
-    #
-    graph3 = graph.rename({"j": "k", "k": "j"})
+    graph3 = graph.rename(j=k, k=j)
     assert graph == graph3
 
-    # The point is that when we include the graphs in bigger context, the (lack of) symmetry matters.
     variables = Product(
         [
-            Variable("x", "i"),
-            Variable("y", "j"),
-            Variable("z", "k"),
+            Variable("x", i),
+            Variable("y", j),
+            Variable("z", k),
         ]
     )
 
@@ -122,61 +152,35 @@ def test_example_from_softmax_hessian():
 
 
 def test_symmetries():
-    #    A   B
-    #    |   ⅄
-    #    i  j k
-    A = Variable("A", "i")
-    B = Variable("B", "l")
-    graph = A @ B @ Copy("l, j, k")
-    assert graph.symmetries == {frozenset({"i"}), frozenset({"j", "k"})}
+    i, l, j, k = symbols("i l j k")
+    A = Variable("A", i)
+    B = Variable("B", l)
+    graph = A @ B @ Copy(l, j, k)
+    assert graph.symmetries == {frozenset({i}), frozenset({j, k})}
 
-    #    A   B      A   B
-    #    |   ⅄   +  |   ⅄
-    #    i  j k     i  k j
-    graph2 = graph + graph.rename({"j": "k", "k": "j"})
-    assert graph2.symmetries == {frozenset({"i"}), frozenset({"j", "k"})}
+    graph2 = graph + graph.rename(j=k, k=j)
+    assert graph2.symmetries == {frozenset({i}), frozenset({j, k})}
 
-    #    A   B      A   B
-    #    |   ⅄   +  |   ⅄
-    #    i  j k     k  j i
-    graph3 = graph + graph.rename({"i": "k", "k": "i"})
-    assert graph3.symmetries == {frozenset({"i", "k"}), frozenset({"j"})}
+    graph3 = graph + graph.rename(i=k, k=i)
+    assert graph3.symmetries == {frozenset({i, k}), frozenset({j})}
 
-    #    A   B      A   B      A   B
-    #    |   ⅄   +  |   ⅄   +  |   ⅄
-    #    i  j k     j  i k     k  j i
-    graph4 = Sum([graph, graph.rename({"i": "j", "j": "i"}), graph.rename({"i": "k", "k": "i"})])
-    assert graph4.symmetries == {frozenset({"i", "j", "k"})}
+    graph4 = Sum([graph, graph.rename(i=j, j=i), graph.rename(i=k, k=i)])
+    assert graph4.symmetries == {frozenset({i, j, k})}
 
 
 def test_symmetries_simplify_sum():
-    #    A   B
-    #    |   ⅄
-    #    i  j k
-    A = Variable("A", "i")
-    B = Variable("B", "l")
-    graph1 = A @ B @ Copy("l, j, k")
-    #    A   B
-    #    |   ⅄
-    #    i  k j
-    graph2 = graph1.rename({"j": "k", "k": "j"})
+    i, l, j, k = symbols("i l j k")
+    A = Variable("A", i)
+    B = Variable("B", l)
+    graph1 = A @ B @ Copy(l, j, k)
+    graph2 = graph1.rename(j=k, k=j)
 
-    # Flipping j and k we can still combine the two graphs.
     assert len((graph1 + graph2).simplify().tensors) == 1
 
-    #    A   B
-    #    |   ⅄
-    #    k  j i
-    graph3 = graph1.rename({"i": "k", "k": "i"})
-
-    # Flipping i and k we can't combine the two graphs.
+    graph3 = graph1.rename(i=k, k=i)
     assert len((graph1 + graph3).simplify().tensors) == 2
 
-    #    A   B
-    #    |   ⅄
-    #    m  j k
-    graph4 = graph1.rename({"i": "m"})
-    # Even if graph1 and graph4 are isomorphic, we can't combine them.
+    graph4 = graph1.rename(i="m")
     assert len((graph1 + graph4).simplify().tensors) == 2
 
 
@@ -187,112 +191,120 @@ def test_empty_graphs():
 
 
 def test_single_variable_graphs():
-    single_var1 = Product([Variable("A", ["i", "j"])])
-    single_var2 = Product([Variable("B", ["i", "j"])])
+    i, j = symbols("i j")
+    single_var1 = Product([Variable("A", i, j)])
+    single_var2 = Product([Variable("B", i, j)])
     assert single_var1 != single_var2
 
-    A = Variable("A", ["i", "j"])
+    A = Variable("A", i, j)
     single_var1 = Product([A])
-    single_var2 = Product([A.rename({"i": "i2"})])
+    single_var2 = Product([A.rename(i="i2")])
     assert single_var1 == single_var2
 
-    single_var3 = Product([A.rename({"i": "j", "j": "i"})])
+    single_var3 = Product([A.rename(i=j, j=i)])
     assert single_var1 == single_var3
 
 
 def test_same_variable_names():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
+    i, j, k = symbols("i j k")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, i)
     graph1 = Product([A, B, C])
     graph2 = Product(
         [
-            A.rename({"i": "i2", "j": "j2"}),
-            B.rename({"k": "k2", "j": "j2"}),
-            C.rename({"i": "i2", "k": "k2"}),
+            A.rename(i="i2", j="j2"),
+            B.rename(k="k2", j="j2"),
+            C.rename(i="i2", k="k2"),
         ]
     )
     assert graph1 == graph2
 
 
 def test_3cycle_with_selfloop():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
-    D = Variable("D", ["l", "m"])
+    i, j, k, l, m = symbols("i j k l m")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, i)
+    D = Variable("D", l, m)
     graph1 = Product([A, B, C, D])
-    graph2 = Product([A, B, C, D.rename({"l": "n"})])
+    graph2 = Product([A, B, C, D.rename(l="n")])
     assert graph1 == graph2
 
 
 def test_disconnected_graphs():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
-    D = Variable("D", ["l", "m"])
-    E = Variable("E", ["m", "n"])
-    F = Variable("F", ["n", "l"])
+    i, j, k, l, m, n = symbols("i j k l m n")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, i)
+    D = Variable("D", l, m)
+    E = Variable("E", m, n)
+    F = Variable("F", n, l)
     graph1 = Product([A, B, C, D, E, F])
     graph2 = Product(
         [
             A,
             B,
             C,
-            D.rename({"l": "l2", "m": "m2"}),
-            E.rename({"m": "m2", "n": "n2"}),
-            F.rename({"n": "n2", "l": "l2"}),
+            D.rename(l="l2", m="m2"),
+            E.rename(m="m2", n="n2"),
+            F.rename(n="n2", l="l2"),
         ]
     )
     assert graph1 == graph2
 
 
 def test_different_number_of_variables():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
-    D = Variable("D", ["l", "m"])
+    i, j, k, l = symbols("i j k l")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, i)
+    D = Variable("D", l, k)
     graph1 = Product([A, B, C])
     graph2 = Product([A, B, C, D])
     assert graph1 != graph2
 
 
 def test_isomorphic_with_rename():
-    A = Variable("A", ["i", "j"])
-    B = Variable("B", ["j", "k"])
-    C = Variable("C", ["k", "i"])
+    i, j, k = symbols("i j k")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, i)
     graph1 = Product([A, B, C])
     graph2 = Product(
         [
-            A.rename({"i": "x", "j": "y"}),
-            B.rename({"j": "y", "k": "z"}),
-            C.rename({"k": "z", "i": "x"}),
+            A.rename(i="x", j="y"),
+            B.rename(j="y", k="z"),
+            C.rename(k="z", i="x"),
         ]
     )
     assert graph1 == graph2
 
 
 def test_different_variables():
-    e1 = Product([Variable("a", ["i"]), Copy(["j", "j1"])])
-    e2 = Product([Variable("b", ["i"]), Copy(["j", "j1"])])
+    i, j, j1 = symbols("i j j1")
+    e1 = Product([Variable("a", i), Copy(i, j, j1)])
+    e2 = Product([Variable("b", i), Copy(i, j, j1)])
     assert e1 != e2
-    e1 = Product([Variable("a", ["i"]), Copy(["i", "j", "j1"])])
-    e2 = Product([Variable("b", ["i"]), Copy(["i", "j", "j1"])])
+    e1 = Product([Variable("a", i), Copy(i, j, j1)])
+    e2 = Product([Variable("b", i), Copy(i, j, j1)])
     assert e1 != e2
-    x = Variable("x", ["a"], ["a"])
-    z = Variable("z", ["a"], ["a"])
-    e1 = x + z
-    e2 = z + z
+    a = Variable("a", i, i)
+    b = Variable("b", i, i)
+    e1 = a + b
+    e2 = b + b
     assert e1 != e2
 
 
 def test_broadcasted():
+    x_, y_ = symbols("x_ y_")
     e1 = Product(
         [
-            Copy(["y_"]),
+            Copy(y_),
             Sum(
                 [
-                    Product([Variable("x", ["x_"], ["x"]), Copy(["y_"])]),
-                    Product([Variable("y", ["y_"], ["y"]), Copy(["x_"])]),
+                    Product([Variable("x", x_), Copy(y_)]),
+                    Product([Variable("y", y_), Copy(x_)]),
                 ],
                 (1, 1),
             ),
@@ -302,44 +314,42 @@ def test_broadcasted():
         [
             Sum(
                 [
-                    Product([Variable("x", ["x_"], ["x"]), Copy(["y"])]),
-                    Product([Variable("y", ["y"], ["y"]), Copy(["x_"])]),
+                    Product([Variable("x", x_), Copy(y_)]),
+                    Product([Variable("y", y_), Copy(y_)]),
                 ],
                 (1, 1),
             ),
-            Copy(["y"]),
+            Copy(y_),
         ]
     )
     assert e1 == e2
 
 
 def test_transpose_grad():
-    x = Variable("X", "i, j")
-    xt = x.rename({"j": "i", "i": "j"})
-    res = xt.grad(x, ["a", "b"])
-    expected = Copy("j, a") @ Copy("i, b")
-    # The automorphism group here is more complicated than what we are allowing with "symmetries".
-    # E.g. {i -> j, j -> i} is not allowed, but {i -> j, a -> b; j -> i, b -> a} _is_ allowed.
-    # Here we define symmetires by the "orbits" as calculated by pynauty
-    assert expected.symmetries == {frozenset({"j", "a", "i", "b"})}
+    i, j, a, b = symbols("i j a b")
+    x = Variable("X", i, j)
+    xt = x.rename(j=i, i=j)
+    res = xt.grad(x, a, b)
+    expected = Copy(j, a) @ Copy(i, b)
+    assert expected.symmetries == {frozenset({j, a, i, b})}
     assert res.is_isomorphic(expected, match_edges=True)
 
 
 def test_symmetries_simplify_sum2():
-    # Unfortunately it's not possible to make this test pass together with the preivous one, unless we majorly refactor the code...
-    logits = Variable("logits", "C")
+    C = symbols("C")
+    logits = Variable("logits", C)
     expr = Sum(
         [
             Product(
                 [
-                    logits.rename({"C": "C__"}),
-                    logits.rename({"C": "C_"}),
+                    logits.rename(C="C__"),
+                    logits.rename(C="C_"),
                 ]
             ),
             Product(
                 [
-                    logits.rename({"C": "C_"}),
-                    logits.rename({"C": "C__"}),
+                    logits.rename(C="C_"),
+                    logits.rename(C="C__"),
                 ]
             ),
         ],
@@ -353,27 +363,23 @@ def test_symmetries_simplify_sum2():
 
 
 def _test_links():
-    # For vectors x and y, the matrices `xy.T` and `yx.T` should be different, unless
-    # the vector dim is 1.
-    # Actually I'm not really sure what this function is trying to test...
-    x = Variable("x", "i")
-    y = Variable("y", "j")
+    i, j = symbols("i j")
+    x = Variable("x", i)
+    y = Variable("y", j)
     xy = x @ y
-    trans = {"j": "i", "i": "j"}
-    xt = x.rename(trans)
-    yt = y.rename(trans)
+    trans = {j: i, i: j}
+    xt = x.rename(**trans)
+    yt = y.rename(**trans)
     yx = yt @ xt
     I1 = xy.grad(x).grad(y).simplify()
     I2 = yx.grad(xt).grad(yt).simplify()
-    print(I1)
-    print(I2)
-    print((I1 - I2).simplify())
     assert not I1.is_isomorphic(I2, match_edges=True)
 
 
 def test_copy():
-    assert Copy("p, p1") != Copy("p")
-    twop = Copy("p, p1") @ Copy("p, p1")
-    onep = Copy("p") @ Copy("p")
+    p, p1 = symbols("p p1")
+    assert Copy(p, p1) != Copy(p)
+    twop = Copy(p, p1) @ Copy(p, p1)
+    onep = Copy(p) @ Copy(p)
     assert twop != onep
     assert twop.simplify() == onep

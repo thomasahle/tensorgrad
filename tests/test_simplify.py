@@ -1,42 +1,49 @@
-from tensorgrad.tensor import Copy
+import pytest
+from sympy import symbols
+from tensorgrad.tensor import Copy, Variable
 
 
 def test_copy_loop():
-    expr = Copy("i, j") @ Copy("i, j")
-    # Really this should be the constant `i`, like Sum(Copy(), [i]).
-    # assert expr.simplify() == Copy()
-
-    # The best way to ensure we don't lose information is to just not contract self-loops
-    assert expr.simplify() == Copy("i") @ Copy("i")
-
-    # Concrete example from https://stats.stackexchange.com/questions/589669/gaussian-fourth-moment-formulas
-    #    (
-    #        [
-    #            Product(
-    #                [
-    #                    Variable("A", ["j_", "j1"], orig=["j", "j1"]),
-    #                    Copy(["i", "k"], link=Variable("X", ["i", "j"])),
-    #                    Copy(["j", "l"], link=Variable("X", ["i", "j"])),
-    #                ]
-    #            ),
-    #            Product([Copy(["i", "k"]), Copy(["j1", "l"])]),
-    #        ],
-    #    )
-    #    Product([Copy(["k"]), Variable("A", ["j_", "j"], orig=["j", "j1"])])
-    #
-    # Note that the Copy's also have some linked Variables.
-    # This can be important when it comes to evaluating the expression.
-    # But the copy simplification happens in Product.simplify, and does that even know about linked variables?
-    # And how do we choose which of the linked variables to keep?
-    # Maybe the best solution is to just keep the loop alive...
+    i = symbols("i")
+    expr = Copy(i, "i, j") @ Copy(i, "i, j")
+    print(expr.simplify())
+    assert expr.simplify() == Copy(i)
 
 
 def test_copy_double():
-    expr = Copy("p0, p2, p0_") @ Copy("p0, p0_")
-    assert expr.simplify() == Copy("p2")
+    p = symbols("p")
+    expr = Copy(p, "p0, p2, p0_") @ Copy(p, "p0, p0_")
+    assert expr.simplify() == Copy(p, "p2")
 
 
 def test_copy_trace():
-    expr = Copy("p, p1") @ Copy("p, p1")
-    expected = Copy("p") @ Copy("p")
+    p = symbols("p")
+    expr = Copy(p, "p, p1") @ Copy(p, "p, p1")
+    expected = Copy(p, "p") @ Copy(p, "p")
     assert expr.simplify() == expected.simplify()
+
+
+def test_copy_iso():
+    # We can't just assume two copies are the same, in particular if they have
+    # edge dimensions linked to different variables.
+    i, j = symbols("i j")
+    X = Variable("X", i, j)
+    c1, c2 = X.grad(X).tensors
+    assert c1 != c2
+
+
+def test_copy_iso_sym():
+    # If X is symmetric, X.i and X.j are the same, so the two identity matrices
+    # created are the same.
+    i = symbols("i")
+    X = Variable("X", i=i, j=i).with_symmetries("i j")
+    c1, c2 = X.grad(X).tensors
+    assert c1 == c2
+
+
+def test_bad_size_sym():
+    # If X is symmetric, X.i and X.j are the same, so the two identity matrices
+    # created are the same.
+    i, j = symbols("i, j")
+    with pytest.raises(ValueError):
+        Variable("X", i, j).with_symmetries("i j")

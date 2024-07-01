@@ -1,33 +1,36 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import cached_property
-from itertools import combinations
 import math
 from typing import Any, Callable, Iterable, Optional
 from abc import ABC
 from fractions import Fraction
 from numbers import Number
 import networkx as nx
+from sympy import Symbol
 
 import torch
 
 
 # TODO:
 # - Code generation (e.g. Triton, Pytorch)
-# - Prettier printing
+# - Prettier printing. At least indentation.
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
+#   This is kinda what the FunctionInfo objects are, no?
 # - Support broadcasting in functions, since simple two input functions like Cross Entropy is currently basically not possible.
 #   Can't you just user Copy tensors?
 # - Taking the derivative with respect to multiple variables at the same time (full backprop)
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
 # - Nested derivatives should create symmetries between the edges they create.
 #   This would probably require expanding the Derivative class to take multiple wrts?
+# - We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and include it in a product.
+#   It's nice for pretty printing though, and for simplification rules...
+#   But we need a way to represent scalars whose value is tied to edge dimensions.
+#   The current Constant(link=...) system is broken, because it doesn't connect a specific edge.
 # More simplification rules:
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
-# - We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and include it in a product.
-#   It's nice for pretty printing though, and for simplification rules...
 # - Stuff from https://en.wikipedia.org/wiki/Penrose_graphical_notation
 #   - Symmetrization/Antisymmetrization
 #   - Matrix inverses
@@ -35,18 +38,27 @@ import torch
 # X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
 # X Optional "expand" setting that expands the expression to a sum of products
 # X Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
-# X Use a real algorithm to check isomorphism, like nauty.
+# X Use a real algorithm to check isomorphism, like nauty/vf2.
 #   Part of this is creating a completely new symmetry structure.
 # X Support symmetric Variables
 
 
 class Tensor(ABC):
-    edges = []
+    @property
+    def edges(self) -> set[str]:
+        """Returns an _ordered_ set of edge names"""
+        return self.shape.keys()
 
     @property
-    def rank(self):
+    def shape(self) -> dict[str, Symbol]:
+        if not hasattr(self, "_shape"):
+            raise NotImplementedError
+        return self._shape
+
+    @property
+    def order(self):
         """The number of edges the tensor has."""
-        return len(self.edges)
+        return len(self.shape)
 
     def grad(self, x: "Variable", new_names: Optional[list[str]]) -> "Tensor":
         """
@@ -67,7 +79,7 @@ class Tensor(ABC):
         new_names = self._check_grad(x, new_names)
         raise NotImplementedError
 
-    def rename(self, kwargs: dict[str, str]) -> "Tensor":
+    def rename(self, **kwargs: dict[str, str]) -> "Tensor":
         """
         Rename the free edges of this tensor.
 
@@ -112,10 +124,8 @@ class Tensor(ABC):
     @cached_property
     def weisfeiler_lehman(self) -> str:
         """Hexadecimal string corresponding to hash of the input graph."""
-        return nx.algorithms.weisfeiler_lehman_graph_hash(
-            self._edge_structural_graph(match_edges=False),
-            node_attr="name",
-        )
+        G, _ = self._edge_structural_graph(match_edges=False)
+        return nx.algorithms.weisfeiler_lehman_graph_hash(G, node_attr="name")
 
     def __eq__(self, other) -> bool:
         return self.is_isomorphic(other)
@@ -143,35 +153,36 @@ class Tensor(ABC):
         G, edges = self.structural_graph()
         for e, node in edges.items():
             n = G.number_of_nodes()
-            G.add_node(n, name="Outer Edge" + (f" {e}" if match_edges else ""))
-            G.add_edge(n, node)
-        return G
+            G.add_node(n, name=("Outer Edge", e if match_edges else ""))
+            G.add_edge(node, n)
+        return G, list(edges.keys())
 
-    def edge_equivalences(self) -> list[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
-        """
-        Return a list of equivalent edges in this tensor.
-
-        Each entry in the returned list is a tuple ((t1, e1), (t2, e2)),
-        indicating that edge e1 of tensor t1 is equivalent to edge e2 of tensor t2.
-        """
-        return []
+    def graph_to_string(self):
+        """Returns an ASCII tree-like representation of the structural graph."""
+        G, _ = self._edge_structural_graph(match_edges=True)
+        return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
 
     def __add__(self, other) -> "Tensor":
+        w = 1
         if isinstance(other, Number):
-            other = Sum([Copy([])], [1 / other])
-        return Sum([self, other])
+            other, w = Copy(1), other
+        return Sum([self, other], [1, w])
+
+    def __radd__(self, other) -> "Tensor":
+        return self + other
 
     def __sub__(self, other) -> "Tensor":
+        w = 1
         if isinstance(other, Number):
-            other = Sum([Copy([])], [1 / other])
-        return Sum([self, other], [1, -1])
+            other, w = Copy(1), other
+        return Sum([self, other], [1, -w])
 
     def __neg__(self) -> "Tensor":
         return Sum([self], [-1])
 
     def __matmul__(self, other) -> "Tensor":
         if isinstance(other, Number):
-            other = Sum([Copy([])], [1 / other])
+            other = Sum([Copy(1)], [other])
         return Product([self, other])
 
     def __rmatmul__(self, other):
@@ -188,9 +199,9 @@ class Tensor(ABC):
             return Sum([self], [other])
         # Element-wise (Hadamard) product is easy to implement using Copy tensors
         # These are the edges we multiply over
-        shared_edges = set(self.edges) & set(other.edges)
+        shared_edges = self.edges & other.edges
         (t0, t1), (rename0, rename1) = make_distinct(self, other, used_names=shared_edges)
-        return Product([t0, t1] + [Copy([e, rename0[e], rename1[e]]) for e in shared_edges])
+        return Product([t0, t1] + [Copy(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
 
     def __truediv__(self, other) -> "Tensor":
         from tensorgrad.functions import pow  # Avoid circular import
@@ -209,14 +220,15 @@ class Tensor(ABC):
         return pow(self, other)
 
     def is_isomorphic(self, other, match_edges=False) -> bool:
-        G1 = self._edge_structural_graph(match_edges=match_edges)
-        G2 = other._edge_structural_graph(match_edges=match_edges)
+        G1, _ = self._edge_structural_graph(match_edges=match_edges)
+        G2, _ = other._edge_structural_graph(match_edges=match_edges)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
 
     def isomorphisms(self, other):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
-        G1 = self._edge_structural_graph(match_edges=False)
-        G2 = other._edge_structural_graph(match_edges=False)
+        # We need the edges1 and edges2 lists to keep track of the order of edges added to the graph
+        G1, edges1 = self._edge_structural_graph(match_edges=False)
+        G2, edges2 = other._edge_structural_graph(match_edges=False)
         for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
             G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
         ).isomorphisms_iter():
@@ -225,133 +237,122 @@ class Tensor(ABC):
             start_i = G1.number_of_nodes() - len(self.edges)
             start_j = G2.number_of_nodes() - len(self.edges)
             yield {
-                self.edges[i - start_i]: other.edges[j - start_j] for i, j in matching.items() if i >= start_i
+                edges1[i - start_i]: edges2[j - start_j]
+                for i, j in matching.items()
+                if i >= start_i and j >= start_j
             }
 
     @cached_property
     def symmetries(self) -> set[frozenset[str]]:
-        G = self._edge_structural_graph(match_edges=False)
-        iso = nx.isomorphism.GraphMatcher(G, G, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
-
-        symmetries = defaultdict(set)
-        start_i = G.number_of_nodes() - len(self.edges)
-        for auto in iso.isomorphisms_iter():
-            for i, j in auto.items():
-                if i >= start_i:
-                    symmetries[i - start_i].add(self.edges[j - start_i])
-
-        return set(map(frozenset, symmetries.values()))
+        """Return the orbits of the automorphism group of the tensor."""
+        # The orbits are the sets of edges that ever get mapped to each other.
+        G = nx.Graph([(i, j) for mapping in self.isomorphisms(self) for i, j in mapping.items()])
+        symmetries = set(map(frozenset, nx.connected_components(G)))
+        if hasattr(self, "_symmetries"):
+            assert symmetries == self._symmetries, f"{symmetries=} {self._symmetries=}"
+        return symmetries
 
     def evaluate(
         self,
-        values: dict["Variable", torch.tensor],
-        *,
-        dims: dict[str, int] | None = None,
-        extras: dict[str, Any] | None = None,
-    ) -> torch.tensor:
+        values: dict["Variable", torch.Tensor],
+        dims: dict[Symbol, int] | None = None,
+    ) -> torch.Tensor:
         """
         Evaluate this tensor given values for the variable tensors.
 
         Args:
             values: A dictionary mapping variable tensors to their values.
             dims: An optional dictionary specifying the dimensions of free edges.
-            extras: An dictionary containing extra data used during evaluation.
 
         Returns:
             The result of evaluating this tensor.
         """
-        if extras is None:
-            extras = {}
-        if "edge_dims" not in extras:
-            extras["edge_dims"] = {}
-        if "cached_values" not in extras:
-            extras["cached_values"] = {}
-        if id(self) not in extras["edge_dims"]:
-            shapes = {v: dict(zip(t.names, t.shape)) for v, t in values.items() if isinstance(v, Variable)}
-            extras["edge_dims"] |= self._compute_edge_dims(shapes, extra_dims=dims)
-        edge_dims = extras["edge_dims"].get(id(self), {})
-        if not edge_dims and self.edges:
-            print("Warning: Unable to compute edge dimensions for", self)
+
+        if dims is None:
+            dims = {}
+
+        for v, t in values.items():
+            if not isinstance(v, Variable):
+                continue
+            old_to_new = {o: e for e, o in v.orig.items()}
+            for o, ts in zip(t.names, t.shape):
+                vs = v.shape[old_to_new[o]]
+                if vs not in dims:
+                    dims[vs] = ts
+                elif dims[vs] != ts:
+                    raise ValueError(f"Conflicting size for dim {o}")
+
+        # if extras is None:
+        #     extras = {}
+        # if "edge_dims" not in extras:
+        #     extras["edge_dims"] = {}
+        # if "cached_values" not in extras:
+        #     extras["cached_values"] = {}
+        # if id(self) not in extras["edge_dims"]:
+        #     shapes = {v: dict(zip(t.names, t.shape)) for v, t in values.items() if isinstance(v, Variable)}
+        #     extras["edge_dims"] |= self._compute_edge_dims(shapes, extra_dims=dims)
+        # edge_dims = extras["edge_dims"].get(id(self), {})
+        # if not edge_dims and self.edges:
+        #     print("Warning: Unable to compute edge dimensions for", self)
 
         # Variables don't need the value cache, since we can just look up the value directly.
-        if isinstance(self, Variable):
-            if self not in values:
-                raise ValueError(f"Missing value for {self}, got {values}")
-            # Since renaming values never change the order, we can just rename back here.
-            return values[self].rename(*self.edges)
+        # if isinstance(self, Variable):
+        #     if self not in values:
+        #         raise ValueError(f"Missing value for {self}, got {values}")
+        #     # The given named tensor will use original names. We rename the new names
+        #     tensor = values[self]
+        #     orig = {o: e for e, o in self.orig.items()}
+        #     return tensor.rename(*[orig[e] for e in tensor.names])
 
-        cached_values = extras["cached_values"]
-        key = (self, tuple(sorted(edge_dims.items())))
-        if key in cached_values:
-            # Take over the isomorphic representative
-            other, value = next((t, v) for (t, ed), v in cached_values.items() if (t, ed) == key)
-            rename = next(other.isomorphisms(self), None)
-            if rename is None:
-                raise ValueError("Graphs must be isomorphic (with edges)")
-            res = value.rename(*(rename[e] for e in other.edges)).align_to(*self.edges)
+        # cached_values = extras["cached_values"]
+        # key = (self, tuple(sorted(edge_dims.items())))
+        # if key in cached_values:
+        #     # Take over the isomorphic representative
+        #     other, value = next((t, v) for (t, ed), v in cached_values.items() if (t, ed) == key)
+        #     rename = next(other.isomorphisms(self), None)
+        #     if rename is None:
+        #         raise ValueError("Graphs must be isomorphic (with edges)")
+        #     res = value.rename(*(rename[e] for e in other.edges)).align_to(*self.edges)
+        #     # Enable this to debug the isomorphic cache
+        #     expected = self._inner_evaluate(edge_dims, values, extras)
+        #     assert expected.names == res.names, f"{expected.names=} {res.names=}"
+        #     assert torch.allclose(res.rename(None), expected.rename(None))
+        #     return res
+        if self in values:
+            # Find the isomorphic representative that we matched
+            other, tensor = next((v, t) for v, t in values.items() if v.is_isomorphic(self))
+            mapping = next(other.isomorphisms(self), None)
+            # print(f"{self=}")
+            # print(f"{other=}")
+            # print(self.graph_to_string())
+            # print(other.graph_to_string())
+            # print(list(other.isomorphisms(self)))
+            # print(f"{mapping=}", f"{tensor.names=}")
+            # print(f"{tensor=}")
+            res = tensor.rename(**mapping).align_to(*self.edges)
+            # res = tensor.rename(*(mapping[e] for e in tensor.names)).align_to(*self.edges)
             # Enable this to debug the isomorphic cache
-            expected = self.inner_evaluate(edge_dims, values, extras)
+            expected = self._inner_evaluate(values, dims)
+            # print(f"{res=}")
+            # print(f"{expected=}")
             assert expected.names == res.names, f"{expected.names=} {res.names=}"
-            assert torch.allclose(res.rename(None), expected.rename(None))
+            torch.testing.assert_close(res.rename(None), expected.rename(None))
             return res
 
-        res = self.inner_evaluate(edge_dims, values, extras)
+        res = self._inner_evaluate(values, dims)
         assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
-        cached_values[key] = res
+        values[self] = res
         return res
 
-    def _compute_edge_dims(
-        self,
-        shapes: dict["Variable", dict[str, int]],
-        extra_dims: dict[str, int] | None = None,
-    ):
-        G = nx.Graph()
-        var_ids = defaultdict(list)
-
-        # Make keys using ids, since we want to distinguish between isomorphic tensors
-        for (t1, e1), (t2, e2) in self.edge_equivalences():
-            G.add_edge((id(t1), e1), (id(t2), e2))
-
-            # Make sure we have the updated variable ids. The same variable can have multiple ids,
-            # as it has been renamed differently throughout the graph.
-            # Note: Since variables set (v, ("Original", o)) = (v, e) we are guaranteed that all
-            # variables show up when calling edge_equivalences.
-            for t in [t1, t2]:
-                if isinstance(t, Variable):
-                    var_ids[t].append(id(t))
-
-        res = defaultdict(dict)
-        for v, edges in shapes.items():
-            for v_id in var_ids[v]:
-                for o, d in edges.items():
-                    res[v_id][("Original", o)] = d
-
-        if extra_dims:
-            res[id(self)].update(extra_dims)
-
-        # The graph is really a graph of "edges between edges". Hence the
-        # connected components of the graph all have the same dimension.
-        for component in nx.connected_components(G):
-            sizes = [res[t_id].get(e) for t_id, e in component if e in res[t_id]]
-            if sizes and len(set(sizes)) > 1:
-                raise ValueError(f"Size mismatch in component: {sizes}")
-            if sizes:
-                size = sizes[0]
-                for t_id, e in component:
-                    res[t_id][e] = size
-
-        return res
-
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         """
         The inner implementation of tensor evaluation.
 
         Subclasses should override this to define the actual evaluation logic.
 
         Args:
-            edge_dims: A dictionary mapping edge names to their dimensions.
             values: A dictionary mapping variable tensors to their values.
-            extras: An dictionary containing extra data used during evaluation.
+            dims: A dictionary mapping edge names to their dimensions.
 
         Returns:
             The result of evaluating this tensor.
@@ -365,22 +366,25 @@ class Tensor(ABC):
         # Restrict renaming to free edges
         return {new: old for new, old in kwargs.items() if new in self.edges}
 
-    def _check_grad(self, x: "Variable", new_names: Optional[list[str]] = None) -> list[str]:
-        """When taking a derivative with respect to a variable, we need some edge names for the derivative.
+    def _check_grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> dict[str, str]:
+        """
+        When taking a derivative with respect to a variable, we need some edge names for the derivative.
         If new_names is not given, we generate names based on the edge names of x.
         However, we need to make sure they don't clash with any names already present in the tensor.
         If new_names is already given, we just check to make sure they are not already present in the tensor.
         """
-        # It shouldn't be necessary for the edges to be unused in the entire tensor, just in the free edges.
         if new_names is not None:
-            assert len(x.edges) == len(new_names), f"{x.edges=} != {new_names=}"
-            if used := set(new_names) & set(self.edges):
-                raise ValueError(f"{used} are already present in tensor, {self}")
+            assert x.edges == new_names.keys(), f"{x.edges=} != {new_names.keys()=}"
+            # Check that the new names don't clash with self.edges
+            if used := self.edges & new_names.values():
+                raise ValueError(f"{used} are already present in {self.edges=}")
             return new_names
-        new_edges, _rename = unused_edge_names(x.edges, self.edges, suffix="_")
-        return new_edges
+        # Make new names that are _based_ on x.orig and _avoid_ self.edges
+        # This is important, since different instantiations of x might be using different names.
+        return unused_edge_names(x.orig.values(), self.edges, suffix="_")
 
-    def _check_simplify(self, args: dict[str, Any] | None = None):
+    @staticmethod
+    def _check_simplify(args: dict[str, Any] | None = None):
         if args is None:
             args = {}
         # args["grad_steps"] allows us to control how far we propagate the derivative.
@@ -392,12 +396,34 @@ class Tensor(ABC):
         args.setdefault("expand", False)
         return args
 
-    def _check_edges(self, edges: str | Iterable[str]) -> list[str]:
+    @staticmethod
+    def _check_edges(edges: Iterable[str]) -> list[str]:
         if edges is None:
             return None
-        if isinstance(edges, str):
-            return [e.strip() for e in edges.split(",")]
+        assert not isinstance(edges, str)
+        if len(edges) == 1:
+            edges = edges[0].split(",")
+            return [e.strip() for e in edges]
         return list(edges)
+
+    @staticmethod
+    def _check_shape(shape0: tuple[Symbol], shape1: dict[str, Symbol]) -> dict[str, Symbol]:
+        shape0 = {s.name: s for s in shape0}
+        if double_keys := shape0.keys() & shape1.keys():
+            raise ValueError(f"Duplicate edge names: {double_keys}")
+        return shape0 | shape1
+
+    @staticmethod
+    def _check_symmetries(shape: dict[str, Symbol], symmetries: str | set[frozenset[str]]):
+        if symmetries is None:
+            return {frozenset({e}) for e in shape.keys()}
+        if isinstance(symmetries, str):
+            symmetries = {frozenset(word.split()) for word in symmetries.split(",")}
+        # Check symmetries are compatible with shape
+        for group in symmetries:
+            if len({shape[e] for e in group}) != 1:
+                raise ValueError(f"Symmetry group {group} must all have same dim size")
+        return symmetries
 
 
 ################################################################################
@@ -409,95 +435,110 @@ class Variable(Tensor):
     def __init__(
         self,
         name,
-        edges: str | Iterable[str],
-        orig: None | str | Iterable[str] = None,
-        symmetries: None | str | set[frozenset[str]] = None,
+        *shape0: Symbol,
+        _symmetries: None | str | set[frozenset[str]] = None,
+        _orig: None | dict[str, str] = None,
+        **shape1: Symbol,
     ):
         """
         A tensor holding a variable.
 
         Args:
             name: The name of this variable.
-            edges: The names of the edges of this variable. Can be a comma-delimited string or iterable of strings.
-            orig: The actual edge names to use. If not provided, the names in `edges` are used directly.
+            shape: Dict from edge name to size (Sympy symbol). Can also be a string or list of str.
+            orig: Dict from new name to original name. If not provided, the names in `edges` are used directly.
             symmetries: Sets of edges (original names) that should be considered equivalent.
         """
-        edges = self._check_edges(edges)
         self.name = name
+        self._shape = self._check_shape(shape0, shape1)
+
+        self._symmetries = self._check_symmetries(self._shape, _symmetries)
 
         # The original edges are saved so evaluation can happen with the original
         # edge names given to the variable, without caring about what renaming we
         # might have done in the meantime.
-        self.edges = list(edges)
-        self.original_edges = self._check_edges(orig) if orig is not None else edges
+        self.orig = _orig if _orig is not None else {e: e for e in self.edges}
 
-        if symmetries is None:
-            symmetries = {frozenset({o}) for o in self.original_edges}
-        if isinstance(symmetries, str):
-            symmetries = {frozenset(word.split()) for word in symmetries.split(",")}
-        assert all(
-            e in self.original_edges for group in symmetries for e in group
-        ), f"{symmetries} not in {self.original_edges}"
-        # Note that self.symmetries is the Tensor property, which concerns current edge names,
-        # not original edge names.
-        self.o_symmetries = symmetries
+    def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
+        return Variable(self.name, **self.shape, _symmetries=symmetries, _orig=self.orig)
 
-    def grad(self, x: "Variable", new_names: Optional[list[str]] = None):
+    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None):
         new_names = self._check_grad(x, new_names)
         if x == self:
-            assert x.original_edges == self.original_edges
-            return Product(Copy([e, new], link=self) for e, new in zip(self.edges, new_names))
-        return Zero(self.edges + new_names)
+            orig_shape = {self.orig[e]: s for e, s in self.shape.items()}
+            other_shape = {x.orig[e]: s for e, s in x.shape.items()}
+            assert orig_shape == other_shape
+            # TODO: If X has symmetries, the derivative can actually be more complex than this.
+            # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
+            return Product(Copy(s, e, new_names[self.orig[e]]) for e, s in self.shape.items())
+        # Note: We don't need to tell Zero the symmetries, since it's automatically
+        # symmetric in all dimensions that have compatible sizes.
+        return Zero(**(self.shape | {new_names[e]: s for e, s in self.shape.items()}))
 
     def __repr__(self):
-        args = [f"\"{self.name}\", \"{', '.join(self.edges)}\""]
-        if self.edges != self.original_edges:
-            args.append(f"orig=\"{', '.join(self.original_edges)}\"")
-        if self.o_symmetries != {frozenset({o}) for o in self.original_edges}:
-            groups = ", ".join(sorted(" ".join(sorted(group)) for group in self.o_symmetries))
-            args.append(f'symmetries="{groups}"')
-        return f"Variable({', '.join(args)})"
+        args = [f"\"{self.name}\", {', '.join(self.edges)}"]
+        symmetries = ""
+        if self._symmetries != {frozenset({e}) for e in self.edges}:
+            groups = ", ".join(sorted(" ".join(sorted(group)) for group in self._symmetries))
+            symmetries = f'.with_symmetries("{groups}")'
+        if self.edges != set(self.orig.values()):
+            args.append(f"orig={self.orig}")
+        return f"Variable({', '.join(args)}){symmetries}"
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
-        G.add_node(0, name=("Variable", self.name), tensor=self)
+        name = f"{self.name}({', '.join(sorted(self.orig.values()))})"
+        G.add_node(0, name=("Variable", name), tensor=self)
         edges = {}
-        name_map = dict(zip(self.original_edges, self.edges))
-        for i, group in enumerate(self.o_symmetries):
-            G.add_node(i + 1, name=("Original Edge Name", " ".join(sorted(group))))
-            G.add_edge(i + 1, 0)
-            for o in group:
-                edges[name_map[o]] = i + 1
+        # Symmetries are more fine-grained than shapes, since two dims can have
+        # the same size, but not be symmetric. E.g. an assymetric square matrix.
+        # Example of variable with 2 sizes, 3 symmetri orbits and 4 edges:
+        # +-size 1-sym 1-e 1
+        # |  +-----sym 2-e 2
+        # +-size 2-sym 3-e 3
+        #           +----e 4
+        for size in set(self.shape.values()):
+            # Symbols are identified by name and assumptions. We might want to have edges
+            # with the same name but different assumptions, so add the id to the node name.
+            G.add_node(size_node := G.number_of_nodes(), name=(f"size={size.name}", id(size)))
+            G.add_edge(0, size_node)
+            # Find each orbit with the given size (see note above about fine-grained-ness)
+            for orbit in self._symmetries:
+                e, *_ = orbit
+                if self.shape[e] != size:
+                    continue
+                orbit_name = " ".join(sorted(self.orig[e] for e in orbit))
+                G.add_node(orbit_node := G.number_of_nodes(), name=("Orbit Node", orbit_name))
+                G.add_edge(size_node, orbit_node)
+                # All the free edges point to an orbit node
+                for e in orbit:
+                    edges[e] = orbit_node
+        assert edges.keys() == self.edges
         return G, edges
 
     def simplify(self, args: dict[str, Any] = None):
         return self
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
         return Variable(
             self.name,
-            edges=[kwargs.get(e, e) for e in self.edges],
-            orig=self.original_edges,
-            symmetries=self.o_symmetries,
+            **{kwargs.get(e, e): s for e, s in self.shape.items()},
+            _symmetries={frozenset({kwargs.get(e, e) for e in group}) for group in self._symmetries},
+            _orig={kwargs.get(e, e): o for e, o in self.orig.items()},
         )
-
-    def edge_equivalences(self):
-        # Since the user gives edge dimensions in terms of variables, it's important to keep track
-        # of renamed edge names.
-        for o, e in zip(self.original_edges, self.edges):
-            yield (self, ("Original", o)), (self, e)
-
-        # Next make a complete graph for each symmetry class
-        name_map = dict(zip(self.original_edges, self.edges))
-        for group in self.o_symmetries:
-            for o1, o2 in combinations(group, 2):
-                # Sorting makes it easier to write unit tests
-                e1, e2 = sorted([name_map[o1], name_map[o2]])
-                yield (self, e1), (self, e2)
 
     def depends_on(self, x: "Variable") -> bool:
         return x == self
+
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        tensor = values.get(self)
+        if tensor is None:
+            raise ValueError(f"Missing value for {self}, got {values}")
+        # The given named tensor will use original names. We rename the new names
+        assert set(tensor.names) == set(self.orig.values())
+        old_to_new = {o: e for e, o in self.orig.items()}
+        return tensor.rename(*[old_to_new[e] for e in tensor.names])
 
 
 ################################################################################
@@ -506,67 +547,50 @@ class Variable(Tensor):
 
 
 class Constant(Tensor, ABC):
-    def __init__(self, edges: Iterable[str], link: Optional[Variable] = None, tag: Optional[int] = None):
+    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, **shape1: Symbol):
         """
         A constant tensor with the given edges.
 
         Args:
             edges: The names of the edges of this constant tensor.
             link: An optional variable that this tensor is associated with, used to compute edge dimensions.
-            tag: An optional tag for this tensor.
         """
-        edges = self._check_edges(edges)
-        self.edges = list(edges)
-        self.link = link
-        self.tag = tag
+        self._shape = self._check_shape(shape0, shape1)
+        self._symmetries = self._check_symmetries(self._shape, _symmetries)
 
     def __repr__(self) -> str:
-        extra = ""
-        if self.link is not None:
-            extra = f", link={self.link}"
-        if self.tag is not None:
-            extra += f", tag={self.tag}"
-        return f"{type(self).__name__}({self.edges}{extra})"
+        return f"{type(self).__name__}({self.shape})"
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, int, dict[str, int]]:
-        # This method assumes the constant is completely symmetric in the edges.
-        # That's true for all of Copy, Zero and Ones
-        # Note: it might not be true once edge dimensions are introduced, so we can't
-        # necessarily use this same graph to replace edge_equivalences()...
+    def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
+        return type(self)(self.name, **self._shape, _symmetries=symmetries)
+
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
-        name = type(self).__name__
-        if self.tag is not None:
-            name += f" ({self.tag})"
-        G.add_node(0, name=name, tensor=self)
-        # TODO: Should we also include link here?
-        if self.link is not None:
-            add_structural_graph(G, self.link, root_edge_label="self.link")
-        return G, {e: 0 for e in self.edges}
+        G.add_node(0, name=type(self).__name__, tensor=self)
+        edges = {}
+        for size in set(self.shape.values()):
+            # All of this is more or less equal to Variable
+            G.add_node(size_node := G.number_of_nodes(), name=f"size={size.name}({id(size)})")
+            G.add_edge(0, size_node)
+            # Find each orbit with the given size (see note above about fine-grained-ness)
+            for orbit in self._symmetries:
+                e, *_ = orbit
+                if self.shape[e] != size:
+                    continue
+                G.add_node(orbit_node := G.number_of_nodes(), name="Orbit Node")
+                for e in orbit:
+                    edges[e] = orbit_node
+        return G, edges
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
-        link = self.link.rename(kwargs) if self.link is not None else None
-        c = type(self)([kwargs.get(e, e) for e in self.edges], link=link)
-        assert set(c.edges) == {kwargs.get(e, e) for e in self.edges}
+        c = type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
+        assert c.edges == {kwargs.get(e, e) for e in self.edges}
         return c
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
         new_names = self._check_grad(x, new_names)
-        return Zero(self.edges + new_names)
-
-    def edge_equivalences(self) -> Iterable[tuple[tuple["Tensor", str], tuple["Tensor", str]]]:
-        if self.link is not None:
-            yield from self.link.edge_equivalences()
-            for e in self.link.edges:
-                if e in self.edges:
-                    yield (self, e), (self.link, e)
-
-    def _check_evaluate(self, values, dims=None, extras=None):
-        extras = super()._check_evaluate(values, dims, extras)
-        for e in self.edges:
-            if e not in extras["edge_dims"][id(self)]:
-                raise ValueError(f"Missing edge dimension for {e}.")
-        return extras
+        return Zero(**(self.shape | {new_names[e]: s for e, s in self.shape}))
 
     def depends_on(self, x: "Variable") -> bool:
         return False
@@ -575,24 +599,37 @@ class Constant(Tensor, ABC):
 class Copy(Constant):
     """The "Copy" tensor is defined by C_{i,j,k} = 1 if i == j == k, else 0
     Or alternatively as Δₙ = ∑ₓ (eₓ)⊗ⁿ, where are e_i are basis vectors
-    For rank 2, this is the identity matrix. For higher rank, the identity tensor is
-    the product of n identity matrices (rank 2 Copy's).
+    For order 2, this is the identity matrix.
+        Note: For higher order, the identity tensor is the product of n identity matrices,
+        (order 2 Copy's), not the order-n Copy tensor.
+    For order 0, the Copy tensor is defined as |n|, where n is the size/dimension of the tensor.
     """
 
-    def edge_equivalences(self):
-        yield from super().edge_equivalences()
-        for e in self.edges[1:]:
-            yield (self, self.edges[0]), (self, e)
+    def __init__(self, size: Symbol, *edges: str):
+        edges = self._check_edges(edges)
+        super().__init__(**{e: size for e in edges})
+        assert isinstance(size, (Symbol, Number)), "Size must be a sympy symbol"
+        self._size = size
 
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
+    @property
+    def size(self):
+        return self._size
+
+    def __repr__(self):
+        return f"Copy({self.size}, [{', '.join(self.edges)}])"
+
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        size = dims[self.size]
         if not self.edges:
-            return torch.tensor(1.0)
-        shape = [edge_dims[e] for e in self.edges if e in edge_dims]
-        assert len(shape) == len(self.edges) and len(set(shape)) == 1, shape
-        copy = torch.zeros(shape)
-        for idx in range(shape[0]):
+            # Wow! This is so obvious once you notice it!
+            return torch.tensor(size)
+        copy = torch.zeros([size] * self.order)
+        for idx in range(size):
             copy[(idx,) * len(self.edges)] = 1
         return copy.rename(*self.edges)
+
+    def rename(self, **kwargs: dict[str, str]):
+        return Copy(self.size, *[kwargs.get(e, e) for e in self.edges])
 
     @classmethod
     def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
@@ -601,26 +638,31 @@ class Copy(Constant):
             tensors, done = cls._simplify_step(tensors)
             if done:
                 break
-        # Remove empty Copy's (they are just the constant 1)
-        tensors = [t for t in tensors if not (isinstance(t, Copy) and t.rank == 0)]
         return tensors
+
+    ################################################################################
+    # There are many simplify rules for Copy. We split them into separate methods for clarity.
 
     @classmethod
     def _simplify_step(cls, tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
         """Performs one step of simplification. Returns a new list if changed, or the original if not."""
-        for e in [edge for t in tensors for edge in t.edges]:
-            connected = [t for t in tensors if e in t.edges]
-            if len(connected) != 2:
+        groups = defaultdict(list)
+        for t in tensors:
+            for e in t.edges:
+                groups[e].append(t)
+        for e, ts in groups.items():
+            if len(ts) == 1:
                 continue
-            t1, t2 = connected
+            t1, t2 = ts
+            assert t1.shape[e] == t2.shape[e], f"{t1.shape[e]=} != {t2.shape[e]}, {e=}"
 
-            # Remove t1 and t2 from tensors.  We use the "is" operator, since we've overloaded equality to mean isomorphic.
+            # Remove t1 and t2 from tensors.  We use the "is" operator, since equality
+            # means isomorphic, so it might remove too many unintended tensors.
             other = [t for t in tensors if t is not t1 and t is not t2]
 
             for simplification in [cls._merge_copy_tensors, cls._remove_identity_matrix]:
                 if (new := simplification(t1, t2, e)) is not None:
-                    tensors = other + new
-                    return tensors, False
+                    return other + new, False
 
         return tensors, True
 
@@ -629,46 +671,53 @@ class Copy(Constant):
         if not (isinstance(t1, Copy) and isinstance(t2, Copy)):
             return None
 
-        # Don't create a singleton Copy tensor
-        if set(t1.edges) == set(t2.edges):
-            # If the two copy's share all edges with each other, we reduce to a single
-            # shared edge, which is how we represent a constant with value = edge dim.
-            if t1.rank != 1:
-                # TODO: If there is some linked edge, we should try to let that be the one we keep
-                return [
-                    Copy([e], link=t1.link),
-                    Copy([e], link=t2.link),
-                ]
+        # We can't merge order 0 copy tensors, since we now give them a value equal to their size.
+        # In principle we could create a new Copy(size1 * size2, []) tensor, but then we start having
+        # arbitrary expressions as sizes, which I'm not sure we want yet.
+        # Also, merging an order 0 with and order > 0 was never going to work, unless the size of the
+        # order 0 Copy was 1, which it probably never is.
+        if t1.order == 0 or t2.order == 0:
             return None
 
+        assert t1.size == t2.size, "Contracted Copy tensors must have same size"
+        size = t1.size
+
         # We don't just remove e, but remove all shared edges
-        return [Copy(list(set(t1.edges) ^ set(t2.edges)), link=t1.link or t2.link)]
+        # The amazing thing is that even in the case where all edges disappear, we
+        # still get to keep information on the "size" of the Copy tensor.
+        return [Copy(size, *(t1.edges ^ t2.edges))]
 
     @staticmethod
     def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> bool:
+        # If both are Copy's, we use the previous method
+        if isinstance(t1, Copy) and isinstance(t2, Copy):
+            return None
+
         # Make t1 the identity matrix
-        if isinstance(t2, Copy) and t2.rank == 2:
+        if isinstance(t2, Copy) and t2.order == 2:
             t1, t2 = t2, t1
 
-        if isinstance(t1, Copy) and t1.rank == 2:
+        if isinstance(t1, Copy) and t1.order == 2:
+            # Find the edge of t1 that's not e
             other_edge = next(iter(set(t1.edges) - {e}))
             # Don't create self loops. We never connect a tensor to itself.
+            # Unless it's another Copy, in which case we already handled it above.
             if other_edge not in t2.edges:
-                return [t2.rename({e: other_edge})]
+                return [t2.rename(**{e: other_edge})]
 
 
 class Zero(Constant):
     """Matrix such that Z_{i,j,k} = 0 for all i, j, k"""
 
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
-        if not self.edges:
-            return torch.tensor(0.0)
-        return torch.zeros([edge_dims[e] for e in self.edges]).rename(*self.edges)
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        return torch.zeros([dims[s] for s in self.shape.values()]).rename(*self.edges)
 
 
-def Ones(edges: list[str], link=None) -> Tensor:
+def Ones(*shape0: Symbol, **shape1: Symbol) -> Tensor:
     """Matrix such that O_{i,j,k} = 1 for all i, j, k"""
-    return Product([Copy([e], link=link) for e in edges])
+    # Implemented in practice by a simple outer product of Copy's
+    shape = Tensor._check_shape(shape0, shape1)
+    return Product([Copy(s, e) for e, s in shape.items()])
 
 
 ################################################################################
@@ -679,9 +728,31 @@ def Ones(edges: list[str], link=None) -> Tensor:
 @dataclass
 class FunctionInfo:
     name: str
-    eval: Callable[[list[torch.tensor]], torch.tensor] = None
-    derivative: Callable[[int, list[str]], Tensor] = None
+    eval: Callable[[list[torch.Tensor]], torch.Tensor] = None
+    derivative: Callable[[int, *tuple[str]], Tensor] = None
     simplify: Callable[["Function", dict[str, Any]], Tensor] = None
+
+
+def _dummy_function_info(
+    name,
+    shape_out: dict[str, Symbol],
+    inputs: Iterable[tuple[Tensor | str]],
+    orig_out: dict[str, str],
+):
+    assert isinstance(orig_out, dict)
+
+    # If no FunctionInfo instance is given, we create a dummy one from a string name
+    def derivative(i, new_edges_shape, *ts):
+        # We have to use ts here, rather than the original inputs we got,
+        # since the tensors may have been renamed since the function was created.
+        new_inputs = [(t, *ies) for t, (_, *ies) in zip(ts, inputs)]
+        # Test that the input edges have not been renamed
+        for t, *ies in new_inputs:
+            assert all(e in t.edges for e in ies), f"{t.edges=} {ies=}"
+        new_orig_out = orig_out | {e: e for e in new_edges_shape}
+        return Function(f"D_{i}{name}", shape_out | new_edges_shape, *new_inputs, orig_out=new_orig_out)
+
+    return FunctionInfo(name=name, eval=NotImplementedError, derivative=derivative)
 
 
 class Function(Tensor):
@@ -720,11 +791,11 @@ class Function(Tensor):
     def __init__(
         self,
         fn_info: FunctionInfo | str,
-        edges_out: Iterable[str],
+        shape_out: dict[str, Symbol],
+        # TODO: Functions should support symmetric outputs, just like Constant and Variable.
+        # Actually we could define symmetries for the inputs too, since the order doesn't always matter.
         *inputs: Iterable[tuple[Tensor | str]],
-        orig_edges_out: list[str] = None,
-        orig_edges_in: list[tuple[str]] = None,
-        orig_edges_ts: list[tuple[str]] = None,
+        orig_out: dict[str, str] = None,
     ):
         """
         A function tensor that takes one or more input tensors and produces an output tensor.
@@ -733,77 +804,62 @@ class Function(Tensor):
             fn_info: The FunctionInfo defining this function, or a string giving the function name.
             edges_out: The names of the output edges of this function.
             *inputs: The input tensors and their input edge names. [(t0, e00, e01, ...), (t1, e10, ...), ...]
-            orig_edges_out: The original output edge names. If not provided, `edges_out` is used.
-            orig_edges_in: The original input edge names for each input. If not provided, the actual input edge names are used.
-            orig_edges_ts: The original edges of each complete input tensor. If not provided, the actual tensor edges are used.
+            orig_out: The original output edge names. If not provided, `edges_out` is used.
         """
-        edges_out = self._check_edges(edges_out)
-        self.edges_out = list(edges_out)
+        self.shape_out = (
+            self._check_shape([], shape_out)
+            if isinstance(shape_out, dict)
+            else self._check_shape(shape_out, {})
+        )
+        self.edges_out = self.shape_out.keys()
         self.inputs = list(inputs)
-        self.tensors = [t for t, *_ in self.inputs]
 
         # We need to keep track of the original edges of the function, since we might rename them.
-        self.orig_edges_out = self.edges_out if orig_edges_out is None else list(orig_edges_out)
-        assert len(self.edges_out) == len(self.orig_edges_out)
-        self.orig_edges_in = [es for _, *es in inputs] if orig_edges_in is None else list(orig_edges_in)
-        self.orig_edges_ts = [t.edges for t, *_ in inputs] if orig_edges_ts is None else list(orig_edges_ts)
-        assert len(self.inputs) == len(self.orig_edges_ts) == len(self.orig_edges_in)
-        self.orig_edges = self.orig_edges_out + [
-            e for (ets, ein) in zip(self.orig_edges_ts, self.orig_edges_in) for e in ets if e not in ein
-        ]
+        self.orig_out = {e: e for e in self.edges_out} if orig_out is None else orig_out
+        assert len(self.edges_out) == len(self.orig_out)
+        assert isinstance(self.orig_out, dict)
 
-        # The actual edges of the function is the "output" edges,
-        # plus any edges from the inputs that are not "input edges"
-        self.edges = edges_out[:]
+        self.fn_info = (
+            _dummy_function_info(fn_info, self.shape_out, self.inputs, self.orig_out)
+            if isinstance(fn_info, str)
+            else fn_info
+        )
+
+        # The actual shape of the function is the "output" shape plus any edges from the inputs that
+        # the function is broadcasted over. In other words, edges that are not "input edges".
+        self._shape = self.shape_out.copy()
         shared_edges = set()
         for t, *input_edges in self.inputs:
-            # Check input edges are present in tensor
-            for e in input_edges:
-                if e not in t.edges:
-                    raise ValueError(f"Edge {e} is not present in input tensor {t}")
-            # Check broadcasted edges are not already present in the function
-            for e in [e for e in t.edges if e not in input_edges]:
-                if e in edges_out:
-                    raise ValueError(f"Edge {e} is both in edge_out and a broadcasted edge of an input.")
-                if e in shared_edges:
-                    raise ValueError(
-                        f"Edge {e} is already used by another input tensor. Please rename."
-                        + " If you need broadcasting, use a copy tensor."
-                    )
-                shared_edges.add(e)
-                self.edges.append(e)
+            for e, s in t.shape.items():
+                # Check input edges are present in tensor
+                if e in input_edges:
+                    if e not in t.edges:
+                        raise ValueError(f"Edge {e} is not present in input tensor {t}")
+                # Check broadcasted edges are not already present in the function
+                else:
+                    if e in self.shape_out:
+                        raise ValueError(f"Edge {e} is both in edge_out and a broadcasted edge of an input.")
+                    if e in shared_edges:
+                        raise ValueError(
+                            f"Edge {e} is already used by another input tensor. Please rename."
+                            + " If you need broadcasting, use a copy tensor."
+                        )
+                    shared_edges.add(e)
+                    # Save the size of the edge to _shape
+                    self._shape[e] = s
 
-        if isinstance(fn_info, str):
-            self.fn_info = FunctionInfo(
-                fn_info,
-                NotImplementedError,
-                (
-                    lambda i, new_edges, *ts: Function(
-                        f"D_{i}{fn_info}",
-                        # It is commonly assumed that FunctionInfo doesn't know about renaming that has
-                        # happened to a function since it was created. In this particular case of the "dummy fi"
-                        # we actually do know the renaming, but we will still stick with the original names for consistency.
-                        self.orig_edges_out + new_edges,
-                        *[(t, *oes) for t, oes in zip(ts, self.orig_edges_in)],
-                    )
-                ),
-            )
-        else:
-            self.fn_info = fn_info
-
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
         renamed_inputs = []
-        for t, *inner_edges in self.inputs:
-            rename = {e: kwargs.get(e, e) for e in self.edges if e not in inner_edges}
-            renamed_inputs.append((t.rename(rename), *inner_edges))
+        for t, *es in self.inputs:
+            # Only rename external edges of input tensors.
+            rename = {e: v for e, v in kwargs.items() if e not in es}
+            renamed_inputs.append((t.rename(**rename), *es))
         res = Function(
             self.fn_info,
-            [kwargs.get(e, e) for e in self.edges_out],
+            {kwargs.get(e, e): s for e, s in self.shape_out.items()},
             *renamed_inputs,
-            orig_edges_out=self.orig_edges_out,
-            orig_edges_in=self.orig_edges_in,
-            orig_edges_ts=self.orig_edges_ts,
+            orig_out={kwargs.get(e, e): o for e, o in self.orig_out.items()},
         )
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
@@ -815,53 +871,45 @@ class Function(Tensor):
         # Broadcasting can be pulled out of the function.
         pulled_out = []
         new_inputs2 = []
-        orig_edges_ts = []
-        for (t, *es), orig_edges in zip(new_inputs, self.orig_edges_ts):
+        for t, *es in new_inputs:
             if isinstance(t, Product):
                 new_prod = []
                 for u in t.tensors:
-                    if isinstance(u, Copy) and u.rank == 1 and u.edges[0] in t.edges and u.edges[0] not in es:
+                    if (
+                        isinstance(u, Copy)
+                        and u.order == 1
+                        and list(u.edges)[0] in t.edges
+                        and list(u.edges)[0] not in es
+                    ):
                         pulled_out.append(u)
                     else:
                         new_prod.append(u)
                 new_inputs2.append((Product(new_prod), *es))
             else:
                 new_inputs2.append((t, *es))
-            # We have to remove the pulled out edges from original_edges_ts
-            t_new, *_ = new_inputs2[-1]
-            rename = dict(zip(t.edges, orig_edges))
-            orig_edges_ts.append([rename[e] for e in t_new.edges])
         new_inputs = new_inputs2
 
         res = Function(
             self.fn_info,
-            self.edges_out,
+            self.shape_out,
             *new_inputs,
-            orig_edges_out=self.orig_edges_out,
-            orig_edges_in=self.orig_edges_in,
-            orig_edges_ts=orig_edges_ts,
+            orig_out=self.orig_out,
         )
-        if pulled_out:
-            return Product([res] + pulled_out)
-
         if self.fn_info.simplify is not None:
             res = self.fn_info.simplify(res, args)
+
+        if pulled_out:
+            res = Product([res] + pulled_out)
 
         assert set(res.edges) == set(self.edges), "Free edges should be preserved"
         return res
 
-    def edge_equivalences(self):
-        # We can't really say anything about the edges of the function itself (self.edges_out),
-        # but at least we can say something about the broadcasted edges.
-        for t, *inner_edges in self.inputs:
-            yield from t.edge_equivalences()
-            for e in t.edges:
-                if e not in inner_edges:
-                    yield (t, e), (self, e)
-        # We could maybe also say that input edges with the same name are equivalent?
-
-    def grad(self, x: Variable, new_names: Optional[list[str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        # First find the new names for the gradient edges. These will be guaranteed
+        # to avoid any outer edges of the Function tensor as well as the edges of x.
         new_names = self._check_grad(x, new_names)
+        new_edges = set(new_names.values())
+
         # We sum over each input function, just like the normal chain rule:
         # d/dx f(g₁(x), …, gₖ(x)) = Σᵢ₌₁ᵏ (d/dx gᵢ(x)) Dᵢf(g₁(x), …, gₖ(x))
 
@@ -870,40 +918,29 @@ class Function(Tensor):
         # clash with an existing output edge of f.
         parts = []
         for i, (t, *input_edges) in enumerate(self.inputs):
+            # Take the derivative of the outer function
             # We need "connection" edges for each edge in input_edges. Mostly we could just use the same name
             # but they need to avoid clashing with "new_names" and the output edges of the tensor.
+            connection_names = unused_edge_names(input_edges, self.edges | new_edges, suffix="_")
+            connection_shape = {connection_names[e]: t.shape[e] for e in input_edges}
+            part_a = self.fn_info.derivative(i, connection_shape, *[t for t, *_ in self.inputs])
+            # The derivative will have the same output edges as the function, but we may have been renamed
+            part_a = part_a.rename(**{o: e for e, o in self.orig_out.items()})
+            assert part_a.edges == self.edges | connection_names.values()
 
-            # Take the derivative of the function and the inner function (chain rule)
-            canonical_d_edges, rename1 = unused_edge_names(input_edges, self.orig_edges, suffix="_")
-            part_a = self.fn_info.derivative(i, canonical_d_edges, *[t for t, *_ in self.inputs])
-            # Rename to avoid clashing with upcoming new_edges
-            avoid = set(new_names) | set(self.edges) | set(self.orig_edges)
-            connection_edges, rename2 = unused_edge_names(canonical_d_edges, avoid)
-            part_a = part_a.rename(rename2)
-            # We need to rename the output to the current names used by the function, which may have changed since
-            # the fn_info.derivative was created.
-            part_a = part_a.rename(dict(zip(self.orig_edges, self.edges)))
-            assert set(part_a.edges) == set(self.edges + connection_edges)
+            # The the derivative of the inner function
+            # We rename the (former) input edges to the connection edges, but keep the remaining edges
+            # (which are part of self.edges) untouched.
+            part_b = Derivative(t.rename(**connection_names), x, new_names)
 
-            part_b = Derivative(t.rename(rename1).rename(rename2), x, new_names)
+            # The two parts are then multiplied together on the connection names,
+            # while broadcasted on their remaining shared edges.
+            from tensorgrad.functions import dot  # Import here to avoid circular import
 
-            # The "external edges" are going to be joined with copy tensors, resulting in joint broadcasting.
-            # So we need to rename them in both the function and the inner. Like we do in __mul__.
-            avoid |= set(connection_edges)
-            broadcasted_edges = [e for e in t.edges if e not in input_edges]
-            assert set(broadcasted_edges) == set(t.rename(rename1).rename(rename2).edges) - set(
-                connection_edges
-            )
-            # We could nearly use `make_distinct` here, but we don't want to make the connection_edges distinct,
-            # so we just do it manually.
-            ext_a, rename_a = unused_edge_names(broadcasted_edges, avoid, suffix="_0")
-            avoid |= set(ext_a)
-            ext_b, rename_b = unused_edge_names(broadcasted_edges, avoid, suffix="_1")
-            joins = [Copy([e, rename_a[e], rename_b[e]]) for e in broadcasted_edges]
-            parts.append(Product([part_a.rename(rename_a), part_b.rename(rename_b)] + joins))
-
+            part = dot(part_a, part_b, connection_names.values())
+            parts.append(part)
         res = Sum(parts)
-        assert set(res.edges) == set(self.edges + new_names), f"{res.edges} != {self.edges + new_names}"
+        assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"
         return res
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, int, dict[str, int]]:
@@ -912,72 +949,48 @@ class Function(Tensor):
         edges = {}
         # We add a node for the "function" tensor itself
         G.add_node(1, name=("f", self.fn_info.name), tensor=self)
-        G.add_edge(1, 0)
-        for i, (e, o) in enumerate(zip(self.edges_out, self.orig_edges_out)):
+        G.add_edge(0, 1)
+        # TODO: We should group out-edges by the size-type, similarly to Variable/Constant
+        # And of course when we add symmetries to outputs, we need to add that too.
+        for i, (e, o) in enumerate(self.orig_out.items()):
             G.add_node(i + 2, name=("Original Edge Out", o))
-            G.add_edge(i + 2, 1)
+            G.add_edge(1, i + 2)
             edges[e] = i + 2
         # And we add nodes for all the input tensors
-        for (t, *input_edges), oes in zip(self.inputs, self.orig_edges_in):
+        for i, (t, *input_edges) in enumerate(self.inputs):
             # Compute graph from input tensor, and ensure it uses distinct node numbers
-            G, t_edges = add_structural_graph(G, t)
-            # Connect tensor to function. This is another place we need to label the edges
-            # with original names, since argument order matters.
-            for e, o in zip(input_edges, oes):
-                # Create labeled edge
-                n = G.number_of_nodes()
-                G.add_node(n, name=("Function Input Edge", o))
-                G.add_edge(t_edges[e], n)
-                # Connect to function
-                G.add_edge(n, 1)
+            # Tag the inputs with {i} since order matters for function inputs.
+            G, t_edges = add_structural_graph(G, t, root_edge_label=f"{i}")
+            # Connect tensor to function. We don't need to label here, since
+            # the input tensor already has labeled its own edges as much as it needs to.
+            for e in input_edges:
+                G.add_edge(t_edges[e], 1)
             # Finally register free edges
-            # TODO: Do we need self.original_edges_ts here somehow? I don't see it..
-            # I think they are just needed for eval, and only because we somehow assume
-            # functions get confused if edges are renamed. Which I don't actually think
-            # they do, when it's not the input dimensions.
             for e in t.edges:
                 if e not in input_edges:
                     edges[e] = t_edges[e]
         return G, edges
 
     def __repr__(self):
-        extras = []
-        if self.edges_out != self.orig_edges_out:
-            extras.append(f"orig_edges_out={self.orig_edges_out}")
-        if self.orig_edges_in != [es for _, *es in self.inputs]:
-            extras.append(f"orig_edges_in={self.orig_edges_in}")
-        if self.orig_edges_ts != self.orig_edges_ts:
-            extras.append(f"orig_edges_ts={self.orig_edges_ts}")
-        extras = ", ".join(extras)
-        if extras:
-            extras = ", " + extras
-        return (
-            f"Function('{self.fn_info.name}', {self.edges_out}, {', '.join(map(repr, self.inputs))}{extras})"
-        )
+        args = []
+        args.append(f'"{self.fn_info.name}"')
+        args.append(f"{self.shape_out}")
+        args.append(", ".join(map(repr, self.inputs)))
+        if any(e != o for e, o in self.orig_out.items()):
+            args.append(f"orig_out={self.orig_out}")
+        return f"Function({', '.join(args)})"
 
-    def inner_evaluate(self, edge_dims: dict[str, int], values, extras) -> torch.tensor:
-        inner_values = []
-        for (t, *input_edges), oes in zip(self.inputs, self.orig_edges_ts):
-            inner_value = t.evaluate(values, extras=extras)
-            assert inner_value.names == tuple(t.edges), f"Expected {t.edges}, got {inner_value.names}"
-            # After evaluation we need to rename the output edges to the original names of the function,
-            # as they are expected by fn_info.eval.
-            # TODO: Are they really? Shouldnt it just be the input edges that need to be consistent?
-            # Could I do rename(input_edges: orig_edges_in)?
-            inner_values.append(inner_value.rename(*oes))
-        out = self.fn_info.eval(*inner_values)
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        out = self.fn_info.eval(*[t.evaluate(values, dims) for t, *_ in self.inputs])
         # After evaluation we need to rename the output edges back to their current values.
-        assert out.names == tuple(self.orig_edges)
-        out = out.rename(*self.edges)
-        assert out.names == tuple(self.edges)
-        return out
+        return out.rename(*(self.orig_out.get(e, e) for e in out.names))
 
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t, *_ in self.inputs)
 
 
 class Derivative(Tensor):
-    def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[list[str]] = None):
+    def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[dict[str]] = None):
         """
         A tensor representing the derivative of another tensor.
 
@@ -986,18 +999,17 @@ class Derivative(Tensor):
             x: The variable to take the derivative with respect to.
             new_names: The names to use for the new edges created by the derivative. If not provided, they will be generated.
         """
-        new_names = self._check_edges(new_names)
         self.tensor = tensor
         self.x = x
         # _check_grad makes sure the new_names are not already present in self.edges.
         # But we haven't set self.edges yet, so we call it on tensor instead of self.
         self.new_names = tensor._check_grad(x, new_names)
-        self.edges = tensor.edges + self.new_names
+        self._shape = tensor.shape | {self.new_names[e]: s for e, s in x.shape.items()}
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
         if not self.tensor.depends_on(self.x):
-            return Zero(self.edges)
+            return Zero(**self.shape)
         inner = self.tensor.simplify(args)
         if args["grad_steps"] == 0:
             # If grad_steps is 0, we pass the simplify through the derivative.
@@ -1006,24 +1018,24 @@ class Derivative(Tensor):
             args["grad_steps"] -= 1
             # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
             res = inner.grad(self.x, self.new_names).simplify(args)
-        assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
+        assert res.shape == self.shape, f"Shape changed from {self.shape} to {res.shape}"
         return res
 
     def grad(self, x: Variable, new_names: list[str] | None) -> Tensor:
         new_names = self._check_grad(x, new_names)
         # To avoid an infinite loop, we let the grad pass through us, rather than creating a double derivative.
         res = Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
-        assert set(res.edges) == set(self.edges + new_names)
+        assert res.edges == self.edges | new_names
         return res
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
         # The free edges of Derivative are both the free edges of self.tensor and the new_names.
         # This is the only place where we need to rename the "internal edges" of the tensor.
         res = Derivative(
-            self.tensor.rename(kwargs),
+            self.tensor.rename(**kwargs),
             self.x,
-            [kwargs.get(e, e) for e in self.new_names],
+            {o: kwargs.get(e, e) for o, e in self.new_names.items()},
         )
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
@@ -1035,23 +1047,21 @@ class Derivative(Tensor):
         # We add a node for the "wrt" tensor
         G, x_edges = add_structural_graph(G, self.x, root_edge_label="self.x")
         # This might be controversial, but we'll have new_edges point to the respective edges in self.x
-        edges |= {e: x_edges[xe] for e, xe in zip(self.new_names, self.x.edges)}
+        x_old_to_new = {oe: e for e, oe in self.x.orig.items()}
+        edges |= {e: x_edges[x_old_to_new[oe]] for oe, e in self.new_names.items()}
         # Then we add the differentiated tensor
         G, t_edges = add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
         edges |= t_edges
+        assert edges.keys() == self.edges
         return G, edges
 
     def __repr__(self):
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
 
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         # We could use numerical differentiation here...  But it would potentially require quite a lot of
         # evaluations, since we need to evaluate the tensor in all directions.
         raise ValueError("Derivative tensors cannot be evaluated directly. Please use simplify() first.")
-
-    def edge_equivalences(self):
-        # Not really needed since we don't expect to be evaluated
-        yield from self.tensor.edge_equivalences()
 
     def depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
@@ -1071,20 +1081,22 @@ class Product(Tensor):
             tensors: The tensors to multiply together.
         """
         self.tensors = list(tensors)
-        self.edges = []
+        self._shape = {}
         self.contractions = []
-        cnt_edges = Counter(sum(((t.edges for t in self.tensors)), []))
-        for edge, cnt in cnt_edges.most_common():
-            if cnt == 1:
-                self.edges.append(edge)
-            elif cnt == 2:
+        for edge, ts in group_edges(self.tensors).items():
+            if len(ts) == 1:
+                self._shape[edge] = ts[0].shape[edge]
+            elif len(ts) == 2:
                 self.contractions.append(edge)
+                s1, s2 = [t.shape[edge] for t in ts]
+                if s1 != s2:
+                    raise ValueError(f"Edge {edge} has different sizes, {s1} != {s2}")
             else:
                 raise ValueError(
-                    f"edge {edge} had multiplicity {cnt}. Use an identity tensor to combine multiple edges."
+                    f"edge {edge} had multiplicity {len(ts)}. Use an identity tensor to combine multiple edges."
                 )
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
         # The main challenge is that renaming the free edges of the tensor can cause clashes with the internal/contracted edges.
         # For each tensor, it must rename *its free edges* to avoid *free edges of other tensors*, to prevent a clash,
@@ -1097,31 +1109,16 @@ class Product(Tensor):
         # It's OK if they hit:
         # - the non-contractions that *are* being renamed (but that could be a bit unnecessary work...)
         # - Their own name (so we can't just give it a list of *all* names of the tensors)
-        all_edges = {e for t in self.tensors for e in t.edges}
-        contractions = all_edges - set(self.edges)
-        avoid = {kwargs.get(e, e) for e in self.edges} | set(self.edges)
-        _new_edges, rename = unused_edge_names(contractions, avoid)
+        new_names = {kwargs.get(e, e) for e in self.edges}
+        # TODO: Why do I have to avoid the free edges that are being renamed? Wouldn't it be enough to
+        # do only the first part here?
+        avoid = new_names  # | self.edges
+        rename = unused_edge_names(self.contractions, avoid)
         # It's safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
         # contain keys that are in self.edges.
         rename |= kwargs
-        res = Product([t.rename(rename) for t in self.tensors])
-        assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
-        return res
-
-    def _avoid_internal_edges(self, names_to_avoid: set[str]) -> "Product":
-        """Rename internal edges to avoid clashes with the names_to_avoid"""
-        # TODO: This method is being overly harsh. It could probably learn something from the rename method.
-        if overlap := set(self.edges) & set(names_to_avoid):
-            raise ValueError(f"Don't use this method to rename free edges: {overlap}")
-        used_names = set(names_to_avoid)
-        for t in self.tensors:
-            # Try to avoid unnecessary renaming other inner edges. Not strictly necessary. Is it even a good idea?
-            used_names |= set(t.edges)
-        inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
-        _new_names, rename = unused_edge_names(inner_names, used_names)
-        res = Product([t.rename(rename) for t in self.tensors])
-        assert res == self, "Renaming shouldn't change the hash/equality"
-        assert set(res.edges) == set(self.edges), "Free edges should be preserved"
+        res = Product([t.rename(**rename) for t in self.tensors])
+        assert res.edges == new_names
         return res
 
     @staticmethod
@@ -1133,51 +1130,51 @@ class Product(Tensor):
         for p in products:
             # Maybe this could also be expressed in terms of avoid_internal_edges
             inner_edges = {e for t in p.tensors for e in t.edges if e not in p.edges}
-            new_names, rename = unused_edge_names(inner_edges, used_edges)
+            rename = unused_edge_names(inner_edges, used_edges)
             for t in p.tensors:
-                res.append(t.rename(rename))
-            used_edges |= set(new_names)  # Later renames should not clash with this one
+                res.append(t.rename(**rename))
+            used_edges.update(rename.values())  # Later renames should not clash with this one
         return Product(res)
 
-    def grad(self, x: Variable, new_names: Optional[list[str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        # This checks that there is no overlap between the new names and the free edges.
         new_names = self._check_grad(x, new_names)
+
         # Since we are adding new edges to an internal tensor in the product, we need to make sure
         # none of the other tensors in the product have edges that clash with these new edges.
-        new_prod = self._avoid_internal_edges(new_names)
+        inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
+        new_edges = set(new_names.values()) | self.edges
+        rename = unused_edge_names(inner_names, new_edges)
+        new_prod = Product([t.rename(**rename) for t in self.tensors])
+        assert new_prod == self and new_prod.shape == self.shape, "Renaming should not change the product"
+        # Note: We don't have to update they keys of new_names, sinc ethey refer to variable orig_names, which never change
+
+        # The classic product rule of Calculus: d/dx (f * g) = f' * g + f * g'
         res = Sum(
             [
                 Product(new_prod.tensors[:i] + [Derivative(t, x, new_names)] + new_prod.tensors[i + 1 :])
                 for i, t in enumerate(new_prod.tensors)
             ]
         )
-        assert set(res.edges) == set(self.edges + new_names)
+        assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"
         return res
 
     def __repr__(self):
-        return f"Product({self.tensors})"
+        if len(self.tensors) <= 1:
+            return f"Product({self.tensors})"
+        else:
+            inner = "    " + ",\n    ".join(map(repr, self.tensors)) + ","
+            return f"Product([\n{inner}\n])"
 
-    def edge_equivalences(self):
-        pairs = defaultdict(list)
-        for t in self.tensors:
-            yield from t.edge_equivalences()
-            for e in t.edges:
-                pairs[e].append(t)
-        for e, ts in pairs.items():
-            if len(ts) == 1:
-                yield (self, e), (ts[0], e)
-            else:
-                t1, t2 = ts
-                yield (t1, e), (t2, e)
-
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
-        # TODO: We can make this more efficient by removing Copy tensors.
-        # Keep track of how many contractions we made
-        extras["contractions"] = extras.get("contractions", 0) + len(self.contractions)
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        # TODO: Keep track of how many contractions we made
+        # extras["contractions"] = extras.get("contractions", 0) + len(self.contractions)
         # We use "operator" einsum interface, which doesn't require single letter names.
         edge_numbers = {e: i for i, e in enumerate({e for t in self.tensors for e in t.edges})}
+        # TODO: We can make this more efficient by removing Copy tensors.
         parts = []
         for t in self.tensors:
-            parts.append(t.evaluate(values, extras=extras).rename(None))
+            parts.append(t.evaluate(values, dims).rename(None))
             parts.append([edge_numbers[e] for e in t.edges])
         parts.append([edge_numbers[e] for e in self.edges])
         out = torch.einsum(*parts).rename(*self.edges)
@@ -1191,7 +1188,7 @@ class Product(Tensor):
 
         # If any tensor in a product is 0, so is the whole product
         if any(isinstance(t, Zero) for t in tensors):
-            return Zero(self.edges)
+            return Zero(**self.shape)
 
         # Decide whether to push products through sums. This can be useful to simplify networks for
         # presentation, but it can also blow up the number of terms. So we make it optional.
@@ -1224,8 +1221,7 @@ class Product(Tensor):
 
         # Base cases
         if not tensors:
-            # The only issue here is that we're throwing away edge names.
-            res = Copy([])
+            res = Copy(1)
         if len(tensors) == 1:
             res = tensors[0]
         elif args["expand"]:
@@ -1239,7 +1235,7 @@ class Product(Tensor):
                 else:
                     for term in terms:
                         term.append(t)
-            res = Sum([Product(ts) for ts in terms], weights)
+            res = Sum([Product(ts) for ts in terms], weights).simplify(args={"expand": False})
         else:
             res = Product(tensors)
 
@@ -1296,6 +1292,7 @@ class Product(Tensor):
                 assert e in self.edges, f"{e} not in {self.edges}"
                 (n1,) = nodes
                 edges[e] = n1
+        assert edges.keys() == self.edges
         return G, edges
 
     def depends_on(self, x: "Variable") -> bool:
@@ -1308,7 +1305,7 @@ class Product(Tensor):
 
 
 class Sum(Tensor):
-    def __init__(self, tensors: Iterable[Tensor], weights: list[int] = None):
+    def __init__(self, tensors: Iterable[Tensor], weights: None | Iterable[int] = None):
         """
         A weighted sum of multiple tensors.
 
@@ -1317,36 +1314,42 @@ class Sum(Tensor):
             weights: The weights of each tensor in the sum. If not provided, all weights are 1.
         """
         tensors = list(tensors)
+
         # Broadcasting means we always upgrade to the super set of edges
-        edges = {e for t in tensors for e in t.edges}
+        self._shape = {}
+        for e, ts in group_edges(tensors).items():
+            s = ts[0].shape[e]
+            if not all(t.shape[e] == s for t in ts):
+                raise ValueError(f"Edge {e} had different sizes in tensors: {ts}")
+            self._shape[e] = s
+
+        # Any tensors that lacks an edge will be broadcasted to have that edge.
+        all_edges = self._shape.keys()
         self.tensors = []
         for t in tensors:
-            missing = list(edges - set(t.edges))
+            missing = {e: self._shape[e] for e in all_edges - t.edges}
             # Note: don't broadcast if the tensor is already full, since that would create new
             # Ones([]) objects after simplification is supposed to have completed.
-            self.tensors.append(t @ Ones(missing) if missing else t)
-        self.edges = list(edges)
-        self.weights = [1] * len(tensors) if weights is None else weights
+            self.tensors.append(t @ Ones(**missing) if missing else t)
+
+        self.weights = [1] * len(tensors) if weights is None else list(weights)
         assert len(tensors) == len(self.weights)
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
-        res = Sum([t.rename(kwargs) for t in self.tensors], self.weights)
+        res = Sum([t.rename(**kwargs) for t in self.tensors], self.weights)
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
 
     def grad(self, x: Variable, new_names: Optional[list[str]] = None):
         new_names = self._check_grad(x, new_names)
         res = Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
-        assert set(res.edges) == set(
-            self.edges + new_names
-        ), f"Edges changed from {self.edges} to {res.edges}"
         return res
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
-        term_counter = Counter()
 
+        term_counter = Counter()
         for w, t in zip(self.weights, (t.simplify(args=args) for t in self.tensors)):
             if args["associative_sums"] and isinstance(t, Sum):
                 for w1, t1 in zip(t.weights, t.tensors):
@@ -1365,20 +1368,20 @@ class Sum(Tensor):
                 if w != 0 and not isinstance(key.value, Zero)
             ]
         else:
-            ws_tensors = [(w, t.value) for t, w in term_counter.items()]
+            ws_tensors = [(w, key.value) for key, w in term_counter.items()]
 
         # Remove zero tensors or zero weights.
         # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
         ws_tensors = [(w, t) for w, t in ws_tensors if w != 0 and not isinstance(t, Zero)]
         # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
         if not ws_tensors:
-            return Zero(self.edges)
+            return Zero(**self.shape)
         weights, tensors = zip(*ws_tensors)
         # If there is just one tensor with weight 1, we don't need LinearComb
         if weights == (1,):
             return tensors[0]
         res = Sum(tensors, weights)
-        assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
+        assert res.edges == self.edges, f"Edges changed from {self.edges} to {res.edges}"
         return res
 
     def __repr__(self):
@@ -1390,6 +1393,7 @@ class Sum(Tensor):
         edges = {}
         # Create special "Plus nodes" to collect common edges
         for i, e in enumerate(self.edges):
+            # Note: No need to add the shape here. It's already in the sub-tensors
             G.add_node(i + 1, name="Plus Node")
             edges[e] = i + 1
         for t, w in zip(self.tensors, self.weights):
@@ -1399,19 +1403,12 @@ class Sum(Tensor):
             # Connect tensor edges to the plus nodes
             for e, node in t_edges.items():
                 G.add_edge(node, edges[e])
+        assert edges.keys() == self.edges
         return G, edges
 
-    def edge_equivalences(self):
-        for t in self.tensors:
-            yield from t.edge_equivalences()
-            for e in t.edges:
-                yield (t, e), (self, e)
-
-    def inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
-        res = sum(
-            w * t.evaluate(values, extras=extras).align_to(*self.edges)
-            for w, t in zip(self.weights, self.tensors)
-        )
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        values = [t.evaluate(values, dims).align_to(*self.edges) for t in self.tensors]
+        res = sum(w * v for w, v in zip(self.weights, values))
         assert res.names == tuple(self.edges), f"Expected {self.edges}, got {res.names}"
         return res
 
@@ -1442,6 +1439,15 @@ class MatchEdgesKey:
         return self.hash
 
 
+def group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
+    """Group tensors by their edge names."""
+    groups = defaultdict(list)
+    for t in tensors:
+        for e in t.edges:
+            groups[e].append(t)
+    return groups
+
+
 def add_structural_graph(G, tensor, root_edge_label=None):
     """Computes the structural graph of tensor, and unions it with G."""
     # We assert that Gx has nodes named [0, Gx.number_of_nodes())
@@ -1457,33 +1463,29 @@ def add_structural_graph(G, tensor, root_edge_label=None):
     if root_edge_label is not None:
         e = G.number_of_nodes()
         G.add_node(e, name=root_edge_label)
-        G.add_edge(x_root, e)
-        G.add_edge(e, 0)
+        G.add_edge(e, x_root)
+        G.add_edge(0, e)
     else:
-        G.add_edge(x_root, 0)
+        G.add_edge(0, x_root)
     assert set(x_edges.keys()) == set(tensor.edges), f"{x_edges.keys()} != {tensor.edges}"
     return G, x_edges
 
 
-def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = ""):
-    """Given a list of edges, return a list of new names that are not in used_names.
-    They also won't be translated to the same names.
+def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = "") -> dict[str, str]:
+    """Given a list of edges, return a dict[str, str] that renames the original names into
+    new fresh names, not in either edges nor used_names.
     Also append suffix to the new names.
-    Also returns a dictionary that can be used to rename the edges in the original list.
     """
     used_names = set(used_names)
-    new_edges = []
     rename = {}
     for e in edges:
         orig = e
         e += suffix
         while e in used_names:
             e += "_"
-        new_edges.append(e)
         used_names.add(e)
-        if e != orig:
-            rename[orig] = e
-    return new_edges, rename
+        rename[orig] = e
+    return rename
 
 
 def make_distinct(*tensors: list["Tensor"], used_names=None) -> list["Tensor"]:
@@ -1499,15 +1501,14 @@ def make_distinct(*tensors: list["Tensor"], used_names=None) -> list["Tensor"]:
     # Unless the names are already used, then we can't save them
     unique_names -= used_names
     used_names |= unique_names
-    res = []
-    renames = []
+
+    res, renames = [], []
     for i, t in enumerate(tensors):
-        edges = set(t.edges) - unique_names
-        new_names, rename = unused_edge_names(edges, used_names, suffix=f"_{i}")
+        edges = t.edges - unique_names
+        rename = unused_edge_names(edges, used_names, suffix=f"_{i}")
         # Make sure all t.edges are present in rename
-        for e in unique_names:
-            rename[e] = e
-        used_names |= set(new_names)
-        res.append(t.rename(rename))
+        rename.update({e: e for e in unique_names})
+        used_names.update(rename.values())
+        res.append(t.rename(**rename))
         renames.append(rename)
     return res, renames

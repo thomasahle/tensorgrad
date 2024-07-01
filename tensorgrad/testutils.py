@@ -1,18 +1,20 @@
+from sympy import Symbol
 import torch
-from typing import Generator, Tuple, Dict
-import itertools
-from typing import Tuple, Dict
-import torch
+from typing import Iterable, Tuple, Dict
 import random
 import string
-import random
-from tensorgrad import Variable
-
-from tensorgrad.tensor import Copy, Ones, Tensor, Variable, Zero
+from tensorgrad import Copy, Ones, Tensor, Zero, Variable
 
 
-def rand_values(variables, **shape):
-    return {v: torch.randn([shape[e] for e in v.edges], names=v.edges) for v in variables}
+def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}):
+    values = {}
+    for v in variables:
+        if v.order == 0:
+            values[v] = torch.randn([])
+        else:
+            edges, sizes = zip(*v.shape.items())
+            values[v] = torch.randn([shape[s] for s in sizes], names=edges)
+    return values
 
 
 def assert_close(a, b, rtol=1e-4, atol=1e-5):
