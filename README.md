@@ -35,6 +35,7 @@ This will output the tensor diagram:
 
 Tensorgrad can also output pytorch code for numerically computing the gradient with respect to W:
 ```python
+>>> to_pytorch(grad)
 import torch
 WX = torch.einsum('xy,bx -> by', W, X)
 subtraction = WX - Y
