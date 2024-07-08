@@ -32,7 +32,7 @@ def test_gradient_of_quadratic_form():
 
     expr = (b @ X) @ (X @ c)
     gradient = expr.grad(X)
-    gradient = gradient.simplify()
+    gradient = gradient.simplify({"expand": True})
 
     expected = X @ F.symmetrize(b @ c.rename(i="i_"))
 
@@ -86,4 +86,4 @@ def test_gradient_of_quadratic_form_with_affine_transform():
 
     expected = F.symmetrize(D) @ (X @ b + c) @ b
 
-    assert gradient.simplify() == expected.simplify()
+    assert gradient.simplify({"expand": True}) == expected.simplify({"expand": True})

@@ -129,21 +129,35 @@ def test_symmetry():
 
 
 def test_example_from_softmax_hessian():
-    i, l, j, k = symbols("i l j k")
+    i = symbols("i")
     A = Variable("A", i)
-    B = Variable("B", l)
-    graph = A @ B @ Copy(l, j, k)
-    graph2 = graph.rename(i=j, j=i)
+    B = Variable("B", l=i)
+
+    # The two a are isomorphic, but they can't be added / subtracted, because the edges are different.
+    #
+    #    A   B       A   B
+    #    |   ⅄   vs  |   ⅄
+    #    i  j k      j  i k
+    #
+    graph = A @ B @ Copy(i, "l, j, k")
+    graph2 = graph.rename(i="j", j="i")
     assert graph == graph2
 
-    graph3 = graph.rename(j=k, k=j)
+    # These two are isomorphic, but they _can_ be added because of the symmetry.
+    #
+    #    A   B       A   B
+    #    |   ⅄   vs  |   ⅄
+    #    i  j k      i  k j
+    #
+    graph3 = graph.rename(j="k", k="j")
     assert graph == graph3
 
+    # The point is that when we include the graphs in bigger context, the (lack of) symmetry matters.
     variables = Product(
         [
             Variable("x", i),
-            Variable("y", j),
-            Variable("z", k),
+            Variable("y", j=i),
+            Variable("z", k=i),
         ]
     )
 
@@ -152,35 +166,67 @@ def test_example_from_softmax_hessian():
 
 
 def test_symmetries():
-    i, l, j, k = symbols("i l j k")
+    i = symbols("i")
     A = Variable("A", i)
-    B = Variable("B", l)
-    graph = A @ B @ Copy(l, j, k)
-    assert graph.symmetries == {frozenset({i}), frozenset({j, k})}
+    B = Variable("B", l=i)
 
-    graph2 = graph + graph.rename(j=k, k=j)
-    assert graph2.symmetries == {frozenset({i}), frozenset({j, k})}
+    #    A   B
+    #    |   ⅄
+    #    i  j k
+    graph = A @ B @ Copy(i, "l, j, k")
+    assert graph.symmetries == {frozenset("i"), frozenset("jk")}
 
-    graph3 = graph + graph.rename(i=k, k=i)
-    assert graph3.symmetries == {frozenset({i, k}), frozenset({j})}
+    #    A   B      A   B
+    #    |   ⅄   +  |   ⅄
+    #    i  j k     i  k j
+    graph2 = graph + graph.rename(j="k", k="j")
+    assert graph2.symmetries == {frozenset("i"), frozenset("jk")}
 
-    graph4 = Sum([graph, graph.rename(i=j, j=i), graph.rename(i=k, k=i)])
-    assert graph4.symmetries == {frozenset({i, j, k})}
+    #    A   B      A   B
+    #    |   ⅄   +  |   ⅄
+    #    i  j k     k  j i
+    graph3 = graph + graph.rename(i="k", k="i")
+    assert graph3.symmetries == {frozenset("ik"), frozenset("j")}
+
+    #    A   B      A   B      A   B
+    #    |   ⅄   +  |   ⅄   +  |   ⅄
+    #    i  j k     j  i k     k  j i
+    graph4 = Sum([graph, graph.rename(i="j", j="i"), graph.rename(i="k", k="i")])
+    assert graph4.symmetries == {frozenset("ijk")}
 
 
 def test_symmetries_simplify_sum():
-    i, l, j, k = symbols("i l j k")
-    A = Variable("A", i)
-    B = Variable("B", l)
-    graph1 = A @ B @ Copy(l, j, k)
-    graph2 = graph1.rename(j=k, k=j)
+    i = symbols("i")
 
+    #    A   B
+    #    |   ⅄
+    #    i  j k
+    A = Variable("A", i)
+    B = Variable("B", l=i)
+    graph1 = A @ B @ Copy(i, "l, j, k")
+
+    #    A   B
+    #    |   ⅄
+    #    i  k j
+    graph2 = graph1.rename(j="k", k="j")
+
+    # Flipping j and k we can still combine the two graphs.
     assert len((graph1 + graph2).simplify().tensors) == 1
 
-    graph3 = graph1.rename(i=k, k=i)
+    #    A   B
+    #    |   ⅄
+    #    k  j i
+    graph3 = graph1.rename(i="k", k="i")
+
+    # Flipping i and k we can't combine the two graphs.
     assert len((graph1 + graph3).simplify().tensors) == 2
 
+    #    A   B
+    #    |   ⅄
+    #    m  j k
     graph4 = graph1.rename(i="m")
+
+    # Even if graph1 and graph4 are isomorphic, we can't combine them.
     assert len((graph1 + graph4).simplify().tensors) == 2
 
 
@@ -201,7 +247,7 @@ def test_single_variable_graphs():
     single_var2 = Product([A.rename(i="i2")])
     assert single_var1 == single_var2
 
-    single_var3 = Product([A.rename(i=j, j=i)])
+    single_var3 = Product([A.rename(i="j", j="i")])
     assert single_var1 == single_var3
 
 
@@ -255,11 +301,11 @@ def test_disconnected_graphs():
 
 
 def test_different_number_of_variables():
-    i, j, k, l = symbols("i j k l")
-    A = Variable("A", i, j)
-    B = Variable("B", j, k)
-    C = Variable("C", k, i)
-    D = Variable("D", l, k)
+    i = symbols("i")
+    A = Variable("A", i=i, j=i)
+    B = Variable("B", j=i, k=i)
+    C = Variable("C", k=i, i=i)
+    D = Variable("D", l=i, m=i)
     graph1 = Product([A, B, C])
     graph2 = Product([A, B, C, D])
     assert graph1 != graph2
@@ -282,15 +328,15 @@ def test_isomorphic_with_rename():
 
 
 def test_different_variables():
-    i, j, j1 = symbols("i j j1")
-    e1 = Product([Variable("a", i), Copy(i, j, j1)])
-    e2 = Product([Variable("b", i), Copy(i, j, j1)])
+    i = symbols("i")
+    e1 = Product([Variable("a", i), Copy(i, "j, j1")])
+    e2 = Product([Variable("b", i), Copy(i, "j, j1")])
     assert e1 != e2
-    e1 = Product([Variable("a", i), Copy(i, j, j1)])
-    e2 = Product([Variable("b", i), Copy(i, j, j1)])
+    e1 = Product([Variable("a", i), Copy(i, "i, j, j1")])
+    e2 = Product([Variable("b", i), Copy(i, "i, j, j1")])
     assert e1 != e2
-    a = Variable("a", i, i)
-    b = Variable("b", i, i)
+    a = Variable("a", i, j=i)
+    b = Variable("b", i, j=i)
     e1 = a + b
     e2 = b + b
     assert e1 != e2
@@ -326,13 +372,14 @@ def test_broadcasted():
 
 
 def test_transpose_grad():
-    i, j, a, b = symbols("i j a b")
+    i, j = symbols("i j")
     x = Variable("X", i, j)
-    xt = x.rename(j=i, i=j)
-    res = xt.grad(x, a, b)
-    expected = Copy(j, a) @ Copy(i, b)
-    assert expected.symmetries == {frozenset({j, a, i, b})}
-    assert res.is_isomorphic(expected, match_edges=True)
+    xt = x.rename(j="i", i="j")
+    res = xt.grad(x, {"i": "a", "j": "b"}).simplify()
+    expected = Copy(j, "j, a") @ Copy(i, "i, b")
+    assert expected.symmetries == {frozenset({"a", "j"}), frozenset({"b", "i"})}
+    assert not res.is_isomorphic(expected, match_edges=True)
+    assert res.is_isomorphic(expected, match_edges=False)
 
 
 def test_symmetries_simplify_sum2():
@@ -377,9 +424,16 @@ def _test_links():
 
 
 def test_copy():
-    p, p1 = symbols("p p1")
-    assert Copy(p, p1) != Copy(p)
-    twop = Copy(p, p1) @ Copy(p, p1)
+    # Copy tensors mostly combine, but order 0 copy tensors don't.
+    p = symbols("p")
+    assert Copy(p, "p") != Copy(p)
+    twop = Copy(p, "p") @ Copy(p, "p")
     onep = Copy(p) @ Copy(p)
     assert twop != onep
-    assert twop.simplify() == onep
+    assert twop.simplify() != onep.simplify()
+
+
+def test_copy3():
+    a, b, c = symbols("a b c")
+    prod = Product([Copy(a, "a"), Copy(b, "b"), Copy(c, "c")])
+    assert prod.symmetries == {frozenset({"a"}), frozenset({"b"}), frozenset({"c"})}

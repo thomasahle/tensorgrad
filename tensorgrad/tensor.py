@@ -60,7 +60,7 @@ class Tensor(ABC):
         """The number of edges the tensor has."""
         return len(self.shape)
 
-    def grad(self, x: "Variable", new_names: Optional[list[str]]) -> "Tensor":
+    def grad(self, x: "Variable", new_names: Optional[dict[str, str]]) -> "Tensor":
         """
         Take the derivative of this tensor with respect to the variable x.
 
@@ -220,6 +220,8 @@ class Tensor(ABC):
         return pow(self, other)
 
     def is_isomorphic(self, other, match_edges=False) -> bool:
+        if self.weisfeiler_lehman != other.weisfeiler_lehman:
+            return False
         G1, _ = self._edge_structural_graph(match_edges=match_edges)
         G2, _ = other._edge_structural_graph(match_edges=match_edges)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
@@ -282,61 +284,17 @@ class Tensor(ABC):
                 elif dims[vs] != ts:
                     raise ValueError(f"Conflicting size for dim {o}")
 
-        # if extras is None:
-        #     extras = {}
-        # if "edge_dims" not in extras:
-        #     extras["edge_dims"] = {}
-        # if "cached_values" not in extras:
-        #     extras["cached_values"] = {}
-        # if id(self) not in extras["edge_dims"]:
-        #     shapes = {v: dict(zip(t.names, t.shape)) for v, t in values.items() if isinstance(v, Variable)}
-        #     extras["edge_dims"] |= self._compute_edge_dims(shapes, extra_dims=dims)
-        # edge_dims = extras["edge_dims"].get(id(self), {})
-        # if not edge_dims and self.edges:
-        #     print("Warning: Unable to compute edge dimensions for", self)
-
-        # Variables don't need the value cache, since we can just look up the value directly.
-        # if isinstance(self, Variable):
-        #     if self not in values:
-        #         raise ValueError(f"Missing value for {self}, got {values}")
-        #     # The given named tensor will use original names. We rename the new names
-        #     tensor = values[self]
-        #     orig = {o: e for e, o in self.orig.items()}
-        #     return tensor.rename(*[orig[e] for e in tensor.names])
-
-        # cached_values = extras["cached_values"]
-        # key = (self, tuple(sorted(edge_dims.items())))
-        # if key in cached_values:
-        #     # Take over the isomorphic representative
-        #     other, value = next((t, v) for (t, ed), v in cached_values.items() if (t, ed) == key)
-        #     rename = next(other.isomorphisms(self), None)
-        #     if rename is None:
-        #         raise ValueError("Graphs must be isomorphic (with edges)")
-        #     res = value.rename(*(rename[e] for e in other.edges)).align_to(*self.edges)
-        #     # Enable this to debug the isomorphic cache
-        #     expected = self._inner_evaluate(edge_dims, values, extras)
-        #     assert expected.names == res.names, f"{expected.names=} {res.names=}"
-        #     assert torch.allclose(res.rename(None), expected.rename(None))
-        #     return res
         if self in values:
             # Find the isomorphic representative that we matched
+            # TODO: Find way to optimize this, so we don't have to iterate over all pairs
             other, tensor = next((v, t) for v, t in values.items() if v.is_isomorphic(self))
             mapping = next(other.isomorphisms(self), None)
-            # print(f"{self=}")
-            # print(f"{other=}")
-            # print(self.graph_to_string())
-            # print(other.graph_to_string())
-            # print(list(other.isomorphisms(self)))
-            # print(f"{mapping=}", f"{tensor.names=}")
-            # print(f"{tensor=}")
             res = tensor.rename(**mapping).align_to(*self.edges)
-            # res = tensor.rename(*(mapping[e] for e in tensor.names)).align_to(*self.edges)
             # Enable this to debug the isomorphic cache
-            expected = self._inner_evaluate(values, dims)
-            # print(f"{res=}")
-            # print(f"{expected=}")
-            assert expected.names == res.names, f"{expected.names=} {res.names=}"
-            torch.testing.assert_close(res.rename(None), expected.rename(None))
+            if True:
+                expected = self._inner_evaluate(values, dims)
+                assert expected.names == res.names, f"{expected.names=} {res.names=}"
+                torch.testing.assert_close(res.rename(None), expected.rename(None))
             return res
 
         res = self._inner_evaluate(values, dims)
@@ -374,7 +332,8 @@ class Tensor(ABC):
         If new_names is already given, we just check to make sure they are not already present in the tensor.
         """
         if new_names is not None:
-            assert x.edges == new_names.keys(), f"{x.edges=} != {new_names.keys()=}"
+            if x.edges != new_names.keys():
+                raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
             # Check that the new names don't clash with self.edges
             if used := self.edges & new_names.values():
                 raise ValueError(f"{used} are already present in {self.edges=}")
@@ -400,14 +359,24 @@ class Tensor(ABC):
     def _check_edges(edges: Iterable[str]) -> list[str]:
         if edges is None:
             return None
-        assert not isinstance(edges, str)
+        if not isinstance(edges, Iterable):
+            raise ValueError("Edges must be an iterable of strings")
+        assert isinstance(edges, Iterable)
+        edges = list(edges)
+        if not all(isinstance(e, str) for e in edges):
+            raise ValueError("Edges must be an iterable of strings")
         if len(edges) == 1:
             edges = edges[0].split(",")
             return [e.strip() for e in edges]
-        return list(edges)
+        return edges
 
     @staticmethod
-    def _check_shape(shape0: tuple[Symbol], shape1: dict[str, Symbol]) -> dict[str, Symbol]:
+    def _check_shape(shape0: Iterable[Symbol], shape1: dict[str, Symbol]) -> dict[str, Symbol]:
+        shape0 = tuple(shape0)
+        if not isinstance(shape0, tuple) or not all(isinstance(s, Symbol) for s in shape0):
+            raise ValueError("Shape0 must be a tuple of sympy symbols")
+        if not isinstance(shape1, dict) or not all(isinstance(s, Symbol) for s in shape1.values()):
+            raise ValueError("Shape1 must be a dict of sympy symbols")
         shape0 = {s.name: s for s in shape0}
         if double_keys := shape0.keys() & shape1.keys():
             raise ValueError(f"Duplicate edge names: {double_keys}")
@@ -473,7 +442,7 @@ class Variable(Tensor):
             return Product(Copy(s, e, new_names[self.orig[e]]) for e, s in self.shape.items())
         # Note: We don't need to tell Zero the symmetries, since it's automatically
         # symmetric in all dimensions that have compatible sizes.
-        return Zero(**(self.shape | {new_names[e]: s for e, s in self.shape.items()}))
+        return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
     def __repr__(self):
         args = [f"\"{self.name}\", {', '.join(self.edges)}"]
@@ -578,6 +547,7 @@ class Constant(Tensor, ABC):
                 if self.shape[e] != size:
                     continue
                 G.add_node(orbit_node := G.number_of_nodes(), name="Orbit Node")
+                G.add_edge(size_node, orbit_node)
                 for e in orbit:
                     edges[e] = orbit_node
         return G, edges
@@ -588,7 +558,7 @@ class Constant(Tensor, ABC):
         assert c.edges == {kwargs.get(e, e) for e in self.edges}
         return c
 
-    def grad(self, x: Variable, new_names: Optional[list[str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
         new_names = self._check_grad(x, new_names)
         return Zero(**(self.shape | {new_names[e]: s for e, s in self.shape}))
 
@@ -616,12 +586,11 @@ class Copy(Constant):
         return self._size
 
     def __repr__(self):
-        return f"Copy({self.size}, [{', '.join(self.edges)}])"
+        return f"Copy({self.size}, \"{', '.join(self.edges)}\")"
 
     def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         size = dims[self.size]
         if not self.edges:
-            # Wow! This is so obvious once you notice it!
             return torch.tensor(size)
         copy = torch.zeros([size] * self.order)
         for idx in range(size):
@@ -1021,11 +990,11 @@ class Derivative(Tensor):
         assert res.shape == self.shape, f"Shape changed from {self.shape} to {res.shape}"
         return res
 
-    def grad(self, x: Variable, new_names: list[str] | None) -> Tensor:
+    def grad(self, x: Variable, new_names: dict[str, str] | None = None) -> Tensor:
         new_names = self._check_grad(x, new_names)
         # To avoid an infinite loop, we let the grad pass through us, rather than creating a double derivative.
         res = Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
-        assert res.edges == self.edges | new_names
+        assert res.edges == self.edges | new_names.values()
         return res
 
     def rename(self, **kwargs: dict[str, str]):
@@ -1167,6 +1136,8 @@ class Product(Tensor):
             return f"Product([\n{inner}\n])"
 
     def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        if not self.tensors:
+            return torch.tensor(1.0)
         # TODO: Keep track of how many contractions we made
         # extras["contractions"] = extras.get("contractions", 0) + len(self.contractions)
         # We use "operator" einsum interface, which doesn't require single letter names.
@@ -1210,15 +1181,26 @@ class Product(Tensor):
         else:
             res_weight = 1
 
+        def verify_edges(tensors, msg=""):
+            cnt = Counter(e for t in tensors for e in t.edges)
+            if cnt:
+                assert cnt.most_common()[0][1] <= 2, msg
+
         # Simplify Copy Tensors
+        verify_edges(tensors)
         tensors = Copy.simplify_outer(tensors)
+        verify_edges(tensors)
 
         # Combine / Cancel Product Functions
         if args["combine_products"]:
             from tensorgrad.functions import PowFunctionInfo
 
+            verify_edges(tensors)
+            before = tensors
             tensors = PowFunctionInfo.simplify_outer(tensors)
+            verify_edges(tensors, f"{before} -> {tensors}")
 
+        # assert args["expand"]
         # Base cases
         if not tensors:
             res = Copy(1)
@@ -1235,6 +1217,7 @@ class Product(Tensor):
                 else:
                     for term in terms:
                         term.append(t)
+            # Recurse with expand=False to avoid infinite descent
             res = Sum([Product(ts) for ts in terms], weights).simplify(args={"expand": False})
         else:
             res = Product(tensors)
@@ -1263,7 +1246,7 @@ class Product(Tensor):
         # Find connected components
         component_sets = list(nx.connected_components(G))
         components = [Product([self.tensors[i] for i in comp]) for comp in component_sets]
-        assert {e for c in components for e in c.edges} == set(self.edges)
+        assert Product(components).edges == self.edges
 
         if return_colors:
             colors = {i: c for c, comp in enumerate(component_sets) for i in comp}
@@ -1341,10 +1324,9 @@ class Sum(Tensor):
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
 
-    def grad(self, x: Variable, new_names: Optional[list[str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
         new_names = self._check_grad(x, new_names)
-        res = Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
-        return res
+        return Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)

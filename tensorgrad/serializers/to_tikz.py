@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from typing import Dict
 from tensorgrad.functions import Convolution, Flatten
 from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
 from tensorgrad.extras import Expectation
@@ -97,7 +98,7 @@ class Edge:
 
 
 # Global name dict, to avoid bad characters in Tikz names
-name_dict = defaultdict(lambda: str(len(name_dict)))
+name_dict: dict[str, str] = defaultdict(lambda: str(len(name_dict)))
 
 
 class TikzGraph:

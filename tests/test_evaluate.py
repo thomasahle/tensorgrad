@@ -14,7 +14,7 @@ from tensorgrad.tensor import (
     Zero,
 )
 import tensorgrad.functions as F
-from tensorgrad.testutils import assert_close, generate_random_tensor_expression, rand_values
+from tensorgrad.testutils import assert_close, random_tensor_expr, rand_values
 
 
 def test_copy():
@@ -85,7 +85,7 @@ def test_rename():
     t_a = torch.randn(2, 3, names=("i", "j"))
     result = renamed_tensor.evaluate({a: t_a})
     expected = t_a.rename("k", "l")
-    torch.testing.assert_close(result.rename(None), expected.rename(None))
+    assert_close(result, expected)
 
 
 def test_nested_product_and_sum():
@@ -205,11 +205,13 @@ def test_diag_rectangular():
         F.diag(a, ["i"])
 
 
-def test_random_small():
+@pytest.mark.parametrize("max_depth", range(0, 4))
+@pytest.mark.parametrize("max_dim", range(1, 5))
+def test_random_small(max_depth, max_dim):
     torch.manual_seed(42)
     random.seed(42)
     for _ in range(100):
-        expr, expected, variables = generate_random_tensor_expression(5)
+        expr, expected, variables = random_tensor_expr(max_depth=max_depth, max_dim=max_dim)
         print(f"{expr=}")
         result = expr.evaluate(variables)
         assert_close(result, expected)
@@ -234,22 +236,20 @@ def test_rand2():
 def test_rand0():
     # A strange test that the random generator came up with.
     # Originally it failed because b != c, which is a requirement for the identity matrix Copy(["b, c"])
-    a, b, c = symbols("a b c")
-    x = Variable("x", a, b, c)
-    y = Variable("y", a, b, c)
+    a, b = symbols("a b")
+    x = Variable("x", a, b, c=b)
+    y = Variable("y", a, b, c=b)
     expr = Sum(
         [
-            Product([Copy(a), Copy(b, c)]),
+            Product([Copy(a, "a"), Copy(b, "b, c")]),
             Sum([x, y]),
         ],
     )
     a_val, b_val, c_val = 2, 3, 3
-    ts = rand_values([x, y], {a: a_val, b: b_val, c: c_val})
-    res = expr.evaluate(ts, dims={a: a_val, b: b_val, c: c_val})
-    assert_close(
-        res,
-        ts[x] + ts[y] + torch.eye(b_val).reshape(1, b_val, c_val).rename("a", "b", "c"),
-    )
+    ts = rand_values([x, y], {a: a_val, b: b_val})
+    res = expr.evaluate(ts, dims={a: a_val, b: b_val})
+    expected = ts[x] + ts[y] + torch.eye(b_val).reshape(1, b_val, c_val).rename("a", "b", "c")
+    assert_close(res, expected)
 
 
 def test_rand1():

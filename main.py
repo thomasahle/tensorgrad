@@ -369,26 +369,22 @@ def main():
     # Maybe it can just be a "null type".
     # Ones(...) also make Copy types, but it takes a variable to get the size from.
 
-    i, j, k = symbols("i j k")
-    x = Variable("x", i)
-    g = Function("g", {"j": j}, (x, "i"))
-    f = Function("f", {"k": k}, (g, "j"))
-    expr = f.grad(x).simplify()
+    i, j = symbols("i j")
+    X = Variable("X", i, j)
+    b = Variable("b", i)
+    c = Variable("c", i)
 
-    assert expr.edges == {"k", "i_"}
-    expected = Product(
-        [
-            Function("D_0f", {"k": k, "j_": j}, (g, "j")),
-            Function("D_0g", {"j_": j, "i_": i}, (x, "i"), orig_out={"j_": "j", "i_": "i__"}),
-        ]
-    )
-    print('expr')
-    print(expr.graph_to_string())
-    print('expected')
-    print(expected.graph_to_string())
-    print(expr == expected)
-    return
-    #expr = expected
+    expr = (b @ X) @ (X @ c)
+    gradient = expr.grad(X)
+    gradient = gradient.simplify({"expand": True})
+
+    expected = X @ F.symmetrize(b @ c.rename(i="i_"))
+
+    # The issue is: We don't factor things, so we end up with $X b c^T + X c b^T$
+    # for the gradient. So we'll just expand the expected value too.
+    expected = expected.simplify({"expand": True})
+
+    expr = expected
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")

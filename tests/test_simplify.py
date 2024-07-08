@@ -1,6 +1,6 @@
 import pytest
 from sympy import symbols
-from tensorgrad.tensor import Copy, Variable
+from tensorgrad.tensor import Copy, Product, Sum, Variable
 
 
 def test_copy_loop():
@@ -47,3 +47,14 @@ def test_bad_size_sym():
     i, j = symbols("i, j")
     with pytest.raises(ValueError):
         Variable("X", i, j).with_symmetries("i j")
+
+
+def test_expand():
+    i, j = symbols("i, j")
+    X = Variable("X", i, j)
+    a = Variable("a", i)
+    b = Variable("b", j)
+    expr = X @ (a + b)
+    expr = expr.simplify({"expand": True})
+    assert isinstance(expr, Sum)
+    assert expr == Sum([Product([Copy(j, "j"), X, a]), Product([Copy(i, "i"), X, b])])

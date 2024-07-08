@@ -1,9 +1,11 @@
-from sympy import Symbol
+import itertools
+from sympy import Symbol, symbols
 import torch
 from typing import Iterable, Tuple, Dict
 import random
 import string
-from tensorgrad import Copy, Ones, Tensor, Zero, Variable
+from tensorgrad import Copy, Ones, Tensor, Zero, Variable, Product, Sum
+import networkx as nx
 
 
 def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}):
@@ -23,21 +25,23 @@ def assert_close(a, b, rtol=1e-4, atol=1e-5):
     torch.testing.assert_close(a.rename(None), b.rename(None), rtol=rtol, atol=atol)
 
 
+def broadcast_tensors(left_torch, right_torch):
+    all_dims = list(set(left_torch.names) | set(right_torch.names))
+    left_aligned = left_torch.align_to(*all_dims)
+    right_aligned = right_torch.align_to(*all_dims)
+    return left_aligned, right_aligned
+
+
+def generate_copy(dim: int, edges: Iterable[str]):
+    copy = torch.zeros((dim,) * len(edges))
+    for i in range(dim):
+        copy[(i,) * len(edges)] = 1
+    return copy.rename(*edges)
+
+
 def generate_random_tensor_expression(
     max_size: int,
 ) -> Tuple[Tensor, torch.Tensor, Dict[Variable, torch.Tensor]]:
-    def generate_copy(dim, edges):
-        copy = torch.zeros((dim,) * len(edges))
-        for i in range(dim):
-            copy[(i,) * len(edges)] = 1
-        return copy.rename(*edges)
-
-    def broadcast_tensors(left_torch, right_torch):
-        all_dims = list(set(left_torch.names) | set(right_torch.names))
-        left_aligned = left_torch.align_to(*all_dims)
-        right_aligned = right_torch.align_to(*all_dims)
-        return left_aligned, right_aligned
-
     def generate_recursive(size: int, variables: Dict[Variable, torch.Tensor]) -> Tuple[Tensor, torch.Tensor]:
         if size == 1:
             # Base case: single variable or constant with different edge configurations
@@ -139,3 +143,53 @@ def make_random_tree(nodes: int):
         variables.append(Variable(names[i], ts))
 
     return vectors, variables
+
+
+def atlas_generate_random_tensor_expression():
+    atlas = nx.graph_atlas_g()
+    for _ in range(100):
+        gs = [random.choice(atlas)]
+        while random.random() < 0.5:
+            gs.append(random.choice(atlas))
+
+
+def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, dict[Variable, torch.Tensor]]:
+    assert max_dim >= 1
+    if max_dim == 1:
+        symbols_list = [symbols("a")]
+    else:
+        symbols_list = symbols(" ".join(string.ascii_letters[:max_dim]))
+    sizes = {s: random.randrange(1, 2 * max_dim + 1) for s in symbols_list}
+    vars = [
+        (
+            Variable(f"var_{symbols}", *symbols),
+            torch.randn([sizes[s] for s in symbols], names=list(map(str, symbols))),
+        )
+        for r in range(1, len(symbols_list) + 1)
+        for symbols in itertools.combinations(symbols_list, r)
+    ]
+    copys = [
+        (Copy(s0, *map(str, symbols)), generate_copy(sizes[s0], list(map(str, symbols))))
+        for s0 in symbols_list
+        for r in range(1, len(symbols_list) + 1)
+        for symbols in itertools.combinations(symbols_list, r)
+    ]
+
+    def inner(depth):
+        if depth == 0:
+            # return random.choice(random.choice([vars, copys]))
+            return random.choice(vars)
+        left, left_torch = inner(depth - 1)
+        right, right_torch = inner(depth - 1)
+        if random.random() < 0.5:
+            left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
+            return left + right, left_aligned + right_aligned
+        else:
+            contracted = left.edges & right.edges
+            rhs = "".join(e for e in left_torch.names + right_torch.names if e not in contracted)
+            eq = f"{''.join(left_torch.names)},{''.join(right_torch.names)}->{rhs}"
+            torch_result = torch.einsum(eq, left_torch.rename(None), right_torch.rename(None))
+            return left @ right, torch_result.rename(*rhs)
+
+    tensor, tensor_torch = inner(depth=max_depth)
+    return tensor, tensor_torch, {v: t for v, t in vars}
