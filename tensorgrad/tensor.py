@@ -165,7 +165,7 @@ class Tensor(ABC):
     def __add__(self, other) -> "Tensor":
         w = 1
         if isinstance(other, Number):
-            other, w = Copy(1), other
+            other, w = Product([]), other
         return Sum([self, other], [1, w])
 
     def __radd__(self, other) -> "Tensor":
@@ -174,7 +174,7 @@ class Tensor(ABC):
     def __sub__(self, other) -> "Tensor":
         w = 1
         if isinstance(other, Number):
-            other, w = Copy(1), other
+            other, w = Product([]), other
         return Sum([self, other], [1, -w])
 
     def __neg__(self) -> "Tensor":
@@ -182,7 +182,7 @@ class Tensor(ABC):
 
     def __matmul__(self, other) -> "Tensor":
         if isinstance(other, Number):
-            other = Sum([Copy(1)], [other])
+            other = Sum([Product([])], [other])
         return Product([self, other])
 
     def __rmatmul__(self, other):
@@ -560,7 +560,7 @@ class Constant(Tensor, ABC):
 
     def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
         new_names = self._check_grad(x, new_names)
-        return Zero(**(self.shape | {new_names[e]: s for e, s in self.shape}))
+        return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
     def depends_on(self, x: "Variable") -> bool:
         return False
@@ -608,6 +608,13 @@ class Copy(Constant):
             if done:
                 break
         return tensors
+
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=type(self).__name__, tensor=self)
+        G.add_node(size_node := G.number_of_nodes(), name=f"size={self.size.name}({id(self.size)})")
+        G.add_edge(0, size_node)
+        return G, {e: size_node for e in self.edges}
 
     ################################################################################
     # There are many simplify rules for Copy. We split them into separate methods for clarity.
@@ -698,7 +705,7 @@ def Ones(*shape0: Symbol, **shape1: Symbol) -> Tensor:
 class FunctionInfo:
     name: str
     eval: Callable[[list[torch.Tensor]], torch.Tensor] = None
-    derivative: Callable[[int, *tuple[str]], Tensor] = None
+    derivative: Callable[[int, dict[str, Symbol], *tuple[Tensor, ...]], Tensor] = None
     simplify: Callable[["Function", dict[str, Any]], Tensor] = None
 
 
@@ -1200,10 +1207,7 @@ class Product(Tensor):
             tensors = PowFunctionInfo.simplify_outer(tensors)
             verify_edges(tensors, f"{before} -> {tensors}")
 
-        # assert args["expand"]
         # Base cases
-        if not tensors:
-            res = Copy(1)
         if len(tensors) == 1:
             res = tensors[0]
         elif args["expand"]:

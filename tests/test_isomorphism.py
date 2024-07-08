@@ -361,7 +361,7 @@ def test_broadcasted():
             Sum(
                 [
                     Product([Variable("x", x_), Copy(y_)]),
-                    Product([Variable("y", y_), Copy(y_)]),
+                    Product([Variable("y", y_), Copy(x_)]),
                 ],
                 (1, 1),
             ),
@@ -437,3 +437,8 @@ def test_copy3():
     a, b, c = symbols("a b c")
     prod = Product([Copy(a, "a"), Copy(b, "b"), Copy(c, "c")])
     assert prod.symmetries == {frozenset({"a"}), frozenset({"b"}), frozenset({"c"})}
+
+
+def test_copy0():
+    i, j = symbols("i j")
+    assert Copy(i) != Copy(j)

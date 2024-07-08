@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 import itertools
 import math
 from typing import Any
+from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
     Constant,
@@ -165,6 +166,8 @@ class PowFunctionInfo(FunctionInfo):
         self.k = k
 
     def eval(self, x):
+        if self.k < 0:
+            return torch.pow(x.to(torch.float), self.k)
         return torch.pow(x, self.k)
 
     def derivative(self, i, new_edges, t):
@@ -241,6 +244,7 @@ class PowFunctionInfo(FunctionInfo):
             else:
                 power_weight = 1
             # We rename the hyperedges to a canonical name for matching
+            # FIXME: What if we are doing a trace? Then the two edges will be renamed to the same name.
             key = MatchEdgesKey(t.rename(**hyperedges))
             partition[key].append((power_weight, t))
 
@@ -333,10 +337,9 @@ class ReluFunctionInfo(FunctionInfo):
     def eval(self, x):
         return torch.relu(x)
 
-    def derivative(self, i, new_edges, t):
-        # TODO: The mask needs to not be symmetric, which is assumed by the current Constant Tensor
-        mask = ...
-        return mask * t
+    def derivative(self, i: int, new_edges: dict[str, Symbol], t: Tensor):
+        assert not new_edges, "Relu is element-wise, so there shouldn't be any connection edges"
+        return gt0(t)
 
 
 def relu(t: Tensor) -> Tensor:
@@ -344,17 +347,34 @@ def relu(t: Tensor) -> Tensor:
 
 
 def abs(t: Tensor) -> Tensor:
-    raise NotImplementedError
+    return Function(
+        FunctionInfo(
+            "abs",
+            eval=lambda x: x.abs(),
+            derivative=lambda _i, new_edges, t: sign(t),
+        ),
+        [],
+        (t,),
+    )
 
 
-class Mask(Constant):
-    # TODO
-    """Matrix such that Z_{i,j,k} = 0 for all i, j, k"""
+def sign(t: Tensor) -> Tensor:
+    """Returns a tensor that's 1 where t is > 0 and -1 elsewhere"""
+    return 2 * gt0(t) - 1
 
-    def _inner_evaluate(self, edge_dims: dict[str, int], values: dict, extras: dict) -> torch.tensor:
-        if not self.edges:
-            return torch.tensor(0.0)
-        return torch.zeros([edge_dims[e] for e in self.edges]).rename(*self.edges)
+
+def gt0(t: Tensor) -> Tensor:
+    """Returns a tensor that's 1 where t is > 0 else 0 elsewhere"""
+
+    return Function(
+        FunctionInfo(
+            "gt",
+            eval=lambda x: torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names),
+            derivative=lambda _i, new_edges, t: Zero(**t.shape),
+        ),
+        [],
+        (t,),
+    )
 
 
 def gt(t: Tensor, dim: str) -> Tensor:
@@ -369,7 +389,7 @@ def gt(t: Tensor, dim: str) -> Tensor:
         FunctionInfo(
             "gt",
             eval=lambda x: inner(x),
-            derivative=lambda _i, new_edges, t: Zero(t.edges + new_edges),
+            derivative=lambda _i, new_edges, t: Zero(**(t.shape | new_edges)),
         ),
         [],
         (t, dim),

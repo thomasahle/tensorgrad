@@ -1,16 +1,17 @@
 import torch
 from torch.autograd.functional import jacobian, hessian
 import torch.nn.functional as tF
-
-from tensorgrad.tensor import Derivative, Function, Variable
+from sympy import symbols
+from tensorgrad import Variable, Function
 import tensorgrad.functions as F
-
+from tensorgrad.tensor import Tensor
 from tensorgrad.testutils import rand_values, assert_close
 
 
 def test_frobenius2():
+    a, b, c = symbols("a b c")
     t = torch.randn(2, 3, 4, names=("a", "b", "c"))
-    v = Variable("t", ["a", "b", "c"])
+    v = Variable("t", a=a, b=b, c=c)
     frob = F.frobenius2(v)
     res = frob.evaluate({v: t})
     expected = (t * t).sum()
@@ -18,8 +19,9 @@ def test_frobenius2():
 
 
 def test_diag():
-    v = Variable("v", ["a"])
-    mat = F.diag(v, ["a", "b"])
+    a, b = symbols("a b")
+    v = Variable("v", a=a)
+    mat = F.diag(v, {"a": a, "b": b})
     t = torch.randn(2, names=("a",))
     res = mat.evaluate({v: t})
     expected = torch.diag(t.rename(None)).rename("a", "b")
@@ -27,20 +29,21 @@ def test_diag():
 
 
 def test_einsum():
-    a = Variable("a", ["i", "j"])
-    b = Variable("b", ["j", "k"])
-    c = Variable("c", ["k", "l"])
+    i, j, k, l = symbols("i j k l")
+    a = Variable("a", i=i, j=j)
+    b = Variable("b", j=j, k=k)
+    c = Variable("c", k=k, l=l)
     t_a = torch.randn(2, 3, names=("i", "j"))
     t_b = torch.randn(3, 4, names=("j", "k"))
     t_c = torch.randn(4, 5, names=("k", "l"))
 
     # Test basic einsum
-    res = F.einsum([a, b], ["i", "k"]).evaluate({a: t_a, b: t_b})
+    res = F.einsum([a, b], {"i": i, "k": k}).evaluate({a: t_a, b: t_b})
     expected = torch.einsum("ij,jk->ik", t_a.rename(None), t_b.rename(None)).rename("i", "k")
     assert_close(res, expected)
 
     # Test einsum with multiple tensors
-    res = F.einsum([a, b, c], ["i", "l"]).evaluate({a: t_a, b: t_b, c: t_c})
+    res = F.einsum([a, b, c], {"i": i, "l": l}).evaluate({a: t_a, b: t_b, c: t_c})
     expected = torch.einsum("ij,jk,kl->il", t_a.rename(None), t_b.rename(None), t_c.rename(None)).rename(
         "i", "l"
     )
@@ -48,8 +51,9 @@ def test_einsum():
 
 
 def test_kronecker():
-    a = Variable("a", ["i", "j"])
-    b = Variable("b", ["k", "l"])
+    i, j, k, l = symbols("i j k l")
+    a = Variable("a", i=i, j=j)
+    b = Variable("b", k=k, l=l)
     t_a = torch.randn(2, 3, names=("i", "j"))
     t_b = torch.randn(4, 5, names=("k", "l"))
     result = F.kronecker(a, b).evaluate({a: t_a, b: t_b})
@@ -63,32 +67,34 @@ def test_kronecker():
 
 
 def test_sum():
-    a = Variable("a", ["i", "j"])
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
     t_a = torch.randn(2, 3, names=("i", "j"))
 
     # Test sum over one dimension
-    result = F.sum(a, ["i"]).evaluate({a: t_a})
+    result = F.sum(a, {"i": i}).evaluate({a: t_a})
     expected = t_a.sum(dim="i")
     torch.testing.assert_close(result.rename(None), expected.rename(None))
 
     # Test sum over multiple dimensions
-    result = F.sum(a, ["i", "j"]).evaluate({a: t_a})
+    result = F.sum(a, {"i": i, "j": j}).evaluate({a: t_a})
     expected = t_a.sum(dim=("i", "j"))
     torch.testing.assert_close(result.rename(None), expected.rename(None))
 
 
 def test_mean():
-    a = Variable("a", ["i", "j"])
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
     t_a = torch.randn(2, 3, names=("i", "j"))
 
-    # Test sum over one dimension
+    # Test mean over one dimension
     result1 = F.mean(a, ["i"]).evaluate({a: t_a})
     result2 = F.mean(a, ["i"]).simplify().evaluate({a: t_a})
     expected = t_a.mean(dim="i")
     assert_close(result1, expected)
     assert_close(result2, expected)
 
-    # Test sum over multiple dimensions
+    # Test mean over multiple dimensions
     result1 = F.mean(a, ["i", "j"]).evaluate({a: t_a})
     result2 = F.mean(a, ["i", "j"]).simplify().evaluate({a: t_a})
     expected = t_a.mean(dim=("i", "j"))
@@ -97,7 +103,8 @@ def test_mean():
 
 
 def test_pow():
-    a = Variable("a", ["i", "j"])
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
     result = F.pow(a, -1).evaluate({a: t_a})
     expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
@@ -105,7 +112,8 @@ def test_pow():
 
 
 def test_log():
-    a = Variable("a", ["i", "j"])
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
     result = F.log(a).evaluate({a: t_a})
     expected = torch.log(t_a.rename(None)).rename("i", "j")
@@ -113,18 +121,20 @@ def test_log():
 
 
 def test_log_grad():
-    v = Variable("v", ["i"])
+    i = symbols("i")
+    v = Variable("v", i=i)
     t_v = torch.randn(3, names=("i",)).abs()
-    assert F.log(v).edges == ["i"]
+    assert F.log(v).edges == {"i"}
     jacobian = F.log(v).grad(v).simplify()
-    assert set(jacobian.edges) == {"i", "i_"}
+    assert jacobian.edges == {"i", "i_"}
     result = jacobian.evaluate({v: t_v})
     expected = torch.diag(torch.pow(t_v.rename(None), -1)).rename("i", "i_")
     assert_close(result, expected)
 
 
 def test_exp():
-    a = Variable("a", ["i", "j"])
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
     t_a = torch.randn(2, 3, names=("i", "j"))
     result = F.exp(a).evaluate({a: t_a})
     expected = torch.exp(t_a.rename(None)).rename("i", "j")
@@ -132,8 +142,9 @@ def test_exp():
 
 
 def test_relu_jac():
-    x = Variable("x", ["i"])
-    ts = rand_values([x], i=3)
+    i = symbols("i")
+    x = Variable("x", i=i)
+    ts = rand_values([x], {i: 3})
     expr = F.relu(x).grad(x).simplify()
     res = expr.evaluate({x: ts[x]})
     expected = jacobian(lambda x: tF.relu(x), ts[x].rename(None)).rename("i", "i_")
@@ -141,17 +152,19 @@ def test_relu_jac():
 
 
 def test_softmax():
-    A = Variable("A", ["i", "j"])
-    ts = rand_values([A], i=3, j=2)
-    res = F.softmax(A, ["i"]).evaluate({A: ts[A]})
+    i, j = symbols("i j")
+    A = Variable("A", i=i, j=j)
+    ts = rand_values([A], {i: 3, j: 2})
+    res = F.softmax(A, {"i": i}).evaluate({A: ts[A]})
     expected = tF.softmax(ts[A].rename(None), dim=0).rename("i", "j")
     assert_close(res, expected)
 
 
 def test_softmax_jac():
-    x = Variable("x", ["i"])
-    ts = rand_values([x], i=3)
-    expr = F.softmax(x, ["i"]).grad(x).simplify()
+    i = symbols("i")
+    x = Variable("x", i=i)
+    ts = rand_values([x], {i: 3})
+    expr = F.softmax(x, {"i": i}).grad(x).simplify()
     print(expr)
     res = expr.evaluate({x: ts[x]})
     expected = jacobian(lambda x: tF.softmax(x), ts[x].rename(None)).rename("i", "i_")
@@ -159,16 +172,18 @@ def test_softmax_jac():
 
 
 def test_softmax_grad():
-    x = Variable("x", ["i"])
-    ts = rand_values([x], i=3)
-    res = F.sum(F.softmax(x, ["i"]), ["i"]).grad(x).simplify().evaluate({x: ts[x]})
+    i = symbols("i")
+    x = Variable("x", i=i)
+    ts = rand_values([x], {i: 3})
+    res = F.sum(F.softmax(x, {"i": i}), {"i": i}).grad(x).simplify().evaluate({x: ts[x]})
     expected = jacobian(lambda x: tF.softmax(x).sum(), ts[x].rename(None)).rename("i_")
     assert_close(res, expected)
 
 
 def test_softmax_hess():
-    x = Variable("x", ["i"])
-    ts = rand_values([x], i=3)
+    i = symbols("i")
+    x = Variable("x", i=i)
+    ts = rand_values([x], {i: 3})
     res = (
         F.sum(F.softmax(x, ["i"]), ["i"])
         .grad(x)
@@ -181,31 +196,31 @@ def test_softmax_hess():
 
 
 def test_softmax_hess2():
-    x = Variable("x", ["i"])
-    targets = Variable("targets", ["i"])
-    ts = rand_values([x, targets], i=3)
-    res = (F.softmax(x, ["i"]) @ targets).grad(x).grad(x).simplify().evaluate(ts)
+    i = symbols("i")
+    x = Variable("x", i=i)
+    targets = Variable("targets", i=i)
+    ts = rand_values([x, targets], {i: 3})
+    res = (F.softmax(x, {"i": i}) @ targets).grad(x).grad(x).simplify().evaluate(ts)
     expected = hessian(lambda x: tF.softmax(x) @ ts[targets], ts[x].rename(None)).rename("i_", "i__")
     assert_close(res, expected)
 
 
 def test_softmax_grad_mat():
-    # The issue here is that there are two isomorphic subgraphs in the expression.
-    # They have the same values, but not necessarily the same names.
-    # Maybe need to use a true isomorphism algorithm to actually construct the mapping we need.
-    A = Variable("A", ["i", "j"])
-    ts = rand_values([A], i=3, j=2)
-    res = F.softmax(A, ["i"]).grad(A).simplify().evaluate(ts)
+    i, j = symbols("i j")
+    A = Variable("A", i=i, j=j)
+    ts = rand_values([A], {i: 3, j: 2})
+    res = F.softmax(A, {"i": i}).grad(A).simplify().evaluate(ts)
     expected = jacobian(lambda A: tF.softmax(A, dim=0), ts[A].rename(None)).rename("i", "j", "i_", "j_")
     assert_close(res, expected)
 
 
 def test_ce():
-    logits = Variable("logits", ["N", "C"])
-    target = Variable("target", ["N", "C"])
-    ts = rand_values([logits, target], N=3, C=3)
+    N, C = symbols("N C")
+    logits = Variable("logits", N=N, C=C)
+    target = Variable("target", N=N, C=C)
+    ts = rand_values([logits, target], {N: 3, C: 3})
     ts[target] = ts[target].softmax(dim=1)
-    ce = F.cross_entropy(logits, target, ["C"]).simplify()
+    ce = F.cross_entropy(logits, target, {"C": C}).simplify()
     res = ce.evaluate(ts)
     expected = tF.cross_entropy(
         ts[logits].rename(None),
@@ -216,10 +231,11 @@ def test_ce():
 
 
 def test_ce_grad():
-    logits = Variable("logits", ["C"])
-    target = Variable("target", ["C"])
-    ts = rand_values([logits, target], C=3)
-    ce = F.cross_entropy(logits, target, ["C"])
+    C = symbols("C")
+    logits = Variable("logits", C=C)
+    target = Variable("target", C=C)
+    ts = rand_values([logits, target], {C: 3})
+    ce = F.cross_entropy(logits, target, {"C": C})
     my_jac_logits = ce.grad(logits).simplify().evaluate(ts)
     my_jac_targets = ce.grad(target).simplify().evaluate(ts)
     jac_logits, jac_targets = [
@@ -234,10 +250,11 @@ def test_ce_grad():
 
 
 def test_ce_hess():
-    logits = Variable("logits", ["C"])
-    target = Variable("target", ["C"])
-    ts = rand_values([logits, target], C=3)
-    ce = F.cross_entropy(logits, target, ["C"])
+    C = symbols("C")
+    logits = Variable("logits", C=C)
+    target = Variable("target", C=C)
+    ts = rand_values([logits, target], {C: 3})
+    ce = F.cross_entropy(logits, target, {"C": C})
     my_hessians = [
         [
             ce.grad(logits).grad(logits).simplify().evaluate(ts.copy()),
@@ -258,8 +275,9 @@ def test_ce_hess():
 
 
 def test_pow_hess():
-    x = Variable("x", ["i"])
-    ts = rand_values([x], i=3)
+    i = symbols("i")
+    x = Variable("x", i=i)
+    ts = rand_values([x], {i: 3})
     ce = F.sum(F.pow(x, 3))
     my_hessian = ce.grad(x).grad(x).simplify().evaluate(ts.copy())
     torch_hessian = hessian(lambda x: x.pow(3).sum(), ts[x].rename(None)).rename("i_", "i__")
@@ -267,9 +285,10 @@ def test_pow_hess():
 
 
 def test_pow_hess2():
-    x = Variable("x", ["i"])
-    y = Variable("y", ["i"])
-    ts = rand_values([x, y], i=2, j=2)
+    i = symbols("i")
+    x = Variable("x", i=i)
+    y = Variable("y", i=i)
+    ts = rand_values([x, y], {i: 2})
     ce = F.sum(F.pow((x - y), 3))
     my_hessians = [
         [
@@ -292,26 +311,28 @@ def test_pow_hess2():
 
 
 def test_trace():
-    x = Variable("x", ["i", "j"])
-    ts = rand_values([x], i=3, j=3)
+    i = symbols("i")
+    x = Variable("x", i=i, j=i)
+    ts = rand_values([x], {i: 3})
     res = F.trace(x).simplify().evaluate({x: ts[x]})
     expected = ts[x].rename(None).trace()
     assert_close(res, expected)
 
 
 def test_attention():
-    X = Variable("X", "seq, dim")
-    W_q = Variable("W_q", "dim, inner, head")
-    W_k = Variable("W_k", "dim, inner, head")
-    W_v = Variable("W_v", "dim, inner, head")
-    W_o = Variable("W_o", "dim, inner, head")
-    query = (W_q @ X).rename({"seq": "seq-q"})
-    key = (W_k @ X).rename({"seq": "seq-k"})
-    value = (W_v @ X).rename({"seq": "seq-k"})
+    seq, dim, inner, head = symbols("seq dim inner head")
+    X = Variable("X", seq, dim)
+    W_q = Variable("W_q", dim, inner, head)
+    W_k = Variable("W_k", dim, inner, head)
+    W_v = Variable("W_v", dim, inner, head)
+    W_o = Variable("W_o", dim, inner, head)
+    query = (W_q @ X).rename(seq="seq_q")
+    key = (W_k @ X).rename(seq="seq_k")
+    value = (W_v @ X).rename(seq="seq_k")
 
-    logits = F.dot(query, key, ["inner"])
-    attention_scores = Function("softmax", ["seq-k"], (logits, "seq-k"))
-    expr = F.dot(value, attention_scores, ["seq-k"])
+    logits: Tensor["seq_q", "seq_k", "head"] = F.dot(query, key, ["inner"])
+    attention_scores = Function("softmax", {"seq_k": seq}, (logits, "seq_k"))
+    expr = F.dot(value, attention_scores, ["seq_k"])
     expr = F.dot(W_o, expr, ["inner", "head"])
     expr = expr.grad(X)
 
@@ -319,9 +340,10 @@ def test_attention():
 
 
 def test_relu_hessian():
-    X = Variable("X", "batch, in_dim")
-    W = Variable("W", "in_dim, out_dim")
-    b = Variable("b", "out_dim")
+    batch, in_dim, out_dim = symbols("batch in_dim out_dim")
+    X = Variable("X", batch=batch, in_dim=in_dim)
+    W = Variable("W", in_dim=in_dim, out_dim=out_dim)
+    b = Variable("b", out_dim=out_dim)
 
     Y = F.relu(X @ W + b)
     loss = F.sum(Y * Y)
@@ -331,13 +353,14 @@ def test_relu_hessian():
 
 
 def test_batch_norm():
-    X = Variable("X", "batch, features")
-    gamma = Variable("gamma", "features")
-    beta = Variable("beta", "features")
+    batch, features = symbols("batch features")
+    X = Variable("X", batch, features)
+    gamma = Variable("gamma", features)
+    beta = Variable("beta", features)
     epsilon = 1
 
-    mean = F.mean(X, edges=["batch"])
-    var = F.mean((X - mean) ** 2, edges=["batch"])
+    mean = F.mean(X, ["batch"])
+    var = F.mean((X - mean) ** 2, ["batch"])
     X_norm = (X - mean) / F.sqrt(var + epsilon)
     Y = gamma * X_norm + beta
 
@@ -348,7 +371,8 @@ def test_batch_norm():
 
 
 def test_l1_reg():
-    W = Variable("W", "in_dim, out_dim")
+    in_dim, out_dim = symbols("in_dim out_dim")
+    W = Variable("W", in_dim=in_dim, out_dim=out_dim)
     l1_reg = F.sum(F.abs(W))
     grad = l1_reg.grad(W)
 
@@ -356,13 +380,14 @@ def test_l1_reg():
 
 
 def test_rnn():
-    x = Variable("x", "input_dim")
-    h = Variable("h", "hidden_dim")
-    W_ih = Variable("W_ih", "input_dim, hidden_dim_out")
-    W_hh = Variable("W_hh", "hidden_dim, hidden_dim_out")
-    b = Variable("b", "hidden_dim_out")
+    input_dim, hidden_dim, hidden_dim_out = symbols("input_dim hidden_dim hidden_dim_out")
+    x = Variable("x", input_dim)
+    h = Variable("h", hidden_dim)
+    W_ih = Variable("W_ih", input_dim, hidden_dim_out)
+    W_hh = Variable("W_hh", hidden_dim, hidden_dim_out)
+    b = Variable("b", hidden_dim_out)
 
-    next_h = F.tanh(W_ih @ x + W_hh @ h + b).rename({"hidden_dim_out": "hidden_dim"})
+    next_h = F.tanh(W_ih @ x + W_hh @ h + b).rename(hidden_dim_out="hidden_dim")
     loss = F.sum(next_h)
     grad = loss.grad(W_hh)
 
