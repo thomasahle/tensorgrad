@@ -24,5 +24,6 @@ packages = ["tensorgrad"]
 line-length = 110
 indent-width = 4
 
-# [tool.pytest.ini_options]
+[tool.pytest.ini_options]
+addopts = "-s"
 # addopts = "--nbval"

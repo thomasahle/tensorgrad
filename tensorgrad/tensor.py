@@ -332,8 +332,8 @@ class Tensor(ABC):
         If new_names is already given, we just check to make sure they are not already present in the tensor.
         """
         if new_names is not None:
-            if x.edges != new_names.keys():
-                raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
+            if set(x.orig.values()) != set(new_names.keys()):
+                raise ValueError(f"The {new_names.keys()=} must match {x.orig.values()=}")
             # Check that the new names don't clash with self.edges
             if used := self.edges & new_names.values():
                 raise ValueError(f"{used} are already present in {self.edges=}")
@@ -341,6 +341,8 @@ class Tensor(ABC):
         # Make new names that are _based_ on x.orig and _avoid_ self.edges
         # This is important, since different instantiations of x might be using different names.
         return unused_edge_names(x.orig.values(), self.edges, suffix="_")
+        # Why not base the new_names on x.edges? They are the publicly known ones after all...
+        # return unused_edge_names(x.edges, self.edges, suffix="_")
 
     @staticmethod
     def _check_simplify(args: dict[str, Any] | None = None):
@@ -427,6 +429,7 @@ class Variable(Tensor):
         # edge names given to the variable, without caring about what renaming we
         # might have done in the meantime.
         self.orig = _orig if _orig is not None else {e: e for e in self.edges}
+        assert self.orig.keys() == self.edges, f"Missing original name for {self.edges=} {self.orig=}"
 
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
         return Variable(self.name, **self.shape, _symmetries=symmetries, _orig=self.orig)
@@ -439,7 +442,10 @@ class Variable(Tensor):
             assert orig_shape == other_shape
             # TODO: If X has symmetries, the derivative can actually be more complex than this.
             # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
+            # Note that new_names are based on _the original names_ of x, not the current names.
             return Product(Copy(s, e, new_names[self.orig[e]]) for e, s in self.shape.items())
+            # iso_rename = next(self.isomorphisms(x))
+            # return Product(Copy(s, iso_rename[e], new_names[e]) for e, s in self.shape.items())
         # Note: We don't need to tell Zero the symmetries, since it's automatically
         # symmetric in all dimensions that have compatible sizes.
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
@@ -450,7 +456,7 @@ class Variable(Tensor):
         if self._symmetries != {frozenset({e}) for e in self.edges}:
             groups = ", ".join(sorted(" ".join(sorted(group)) for group in self._symmetries))
             symmetries = f'.with_symmetries("{groups}")'
-        if self.edges != set(self.orig.values()):
+        if any(k != v for k, v in self.orig.items()):
             args.append(f"orig={self.orig}")
         return f"Variable({', '.join(args)}){symmetries}"
 
@@ -559,6 +565,7 @@ class Constant(Tensor, ABC):
         return c
 
     def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        # TODO: Support **args like rename
         new_names = self._check_grad(x, new_names)
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
@@ -792,7 +799,7 @@ class Function(Tensor):
 
         # We need to keep track of the original edges of the function, since we might rename them.
         self.orig_out = {e: e for e in self.edges_out} if orig_out is None else orig_out
-        assert len(self.edges_out) == len(self.orig_out)
+        assert self.edges_out == self.orig_out.keys(), f"{self.edges_out} != {self.orig_out.keys()}"
         assert isinstance(self.orig_out, dict)
 
         self.fn_info = (
@@ -980,7 +987,7 @@ class Derivative(Tensor):
         # _check_grad makes sure the new_names are not already present in self.edges.
         # But we haven't set self.edges yet, so we call it on tensor instead of self.
         self.new_names = tensor._check_grad(x, new_names)
-        self._shape = tensor.shape | {self.new_names[e]: s for e, s in x.shape.items()}
+        self._shape = tensor.shape | {self.new_names[o]: x.shape[e] for e, o in x.orig.items()}
 
     def simplify(self, args: dict[str, Any] = None):
         args = self._check_simplify(args)
@@ -1058,12 +1065,10 @@ class Product(Tensor):
         """
         self.tensors = list(tensors)
         self._shape = {}
-        self.contractions = []
         for edge, ts in group_edges(self.tensors).items():
             if len(ts) == 1:
                 self._shape[edge] = ts[0].shape[edge]
             elif len(ts) == 2:
-                self.contractions.append(edge)
                 s1, s2 = [t.shape[edge] for t in ts]
                 if s1 != s2:
                     raise ValueError(f"Edge {edge} has different sizes, {s1} != {s2}")
@@ -1074,22 +1079,13 @@ class Product(Tensor):
 
     def rename(self, **kwargs: dict[str, str]):
         kwargs = self._check_rename(kwargs)
-        # The main challenge is that renaming the free edges of the tensor can cause clashes with the internal/contracted edges.
-        # For each tensor, it must rename *its free edges* to avoid *free edges of other tensors*, to prevent a clash,
-        # *unless* the edge is a contraction, in which case it must rename to avoid *all edges of other tensors*.
-        # Also, it's important for all these edges to rename in a consistent way.
-        # They need to avoid:
-        # - Hitting the free edges (non contractions)
-        # - Hitting the new names
-        # - Hitting the other contractions
-        # It's OK if they hit:
-        # - the non-contractions that *are* being renamed (but that could be a bit unnecessary work...)
-        # - Their own name (so we can't just give it a list of *all* names of the tensors)
+        # Rename the inner edges (contractions) to avoid the new names introduced
+        # by the renaming of the free edges.
         new_names = {kwargs.get(e, e) for e in self.edges}
-        # TODO: Why do I have to avoid the free edges that are being renamed? Wouldn't it be enough to
-        # do only the first part here?
-        avoid = new_names  # | self.edges
-        rename = unused_edge_names(self.contractions, avoid)
+        contractions = {e for t in self.tensors for e in t.edges} - self.edges
+        # Note the `unused_edge_names` function avoids introducing new clashes
+        # between the edges being renamed.
+        rename = unused_edge_names(contractions, new_names)
         # It's safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
         # contain keys that are in self.edges.
         rename |= kwargs

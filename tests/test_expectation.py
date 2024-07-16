@@ -9,29 +9,50 @@ from tensorgrad.tensor import Sum, Tensor
 from tensorgrad.testutils import assert_close, rand_values
 
 
-def test_names():
-    x = Variable("x", "i, j")
-    mu = Variable("x", "i, j")
-    covar = Variable("c", "i, i2, j, j2")
-    res = Expectation(x, x, mu, covar).simplify()
-    assert res.is_isomorphic(mu, match_edges=True)
+def simple_variables():
+    i, j = symbols("i j")
+    x = Variable("x", i, j)
+    mu = Variable("x", i, j)
+    covar = Variable("c", i, j, i2=i, j2=j)
+    covar_names = {"i": "i2", "j": "j2"}
+    return x, mu, covar, covar_names
 
+
+def test_names1():
+    x, mu, covar, covar_names = simple_variables()
+    res = Expectation(x, x, mu, covar, covar_names).simplify()
+    assert res == mu
+
+
+def test_names2():
+    x, mu, covar, covar_names = simple_variables()
     # The expectation of a X transposed should be mu transposed
-    xt = x.rename({"i": "j", "j": "i"})
-    mut = mu.rename({"i": "j", "j": "i"})
-    res = Expectation(xt, x, mu, covar).simplify()
-    assert res.is_isomorphic(mut, match_edges=True)
+    xt = x.rename(i="j", j="i")
+    mut = mu.rename(i="j", j="i")
+    res = Expectation(xt, x, mu, covar, covar_names).simplify()
+    assert res == mut
 
+
+def test_names3():
+    x, _, covar, covar_names = simple_variables()
+    zero = Zero(**x.shape)
     # The expectation of the outer product x (x) x2 should be covar if mu = 0
-    zero = Zero(["i", "j"])
-    x2 = x.rename({"i": "i2", "j": "j2"})
-    res = Expectation(x @ x2, x, zero, covar).simplify()
-    assert res.is_isomorphic(covar, match_edges=True)
+    x2 = x.rename(i="i2", j="j2")
+    res = Expectation(x @ x2, x, zero, covar, covar_names).simplify()
+    assert res == covar
 
-    x2t = x2.rename({"i2": "j2", "j2": "i2"})
-    covart = covar.rename({"i": "j", "i2": "j2", "j": "i", "j2": "i2"})
-    res = Expectation(xt @ x2t, x, zero, covar).simplify()
-    assert res.is_isomorphic(covart, match_edges=True)
+
+def test_names4():
+    x, _, covar, covar_names = simple_variables()
+    zero = Zero(**x.shape)
+    # Transposing the outer product should give the transposed covariance
+    xt = x.rename(i="j", j="i")
+    x2t = xt.rename(i="i2", j="j2")
+    print("xxxx", xt @ x2t)
+    covart = covar.rename(i="j", j="i", i2="j2", j2="i2")
+    ex = Expectation(xt @ x2t, x, zero, covar, covar_names)
+    res = ex.simplify()
+    assert res == covart
 
 
 def test_quadratic():
@@ -42,12 +63,12 @@ def test_quadratic():
     ts[A] = ts[A] ** 2  # Make it more distinguishable
 
     mu = Zero(i, j)
-    covar = Copy(i, "i, k") @ Copy(j, "j, l")
+    covar = Copy(i, "i, i_") @ Copy(j, "j, j_")
 
     expr = X.rename(i="i0", j="j") @ A @ X.rename(j="j1", i="i")
     assert expr.edges == {"i0", "i"}
 
-    res = Expectation(expr, X, mu, covar).simplify().evaluate(ts)
+    res = Expectation(expr, X, mu, covar, {"i": "i_", "j": "j_"}).simplify().evaluate(ts)
     expected = ts[A].rename(None).trace() * torch.eye(2).rename("i0", "i")  # trace(A) * I
     assert_close(res, expected)
 
@@ -85,9 +106,7 @@ def test_quartic():
     )
 
     mu = Zero(i, j)
-    covar = Copy(i, "i, k") @ Copy(j, "j, l")
-    assert covar.edges == {"i", "k", "j", "l"}
-    expr = Expectation(expr, X, mu, covar).full_simplify()
+    expr = Expectation(expr, X, mu).full_simplify()
 
     ts = rand_values([X, A, B, C], {i: 2, j: 3})
     ts[A] = ts[A] ** 2
@@ -105,26 +124,21 @@ def test_quartic():
 
 
 def test_quartic2():
-    i, j = symbols("i j")
+    i, j, l = symbols("i j l")
     X = Variable("X", i, j)
-    A = Variable("A", j=j, j1=j)
-    B = Variable("B", i=i, i1=i)
-    C = Variable("C", j=j, j1=j)
-    expr = (
-        X.rename(i="i0", j="j")
-        @ A
-        @ X.rename(j="j1", i="i")
-        @ B
-        @ X.rename(i="i1", j="j")
-        @ C
-        @ X.rename(j="j1", i="i")
-    )
+    A = Variable("A", j, j1=j)
+    B = Variable("B", i, i1=i)
+    C = Variable("C", j, j1=j)
+    expr = X.rename(i="i0") @ A @ X.rename(j="j1") @ B @ X.rename(i="i1") @ C @ X.rename(j="j1")
+
     M = Variable("M", i, j)
-    Sh = Variable("Sh", j, "l")
+
+    Sh = Variable("Sh", j, l)
     S = (Sh.rename(j="j0") @ Sh).rename(j0="j", j="l")
     covar = Copy(i, "i, k") @ S
+
     assert covar.edges == {"i", "k", "j", "l"}
-    expr = Expectation(expr, X, M, covar).full_simplify()
+    expr = Expectation(expr, X, M, covar, {"i": "k", "j": "l"}).full_simplify()
 
     i_val, j_val = 2, 3
     ts = rand_values([X, A, B, C, M, Sh], {i: i_val, j: j_val, "l": j_val})
@@ -153,16 +167,16 @@ def test_quartic2():
 
 
 def test_x():
-    p0, p1, p2 = symbols("p0 p1 p2")
+    p0 = symbols("p0")
     S = Variable("S", p0)
-    S1 = S.rename(p0=p1)
+    S1 = S.rename(p0="p1")
     # out_p2 = sum_{p1, p1} S_{p0} S_{p1} [p0 = p1 = p2]
     #        = S_{p2} S_{p2}
     #        = S_{p2}^2
     # E[out]_p2 = E[out_p2] = E[S_{p2}^2] = 1
     expr = Product([S, S1, Copy(p0, "p0, p1, p2")])
     expr = Expectation(expr, S)
-    assert expr.simplify() == Copy(p2)
+    assert expr.simplify() == Copy(p0, "p2")
 
 
 def test_triple_S():
@@ -180,42 +194,43 @@ def test_triple_S():
     # + 0
     # + [r=s][i=m][j=n] + [m=n][i=r][j=s] + [i=j][m=r][n=s]
     # + 0
-    i, j, m, n, r, s, p, p1, p2, p3 = symbols("i j m n r s p p1 p2 p3")
-    S = Variable("S", i, j, p)
-    SA = S.rename(p=p1)
-    SB = S.rename(p=p2, i=m, j=n)
-    W = S.rename(p=p3, i=r, j=s)
-    expr = Product([SA, SB, W, Copy(p1, "p1, p2, p3")])
-    cov = Product([Copy(i, "i, i2"), Copy(j, "j, j2"), Copy(p, "p, p2")])
-    expr = Expectation(expr, S, Copy(p, "i, j, p"), cov)
+    i = symbols("i")
+    S = Variable("S", i, j=i, p=i)
+    SA = S.rename(p="p1")
+    SB = S.rename(p="p2", i="m", j="n")
+    W = S.rename(p="p3", i="r", j="s")
+    expr = Product([SA, SB, W, Copy(i, "p1, p2, p3")])
+    expr = Expectation(expr, S, Copy(i, "i, j, p"))
     expr = expr.full_simplify()
     expected = Sum(
         [
             Copy(i, "i, j, m, n, r, s"),
-            Product([Copy(j, "j, i"), Copy(r, "r, m"), Copy(s, "s, n")]),
-            Product([Copy(r, "r, s"), Copy(n, "n, j"), Copy(m, "m, i")]),
-            Product([Copy(m, "m, n"), Copy(s, "s, j"), Copy(r, "r, i")]),
+            Product([Copy(i, "j, i"), Copy(i, "r, m"), Copy(i, "s, n")]),
+            Product([Copy(i, "r, s"), Copy(i, "n, j"), Copy(i, "m, i")]),
+            Product([Copy(i, "m, n"), Copy(i, "s, j"), Copy(i, "r, i")]),
         ],
     )
     assert expr == expected
 
 
 def test_strassen():
-    i, j, k, l, m, n, p, p1, p2, p3 = symbols("i j k l m n p p1 p2 p3")
+    i, k, m, p = symbols("i k m p")
     S = Variable("S", i, p)
     T = Variable("T", k, p)
     U = Variable("U", m, p)
 
-    ST = S * T.rename(k=l)
-    TU = T * U.rename(m=n)
-    US = U * S.rename(i=j)
+    # The idea is to create the three strassen tensors using an element-wise product
+    ST = S * T.rename(k="l")  # (p, i, l=k)
+    TU = T * U.rename(m="n")
+    US = U * S.rename(i="j")
 
+    # Triple product over p
     expr = Product(
         [
-            ST.rename(p=p1),
-            TU.rename(p=p2),
-            US.rename(p=p3),
-            Copy(p1, "p1, p2, p3"),
+            ST.rename(p="p1"),
+            TU.rename(p="p2"),
+            US.rename(p="p3"),
+            Copy(p, "p1, p2, p3"),
         ]
     )
     expr = Expectation(Expectation(Expectation(expr, S), T), U)
@@ -225,9 +240,7 @@ def test_strassen():
             Copy(i, "i, j"),
             Copy(k, "k, l"),
             Copy(m, "m, n"),
-            # The product is scaled by a factor |p| which we "implement" using
-            # two combined copy tensors
-            Copy(p),
+            # The product is scaled by a factor |p| which we "implement" using an empty copy tensor
             Copy(p),
         ]
     )
