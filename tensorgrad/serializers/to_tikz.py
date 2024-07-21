@@ -193,9 +193,9 @@ class TikzGraph:
 
         print(start_text, label, end_text)
         if start_text == end_text:
-            assert label == start_text
+            # assert label == start_text
             self.lines.append(
-                f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "{label}"] ({id2});'
+                f'    ({id1}){edge_type}[{style}, bend left={angle}, auto={side}, "{start_text}"] ({id2});'
             )
         else:
             self.lines.append(

@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 
-from tensorgrad.tensor import Copy, Variable
+from tensorgrad.tensor import Copy, Derivative, Variable
 import tensorgrad.functions as F
 
 
@@ -40,6 +40,17 @@ def _test_group():
     F.graph("""
         {X Y} -i- * -i-
     """)
+
+
+def test_aXXb():
+    # Based on https://math.stackexchange.com/questions/4948734
+    i = symbols("i")
+    a = Variable("a", i)
+    b = Variable("b", i)
+    X = Variable("X", i, j=i)
+    with pytest.raises(ValueError):
+        graph = F.graph("a -i- X -j-i- X -j-i- b", a=a, X=X, b=b)
+    graph = F.graph("a -i- X0 -j-i- X1 -j-i- b", a=a, X0=X, X1=X, b=b)
 
 
 def test_XAXBXCX():

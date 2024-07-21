@@ -369,22 +369,12 @@ def main():
     # Maybe it can just be a "null type".
     # Ones(...) also make Copy types, but it takes a variable to get the size from.
 
-    i, j = symbols("i j")
-    X = Variable("X", i, j)
+    i = symbols("i")
+    a = Variable("a", i)
     b = Variable("b", i)
-    c = Variable("c", i)
-
-    expr = (b @ X) @ (X @ c)
-    gradient = expr.grad(X)
-    gradient = gradient.simplify({"expand": True})
-
-    expected = X @ F.symmetrize(b @ c.rename(i="i_"))
-
-    # The issue is: We don't factor things, so we end up with $X b c^T + X c b^T$
-    # for the gradient. So we'll just expand the expected value too.
-    expected = expected.simplify({"expand": True})
-
-    expr = expected
+    X = Variable("X", i, j=i)
+    graph = F.graph('a -i- X1 -j-i- X2 -j-i- b', a=a, X1=X, X2=X, b=b)
+    expr = Derivative(Derivative(graph, X), X)
 
     #mu = Variable("m", ["i", "j"])
     ##covar = Variable("M", "i, j, k, l")
