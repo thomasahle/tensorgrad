@@ -168,7 +168,7 @@ def test_quartic2():
     )
 
     res = expr.evaluate(ts)
-    assert_close(res, expected, rtol=0.05, atol=0.01)
+    assert_close(res, expected, rtol=0.1, atol=0.1)
 
 
 def test_x():

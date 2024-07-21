@@ -1,3 +1,4 @@
+import pytest
 from sympy import symbols
 
 from tensorgrad.tensor import Copy, Variable
@@ -21,6 +22,13 @@ def test_frobenius():
     i, j = symbols("i j")
     X = Variable("X", i, j)
     assert F.frobenius2(X) == F.graph("X -i- X1 -j- X", X=X, X1=X)
+
+
+def test_all_copy():
+    with pytest.raises(ValueError):
+        F.graph("*1 -i- *2")
+    with pytest.raises(ValueError):
+        F.graph("*1 -i-")
 
 
 def _test_group():
@@ -142,3 +150,175 @@ def test_G_graph():
         G1=G,
     ).full_simplify()
     assert expected == expr
+
+
+def test_matrix_multiplication():
+    i, j, k = symbols("i j k")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    expected = A @ B
+    assert expected.simplify() == F.graph("A -j- B", A=A, B=B).simplify()
+
+
+def test_tensor_contraction():
+    i, j, k = symbols("i j k")
+    T = Variable("T", i, j, k, j)
+    expected = F.sum(T, ["j"])
+    with pytest.raises(ValueError, match="Cannot have a self loop on a single edge"):
+        assert expected.simplify() == F.graph("T -j- T", T=T).simplify()
+
+
+def test_hadamard_product():
+    i, j = symbols("i j")
+    A = Variable("A", i, j)
+    B = Variable("B", i, j)
+    expected = A * B
+    assert (
+        expected.simplify()
+        == F.graph(
+            """
+        A -i- *0
+        B -i- *0
+        A -j- *1
+        B -j- *1
+        *0 -i-
+        *1 -j-
+    """,
+            A=A,
+            B=B,
+        ).simplify()
+    )
+
+
+def test_outer_product():
+    i, j = symbols("i j")
+    a = Variable("a", i)
+    b = Variable("b", j)
+    expected = a @ b
+    assert (
+        expected.simplify()
+        == F.graph(
+            """
+        a -i-
+        b -j-
+    """,
+            a=a,
+            b=b,
+        ).simplify()
+    )
+
+
+def test_invalid_edge():
+    i, j = symbols("i j")
+    A = Variable("A", i, j)
+    with pytest.raises(ValueError, match="Edge k not found in variable A"):
+        F.graph("A -k- B", A=A)
+
+
+def test_invalid_variable():
+    i, j = symbols("i j")
+    A = Variable("A", i, j)
+    with pytest.raises(ValueError, match="Variable B not found in vars"):
+        F.graph("A -i- B", A=A)
+
+
+def test_self_loop():
+    i = symbols("i")
+    A = Variable("A", i)
+    with pytest.raises(ValueError, match="Cannot have a self loop on a single edge"):
+        F.graph("A -i-i- A", A=A)
+
+
+def test_complex_tensor_network():
+    i, j, k, l = symbols("i j k l")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)
+    C = Variable("C", k, l)
+    D = Variable("D", l, i)
+    expected = A @ B @ C @ D
+    assert (
+        expected.simplify()
+        == F.graph(
+            """
+        A -i- D
+        A -j- B
+        B -k- C
+        C -l- D
+    """,
+            A=A,
+            B=B,
+            C=C,
+            D=D,
+        ).simplify()
+    )
+
+
+def test_hyperedge_copy():
+    i, j = symbols("i j")
+    A = Variable("A", i)
+    B = Variable("B", j)
+    expected = (A @ B) * (A @ B)
+    assert (
+        expected.simplify()
+        == F.graph(
+            """
+        A0 -i- *0
+        B0 -j- *1
+        A1 -i- *0
+        B1 -j- *1
+        *0 -i-
+        *1 -j-
+    """,
+            A0=A,
+            A1=A,
+            B0=B,
+            B1=B,
+        ).simplify()
+    )
+
+
+def test_quantum_circuit_simulation():
+    #         ┌───┐ ┌─────────┐ ┌───┐ ┌───┐
+    # |ψ⟩ ────┤ H ├─┤         ├─┤ R ├─┤ M ├─ (i)
+    #         └───┘ │  CNOT   │ └───┘ └───┘
+    #               │         │       ┌───┐
+    # |ψ⟩ ──────────┤         ├───────┤ M ├─ (j)
+    #               └─────────┘       └───┘
+
+    i = symbols("i")
+    # Define quantum gates and states
+    H = Variable("H", i, j=i)  # Hadamard gate
+    CNOT = Variable("CNOT", i1=i, i2=i, o1=i, o2=i)  # Controlled-NOT gate
+    R = Variable("R", i, j=i)  # Rotation gate
+    psi = Variable("psi", i)  # Initial state
+    measure = Variable("M", i, j=i)  # Measurement operator
+
+    expected = (
+        (
+            (psi @ H).rename(j="i1")  # First input rotated
+            @ psi.rename(i="i2")  # Second input not rotated
+            @ CNOT  # Apply CNOT to both qubits
+        )
+        @ (
+            R.rename(i="o1", j="i")  # Apply R to first qubit
+            @ measure.rename(j="m1")  # Measure first qubit
+        )
+        @ measure.rename(i="o2", j="m2")  # Measure second qubits
+    ).rename(m1="o1", m2="o2")
+
+    assert (
+        expected.simplify()
+        == F.graph(
+            """
+        psi0 -i- H -j-i1- CNOT -o1-i- R -j-i- M0 -j-o1-
+        psi1    -i-i2-    CNOT -o2-i- M1 -j-o2-
+    """,
+            psi0=psi,
+            psi1=psi,
+            H=H,
+            CNOT=CNOT,
+            R=R,
+            M0=measure,
+            M1=measure,
+        ).simplify()
+    )

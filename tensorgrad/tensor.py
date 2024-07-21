@@ -14,7 +14,6 @@ import torch
 
 # TODO:
 # - Code generation (e.g. Triton, Pytorch)
-# - Prettier printing. At least indentation.
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
 #   This is kinda what the FunctionInfo objects are, no?
@@ -24,10 +23,7 @@ import torch
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
 # - Nested derivatives should create symmetries between the edges they create.
 #   This would probably require expanding the Derivative class to take multiple wrts?
-# - We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and include it in a product.
-#   It's nice for pretty printing though, and for simplification rules...
-#   But we need a way to represent scalars whose value is tied to edge dimensions.
-#   The current Constant(link=...) system is broken, because it doesn't connect a specific edge.
+#   This is similar to how we handle commutivity and associativeity of Sums and Products.
 # More simplification rules:
 # - Optional "function expand" that converts e.g. "softmax" into it's components
 # Smaller things:
@@ -35,12 +31,17 @@ import torch
 #   - Symmetrization/Antisymmetrization
 #   - Matrix inverses
 # Done:
+# X Prettier printing. At least indentation.
 # X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
 # X Optional "expand" setting that expands the expression to a sum of products
 # X Support for specific functions and their simplification rules (pow(-1) cancelation, etc)
 # X Use a real algorithm to check isomorphism, like nauty/vf2.
 #   Part of this is creating a completely new symmetry structure.
 # X Support symmetric Variables
+# X We don't need weights in Sum. We can just use a Consant([]) tensor with a weight and include it in a product.
+#   It's nice for pretty printing though, and for simplification rules...
+#   But we need a way to represent scalars whose value is tied to edge dimensions.
+#   The current Constant(link=...) system is broken, because it doesn't connect a specific edge.
 
 
 class Tensor(ABC):
@@ -124,7 +125,7 @@ class Tensor(ABC):
     @cached_property
     def weisfeiler_lehman(self) -> str:
         """Hexadecimal string corresponding to hash of the input graph."""
-        G, _ = self._edge_structural_graph(match_edges=False)
+        G, _ = self.edge_structural_graph(match_edges=False)
         return nx.algorithms.weisfeiler_lehman_graph_hash(G, node_attr="name")
 
     def __eq__(self, other) -> bool:
@@ -148,7 +149,7 @@ class Tensor(ABC):
         """
         raise NotImplementedError
 
-    def _edge_structural_graph(
+    def edge_structural_graph(
         self, match_edges=True, edge_names: None | dict[str, str] = None
     ) -> nx.MultiDiGraph:
         """Like structural_graph, but adds dummy nodes for the outer edges.
@@ -174,7 +175,7 @@ class Tensor(ABC):
 
     def graph_to_string(self):
         """Returns an ASCII tree-like representation of the structural graph."""
-        G, _ = self._edge_structural_graph(match_edges=True)
+        G, _ = self.edge_structural_graph(match_edges=True)
         return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
 
     def __add__(self, other) -> "Tensor":
@@ -237,15 +238,15 @@ class Tensor(ABC):
     def is_isomorphic(self, other, match_edges=False, edge_names: None | dict[str, str] = None) -> bool:
         if self.weisfeiler_lehman != other.weisfeiler_lehman:
             return False
-        G1, _ = self._edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
-        G2, _ = other._edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+        G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+        G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
 
     def isomorphisms(self, other):
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
         # We need the edges1 and edges2 lists to keep track of the order of edges added to the graph
-        G1, edges1 = self._edge_structural_graph(match_edges=False)
-        G2, edges2 = other._edge_structural_graph(match_edges=False)
+        G1, edges1 = self.edge_structural_graph(match_edges=False)
+        G2, edges2 = other.edge_structural_graph(match_edges=False)
         for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
             G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
         ).isomorphisms_iter():
@@ -369,6 +370,7 @@ class Tensor(ABC):
         args.setdefault("associative_sums", True)
         args.setdefault("sum_combine_terms", True)
         args.setdefault("combine_products", True)
+        args.setdefault("factor_components", True)
         args.setdefault("expand", False)
         return args
 
@@ -407,6 +409,8 @@ class Tensor(ABC):
             symmetries = {frozenset(word.split()) for word in symmetries.split(",")}
         # Check symmetries are compatible with shape
         for group in symmetries:
+            if any(e not in shape for e in group):
+                raise ValueError(f"Symmetry group {group} contains edges not in shape")
             if len({shape[e] for e in group}) != 1:
                 raise ValueError(f"Symmetry group {group} must all have same dim size")
         return symmetries
@@ -1215,7 +1219,7 @@ class Product(Tensor):
 
             verify_edges(tensors)
             before = tensors
-            tensors = PowFunctionInfo.simplify_outer(tensors)
+            tensors = PowFunctionInfo.simplify_outer(tensors, args)
             verify_edges(tensors, f"{before} -> {tensors}")
 
         # Base cases

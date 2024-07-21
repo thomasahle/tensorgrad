@@ -67,9 +67,9 @@ def test_variable_symmetries():
 
 
 def test_variable_invalid_symmetries():
-    i, j, k = symbols("i j k")
+    i, j = symbols("i j")
     with pytest.raises(ValueError):
-        Variable("x", i=i, j=j).with_symmetries("i j, k")  # 'k' is not in edges
+        Variable("x", i, j).with_symmetries("i j, k")  # 'k' is not in edges
 
 
 def test_transpose_grad():
