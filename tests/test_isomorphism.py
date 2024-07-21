@@ -1,10 +1,7 @@
 from sympy import symbols
-import torch
 from tensorgrad import Variable
 from tensorgrad.tensor import Copy, Product, Sum
-from tensorgrad.testutils import assert_close, rand_values
 import tensorgrad.functions as F
-import networkx as nx
 
 
 def test_simple():

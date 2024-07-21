@@ -63,6 +63,8 @@ class Expectation(Tensor):
         assert covar.order % 2 == 0, f"{covar.order=}"
 
         assert covar_names.keys() == wrt.edges, f"{covar_names.keys()=} != {wrt.edges=}"
+        for k, v in covar_names.items():
+            assert any((k in s and v in s) for s in covar.symmetries), f"{k}, {v} should be symmetric"
         self.covar_names = covar_names
         self.covar = covar
 
@@ -149,7 +151,7 @@ class Expectation(Tensor):
                 res += covar @ Expectation(
                     # We have to take the derivative wrt x, not wrt. Or maybe it works with wrt too?
                     # I guess derivatives don't really care about renamings of the variable, as long as the
-                    # new edges are consistent?
+                    # new edges are consistent
                     # Derivative(rest, x, new_edges),
                     Derivative(rest, self.wrt, new_edges),
                     self.wrt,
@@ -165,6 +167,7 @@ class Expectation(Tensor):
 
     def grad(self, x: Variable, new_names: dict[str, str] | None = None) -> Tensor:
         new_names = self._check_grad(x, new_names)
+        # TODO: There's some issue here if x == self.wrt
         res = Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.covar, self.covar_names)
         assert res.shape == self.shape | {new_names[k]: s for k, s in x.shape.items()}
         return res

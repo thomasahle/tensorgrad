@@ -148,12 +148,27 @@ class Tensor(ABC):
         """
         raise NotImplementedError
 
-    def _edge_structural_graph(self, match_edges=True) -> nx.MultiDiGraph:
-        """Like structural_graph, but adds dummy nodes for the outer edges."""
+    def _edge_structural_graph(
+        self, match_edges=True, edge_names: None | dict[str, str] = None
+    ) -> nx.MultiDiGraph:
+        """Like structural_graph, but adds dummy nodes for the outer edges.
+
+        Args:
+            if match_edges is True, the edge names are used to match the edges of the two tensors.
+            if edge_names is given, it is used to rename the edges of the tensor.
+        """
+        if edge_names is None:
+            edge_names = {}
+
         G, edges = self.structural_graph()
+
+        for e in edges.keys():
+            if e not in edge_names:
+                edge_names[e] = ("Outer Edge", e) if match_edges else ""
+
         for e, node in edges.items():
             n = G.number_of_nodes()
-            G.add_node(n, name=("Outer Edge", e if match_edges else ""))
+            G.add_node(n, name=edge_names[e])
             G.add_edge(node, n)
         return G, list(edges.keys())
 
@@ -219,11 +234,11 @@ class Tensor(ABC):
             raise ValueError("Only integer powers are supported.")
         return pow(self, other)
 
-    def is_isomorphic(self, other, match_edges=False) -> bool:
+    def is_isomorphic(self, other, match_edges=False, edge_names: None | dict[str, str] = None) -> bool:
         if self.weisfeiler_lehman != other.weisfeiler_lehman:
             return False
-        G1, _ = self._edge_structural_graph(match_edges=match_edges)
-        G2, _ = other._edge_structural_graph(match_edges=match_edges)
+        G1, _ = self._edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+        G2, _ = other._edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
 
     def isomorphisms(self, other):
@@ -1408,13 +1423,14 @@ class MatchEdgesKey:
     the edge names in the comparison. This class is used to compare tensors based on their
     edge names. It is used in the Sum tensor to combine tensors with the same edge names."""
 
-    def __init__(self, value):
+    def __init__(self, value, **edge_names: str):
         self.value = value
         self.hash = hash(value)
+        self.edge_names = edge_names
 
     def __eq__(self, other):
         if isinstance(other, MatchEdgesKey):
-            return self.value.is_isomorphic(other.value, match_edges=True)
+            return self.value.is_isomorphic(other.value, edge_names=self.edge_names, match_edges=True)
         return False
 
     def __hash__(self):

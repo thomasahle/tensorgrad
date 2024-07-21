@@ -79,7 +79,7 @@ def test_derivative():
 
 
 def test_rename():
-    i, j, k, l = symbols("i j k l")
+    i, j = symbols("i j")
     a = Variable("a", i, j)
     renamed_tensor = a.rename(i="k", j="l")
     t_a = torch.randn(2, 3, names=("i", "j"))
@@ -151,7 +151,6 @@ def test_function_evaluation():
 def test_simplify_product_with_zero():
     i, j, k = symbols("i j k")
     a = Variable("a", i, j)
-    b = Variable("b", j, k)
 
     expr = Product([a, Zero(j, k)])
     simplified_expr = expr.simplify()

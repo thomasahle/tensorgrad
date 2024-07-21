@@ -1,6 +1,7 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import itertools
 import math
+import re
 from typing import Any
 from sympy import Symbol
 import torch
@@ -19,6 +20,8 @@ from tensorgrad.tensor import (
     make_distinct,
 )
 from fractions import Fraction
+
+from tensorgrad.utils import DisjointSets
 
 # We include a "sum" function, which overloads the python sum. So we keep a reference
 # here to the builtin, so we can use it in this module
@@ -82,6 +85,96 @@ def einsum(tensors, output_edges):
             edges.append(e)
         joins.append(Copy(s, *edges))
     return Product(dis_tensors + joins)
+
+
+def graph(dot_graph, **vars):
+    """Like einsum, but supports DOT like graph syntax."""
+    lines = re.split(r"[\n;]", dot_graph.strip())
+    edges = []
+    for line in lines:
+        parts = line.split()
+        last_var = None
+        for i in range(len(parts)):
+            if parts[i].startswith("-"):
+                _, *edge_names, _ = parts[i].split("-")
+                if len(edge_names) == 1:
+                    edge_names = [edge_names[0]] * 2
+                next_var = parts[i + 1] if i + 1 < len(parts) else None
+                edges.append((last_var, *edge_names, next_var))
+            else:
+                last_var = parts[i]
+    vars = vars.copy()
+    hyperedges = defaultdict(list)
+    hypersizes = defaultdict(list)
+    used_edges = {e for v in vars.values() for e in v.edges}
+    free_edges = (f"e{i}" for i in itertools.count() if f"e{i}" not in used_edges)
+    free_hyper_edges = (f"h{i}" for i in itertools.count() if f"h{i}" not in used_edges)
+    he_names = defaultdict(lambda: next(free_hyper_edges))
+    ds = DisjointSets()
+    for v0, e0, e1, v1 in edges:
+        for v, e in ((v0, e0), (v1, e1)):
+            if v is None or v.startswith("*"):
+                continue
+            if v not in vars:
+                raise ValueError(f"Variable {v} not found in vars")
+            if e not in vars[v].edges:
+                raise ValueError(f"Edge {e} not found in variable {v}")
+        # if v0 is not None and v1 is not None and vars[v0].shape[e0] != vars[v1].shape[e1]:
+        #     raise ValueError(f"Shapes {vars[v0].shape[e0]} and {vars[v1].shape[e1]} do not match")
+
+        match (v0, v1):
+            case (None, None):
+                raise ValueError("Cannot have two free edges")
+            case (None, v1) if v1.startswith("*"):
+                hyperedges[he_names[v1]].append(e1)
+            case (None, v1):
+                vars[v1] = vars[v1].rename(**{e1: e0})
+            case (v0, None) if v0.startswith("*"):
+                hyperedges[he_names[v0]].append(e0)
+            case (v0, None):
+                vars[v0] = vars[v0].rename(**{e0: e1})
+            case (v0, v1) if v0.startswith("*") and v1.startswith("*"):
+                ds.union(he_names[v0], he_names[v1])
+            case (v0, v1) if v1.startswith("*"):
+                c = next(free_edges)
+                hyperedges[he_names[v1]].append(c)
+                hypersizes[he_names[v1]].append(vars[v0].shape[e0])
+                vars[v0] = vars[v0].rename(**{e0: c})
+            case (v0, v1) if v0.startswith("*"):
+                c = next(free_edges)
+                hyperedges[he_names[v0]].append(c)
+                hypersizes[he_names[v0]].append(vars[v1].shape[e1])
+                vars[v1] = vars[v1].rename(**{e1: c})
+            case (v0, v1) if v0 == v1:
+                if e0 == e1:
+                    raise ValueError("Cannot have a self loop on a single edge")
+                c0 = next(free_edges)
+                c1 = next(free_edges)
+                he = next(free_hyper_edges)
+                hyperedges[he].append(c0)
+                hyperedges[he].append(c1)
+                hypersizes[he].append(vars[v0].shape[e0])
+                vars[v0] = vars[v0].rename(**{e0: c0, e1: c1})
+            case (v0, v1):
+                e = next(free_edges)
+                vars[v0] = vars[v0].rename(**{e0: e})
+                vars[v1] = vars[v1].rename(**{e1: e})
+
+    partition = defaultdict(list)
+    for name in hyperedges.keys():
+        partition[ds.find(name)].append(name)
+    copies = []
+    for group in partition.values():
+        sizes = {s for he in group for s in hypersizes[he]}
+        if len(sizes) != 1:
+            raise ValueError(f"Hyperedges {sizes} must have the same size")
+        (size,) = sizes
+        edges = [e for he in group for e in hyperedges[he]]
+        if len(edges) != len(set(edges)):
+            raise ValueError("Hyperedges must be disjoint")
+        copies.append(Copy(size, *edges))
+
+    return Product(copies + list(vars.values()))
 
 
 def kronecker(*tensors):
@@ -221,9 +314,33 @@ class PowFunctionInfo(FunctionInfo):
 
         return func
 
+    # @classmethod
+    # def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
+    #     hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
+    #     for tensor in tensors:
+    #         if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
+    #             power_weight = t.fn_info.k
+    #             ((t, *_es),) = t.inputs
+
+    # def _edge_structural_graph(self, match_edges=True) -> nx.MultiDiGraph:
+    #     """Like structural_graph, but adds dummy nodes for the outer edges."""
+    #     G, edges = self.structural_graph()
+    #     for e, node in edges.items():
+    #         n = G.number_of_nodes()
+    #         G.add_node(n, name=("Outer Edge", e if match_edges else ""))
+    #         G.add_edge(node, n)
+    #     return G, list(edges.keys())
+
     @classmethod
     def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
         original_edges = Product(tensors).edges
+
+        # New plan:
+        #  - First try to combine existing pow functions.
+        #  - Then try to do cancelations with non-pow subgraphs
+        #  - Finally we could try to recreate some pow functions from the remaining subgraphs,
+        #    but it's not clear that this is actually useful.
+
         # TODO: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
         # but instead need to look for a similar subgraph. This is a bit more complicated.
         # VF2 has an "isomorphic subgraph search" funtion we can probably use.
@@ -243,9 +360,10 @@ class PowFunctionInfo(FunctionInfo):
                 ((t, *_es),) = t.inputs
             else:
                 power_weight = 1
-            # We rename the hyperedges to a canonical name for matching
-            # FIXME: What if we are doing a trace? Then the two edges will be renamed to the same name.
-            key = MatchEdgesKey(t.rename(**hyperedges))
+            # We can't just call t.rename(**hyperedges) here, since some tensors might be adjacent to the
+            # same hyperedge multiple times. Instead we give MatchEdgesKey the names, and it will perform
+            # the isomorphism check correctly.
+            key = MatchEdgesKey(t, **hyperedges)
             partition[key].append((power_weight, t))
 
         # Now we have a partition of tensors that share the same edges, and we can combine them.
@@ -263,22 +381,25 @@ class PowFunctionInfo(FunctionInfo):
         assert Product(tensors).edges == original_edges
 
         # Next we look for disjoint sets of tensors that we can group together.
-        partition = defaultdict(int)
-        for p in Product(tensors).components():
-            power_weight = 1
-            if len(p.tensors) == 1:
-                (t,) = p.tensors
-                if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
-                    power_weight = t.fn_info.k
-                    t, *_es = t.inputs[0]
-            else:
-                t = p
-            partition[MatchEdgesKey(t)] += power_weight
+        # Or maybe we don't actually have to do that?
+        # Well, it also doesn't hurt. It's a test thing.
+        if False:
+            partition = defaultdict(int)
+            for p in Product(tensors).components():
+                power_weight = 1
+                if len(p.tensors) == 1:
+                    (t,) = p.tensors
+                    if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
+                        power_weight = t.fn_info.k
+                        t, *_es = t.inputs[0]
+                else:
+                    t = p
+                partition[MatchEdgesKey(t)] += power_weight
 
-        tensors = []
-        for key, w in partition.items():
-            t = key.value
-            tensors.append(pow(t, w))
+            tensors = []
+            for key, w in partition.items():
+                t = key.value
+                tensors.append(pow(t, w))
 
         # We have to merge products here because we might otherwise have undone part of the simplification
         tensors = Product.merge([Product([t]) if not isinstance(t, Product) else t for t in tensors]).tensors

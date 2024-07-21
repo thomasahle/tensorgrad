@@ -1,3 +1,4 @@
+import itertools
 from sympy import symbols
 import torch
 from einops import einsum
@@ -13,7 +14,7 @@ def simple_variables():
     i, j = symbols("i j")
     x = Variable("x", i, j)
     mu = Variable("x", i, j)
-    covar = Variable("c", i, j, i2=i, j2=j)
+    covar = Variable("c", i, j, i2=i, j2=j).with_symmetries("i i2, j j2")
     covar_names = {"i": "i2", "j": "j2"}
     return x, mu, covar, covar_names
 
@@ -124,24 +125,28 @@ def test_quartic():
 
 
 def test_quartic2():
-    i, j, l = symbols("i j l")
+    # Compute E[X @ A @ X.T @ B @ X.T @ C @ X]
+    # Based on https://mathematica.stackexchange.com/questions/273893
+
+    i, j = symbols("i j")
     X = Variable("X", i, j)
     A = Variable("A", j, j1=j)
     B = Variable("B", i, i1=i)
     C = Variable("C", j, j1=j)
     expr = X.rename(i="i0") @ A @ X.rename(j="j1") @ B @ X.rename(i="i1") @ C @ X.rename(j="j1")
 
+    # Mean and row-wise covariance
     M = Variable("M", i, j)
-
-    Sh = Variable("Sh", j, l)
-    S = (Sh.rename(j="j0") @ Sh).rename(j0="j", j="l")
+    Sh = Variable("Sh", j, r=j)
+    S = (Sh.rename(j="j0") @ Sh).rename(j0="j", j="l")  # S = Sh @ Sh.T
     covar = Copy(i, "i, k") @ S
 
     assert covar.edges == {"i", "k", "j", "l"}
     expr = Expectation(expr, X, M, covar, {"i": "k", "j": "l"}).full_simplify()
 
     i_val, j_val = 2, 3
-    ts = rand_values([X, A, B, C, M, Sh], {i: i_val, j: j_val, "l": j_val})
+    ts = rand_values([X, A, B, C, M, Sh], {i: i_val, j: j_val})
+    # We square A, B, and C to prevent the expectation from being 0
     ts[A] = ts[A] ** 2
     ts[B] = ts[B] ** 2
     ts[C] = ts[C] ** 2

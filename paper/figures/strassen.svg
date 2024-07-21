@@ -23,9 +23,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     inkscape:zoom="1.1047924"
-     inkscape:cx="347.12403"
-     inkscape:cy="1012.8599"
+     inkscape:zoom="1.0401777"
+     inkscape:cx="396.56686"
+     inkscape:cy="1631.452"
      inkscape:window-width="1728"
      inkscape:window-height="1051"
      inkscape:window-x="0"
@@ -1377,20 +1377,6 @@
     <text
        xml:space="preserve"
        style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
-       x="133.12776"
-       y="206.69032"
-       id="text134"
-       transform="scale(1.0056941,0.99433814)"><tspan
-         sodipodi:role="line"
-         id="tspan134"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
-         x="133.12776"
-         y="206.69032">S<tspan
-   style="font-size:65%;baseline-shift:sub"
-   id="tspan133">W</tspan></tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
        x="129.12933"
        y="277.37585"
        id="text136"
@@ -1449,7 +1435,7 @@
        id="path145" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.264999"
-       d="m 106.91129,254.29183 c 4.07713,0.15101 8.30526,3.3221 7.55023,2.56708"
+       d="m 106.91129,254.29183 c 4.07713,0.15101 8.79133,3.80817 8.0363,3.05315"
        id="path146"
        sodipodi:nodetypes="cc" />
     <path
@@ -1645,7 +1631,7 @@
        id="path171" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:0.794996, 0.794996;stroke-dashoffset:0"
-       d="m 102.7418,213.01355 c 3.68131,3.34663 37.14769,6.02394 35.97637,20.07983 -1.17132,14.05588 -31.9604,27.94443 -32.79706,28.11176"
+       d="m 102.7418,213.01355 c 3.68131,3.34663 37.4114,6.04841 35.97637,20.07983 -1.4333,14.01452 -33.55465,27.69271 -32.79706,28.11176"
        id="path172"
        sodipodi:nodetypes="csc" />
     <circle
@@ -2069,42 +2055,383 @@
          style="fill:#000000;stroke:none;stroke-width:0.265"
          x="115.45084"
          y="235.62599">2</tspan></text>
+    <circle
+       style="fill:none;stroke:none;stroke-width:0.264583"
+       id="circle2-0"
+       cx="85.650841"
+       cy="428.24136"
+       r="3.0407062" />
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="82.455986"
+       y="433.01764"
+       id="text2-2"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan2-4"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="82.455986"
+         y="433.01764">X</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="92.494347"
+       y="423.99347"
+       id="text8-2"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan8-2"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="92.494347"
+         y="423.99347">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan137-7">A</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="116.6443"
+       y="423.17657"
+       id="text11-3"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan11-7"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="116.6443"
+         y="423.17657">W<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan138-9">A</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="104.46613"
+       y="414.94879"
+       id="text14-0"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan14-2"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="104.46613"
+         y="414.94879">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan131-3">W</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="92.7836"
+       y="442.80048"
+       id="text26-9"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan26-9"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="92.7836"
+         y="442.80048">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan139-7">B</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="116.74072"
+       y="442.4863"
+       id="text28-0"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan28-3"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="116.74072"
+         y="442.4863">W<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan140-9">B</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="104.72816"
+       y="452.08478"
+       id="text29-8"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan29-6"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="104.72816"
+         y="452.08478">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan132-5">W</tspan></tspan></text>
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle41-7"
+       cx="107.58916"
+       cy="415.94458"
+       r="0.95019692"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 105.75908,416.28216 -8.108702,2.35034"
+       id="path42-6" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 108.34446,412.87415 -0.29379,1.41021"
+       id="path44-2" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 109.24376,416.32711 8.14954,2.30539"
+       id="path57-7"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="fill:#ffffff;stroke:none;stroke-width:0.264999"
+       id="rect60-0"
+       width="2.150419"
+       height="2.4130154"
+       x="291.88205"
+       y="317.21423"
+       transform="rotate(31.544162)" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 82.498921,427.20903 c -3.047248,-0.47095 5.968367,-9.33418 9.583887,-7.73503"
+       id="path63-3"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="fill:#ffffff;stroke:none;stroke-width:0.264999"
+       id="rect63-9"
+       width="2.150419"
+       height="2.4130154"
+       x="313.83215"
+       y="297.83908"
+       transform="rotate(34.355143)" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 87.523108,427.73321 c 2.90915,0 5.62435,-5.04883 5.62435,-5.04883"
+       id="path65-9"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="fill:#ffffff;stroke:none;stroke-width:0.265774"
+       id="rect65-9"
+       width="1.8917186"
+       height="1.6069642"
+       x="412.36127"
+       y="203.39299"
+       transform="matrix(0.62033877,0.78433399,-0.84666535,0.53212572,0,0)" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 82.294775,429.43786 c -2.981608,0.0962 6.488863,7.38032 10.528463,7.38032"
+       id="path71-1"
+       sodipodi:nodetypes="cc" />
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle72-7"
+       cx="107.77149"
+       cy="439.00986"
+       r="0.95019692"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 99.623458,438.93553 6.108202,0.0912"
+       id="path72-2" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 109.2416,439.16345 7.01987,-0.77492"
+       id="path73-3" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 107.92775,440.6913 0.39733,3.33755"
+       id="path74-6" />
+    <rect
+       style="fill:#ffffff;stroke:none;stroke-width:0.264999"
+       id="rect76-1"
+       width="1.5255046"
+       height="1.9854423"
+       x="-70.869011"
+       y="434.71265"
+       transform="rotate(-20.764864)" />
+    <rect
+       style="fill:#ffffff;stroke:none;stroke-width:0.264999"
+       id="rect77-4"
+       width="1.5255046"
+       height="1.9854423"
+       x="-17.863632"
+       y="444.10672"
+       transform="rotate(-13.863473)" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 87.698668,429.09642 c 1.52232,-0.0192 3.23326,14.5541 5.48197,12.03581"
+       id="path77-7"
+       sodipodi:nodetypes="cc" />
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="132.66158"
+       y="470.78159"
+       id="text136-1"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan136-7"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="132.66158"
+         y="470.78159">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan135-5">W</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="116.6162"
+       y="409.56989"
+       id="text142-5"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan142-4"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="116.6162"
+         y="409.56989">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan141-1">A</tspan></tspan></text>
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle142-8"
+       cx="131.54321"
+       cy="402.9758"
+       r="0.95019692"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="117.79177"
+       y="456.91342"
+       id="text144-8"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan144-3"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="117.79177"
+         y="456.91342">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan143-5">B</tspan></tspan></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 110.01064,408.39835 5.73818,-1.51004"
+       id="path144-2" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 122.39302,403.86821 6.4932,-0.75502"
+       id="path145-2" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 110.46365,446.60253 c 4.07713,0.15101 8.79133,3.80817 8.0363,3.05315"
+       id="path146-6"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 104.87648,447.65957 c -9.071835,2.38091 14.74343,10.85686 12.53338,5.58716"
+       id="path147-6"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 103.66844,409.00237 c -2.9114,1.82507 2.49384,-8.45842 11.92937,-5.43617"
+       id="path148-7"
+       sodipodi:nodetypes="cc" />
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="144.422"
+       y="423.48029"
+       id="text151-8"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan151-7"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="144.422"
+         y="423.48029">W<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan150-8">A</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="144.51842"
+       y="442.79001"
+       id="text153-7"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan153-7"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="144.51842"
+         y="442.79001">W<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan152-4">B</tspan></tspan></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 133.62407,405.32226 9.79364,9.48758"
+       id="path158-9" />
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.2595;stroke-dasharray:none"
+       id="circle158-8"
+       cx="135.06279"
+       cy="457.91199"
+       r="0.95019692"
+       inkscape:export-filename="power.pdf"
+       inkscape:export-xdpi="96"
+       inkscape:export-ydpi="96" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 124.74859,451.38295 7.34523,4.89682"
+       id="path159-2" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 146.63125,442.20142 -9.94666,13.31322"
+       id="path160-0" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 136.53156,460.41145 0.91815,3.06052"
+       id="path161-7" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 132.70592,400.73149 2.90749,-2.29538"
+       id="path162-4" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 136.07248,394.7635 -25.86131,0.30605"
+       id="path163-8" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 143.87679,394.45745 30.45208,0.15302"
+       id="path164-5" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 131.32869,466.0734 -38.256388,1.37724"
+       id="path165-8" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999"
+       d="m 140.51022,464.8492 35.19588,-0.76514"
+       id="path166-3" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:0.794996, 0.794996;stroke-dashoffset:0"
+       d="m 169.54564,386.7504 2.00798,88.51859"
+       id="path171-2" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-dasharray:0.794996, 0.794996;stroke-dashoffset:0"
+       d="m 84.673255,398.96516 c 3.68131,3.34663 57.369565,12.33615 57.597275,26.43892 0.28166,17.44444 -61.234941,43.8083 -62.811964,39.55812"
+       id="path172-2"
+       sodipodi:nodetypes="csc" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264999"
-       x="3.9902055"
-       y="300.19226"
+       x="10.568115"
+       y="403.17764"
        id="text236"><tspan
          sodipodi:role="line"
          style="stroke-width:0.265"
-         x="3.9902055"
-         y="300.19226"
-         id="tspan236">You'd think I could just compress</tspan><tspan
+         x="10.568115"
+         y="403.17764"
+         id="tspan241">This is what it would look like if you</tspan><tspan
          sodipodi:role="line"
          style="stroke-width:0.265"
-         x="3.9902055"
-         y="304.60196"
-         id="tspan237">ithe SA W SB like this. The issue</tspan><tspan
-         sodipodi:role="line"
-         style="stroke-width:0.265"
-         x="3.9902055"
-         y="309.01169"
-         id="tspan238">is that doing it this way is actually</tspan><tspan
-         sodipodi:role="line"
-         style="stroke-width:0.265"
-         x="3.9902055"
-         y="313.42139"
-         id="tspan239">more parameters than the original.</tspan><tspan
-         sodipodi:role="line"
-         style="stroke-width:0.265"
-         x="3.9902055"
-         y="317.83112"
-         id="tspan240">And it probably wouldn't save any</tspan><tspan
-         sodipodi:role="line"
-         style="stroke-width:0.265"
-         x="3.9902055"
-         y="322.24081"
-         id="tspan241">time the way the one above does.</tspan></text>
+         x="10.568115"
+         y="407.58734"
+         id="tspan38">Kronecker factorized W I suppose</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:3.52777px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';fill:#000000;stroke:none;stroke-width:0.264999;stroke-dasharray:0.794996, 0.794996;stroke-dashoffset:0"
@@ -2127,5 +2454,80 @@
          style="fill:#000000;stroke:none;stroke-width:0.265"
          x="101.58614"
          y="340.83133">7</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="136.52414"
+       y="399.39172"
+       id="text10"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan10"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="136.52414"
+         y="399.39172">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan7">W</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264999"
+       x="6.4569216"
+       y="295.05328"
+       id="text33"><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="6.4569216"
+         y="295.05328"
+         id="tspan25">You'd think I could just compress</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="6.4569216"
+         y="299.46298"
+         id="tspan27">ithe SA W SB like this. The issue</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="6.4569216"
+         y="303.87271"
+         id="tspan30">is that doing it this way is actually</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="6.4569216"
+         y="308.28241"
+         id="tspan31">more parameters than the original.</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="6.4569216"
+         y="312.69214"
+         id="tspan32">And it probably wouldn't save any</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="6.4569216"
+         y="317.10184"
+         id="tspan33">time the way the one above does.</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.43092px;fill:#000000;stroke:none;stroke-width:0.264585"
+       x="131.49217"
+       y="205.08372"
+       id="text35"
+       transform="scale(1.0056941,0.99433814)"><tspan
+         sodipodi:role="line"
+         id="tspan35"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.43092px;font-family:'CMU Serif';-inkscape-font-specification:'CMU Serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264585"
+         x="131.49217"
+         y="205.08372">S<tspan
+   style="font-size:65%;baseline-shift:sub"
+   id="tspan34">W</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke:none;stroke-width:0.264999"
+       x="39.056839"
+       y="477.70618"
+       id="text37"><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.265"
+         x="39.056839"
+         y="477.70618"
+         id="tspan37">But then you could also continue merging even more</tspan></text>
   </g>
 </svg>

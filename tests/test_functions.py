@@ -4,7 +4,7 @@ import torch.nn.functional as tF
 from sympy import symbols
 from tensorgrad import Variable, Function
 import tensorgrad.functions as F
-from tensorgrad.tensor import Tensor
+from tensorgrad.tensor import Copy, Tensor
 from tensorgrad.testutils import rand_values, assert_close
 
 
@@ -109,6 +109,41 @@ def test_pow():
     result = F.pow(a, -1).evaluate({a: t_a})
     expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
     assert_close(result, expected)
+
+
+def test_pow_cancel_1():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    T = Variable("T", i, j)
+    ST = S @ T
+    expr = ST * F.pow(ST, -1)
+    print(expr.full_simplify())
+    assert expr.full_simplify() == Copy(j, "j")
+
+
+def test_pow_cancel_1b():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    expr = S * S * F.pow(S, -1)
+    assert expr.full_simplify() == S
+
+
+def test_pow_cancel_2():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    T = Variable("T", i, j)
+    ST = S @ T
+    expr = F.pow(ST, 2) * F.pow(ST, -1)
+    assert expr.full_simplify() == ST
+
+
+def test_pow_cancel_3():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    T = Variable("T", i, j)
+    ST = S @ T
+    expr = F.pow(ST, 3) * F.pow(ST, -1)
+    assert expr.full_simplify() == F.pow(ST, 2)
 
 
 def test_log():
