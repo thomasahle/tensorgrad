@@ -731,7 +731,7 @@ def Ones(*shape0: Symbol, **shape1: Symbol) -> Tensor:
 class FunctionInfo:
     name: str
     eval: Callable[[list[torch.Tensor]], torch.Tensor] = None
-    derivative: Callable[[int, dict[str, Symbol], *tuple[Tensor, ...]], Tensor] = None
+    derivative: Callable[[int, dict[str, Symbol], None], Tensor] = None
     simplify: Callable[["Function", dict[str, Any]], Tensor] = None
 
 
