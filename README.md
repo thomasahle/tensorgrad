@@ -20,11 +20,12 @@ To run the examples for yourself, you can use [the main.py file](https://github.
 from tensorgrad import Variable
 import tensorgrad.functions as F
 # ||Ax - y||_2^2
-X = Variable("X", "b, x")
-Y = Variable("Y", "b, y")
-W = Variable("W", "x, y")
+b, x, y = sp.symbols("b x y")
+X = tg.Variable("X", b, x)
+Y = tg.Variable("Y", b, y)
+W = tg.Variable("W", x, y)
 XWmY = X @ W - Y
-l2 = F.sum(XWmY * XWmY)
+l2 = XWmY @ XWmY
 grad = l2.grad(W)
 display_pdf_image(to_tikz(grad.full_simplify()))
 ```
