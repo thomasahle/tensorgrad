@@ -106,11 +106,9 @@ def test_copy():
         expected.simplify()
         == F.graph(
             """
-        X -i- *
-        Y -i- *
-        * -i-
-        * -j-
-    """,
+            X -i- * -i-
+            Y -i- * -j-
+            """,
             X=X,
             Y=Y,
         ).simplify()

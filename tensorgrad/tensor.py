@@ -14,6 +14,8 @@ import torch
 
 # TODO:
 # - Code generation (e.g. Triton, Pytorch)
+# - Make output from tikz code actually look good
+# - Write a bunch of documentation
 # - Introduce a function object, that's not a tensor, but which creates a tensor when called. This makes it easier to define
 #   operators, such as taylor expansion, which feeds the function some specific inputs.
 #   This is kinda what the FunctionInfo objects are, no?
@@ -21,15 +23,23 @@ import torch
 #   Can't you just user Copy tensors?
 # - Taking the derivative with respect to multiple variables at the same time (full backprop)
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
-# - Nested derivatives should create symmetries between the edges they create.
-#   This would probably require expanding the Derivative class to take multiple wrts?
-#   This is similar to how we handle commutivity and associativeity of Sums and Products.
+
 # More simplification rules:
 # - Optional "function expand" that converts e.g. "softmax" into it's components
+
 # Smaller things:
 # - Stuff from https://en.wikipedia.org/wiki/Penrose_graphical_notation
 #   - Symmetrization/Antisymmetrization
-#   - Matrix inverses
+#   - Matrix inverses. Should be easy to do as a function that takes a matrix and returns a matrix.
+#     In principle it could also be done using Penrose's construction, but that's probably overkill.
+#     The derivative seems pretty simple too. just D(X)^-1 = -X^-1 D(X) X^-1.
+#     With matrix inverse we can solve https://math.stackexchange.com/questions/1371878
+#   - Determinant. Again, should be easy to do as a function.
+#     We can use the derivative function ∂(det(X)) = det(X)Tr(X^−1 ∂X).
+# - Nested derivatives should create symmetries between the edges they create.
+#   This would probably require expanding the Derivative class to take multiple wrts?
+#   This is similar to how we handle commutivity and associativeity of Sums and Products.
+
 # Done:
 # X Prettier printing. At least indentation.
 # X Support taking the Expectation, at least for Gaussian tensors. Can be done via Gaussian integration by parts.
@@ -648,11 +658,7 @@ class Copy(Constant):
     @classmethod
     def _simplify_step(cls, tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
         """Performs one step of simplification. Returns a new list if changed, or the original if not."""
-        groups = defaultdict(list)
-        for t in tensors:
-            for e in t.edges:
-                groups[e].append(t)
-        for e, ts in groups.items():
+        for e, ts in group_edges(tensors).items():
             if len(ts) == 1:
                 continue
             t1, t2 = ts
@@ -678,9 +684,11 @@ class Copy(Constant):
         # arbitrary expressions as sizes, which I'm not sure we want yet.
         # Also, merging an order 0 with and order > 0 was never going to work, unless the size of the
         # order 0 Copy was 1, which it probably never is.
-        if t1.order == 0 or t2.order == 0:
-            return None
+        # In either case, this method should only be called if the tensors share an edge, which they
+        # can't if one of them has order 0.
+        assert t1.order != 0 and t2.order != 0, "Can't merge order 0 Copy tensors"
 
+        # Since the tensors are connected, we can assume they have the same size
         assert t1.size == t2.size, "Contracted Copy tensors must have same size"
         size = t1.size
 
@@ -1247,12 +1255,11 @@ class Product(Tensor):
         assert set(res.edges) == set(self.edges), f"Edges changed from {self.edges} to {res.edges}"
         return res
 
-    def components(self, return_colors=False):
+    def components(self) -> list["Product"]:
         """Find all disjoint components, that is, subgraphs that are not connected by an edge.
 
         Returns:
             - A list of disjoint components, each represented by a Product tensor.
-            - If return_colors is True, also returns color mapping and grouping.
         """
         # Create graph of tensor connections
         G = nx.Graph()
@@ -1266,11 +1273,6 @@ class Product(Tensor):
         component_sets = list(nx.connected_components(G))
         components = [Product([self.tensors[i] for i in comp]) for comp in component_sets]
         assert Product(components).edges == self.edges
-
-        if return_colors:
-            colors = {i: c for c, comp in enumerate(component_sets) for i in comp}
-            return components, colors, component_sets
-
         return components
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:

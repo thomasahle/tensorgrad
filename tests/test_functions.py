@@ -112,6 +112,8 @@ def test_pow():
 
 
 def test_pow_cancel_1():
+    #      S - T - * - j
+    # (S - T)^(-1) ┘
     i, j = symbols("i j")
     S = Variable("S", i)
     T = Variable("T", i, j)

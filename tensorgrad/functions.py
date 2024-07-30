@@ -88,7 +88,75 @@ def einsum(tensors, output_edges):
 
 
 def graph(dot_graph, **vars):
-    """Like einsum, but supports DOT like graph syntax."""
+    """
+    Create a tensor network using a DOT-like graph syntax.
+
+    This function allows you to define tensor networks using a syntax similar to the DOT graph description language.
+    It provides a more intuitive way to specify tensor contractions and operations compared to traditional einsum notation.
+
+    Parameters:
+    -----------
+    dot_graph : str
+        A string describing the tensor network using DOT-like syntax. Each line represents an edge or connection
+        between tensors. Tensor names are separated by edge specifications, which are hyphen-delimited lists of
+        edge names.
+
+    **vars : dict
+        Keyword arguments representing the tensors used in the graph. Each key is the tensor name used in the
+        dot_graph, and the corresponding value is the actual tensor object.
+
+    Returns:
+    --------
+    Product
+        A Product object representing the tensor network described by the input graph.
+
+    Syntax:
+    -------
+    - Tensors are represented by their names (e.g., 'A', 'B', 'X').
+    - Edge connections are represented by hyphens: '-'. For example, 'A -i- B' connects edge 'i' of A to edge 'i' of B.
+    - You can connect edges with different names. For example, 'A -i-j- B' connects edge 'i' of A to edge 'j' of B.
+    - Copy tensors are created automatically when a name starting with '*', like '*3' is used.
+    - Lines can be separated by newlines or semicolons.
+
+    Examples:
+    ---------
+    1. Matrix multiplication:
+    >>> i, j, k = symbols("i j k")
+    >>> A = Variable("A", i, j)
+    >>> B = Variable("B", j, k)
+    >>> result = graph("A -j- B", A=A, B=B)
+
+    2. Trace
+    >>> i = symbols("i")
+    >>> X = Variable("X", i, j=i)
+    >>> result = graph('''
+    ...     X -i- X
+    ...     X -j- X
+    ... ''', X=X)
+
+    3. Element-wise multiplication:
+    >>> i, j = symbols("i j")
+    >>> X = Variable("X", i, j)
+    >>> Y = Variable("Y", i, j)
+    >>> result = graph('''
+    ...     -i- *0 -i- X -j- *1 -j-
+    ...         *0 -i- Y -j- *1
+    ... ''', X=X, Y=Y)
+
+    4. Frobenius norm (squared)
+    >>> i, j = symbols("i j")
+    >>> X = Variable("X", i, j)
+    >>> result = graph('''
+    ...     X1 -i- X2
+    ...     X1 -j- X2
+    ... ''', X1=X, X2=X)
+
+    Raises:
+    -------
+    ValueError
+        If the graph specification is invalid, such as using undefined variables,
+        invalid edge names, or inconsistent hyperedge sizes.
+    """
     lines = re.split(r"[\n;]", dot_graph.strip())
     edges = []
     for line in lines:
@@ -307,14 +375,6 @@ class PowFunctionInfo(FunctionInfo):
 
         return func
 
-    # @classmethod
-    # def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
-    #     hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
-    #     for tensor in tensors:
-    #         if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
-    #             power_weight = t.fn_info.k
-    #             ((t, *_es),) = t.inputs
-
     # def _edge_structural_graph(self, match_edges=True) -> nx.MultiDiGraph:
     #     """Like structural_graph, but adds dummy nodes for the outer edges."""
     #     G, edges = self.structural_graph()
@@ -352,72 +412,65 @@ class PowFunctionInfo(FunctionInfo):
 
     @classmethod
     def _combine_powers(cls, tensors: list[Tensor]) -> list[Tensor]:
-        # First group tensors by their edges, taking into account existing Pow functions.
-        # We want to group tensors with that share edges, which is made harder by Copy tensors
-        # that rename the hyper edges to different names. We make this dict to rename everything
-        # to a canonical name.
-        hyperedges = {e: min(c.edges) for c in tensors if isinstance(c, Copy) for e in c.edges}
-        partition = defaultdict(list)
-        for t in tensors:
-            # We don't include Copy's since they have been reduced to hyper-edges
-            if isinstance(t, Copy):
-                continue
-            if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
-                power_weight = t.fn_info.k
-                ((t, *_es),) = t.inputs
-            else:
-                # If we don't want to combine single tensors, we could just `continue` here.
-                power_weight = 1
+        seen = set()
+        # for _ in range(3):
+        while True:
+            # Find the next power function we haven't seen yet
+            try:
+                i, t = next(
+                    (i, t)
+                    for i, t in enumerate(tensors)
+                    if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo) and t not in seen
+                )
+            except StopIteration:
+                break
+            seen.add(t)
+
+            power_weight = t.fn_info.k
+            ((inner, *_es),) = t.inputs
+
+            hyperedges = {
+                e: min(c.edges)
+                for c in tensors
+                if isinstance(c, Copy) and c.edges & inner.edges
+                for e in c.edges
+            }
+            partition = defaultdict(list)
+
             # We can't just call t.rename(**hyperedges) here, since some tensors might be adjacent to the
             # same hyperedge multiple times. Instead we give MatchEdgesKey the names, and it will perform
             # the isomorphism check correctly.
-            key = MatchEdgesKey(t, **hyperedges)
-            partition[key].append((power_weight, t))
+            partition[MatchEdgesKey(inner, **hyperedges)].append((power_weight, inner))
 
-        # Now we have a partition of tensors that share the same edges, and we can combine them.
-        # Or in some cases they cancel each other.
-        tensors = [c for c in tensors if isinstance(c, Copy)]
-        for ts in partition.values():
-            w = _sum(w for w, t in ts)
-            t0 = ts[0][1]
-            tensors.append(pow(t0, w))
-            # The remaining tensors have been reduced to ones. This prevents leaving unattached edges
-            # on the copy tensors.
-            for _, t in ts[1:]:
-                tensors.append(Ones(**t.shape))
+            # We remove the tensor, as well as all Copy's that it's connected to,
+            # which makes the rest of the graph fall apart.
+            others = tensors[:i] + tensors[i + 1 :]
+            copys = [t for t in others if isinstance(t, Copy) and t.edges & inner.edges]
+            others = [t for t in others if not (isinstance(t, Copy) and t.edges & inner.edges)]
+            for comp in Product(others).components():
+                power_weight = 1
+                if len(comp.tensors) == 1:
+                    comp = comp.tensors[0]
+                    if isinstance(comp, Function) and isinstance(comp.fn_info, PowFunctionInfo):
+                        power_weight = comp.fn_info.k
+                        ((comp, *_es),) = comp.inputs
+                partition[MatchEdgesKey(comp, **hyperedges)].append((power_weight, comp))
+
+            # Now we have a partition of tensors that share the same edges, and we can combine them.
+            # Or in some cases they cancel each other.
+            tensors = copys
+            for ts in partition.values():
+                w = _sum(w for w, t in ts)
+                t0 = ts[0][1]
+                if w == 1:
+                    tensors.append(t0)
+                else:
+                    tensors.append(pow(t0, w))
+                # The remaining tensors have been reduced to ones. This prevents leaving unattached edges
+                # on the copy tensors.
+                for _, t in ts[1:]:
+                    tensors.append(Ones(**t.shape))
         return tensors
-
-    @classmethod
-    def _cancel_subgraphs(cls, tensors: list[Tensor]) -> list[Tensor]:
-        # TODO: If the content of a pow is not a single tensor, but a product, we can't expect to find a single match
-        # but instead need to look for a similar subgraph. This is a bit more complicated.
-        # VF2 has an "isomorphic subgraph search" funtion we can probably use.
-        pass
-
-        progress = True
-        while progress:
-            progress = False
-            for t in tensors:
-                if isinstance(t, Function) and isinstance(t.fn_info, PowFunctionInfo):
-                    pow_function = t
-                    break
-            else:
-                # If we didn't find any pow functions, we can't do anything more.
-                break
-            # Remove the first instance of pow_function from the list of tensors
-            tensors.remove(pow_function)
-            # Unpack the pow function
-            power_weight = t.fn_info.k
-            inner, *_es = t.inputs[0]
-            # This is where we need to create the structural graphs...
-            # We need to handle hyperedges here, so we can't just use the edges of the inner tensor.
-            G1, edge_keys = inner.edge_structural_graph(match_edges=True)
-
-        # Generator over isomorphisms between a "subgraph of G1" and G2.
-        for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
-            G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
-        ).subgraph_isomorphisms_iter():
-            pass
 
     @classmethod
     def _combine_components(cls, tensors: list[Tensor]) -> list[Tensor]:
