@@ -1,3 +1,4 @@
+import pytest
 import torch
 from torch.autograd.functional import jacobian, hessian
 import torch.nn.functional as tF
@@ -429,3 +430,36 @@ def test_rnn():
     grad = loss.grad(W_hh)
 
     # TODO: Test output better
+
+
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_max(keepdim):
+    i, j = symbols("i j")
+    X = Variable("X", i, j)
+    ts = rand_values([X], {i: 3, j: 4})
+    tX = ts[X].rename(None)
+
+    for dims in [(), ["i"], ["j"], ["i", "j"]]:
+        res = F.max(X, dims, keepdim=keepdim).evaluate(ts)
+        adims = tuple(ts[X].names.index(d) for d in dims)
+        expected = tX.amax(adims, keepdim=keepdim)
+        names = ts[X].names if keepdim else tuple(n for n in ts[X].names if n not in dims)
+        # Note that dims == () is the same as dims == ("i", "j") in torch.amax.
+        expected = expected if dims == () else expected.rename(*names)
+        assert_close(res, expected)
+
+    res = F.max(X, keepdim=keepdim).grad(X).simplify().evaluate(ts)
+    expected = (tX == tX.amax()).float()
+    assert_close(res, expected)
+
+    res = F.max(X, "i", keepdim=keepdim).grad(X).simplify().evaluate(ts)
+    expected = (tX == tX.amax(dim=0).values).float()
+    assert_close(res, expected)
+
+    res = F.max(X, "j", keepdim=keepdim).grad(X).simplify().evaluate(ts)
+    expected = (tX == tX.amax(dim=1).values[:, None]).float()
+    assert_close(res, expected)
+
+    res = F.max(X, ("i", "j"), keepdim=keepdim).grad(X).simplify().evaluate(ts)
+    expected = torch.ones_like(tX)
+    assert_close(res, expected)

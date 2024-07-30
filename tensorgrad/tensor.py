@@ -23,6 +23,7 @@ import torch
 #   Can't you just user Copy tensors?
 # - Taking the derivative with respect to multiple variables at the same time (full backprop)
 #   Maybe we can still take derivatives individually, and just use the isomorphic hashing to avoid recomputions?
+# - Having a reduce function at applies a function along a given dimension could be a way to implement RNNs.
 
 # More simplification rules:
 # - Optional "function expand" that converts e.g. "softmax" into it's components

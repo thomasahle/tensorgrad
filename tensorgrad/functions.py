@@ -583,8 +583,10 @@ def gt0(t: Tensor) -> Tensor:
     )
 
 
-def gt(t: Tensor, dim: str) -> Tensor:
+def gt(t: Tensor, dim: str | tuple[str] = (), keepdim=False) -> Tensor:
     """Returns a tensor that's 1 for the largest index in the row (along dim), 0 elsewhere."""
+    if isinstance(dim, str):
+        dim = (dim,)
 
     def inner(x):
         indices = torch.max(x, dim=dim).indices
@@ -602,26 +604,36 @@ def gt(t: Tensor, dim: str) -> Tensor:
     )
 
 
-def max(t: Tensor, dim: str, keepdim=False) -> Tensor:
+def max(t: Tensor, dim: str | tuple[str] = (), keepdim=False) -> Tensor:
+    """Returns the sum of each row of the input tensor in the given dimension dim.
+    If dim is a list of dimensions, reduce over all of them.
+
+    If keepdim is True, the output tensor is of the same size as input except in the dimension(s)
+    dim where it is of size 1. Otherwise, dim is squeezed (see torch.squeeze()), resulting in the
+    output tensor having 1 (or len(dim)) fewer dimension(s).
+    """
+    if isinstance(dim, str):
+        dim = (dim,)
+    if dim == ():
+        dim = tuple(t.edges)
+
+    def eval_max(x):
+        names = x.names if keepdim else tuple(n for n in x.names if n not in dim)
+        adim = tuple(x.names.index(d) for d in dim)
+        return torch.amax(x.rename(None), adim, keepdim).rename(*names)
+
     func = Function(
         FunctionInfo(
             "max",
-            eval=lambda x: torch.max(x, dim=dim),
-            derivative=lambda _i, _nn, t: gt(t, dim),
+            eval=eval_max,
+            derivative=lambda _i, _nn, t: gt(t, dim, keepdim),
         ),
         [],
-        (t, dim),
+        (t, *dim),
     )
     if keepdim:
-        func @= Ones(**{dim: t.shape[dim]})
+        func @= Ones(**{d: t.shape[d] for d in dim})
     return func
-
-
-def foldl(f: FunctionInfo, inputs, dim: str) -> FunctionInfo:
-    """Fold the function along the given dimension."""
-    # TODO: Maybe FunctionInfo should contain more info about the function.
-    # Like the output_shape, and even inputs somehow.
-    raise NotImplementedError
 
 
 # Convolution is equivalent with Unfold + Matrix Multiplication + Fold (or view to output shape)
