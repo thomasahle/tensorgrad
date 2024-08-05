@@ -375,15 +375,6 @@ class PowFunctionInfo(FunctionInfo):
 
         return func
 
-    # def _edge_structural_graph(self, match_edges=True) -> nx.MultiDiGraph:
-    #     """Like structural_graph, but adds dummy nodes for the outer edges."""
-    #     G, edges = self.structural_graph()
-    #     for e, node in edges.items():
-    #         n = G.number_of_nodes()
-    #         G.add_node(n, name=("Outer Edge", e if match_edges else ""))
-    #         G.add_edge(node, n)
-    #     return G, list(edges.keys())
-
     @classmethod
     def simplify_outer(cls, tensors: list[Tensor], args: dict[str, Any] = None) -> list[Tensor]:
         original_edges = Product(tensors).edges
@@ -396,9 +387,6 @@ class PowFunctionInfo(FunctionInfo):
 
         tensors = cls._combine_powers(tensors)
         assert Product(tensors).edges == original_edges
-
-        # tensors = cls._cancel_subgraphs(tensors)
-        # assert Product(tensors).edges == original_edges
 
         if args["factor_components"]:
             tensors = cls._combine_components(tensors)

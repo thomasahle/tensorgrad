@@ -38,9 +38,9 @@ prefix = """\
     degree4/.style={star, star points=5, draw=purple!50!black, very thick, fill=purple!20, inner sep=4pt},
     label/.style={scale=2, inner sep=0pt},
     subgraph nodes={draw=gray, rounded corners},
-    derivative_subgraph/.style={draw=black, very thick, circle},
-    expectation_subgraph/.style={draw=black, very thick, sharp corners},
-    function_subgraph/.style={draw=black, thick, dashed, rounded corners},
+    derivative+subgraph/.style={draw=black, very thick, circle},
+    expectation+subgraph/.style={draw=black, very thick, sharp corners},
+    function+subgraph/.style={draw=black, thick, dashed, rounded corners},
     subgraph text none,
     every edge/.append style={
         very thick,
@@ -314,7 +314,7 @@ def _to_tikz(tensor, graph, depth=0):
             assert not (edges.keys() & free_edges.keys())
             free_edges |= edges
 
-        graph.add_subgraph(subgraph, "function_subgraph", layout(depth), cluster_id)
+        graph.add_subgraph(subgraph, "function+subgraph", layout(depth), cluster_id)
 
         # We propagate the free edges to the parent to handle
         return {e: node_id for e in tensor.edges_out} | free_edges
@@ -326,17 +326,21 @@ def _to_tikz(tensor, graph, depth=0):
         # Add new free edges with Circle- arrow-start, similar to Penrose
         for e in tensor.new_names:
             edges[e] = {"node_id": cluster_id, "style": "Circle-"}
-        graph.add_subgraph(subgraph, "derivative_subgraph", layout(depth), cluster_id)
+        graph.add_subgraph(subgraph, "derivative+subgraph", layout(depth), cluster_id)
         return edges
 
     if isinstance(tensor, Expectation):
         cluster_id = f"cluster+{node_id}"
         subgraph = TikzGraph()
         edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
-        graph.add_subgraph(subgraph, "expectation_subgraph", layout(depth), cluster_id)
+        graph.add_subgraph(subgraph, "expectation+subgraph", layout(depth), cluster_id)
         return edges
 
     if isinstance(tensor, Product):
+        if len(tensor.tensors) == 0:
+            graph.add_node(node_id, "identity")
+            return {}
+
         sub_ids = defaultdict(list)  # edge -> [sub_id1, sub_id2]
         for t in tensor.tensors:
             for e, sub_id in _to_tikz(t, graph, depth + 1).items():

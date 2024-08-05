@@ -10,8 +10,8 @@ def _to_pytorch_code(tensor, code_lines):
         return f"identity_{id(tensor)}"
 
     if isinstance(tensor, Variable):
-        dims = [f"d_{e}" for e in tensor.original_edges]
         code_lines.append(f"# {tensor.name}.names = {tensor.edges}")
+        # TODO: Rename original names -> names
         return tensor.name
 
     if isinstance(tensor, Zero):
@@ -37,14 +37,7 @@ def _to_pytorch_code(tensor, code_lines):
             sub_ids.append(sub_id)
             ein_edges.append(" ".join(t.edges))
 
-        contraction_indices = defaultdict(list)
-        for e in tensor.contractions:
-            t1, t2 = [t for t in tensor.tensors if e in t.edges]
-            contraction_indices[id(t1)].append(e)
-            contraction_indices[id(t2)].append(e)
-
-        einsum_str = ",".join(ein_edges) + " -> " + " ".join(tensor.edges)
-        einsum_str = einsum_str.replace("'", "_")
+        einsum_str = ", ".join(ein_edges) + " -> " + " ".join(tensor.edges)
 
         code_lines.append(f"product_{id(tensor)} = torch.einsum('{einsum_str}', {', '.join(sub_ids)})")
 
