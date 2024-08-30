@@ -1,7 +1,7 @@
 
 \chapter{Introduction}
 \paragraph{What is this?}
-These pages are a guide to tensors, using the visual language of ``tensor diagrams''.
+These pages are a guide to tensors, using the visual language of ``ensor diagrams''.
 For illustrating the generality of the approach, I've tried to closely follow the legendary ``Matrix Cookbook''.
 As such, most of the presentation is a collection of facts (identities, approximations, inequalities, relations, ...) about tensors and matters relating to them.
 You won't find many results not in the original cookbook, but hopefully the diagrams will give you a new way to understand and appreciate them.
@@ -31,9 +31,29 @@ Various operations, such as a trace, tensor product, or tensor contraction can b
 Names of indices and tensors can often be omitted. This saves time and lightens the notation, and is especially useful for internal indices which exist mainly to be summed over.
 The order of the tensor resulting from a complicated network of contractions can be determined by inspection: it is just the number of unpaired lines. For example, a tensor network with all lines joined, no matter how complicated, must result in a scalar.
 
+
+\paragraph{Etymology}
+The term "tensor" is rooted in the Latin word tensio, meaning ``tension'' or ``stretching,'' derived from the verb tendere, which means ``to stretch'' or ``to extend.''
+It was first introduced in the context of mathematics in the mid-19th century by William Rowan Hamilton in his work on quaternions, where it referred to the magnitude of a quaternion.
+The modern usage of "tensor" was later established by Gregorio Ricci-Curbastro and Tullio Levi-Civita in their development of tensor calculus, a framework that generalizes the concept of scalars, vectors, and matrices to more complex, multidimensional entities.~\cite{tensor_etymology_russo, hamilton_tensor}.
+
+
 \tableofcontents
+\clearpage
 
 \section{Notation and Nomenclature}
+\[
+   [P] = \begin{cases}
+      1 \text{ if } P \\
+      0 \text{ otherwise}
+   \end{cases}.
+\]
+
+\section{Tensor Diagrams}
+Tensor diagrams are simple graphs (or ``networks'') where
+nodes represent variables (e.g. vectors or matrices) and edges represent
+contractions (e.g. matrix multiplication or inner products.)
+The follow table shows how some basic operations can be written with tensor diagrams:
 
 \newenvironment{compress}{
   \renewcommand{\arraystretch}{0.6} % Set the array stretch
@@ -48,6 +68,7 @@ The order of the tensor resulting from a complicated network of contractions can
 \renewcommand{\arraystretch}{2}
 \noindent
 %\hspace{-1em}
+\vspace{.5em}
 \begin{tabular}[h]{lcccl}
    Dot product
    &
@@ -184,26 +205,205 @@ The order of the tensor resulting from a complicated network of contractions can
    \end{tikzpicture}
    }$
 \end{tabular}
+\vspace{.5em}
 
-\subsection{The Copy Tensor}
+We think of vectors and matrices as tensors of order 1 and 2.
+The order corresponds to the number of dimensions in their $[\cdots]$ visualization above,
+e.g. a vector is a 1-dimensional list of numbers, while a matrix is a 2-dimensional grid of numbers.
+The order also determines the degree of the node representing the variable in the tensor graph.
 
-We define $\sbullet-$ to be the all-ones vector.
+Diagram notation becomes more interesting when you have tensors of order 3 and higher.
+An order 3 tensor is a cube or numbers, or stack of matrices.
+E.g. we can write this as $T\in\R^{n\times m\times k}$, so $T_i\in\R^{m\times k}$ is a matrix for $i=1\dots n$.
+Of course we could slice $T$ along the other axes too, so $T_{:,j}\in\R^{n\times k}$ and $T_{:,:,\ell}\in\R^{n\times m}$ are matrices too.
+
+A matrix having two outgoing edges means there are two ways you can multiply a vector onto it, either on the left: $x^T M$, or on the right: $Mx$.
+In graph notation we just write $x\!-\!M\!-$ and $-M\!-\!x$.
+An order 3 tensor has three edges, so we can multiply it with a vector in three ways:
+\[
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$T$};
+      \node (x) at (.4,-.4) {$x$};
+      \draw (T) -- (x);
+      \draw (T) -- ++(-.3,-.3);
+      \draw (T) -- ++(0,.35);
+   \end{tikzpicture}
+   \quad
+   \text{and}
+   \quad
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$T$};
+      \node (x) at (-.4,-.4) {$x$};
+      \draw (T) -- (x);
+      \draw (T) -- ++(.3,-.3);
+      \draw (T) -- ++(0,.35);
+   \end{tikzpicture}
+   \quad
+   \text{and}
+   \quad
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$T$};
+      \node (x) at (0,.4) {$x$};
+      \draw (T) -- (x);
+      \draw (T) -- ++(.3,-.3);
+      \draw (T) -- ++(-.3,-.3);
+   \end{tikzpicture}
+\]
+To be perfectly precise about what each one means, we should give the edges labels.
+For example we would write
+$
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$T$};
+      \node (x) at (.4,-.4) {$x$};
+      \draw (T) -- (x) node[midway, above right, font=\tiny] {i};
+      \draw (T) -- ++(-.3,-.3);
+      \draw (T) -- ++(0,.3);
+   \end{tikzpicture}
+$
+to specify the matrix $\sum_i T_i x_i$.
+However, often the edge in question will be clear from the context, which is part of
+what makes tensor diagram notation cleaner than, say, Einstein sum notation.
+
+\[
+   Y_{i,j} = \sum_{k,l,m,n,o} A_{i,k} B_{l,n,o} C_{j,k,l,m} D_{m,n} E_o
+   \quad
+   \Leftrightarrow
+   % \quad
+   \vcenter{\hbox{
+      \import{figures/}{basic_graph.pdf_tex}
+   }}
+\]
+
+The \emph{key principle} of tensor diagrams is that \emph{edge contraction is associative}.
+This means you can contract any edge in any order you prefer.
+This can be seen from the sum representation above, which can be reordered to sum over $k,l,m,n$ in any order.
+
+The computational price for different contraction orders can be widely different.
+Unfortunately it's not computationally easy to find the optimal order.
+See section~\ref{sec:opt_contr} for algorithms to find the best contraction order, and approximate contraction methods.
+
+Note that tensor graphs are not always connected.
+We already saw that the outer product of two vectors can be written
+   $\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$a$};
+      \node[right=.5em of a0] (a1) {$b$};
+      \draw (a0.west) -- ++(-.3,0) node {};
+      \draw (a1.east) -- ++(.3,0) node {};
+   \end{tikzpicture}$.
+This is natural from the sum representation: No edges simply means no sums.
+So here $y_{i,j} = a_i b_j$, which is exactly the outer product $y=a\otimes b$.
+% Can also mention how this gives us scaling by letter (5) be the order-0 tensor with value 5.
+
+
+\section{The Copy Tensor}
+
+A particularly important tensor is the ``copy'' tensor, also known as the ``diagonal'', ``kronecker delta'' or ``spider'' tensor.
+The simplest version is the all-ones vector, which we write as $\sbullet-$.
 That is $\sbullet_i = 1$.
-We generalize $\sbullet$ to rank-n tensors by $\sbullet_{i,j,k,\ldots} = [i=j=k=\dots]$.
-That is, the tensor with 1 on the diagonal, and 0 everywhere else.
-This is also known as the ``copy'' or ``spider'' tensor, or ``generalized Kronecker delta''.
-For rank-2 tensors, $-\sbullet- = I$, the identity matrix.
+The general order-n tensor is 1 on the diagonal, 0 everywhere else:
+\[
+   \sbullet_{i,j,k,\ldots} = \begin{cases}
+      1\quad \text{if } i=j=k=\dots \\
+      0\quad \text {otherwise}
+   \end{cases}
+\]
+% This is also known as the ``copy'' or ``spider'' tensor, or ``generalized Kronecker delta''.
+Or, using Iversonian notation, $\sbullet_{i,j,k,\dots} = [i=j=k=\dots]$.
+We see the order-2 copy-tensor, $-\sbullet- = I$, is just the identity matrix,
+so we can simply remove it from graphs like this:
+\[-A\!-\!\sbullet\!-\!B- = -A\!-\!B-\]
 
+Higher order copy-tensors are very useful, because they let us turn the simple tensor graphs into hyper-graphs.
+A simple example of how we can use this is the diagonal matrix $D_a$, which has $a$ on the diagonal and 0 elsewhere.
+We can write this as
+\[
+   D_a = 
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$\sbullet$};
+      \node (x) at (.3,-.3) {$a$};
+      \draw (T) -- (x);
+      \draw (T) -- ++(-.25,-.25);
+      \draw (T) -- ++(0,.3);
+   \end{tikzpicture}
+\]
+Why?
+Because $(D_a)_{i,j} = \sum_k \sbullet_{i,j,k} a_k = \sum_k [i=j=k] a_k = [i=j] a_i$.
+Similarly the Hadamard product, $(a\circ b)_i = a_i b_i$, can be written
+\[
+   a \circ b =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$\sbullet$};
+      \node (a) at (-.3,-.3) {$a$};
+      \node (b) at (.3,-.3) {$b$};
+      \draw (T) -- (a);
+      \draw (T) -- (b);
+      \draw (T) -- ++(0,.3);
+   \end{tikzpicture}
+\]
+Now, let's see why everyone loves copy tensors by using it to
+prove the identity $D_aD_b = D_{a\circ b}$ by ``copy tensor manipulation'':
+\[
+   D_a D_b =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$\sbullet$};
+      \node (a) at (-.3,-.3) {$a$};
+      \draw (T) -- (a);
+      \node (T2) at (.5,0) {$\sbullet$};
+      \node (b) at (.8,-.3) {$b$};
+      \draw (T) -- ++(0,.3);
+      \draw (T) -- (T2);
+      \draw (T2) -- (b);
+      \draw (T2) -- ++(0,.3);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$\sbullet$};
+      \node (a) at (-.3,-.3) {$a$};
+      \node (b) at (.3,-.3) {$b$};
+      \draw (T) -- (a);
+      \draw (T) -- (b);
+      \draw (T) -- ++(.25,.25);
+      \draw (T) -- ++(-.25,.25);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$\sbullet$};
+      \node (a) at (-.3,-.3) {$a$};
+      \node (b) at (.3,-.3) {$b$};
+      \draw (T) -- (a);
+      \draw (T) -- (b);
+      \node (T2) at (0,.3) {$\sbullet$};
+      \draw (T) -- (T2);
+      \draw (T2) -- ++(.25,.25);
+      \draw (T2) -- ++(-.25,.25);
+   \end{tikzpicture}
+   =
+   D_{a\circ b}.
+\]
+You can verify this using the sum representation.
 
-The rank-4 copy tensor, $C_{i,j,k,l} = [i=j=k=l]$,
-\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
-   \node (a0) {$\sbullet$};
-   \draw (a0) -- ++(.17,.17);
-   \draw (a0) -- ++(.17,-.17);
-   \draw (a0) -- ++(-.17,.17);
-   \draw (a0) -- ++(-.17,-.17);
-\end{tikzpicture},
-differs from the outer product of two identity matrices (in the Cookbook denoted $J$),
+The general rule at play is that any connected sub-graph of copy-tensors can be combined into a single one.
+Sometimes we are even lucky enough that this simplification leaves us with an identity matrix we can remove too:
+%\begin{figure}[h]
+%   \centering{
+   %\def\svgwidth{.5\linewidth}
+   %\import{figures/}{path1.pdf_tex}
+   %\\
+\[
+   \def\svgwidth{.75\linewidth}
+   \import{figures/}{path2.pdf_tex}
+   .
+\]
+%   \caption{Contracting copy tensors and identity matrices}
+%   \label{fig:spiders}
+%   }
+%\end{figure}
+The only time you have to be a bit careful is when the resulting tensor has order 0.
+Depending on how you define the order-0 copy tensor, $\sbullet$, you may or may not have the identity $\sbullet\!-\!\sbullet = \sbullet$.
+
+Lots of other constructions that require special notation (like diagonal matrices or Hadamard products) with normal vector notation can be unified using the copy tensor.
+%
+In the Matrix Cookbook they define the order-4 tensor $J$,
 which satisfies $J_{i,j,k,l} = [i=k][j=l]$ and which we'd write as
 $J=\vcenter{\hbox{
    \begin{tikzpicture}[inner sep=0pt]
@@ -215,77 +415,94 @@ $J=\vcenter{\hbox{
    \draw (a1.west) -- ++(-.2,0);
 \end{tikzpicture}}}$,
 and satisfies, for example, $\frac{dX}{dX}=J$.
+Using ``tensor products'' you could write $J=I\otimes I$.
+Note that $J$ is different from the order-4 copy-tensor,
+\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0) -- ++(.17,.17);
+   \draw (a0) -- ++(.17,-.17);
+   \draw (a0) -- ++(-.17,.17);
+   \draw (a0) -- ++(-.17,-.17);
+\end{tikzpicture}.
 
-\section{Basics}
+\section{Sums of Tensors}
 
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$A$};
-   \draw (A.west) -- ++(-.3, 0);
-   \draw (A.east) -- ++(+.3, 0);
-\end{tikzpicture}
-=
-\begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
-   \node (Q) {$Q$};
-   \draw (Q.west) -- ++(-.3, 0);
-   \node[right=1em of Q] (dot) {$\sbullet$};
-   \path (Q) edge (dot);
-   \node[below=.3em of dot] (e) {$\lambda$};
-   \path (dot) edge (e);
-   \node[right=1em of dot] (Qi) {$Q^{-1}$};
-   \path (dot) edge (Qi);
-   \draw (Qi.east) -- ++(.3, 0);
-\end{tikzpicture}
-where $\lambda_i$ is the $i$th eigenvalue of $A$.
+Tensor products can express any linear function.
+That is $f$ such that $f(a x, b y) = a b f(x,y)$.
+Unfortunately not all operations on tensors are linear.
+Even something as simple as a sum of two vectors, $x+y$, can not be displayed with a simple contraction graph.
+(Note that this is not linear because $ax+by\neq ab(x+y)$.)
 
-More general principles:
-\begin{enumerate}
-   \item You can contract edges in any order.
-   \item You can always contract connected subgraphs of Copy tensors.
-   \item distributive law of sums/products.
-   \item Sums and broadcasting.
-\end{enumerate}
+To handle this important operation, Penrose suggesting simply writing the two graphs with a plus sign between them, such as $-x + -y$.
+Note that this is itself an order-1 tensor, even though it may look like there are two free edges.
+If we want to multiply the sum with another tensor, we can use parentheses like $-M\!-\!(-x + -y)$.
 
+It can be helpful to use named edges when dealing with sums, to make it clear how the edges are matched up.
+Sums and tensor products interact nicely, with a general form of the distributive law:
 %\begin{figure}[h]
 %\centering{
-%\resizebox{75mm}{!}{\input{figures/path1.pdf_tex}}
-%\caption{Top view.}
-%\label{fig:topView}
+%\def\svgwidth{\linewidth}
+\[
+\def\svgwidth{.75\linewidth}
+\import{figures/}{path3.pdf_tex}
+.
+\]
+%\caption{Distributive law}
+%\label{fig:dist}
 %}
 %\end{figure}
 
-\begin{figure}[h]
-\centering{
-\def\svgwidth{.5\linewidth}
-\import{figures/}{path1.pdf_tex}
-\caption{Contract spiders}
-\label{fig:spiders}
-}
-\end{figure}
+When adding tensors that don't have the same number of edges, or have edges with different names, we can use ``broadcasting''.
+%Say we want to add a matrix $\,_i\!-M-_j$ and a vector $x$.
+Say we want to add a matrix $M$ and a vector $x$.
+What does it even mean?
+If we want to add $x$ to every row of $M$, we write
+$
+\vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
+   \node (M) {$M$};
+   \draw (M.north west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
+   \draw (M.south west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
+\end{tikzpicture}}}
++
+\vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0.west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
+   \node[below=.2em of a0] (a1) {$x$};
+   \draw (a1.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
+\end{tikzpicture}}}
+$.
+This is because
+$
+\vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0.west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
+   \node[below=.2em of a0] (a1) {$x$};
+   \draw (a1.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
+\end{tikzpicture}}}
+$
+is an outer product between $x$ and the all one vector, which is a matrix in which every row is the same.
+Similarly, if we want to add $x$ to every column, we could use
+the matrix
+$
+\vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
+   \node[above=.2em of a0] (a1) {$x$};
+   \draw (a1.west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
+\end{tikzpicture}}}
+$.
 
+Note that we typically don't talk about ``rows'' or ``columns'' when dealing with tensors, but simply use the name edge (sometimes axis) of the tensor.
+When using named edges, operations from classical vector notation like ``transpose'' can also be removed.
+The matrix $X^T$ is simply $X$ where the left and right edge have been swapped.
+But if the edges are named, we don't have to keep track on ``where the edge is'' at all.
 
-\begin{figure}[h]
-\centering{
-\def\svgwidth{.75\linewidth}
-\import{figures/}{path2.pdf_tex}
-\caption{Eliminate Identity}
-\label{fig:identity}
-}
-\end{figure}
-
-
-\begin{figure}[h]
-\centering{
-\def\svgwidth{\linewidth}
-\import{figures/}{path3.pdf_tex}
-\caption{Distributive law}
-\label{fig:dist}
-}
-\end{figure}
-\subsection{Trace}
+\section{Trace}
 
 The ``trace'' of a square matrix is defined $\mathrm{Tr}(A) = \sum_i A_{i,i}$.
 In tensor diagram notation, that corresponds to a self-edge: $\trace{A}{1}$.
-
+The Matrix Cookbook has a list of identities using traces.
+Let's reproduce them with tensor diagrams:
 \begin{align*}
    \sum_{i=1}^{n} A_{ii} &= \mathrm{Tr}(A) = \mathrm{Tr}(A I)
    &
@@ -361,3 +578,32 @@ In tensor diagram notation, that corresponds to a self-edge: $\trace{A}{1}$.
 \end{align*}
 
 
+
+\section{Eigenvalues}
+TODO: What else does the Matrix Cookbook include here?
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3, 0);
+   \draw (A.east) -- ++(+.3, 0);
+\end{tikzpicture}
+=
+\begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
+   \node (Q) {$Q$};
+   \draw (Q.west) -- ++(-.3, 0);
+   \node[right=1em of Q] (dot) {$\sbullet$};
+   \path (Q) edge (dot);
+   \node[below=.3em of dot] (e) {$\lambda$};
+   \path (dot) edge (e);
+   \node[right=1em of dot] (Qi) {$Q^{-1}$};
+   \path (dot) edge (Qi);
+   \draw (Qi.east) -- ++(.3, 0);
+\end{tikzpicture}
+where $\lambda_i$ is the $i$th eigenvalue of $A$.
+
+
+%\begin{enumerate}
+   %\item Contractions are associative: You can contract edges in any order.
+   %\item distributive law of sums/products.
+   %\item Sums and broadcasting.
+   %\item You can always contract connected subgraphs of Copy tensors.
+%\end{enumerate}
