@@ -1,105 +1,179 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Tensor Cookbook</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+   <head>
+      <!-- Google tag (gtag.js) -->
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-E8JHF8QM6N"></script>
+      <script>
+         window.dataLayer = window.dataLayer || [];
+         function gtag(){dataLayer.push(arguments);}
+         gtag('js', new Date());
+
+         gtag('config', 'G-E8JHF8QM6N');
+      </script>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>The Tensor Cookbook</title>
+      <style>
+body {
+   font-family: Verdana, Helvetica, sans-serif;
+   line-height: 1.4;
+   color: #333;
+   max-width: 1000px;
+   margin: 0 auto;
+   background-color: #fafafa;
+}
+        .container {
+           display: flex;
+           gap: 40px;
+           background-color: white;
+           padding: 0 40px;
         }
-        h1, h2 {
-            color: #2c3e50;
+        .main-content {
+           flex: 3;
+           padding: 0;
+        }
+        .sidebar {
+           flex: 1;
+           background-color: #fff;
+        }
+        h1 {
+           color: #555588;
+           font-size: 38px;
+           background: white;
+           margin: 0;
+           padding: 40px 0 0 40px;
+        }
+        footer {
+           background: white;
+           padding: 10px 40px;
+        }
+        h2 {
+           color: #555588;
+           font-size: 1em;
+           font-weight: bold;
+           margin-right: 5px;
+           display: inline;
+        }
+        h2 + p {
+           display: inline;
+        }
+        h2::before {
+           content: "";
+           display: block;
+           margin-bottom: 2em;
         }
         a {
-            color: #3498db;
-            text-decoration: none;
-        }
-        a:hover {
-            text-decoration: underline;
+           color: #3f3fcd;
+           text-decoration: none;
         }
         .diagram {
-            background-color: #f0f0f0;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 5px;
+           background-color: #fff;
+           padding: 15px;
+           margin: 15px 0;
+           border: 1px solid #ccc;
         }
         pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
+           white-space: pre-wrap;
+           word-wrap: break-word;
+           background-color: #fff;
+           padding: 10px;
+           border: 1px solid #ccc;
+           font-size: 0.9em;
+           width: 250px;
+           font-size: 80%;
         }
-    </style>
-</head>
-<body>
-    <header>
-        <h1>The Tensor Cookbook</h1>
-        <p>by Thomas Dybdahl Ahle</p>
-    </header>
+        ul {
+           padding-left: 2em;
+        }
+        ul.links a {
+           font-size: 90%;
+           color: #3b3bb2;
+        }
+      </style>
+   </head>
+   <body>
+      <h1>The Tensor Cookbook</h1>
+      <div class="container">
+         <div class="main-content">
 
-    <main>
-        <section>
+
             <h2>What are Tensor Diagrams?</h2>
-            <p>Tensor diagrams are a powerful visual tool for representing and manipulating tensors, which are generalizations of vectors and matrices to higher dimensions. They provide an intuitive way to understand complex tensor operations and identities.</p>
-            
+            <p>
+            Tensor diagrams are a powerful visual tool for representing and manipulating tensors, which are generalizations of vectors and matrices to higher dimensions. They provide an intuitive way to understand complex tensor operations and identities.</p>
+
             <p>For example, consider the matrix multiplication of A and B:</p>
-            
+
             <div class="diagram">
-                <pre>
+               <pre>
     A   B
     | \ / |
     |  X  |
     | / \ |
       Y
-                </pre>
+               </pre>
             </div>
-            
+
             <p>This diagram represents (AB)_ik = sum_j A_ij B_jk. The crossing lines indicate the summation over the index j.</p>
-            
+
             <p>Tensor diagrams are particularly useful because they:</p>
             <ul>
-                <li>Simplify complex tensor expressions</li>
-                <li>Make it easy to spot patterns and symmetries</li>
-                <li>Help in deriving new identities</li>
-                <li>Provide a universal language for tensor operations across different fields</li>
+               <li>Simplify complex tensor expressions</li>
+               <li>Make it easy to spot patterns and symmetries</li>
+               <li>Help in deriving new identities</li>
+               <li>Provide a universal language for tensor operations across different fields</li>
             </ul>
-        </section>
 
-        <section>
-            <h2>About the Book</h2>
-            <p>The Tensor Cookbook is a comprehensive guide to tensors, using the visual language of tensor diagrams. It closely follows the legendary "Matrix Cookbook" while providing a new way to understand and appreciate tensor operations through diagrams.</p>
+
+            <h2>About the Book:</h2>
+            <p>
+            "The Tensor Cookbook" is a comprehensive guide to tensors, using the visual language of tensor diagrams. It closely follows the legendary "Matrix Cookbook" while providing a new way to understand and appreciate tensor operations through diagrams.</p>
             <p>This book covers a wide range of topics, including:</p>
             <ul>
-                <li>Introduction to tensor diagrams</li>
-                <li>Simple and advanced derivatives</li>
-                <li>Statistics and probability</li>
-                <li>Kronecker and Vec operators</li>
-                <li>Special matrices and decompositions</li>
-                <li>Machine learning applications</li>
-                <li>And much more!</li>
+               <li>Introduction to tensor diagrams</li>
+               <li>Simple and advanced derivatives</li>
+               <li>Statistics and probability</li>
+               <li>Kronecker and Vec operators</li>
+               <li>Special matrices and decompositions</li>
+               <li>Machine learning applications</li>
+               <li>And much more!</li>
             </ul>
-        </section>
+         </div>
+         <div class="sidebar">
+            <h2>Access Paper:</h2>
+            <ul>
+               <li><a href="https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf"><strong>View PDF</strong></a></li>
+               <li><a href="https://github.com/thomasahle/tensorgrad/">Github Page</a></li>
+            </ul>
 
-        <section>
-            <h2>Download the Book</h2>
-            <p>You can download the latest version of The Tensor Cookbook from the GitHub repository:</p>
-            <p><a href="https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf" target="_blank">Download The Tensor Cookbook (PDF)</a></p>
-        </section>
+            <h2>Author:</h2>
+            <p>Thomas Dybdahl Ahle<br />
+            <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
 
-        <section>
-            <h2>About the Author</h2>
-            <p>Thomas Dybdahl Ahle is the author of The Tensor Cookbook. He is a researcher and expert in the field of tensor mathematics and its applications.</p>
-            <p>To learn more about Thomas and his work, visit his personal website:</p>
-            <p><a href="https://thomasahle.com/" target="_blank">thomasahle.com</a></p>
-        </section>
-    </main>
-
-    <footer>
-        <p>&copy; 2024 Thomas Dybdahl Ahle. All rights reserved.</p>
-    </footer>
-</body>
+            <h2>How to Cite:</h2>
+            <p>If you use The Tensor Cookbook in your research, please cite it using the following BibTeX entry:</p>
+            <pre>
+@book{ahle2024tensorcookbook,
+  title={The Tensor Cookbook},
+  author={Ahle, Thomas Dybdahl},
+  year={2024},
+  url={https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf},
+  note={Version: August, 2024}
+}</pre>
+            <h2>Other Tensor Resources:</h2>
+            <ul class="links">
+               <li><a href="https://en.wikipedia.org/wiki/Penrose_graphical_notation">Penrose Graphical Notation</a></li>
+               <li><a href="https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability">Graphical Tensor Notation for Interpretability</a></li>
+               <li><a href="https://www.math3ma.com/blog/the-tensor-product-demystified">The Tensor Product, Demystified</a></li>
+               <li><a href="https://tensornetwork.org/diagrams/">Tensor Network Diagrams</a></li>
+               <li><a href="https://www.matrixcalculus.org/">Matrix Calculus</a></li>
+            </ul>
+         </div>
+      </div>
+      <footer>
+         <p>
+         Inspired by <a href="https://web.archive.org/web/20070126190021/http://matrixcookbook.com/">The Matrix Cookbook</a> by Kaare Brandt Petersen and Michael Syskind Pedersen.
+         </p>
+         <p>&copy; 2024 Thomas Dybdahl Ahle. All rights reserved.</p>
+      </footer>
+   </body>
 </html>
