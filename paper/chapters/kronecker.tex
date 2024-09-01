@@ -44,7 +44,7 @@ Using this notation we can write
    .
 \]
 The basic property of $\triangleright$ is that opposing triangles cancel:
-\begin{align*}
+\begin{align}
 \begin{tikzpicture}[baseline=-.3em]
 \node (X) at (.5,0) {\phantom{X}};
 \node[triangle] (c0) at (1.5,0) {};
@@ -81,7 +81,44 @@ The basic property of $\triangleright$ is that opposing triangles cancel:
 \draw[double] (X) -- (Y);
 \end{tikzpicture}
 .
-\end{align*}
+\end{align}
+It's also easy to convince oneself of the following ``mixed'' property:
+\begin{align}
+   \begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
+      \node (F0) at (0,0) {$\sbullet$};
+      \node[triangle, rotate=180, inner sep=3pt] (Fab0) at (.5,.25) {};
+      \node (A) at (1,.333) {};
+      \node (B) at (1,.166) {};
+      \node[triangle, rotate=180, inner sep=3pt] (Fcd0) at (.5,-.25) {};
+      \node (C) at (1,-.166) {};
+      \node (D) at (1,-.333) {};
+      \draw[double] (F0) -- ++(-.4,0);
+      \draw[double] (F0) -- (Fab0);
+      \draw[double] (F0) -- (Fcd0);
+      \draw (Fab0) -- (A);
+      \draw (Fab0) -- (B);
+      \draw (Fcd0) -- (C);
+      \draw (Fcd0) -- (D);
+   \end{tikzpicture}
+     \quad=\quad
+   \begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
+      \node[triangle, rotate=180, inner sep=3pt] (F0) at (0,0) {};
+      \node (Fab0) at (.5,.25) {$\sbullet$};
+      \node (A) at (1,.333) {};
+      \node (B) at (1,.166) {};
+      \node (Fcd0) at (.5,-.25) {$\sbullet$};
+      \node (C) at (1,-.166) {};
+      \node (D) at (1,-.333) {};
+      \draw[double] (F0) -- ++(-.4,0);
+      \draw (F0) -- (Fab0);
+      \draw (F0) -- (Fcd0);
+      \draw (Fab0) -- (A);
+      \draw (Fab0) -- (C.west);
+      \draw (Fcd0) -- (B.west);
+      \draw (Fcd0) -- (D);
+   \end{tikzpicture}
+   \label{eq:flatten_mix}
+\end{align}
 
 
 \section{The Kronecker Product}
@@ -479,6 +516,8 @@ represents the tensor where $V_{i,j,i,j} = M_{i,j}$ and 0 otherwise.
 So flattening $V$ on both sides is the same as $\mathrm{diag}(\mathrm{vec}(M))$,
 which is the rhs of \eqref{eq:tensor_diag}.
 
+
+
 \section{The Vec Operator}
 
 The vec-operator applied on a matrix $A$ stacks the columns into a vector, i.e. for a $2\times 2$ matrix
@@ -855,7 +894,10 @@ Some properties of the Hadamard product are:
       \draw (Fcd0) -- (D) -- (Fcd1);
    \end{tikzpicture}
 \end{align*}
-To see why the last equation holds, it suffices to follow the double lines to see that $A$ and $C$ both use the ``upper'' part of the double edge, while $B$ and $D$ use the lower part.
+The first equation is simply massaging the tensor diagram.
+The second follows from \eqref{eq:flatten_mix}.
+Alternatively, it suffices to follow the double lines to see that $A$ and $C$ both use the ``upper'' part of the double edge, while $B$ and $D$ use the lower part.
+
 
 \section{Khatri–Rao product}
 Also known as the column-wise Kronecker, row-wise Kronecker or ``Face-splitting Product''.
@@ -1104,5 +1146,55 @@ Also notice that this is what quantum comp people call ``controlling''.
 Also have a bunch of properties like $A\otimes(B\oplus C) = A\otimes B\oplus A\otimes C$.
 
 
-\section{Stackexchange Problems}
+\section{Exercises}
+\begin{exercise}
+Let $
+J = \mathrm{Tr}\lbrack(I_N \otimes F)^{T}A(I_N \otimes F)B\rbrack
+$ where $F \in \mathbb{R}^{N \times Nn},\ \  A \in \mathbb{R}^{N^2 \times N^2},\ B \in \mathbb{R}^{N^2 n \times N^2 n}$.
+Find the derivative of $J$ with respect to $F$.
+\end{exercise}
 
+
+\begin{exercise}
+Consider $ J = \|G - ( B \otimes X )\|_F^2 $, where $G$ and $B$ are matrices, and $\|\cdot\|_F$ is the Frobenius norm. Find the derivative with respect to $X$
+\end{exercise}
+
+\begin{exercise}
+Prove the equation~\cite{2993406}:
+\[\text{vec}(A\, \text{diag}(b)\, C)=((C^T\otimes 1) \circ (1 \otimes A)) b.\]
+Here $\text{diag}(b)$ is a diagonal matrix with the vector $b$ on the diagonal, $1$ is a vector of ones of the right size, and $b \otimes A$, the Kronecker product for a vector and a matrix, is defined by $\begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
+      \node[triangle, rotate=180, inner sep=3pt] (flat) at (0,0) {};
+      \node (A) at (.5,-.15) {$A$};
+      \node (B) at (.5,.15) {$b$};
+      \draw[double] (flat) -- ++(-.4,0);
+      \draw (flat) -- (A) -- ++(.4,0);
+      \draw (flat) -- (B);
+   \end{tikzpicture}$,
+that is, you just flatten on one side.
+\end{exercise}
+
+\begin{exercise}
+   Let $a$ and $b$ be two vectors and let $D$ and $X$ be two matrices.
+   Minimize the following cost function with respect to $X$:
+   \[
+      E = \|a - D X b\|_2^2.
+   \]
+\end{exercise}
+
+\begin{exercise}
+   Prove using diagrams that $\mathrm{Tr}(A^T B) = 1^T \mathrm{vec}(A \circ B)$,
+   where $1$ is a vector of the appropriate size.
+\end{exercise}
+
+\begin{exercise}
+   Find the derivative of
+   \[
+      \mathrm{Tr}(G(A\otimes X))
+   \]
+   with respect to $X$.
+\end{exercise}
+
+\begin{exercise}
+   % TODO: Find tag name
+   \[\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I}\]
+\end{exercise}

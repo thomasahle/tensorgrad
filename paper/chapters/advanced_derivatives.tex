@@ -24,8 +24,40 @@
 \section{General forms}
 \section{Linear forms}
 \section{Square forms}
+ 
+\section{From Stack Exchange}
 
+Let $F(t)=|1+t A|$ then
+$F'(t) = \mathrm{Tr}(A)$ and
+$F''(t) = \mathrm{Tr}(A)^2 - \mathrm{Tr}(A^2)$.
 
 \section{Derivatives of an Inverse}
+
+
+\subsection{Trace Identities}
+$$
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A} \mathbf{X}^{-1} \mathbf{B}\right)=-\left(\mathbf{X}^{-1} \mathbf{B} \mathbf{A} \mathbf{X}^{-1}\right)^T=-\mathbf{X}^{-T} \mathbf{A}^T \mathbf{B}^T \mathbf{X}^{-T}
+$$
+
+Assume $\mathbf{B}$ and $\mathbf{C}$ to be symmetric, then
+$$
+\begin{aligned}
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{A}\right] & =-\left(\mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\right)\left(\mathbf{A}+\mathbf{A}^T\right)\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+& -2 \mathbf{C X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+& +2 \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}
+\end{aligned}
+$$
+
 \section{Derivatives of Eigenvalues}
 
+\section{Exercises}
+\begin{exercise}
+   Find the derivative of
+\[
+   f(x,\Sigma,\mu) = \frac{1}{\sqrt{(2\pi)^k|\Sigma|}}
+   \exp\left(-\frac12(x-\mu)^T \Sigma^{-1} (x-\mu)\right)
+\]
+   with respect to $\Sigma$.
+\end{exercise}

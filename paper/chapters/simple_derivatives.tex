@@ -1,12 +1,38 @@
 
 \chapter{Simple Derivatives}
 
-\section{Derivatives of Matrices, Vectors and Scalar Forms}
+A derivative with respect to a tensor is simply the collection of derivatives with respect to each element of this tensor.
+We can keep track of $\frac{d T}{d U}$ by making a tensor of shape $\mathrm{shape}(T) \cup \mathrm{shape}(U)$.
+For example, if $T$ is an order-3 tensor and $U$ is an order-2 tensor, we draw $dT/dU$ as
+\[
+   \frac{dT}{dU} =
+   \vcenter{\hbox{
+      \import{figures/}{dTdU.pdf_tex}
+   }}
+\]
+This notation follows Penrose.
+The two extra lines coming from the black dot on the circle makes the derivative an order-5 tensor.
+That the order of derivatives grows this way, is one of the main reasons we'll encounter for tensors to show up in the first place.
 
-\subsection{First Order}
+When there are not too many edges, we will use a simple inline notation like this:
+\[
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$(T)$};
+   \draw (T) -- ++(-.5,-.1);
+   \draw (T) -- ++(-.5,+.1);
+   \draw (T) -- ++(+.5,0);
+   \draw[d] (T.east) -- ++(.2,.2);
+   \draw[d] (T.east) -- ++(.3,.1);
+\end{tikzpicture}
+\]
 
 The Matrix Cookbook defines the single-entry matrix $J^{i,j} \in R^{n\times n}$ as the matrix which is zero everywhere except in the entry $(i, j)$ in which it is 1.
 Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
+
+\section{Derivatives of Matrices, Vectors and Scalar Forms}
+
+\subsection{First Order}
+The following first order derivatives show the basic linearity properties of the derivative operator.
 
 \begin{align*}
    \tag{69}
@@ -135,6 +161,14 @@ Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
 \end{align*}
 
 \subsection{Second Order}
+The second order derivatives are follow from the product rule:
+\[
+   \vcenter{\hbox{
+      \import{figures/}{product.pdf_tex}
+   }}
+\]
+Note that this rule holds independently of how many edges are between $T$ and $U$, even if there are none.
+
 \noindent
 \makebox[\textwidth]{\parbox{1.1\textwidth}{%
 \begin{align*}
@@ -284,12 +318,6 @@ Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
       \draw (a5.east) -- ++(.1,.15);
    \end{tikzpicture}
    \\
-   \tag{78} 
-   \frac{\partial}{\partial x} (Bx+b)^T C (Dx+d) &= B^TC(Dx+d)&&
-                                \\&+D^TC^T(Bx+b) 
-   &
-   \dots &
-   \\
    \tag{79} 
    \frac{\partial}{\partial X_{i,j}} (X^TBX)_{k,l} &= \delta_{l,j}(X^TB)_{k,i}
    %  \\&+ \delta_{k,j}(BX)_{i,l} 
@@ -378,44 +406,114 @@ Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
       \node (x) at (-1,.25) {$x$};
       \draw (x) -- (l) node[midway, above right, font=\tiny] {i};
    \end{tikzpicture}
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   \\
-   \tag{82} 
-   \frac{\partial}{\partial X} b^T X^T D X c &= D^T X b c^T + DXcb^T 
-   &
-   \dots &
-   \\
-   \tag{83} 
-   \frac{\partial}{\partial X} (Xb+c)^T D (Xb+c) &= (D+D^T)(Xb+c)b^T 
-   &
-   \dots &
-   \\
 \end{align*}
 }}
 
-Assume $W$ is symmetric, then... (84) - (88)
 
-\subsection{Higher-order and non-linear}
+TODO: Assume $W$ is symmetric, then... (84) - (88)
+
+\subsection{Higher Order}
+Integer powers of matrices, like $X^n$, are easy to handle by writing
+out the product and using the product rule.
+The Matrix Cookbook includes a few derivatives we can handle this way.
+\begin{align*}
+   \\[.5em]
+   %\tag{77} 
+   %\frac{\partial b^T X^T X c}{\partial X} &= X(bc^T + cb^T) 
+   \frac{\partial\left(\mathbf{X}^n\right)_{k l}}{\partial X_{i j}}
+   &=
+  \sum_{r=0}^{n-1}\left(\mathbf{X}^r \mathbf{J}^{i j} \mathbf{X}^{n-1-r}\right)_{k l}
+   &&
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$(X$};
+      \node[right=.25 of X0] (X1) {$X$};
+      \node[right=.25 of X1] (X2) {$X$};
+      \node[right=.25 of X2] (X3) {$\dots$};
+      \node[right=.25 of X3] (X4) {$X)$};
+      \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
+      \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
+      \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
+      \draw[d] (X4.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
+      \draw[d] (X4.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$(X)$};
+      \node[right=.25 of X0] (X1) {$X$};
+      \node[right=.25 of X1] (X2) {$X$};
+      \node[right=.25 of X2] (X3) {$\dots$};
+      \node[right=.25 of X3] (X4) {$X$};
+      \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
+      \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
+      \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
+      \draw[d] (X0.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
+      \draw[d] (X0.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
+   \end{tikzpicture}
+ \\&&&+\quad\dots
+ \\&&&+\quad
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$X$};
+      \node[right=.25 of X0] (X1) {$X$};
+      \node[right=.25 of X1] (X2) {$X$};
+      \node[right=.25 of X2] (X3) {$\dots$};
+      \node[right=.25 of X3] (X4) {$(X)$};
+      \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
+      \draw ++(-.5,0) -- (X0) -- (X1) -- (X2) -- (X3) -- (X4);
+      \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
+      \draw[d] (X4.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
+      \draw[d] (X4.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
+   \end{tikzpicture}
+ \\&&&=\quad
+ \sum_{r=0}^{n-1}
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$X^r$};
+      \node[right=.5 of X0] (X1) {$X^{n-r-1}$};
+      \draw (X0.west) -- ++(-.25,0) node[midway, above left, font=\tiny] {k};
+      \draw (X0.east) -- ++(.2,0) -- ++(.1,.2) node[midway, above left, font=\tiny] {i};
+      \draw (X1.east) -- ++(.25,0) node[midway, below right, font=\tiny] {l};
+      \draw (X1.west) -- ++(-.2,0) -- ++(-.1,-.2) node[midway, below right, font=\tiny] {j};
+   \end{tikzpicture}
+ \\
+   \frac{\partial}{\partial \mathbf{X}} \mathbf{a}^T \mathbf{X}^n \mathbf{b}
+   &=\sum_{r=0}^{n-1}\left(\mathbf{X}^r\right)^T \mathbf{a b}^T\left(\mathbf{X}^{n-1-r}\right)^T
+   &&
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$(a-X$};
+      \node[right=.25 of X0] (X3) {$\dots$};
+      \node[right=.25 of X3] (X4) {$X-b)$};
+      \draw (X0) -- (X3) -- (X4);
+      \draw[d] (X4.east) -- ++(.2,.2);
+      \draw[d] (X4.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+   \sum_{r=0}^{n-1}
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$a-X^r$};
+      \node[right=.5 of X0] (X1) {$X^{n-r-1}-b$};
+      \draw (X0.east) -- ++(.25,.05) -- ++(-.1,.1);
+      \draw (X1.west) -- ++(-.25,-.05) -- ++(.1,-.1);
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+   \sum_{r=0}^{n-1}
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$-(X^r)^T-a$};
+      \node[right=.25 of X0] (X1) {$b-(X^{n-r-1})^T-$};
+   \end{tikzpicture}
+\end{align*}
 
 
-$$
-\frac{\partial\left(\mathbf{X}^n\right)_{k l}}{\partial X_{i j}}=\sum_{r=0}^{n-1}\left(\mathbf{X}^r \mathbf{J}^{i j} \mathbf{X}^{n-1-r}\right)_{k l}
-$$
+% Could be cool to do exponential here, if I could only find a good result for it...
+% sum_{t>=1} 1/t! sum_{a+b=t-1} X^a X^b
+% sum_{t>=1, a+b=t-1} X^a X^b / t!
+% sum_{a>=0} sum_{b>=0} X^a X^b / (a+b+1)!
 
-For proof of the above, see B.1.3.
-$$
-\frac{\partial}{\partial \mathbf{X}} \mathbf{a}^T \mathbf{X}^n \mathbf{b}=\sum_{r=0}^{n-1}\left(\mathbf{X}^r\right)^T \mathbf{a b}^T\left(\mathbf{X}^{n-1-r}\right)^T
-$$
 
 \section{Derivatives of Traces}
-Assume F(X) to be a differentiable function of each of the elements of X. It
-then holds that
-\[\frac{d \mathrm{Tr}(F(x))}{dX} = f(X)^T,\]
-where $f(\cdot)$ is the scalar derivative of $F(\cdot)$.
-
-TODO: To show this with tensor diagrams, we first need to introduce our notation for functions.
-
-% Many more examples here: https://mbustamanter.github.io/ssg-blog/matder1/
+The Matrix Cookbook contains a lot of derivatives for traces.
+These can be elegant in classical notation, since traces are scalar, so the derivatives are low order.
 
 \subsection{First Order}
 
@@ -481,7 +579,7 @@ TODO: To show this with tensor diagrams, we first need to introduce our notation
       \draw[d] (a1.south east) -- ++(.3,-.1);
    \end{tikzpicture}
    \hspace{-2em}
- \\&&&
+ \\&&&=
    \hspace{-1.5em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$\phantom{X}$};
@@ -508,35 +606,32 @@ TODO: To show this with tensor diagrams, we first need to introduce our notation
       \node[right=1em of a2] (a3) {$B$};
       \node[right=1em of a3] (a4) {$)$};
       \draw (a1) -- (a2) -- (a3);
-      \path (a1) edge[out=160, in=20, looseness=2] (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
       \draw[d] (a4.east) -- ++(.2,.2);
       \draw[d] (a4.east) -- ++(.3,.1);
    \end{tikzpicture}
-   \hspace{-1em}
    &=
-   \hspace{-3em}
+   \hspace{-1em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$A$};
       \node[right=1em of a1] (a2) {$(X)$};
       \node[right=1em of a2] (a3) {$B$};
       \draw (a1) -- (a2) -- (a3);
-      \path (a1) edge[out=160, in=20, looseness=2] (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
       \draw[d] (a2.south east) -- ++(.2,-.2);
       \draw[d] (a2.south east) -- ++(.3,-.1);
    \end{tikzpicture}
-   \hspace{-3em}
  \\&&&=
-   \hspace{-2.5em}
+   \hspace{-1em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$A$};
       \node[right=1em of a1] (a2) {$\phantom{X}$};
       \node[right=1em of a2] (a3) {$B$};
       \draw (a1) -- (a2) -- (a3);
-      \path (a1) edge[out=160, in=20, looseness=2] (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
       \draw (a2.east) -- ++(.2,-.1);
       \draw (a2.west) -- ++(-.2,-.1);
    \end{tikzpicture}
-   \hspace{-2.5em}
  \\&&&=
    \matmul{A^T, B^T}
 \end{align*}
@@ -546,15 +641,17 @@ Continues for (102-105).
 The last one uses the Kronecker product, which we may have to introduce first.
 
 \subsection{Second Order}
+\noindent
+\makebox[\textwidth]{\parbox{1.1\textwidth}{%
 \begin{align*}
    \frac{\partial}{\partial X} \mathrm{Tr}(X^2)
    &=2 X^T
    &
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$($};
-      \node[right=1em of a0] (a1) {$X$};
+      \node[right=.5em of a0] (a1) {$X$};
       \node[right=1em of a1] (a2) {$X$};
-      \node[right=1em of a2] (a3) {$)$};
+      \node[right=.5em of a2] (a3) {$)$};
       \draw (a1) -- (a2);
       \path (a1) edge[out=160, in=20, looseness=2] (a2);
       \draw[d] (a3.east) -- ++(.2,.2);
@@ -605,56 +702,366 @@ The last one uses the Kronecker product, which we may have to introduce first.
    \end{tikzpicture}
    \hspace{-1.5em}
  \\&&&=
-   2\matmul{X^T}
-\end{align*}
-More:
-\begin{align*}
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^2 \mathbf{B}\right)=(\mathbf{X B}+\mathbf{B X})^T \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{B} \mathbf{X}\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B} \mathbf{X} \mathbf{X}^T\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X} \mathbf{X}^T \mathbf{B}\right)=\mathbf{B} \mathbf{X}+\mathbf{B}^T \mathbf{X} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X B} \mathbf{X}^T\right)=\mathbf{X} \mathbf{B}^T+\mathbf{X B} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B} \mathbf{X}^T \mathbf{X}\right)=\mathbf{X} \mathbf{B}^T+\mathbf{X B} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{X B}\right)=\mathbf{X} \mathbf{B}^T+\mathbf{X B} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{A X B X})=\mathbf{A}^T \mathbf{X}^T \mathbf{B}^T+\mathbf{B}^T \mathbf{X}^T \mathbf{A}^T \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{X}\right)=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X} \mathbf{X}^T\right)=2 \mathbf{X} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B}^T \mathbf{X}^T \mathbf{C X B}\right)=\mathbf{C}^T \mathbf{X} \mathbf{B B}^T+\mathbf{C X B B}^T \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{X}^T \mathbf{B X C}\right]=\mathbf{B X C}+\mathbf{B}^T \mathbf{X} \mathbf{C}^T \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A X B} \mathbf{X}^T \mathbf{C}\right)=\mathbf{A}^T \mathbf{C}^T \mathbf{X B}^T+\mathbf{C A X B} \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[(\mathbf{A X B}+\mathbf{C})(\mathbf{A X B}+\mathbf{C})^T\right]=2 \mathbf{A}^T(\mathbf{A X B}+\mathbf{C}) \mathbf{B}^T \\
-& \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I} \\
-&
-\end{align*}
+   2\,\matmul{X^T}
+   \\[1em]
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \frac{\partial}{\partial X} \mathrm{Tr}(X^2 B)
+   &=(XB+BX)^T
+   &
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=.5em of a0] (a1) {$X$};
+      \node[right=1em of a1] (a2) {$X$};
+      \node[right=1em of a2] (a3) {$B$};
+      \node[right=.5em of a3] (a4) {$)$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a4.east) -- ++(.2,.2);
+      \draw[d] (a4.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$(X)$};
+      \node[right=1em of a1] (a2) {$X$};
+      \node[right=1em of a2] (a3) {$B$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a1.south east) -- ++(.2,-.2);
+      \draw[d] (a1.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+   +
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X$};
+      \node[right=1em of a1] (a2) {$(X)$};
+      \node[right=1em of a2] (a3) {$B$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a2.south east) -- ++(.2,-.2);
+      \draw[d] (a2.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+ \\&&&=
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$\phantom{X}$};
+      \node[right=1em of a1] (a2) {$X$};
+      \node[right=1em of a2] (a3) {$B$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw (a1.east) -- ++(.2,-.1);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(-.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+   +
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X$};
+      \node[right=1em of a1] (a2) {$\phantom{X}$};
+      \node[right=1em of a2] (a3) {$B$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw (a2.west) -- ++(-.2,-.1);
+      \draw (a2.east) -- ++(.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+ \\&&&=
+   \matmul{B^T, X^T}
+   + \matmul{X^T, B^T}
+   \\[1em]
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \frac{\partial}{\partial X} \mathrm{Tr}(X^T B X)
+    &=
+   \frac{\partial}{\partial X} \mathrm{Tr}(X X^T B)
+   &
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=.5em of a0] (a1) {$X^T$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$X$};
+      \node[right=.5em of a3] (a4) {$)$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a4.east) -- ++(.2,.2);
+      \draw[d] (a4.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$(X^T)$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$X$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a1.south east) -- ++(.2,-.2);
+      \draw[d] (a1.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+   +
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X^T$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$(X)$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a3.south east) -- ++(.2,-.2);
+      \draw[d] (a3.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+ \\&
+   =\frac{\partial}{\partial X} \mathrm{Tr}(B X X^T)
+   &&=
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$\phantom{X}$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$X$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(.1,-.05);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+   +
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X^T$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$\phantom{X}$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw (a3.west) -- ++(-.2,-.1);
+      \draw ($(a3.east)-(0,-.2em)$) -- ++(.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+ \\&
+   =(B+B^T)X
+   &&=
+   \matmul{B, X}
+   + \matmul{B^T, X}
+   \\[1em]
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
+    &=
+   \frac{\partial}{\partial X} \mathrm{Tr}(X^T X B)
+   &
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$($};
+      \node[right=.5em of a0] (a1) {$X$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$X^T$};
+      \node[right=.5em of a3] (a4) {$)$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a4.east) -- ++(.2,.2);
+      \draw[d] (a4.east) -- ++(.3,.1);
+   \end{tikzpicture}
+   &=
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$(X)$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$X^T$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a1.south east) -- ++(.2,-.2);
+      \draw[d] (a1.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+   +
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$(X^T)$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw[d] (a3.south east) -- ++(.2,-.2);
+      \draw[d] (a3.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \hspace{-2em}
+ \\&
+   =\frac{\partial}{\partial X} \mathrm{Tr}(B X^T X)
+   &&=
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$\phantom{X}$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$X^T$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw (a1.east) -- ++(.2,-.1);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(-.2,-.1);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+   +
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a1) {$X$};
+      \node[right=1em of a1] (a2) {$B$};
+      \node[right=1em of a2] (a3) {$\phantom{X}$};
+      \draw (a1) -- (a2) -- (a3);
+      \path (a1) edge[out=160, in=20, looseness=1] (a3);
+   \end{tikzpicture}
+   \hspace{-1.5em}
+ \\&
+   =X(B^T+B)
+   &&=
+   \matmul{X, B^T}
+   +\matmul{X, B}
+\end{align*}}}
+The last equation is a bit surprising, since we might assume
+we could simply substitute $X$ for $X^T$ in the previous equation
+and conclude
+\[
+   (B+B^T)X
+   =
+   \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
+   =
+   \frac{\partial}{\partial X} \mathrm{Tr}(X^T B X)
+   = X(B^T + B).
+\]
+However that is clearly not that case.
+Such substitution would only work for a linear function, not a quadratic.
+In general it is the case that
+$\frac{\partial}{\partial X} f(X)^T \neq
+\frac{\partial}{\partial X} f(X^T)$.
+%Instead we have
+%\[
+%   \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
+%   = \frac{\partial}{\partial X} \mathrm{Tr}((X B X^T)^T)
+%   = \frac{\partial}{\partial X} \mathrm{Tr}(X B^T X^T)
+%\]
 
 \subsection{Higher Order}
 
+
+
 \begin{align*}
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^k\right)= & k\left(\mathbf{X}^{k-1}\right)^T \\
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A} \mathbf{X}^k\right)= & \sum_{r=0}^{k-1}\left(\mathbf{X}^r \mathbf{A X}^{k-r-1}\right)^T \\
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{B}^T \mathbf{X}^T \mathbf{C X} \mathbf{X}^T \mathbf{C X B}\right]= & \mathbf{C X} \mathbf{X}^T \mathbf{C X B B}{ }^T \\
+   \frac{\partial}{\partial X}\mathrm{Tr}(X^n)
+   &=
+   n(X^{n-1})^T
+   &&
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$(X$};
+      \node[right=.25 of X0] (X1) {$X$};
+      \node[right=.25 of X1] (X2) {$X$};
+      \node[right=.25 of X2] (X3) {$\dots$};
+      \node[right=.25 of X3] (X4) {$X)$};
+      \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
+      \path (X0) edge[out=160, in=20, looseness=1] (X4);
+      \draw[d] (X4.south east) -- ++(.2,-.2);
+      \draw[d] (X4.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+ \sum_{r=0}^{n-1}
+   \hspace{-1.5em}
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$X^r$};
+      \node[right=.5 of X0] (X1) {$X^{n-r-1}$};
+      \draw (X0.east) -- ++(.25,.05) -- ++(-.1,.1);
+      \draw (X1.west) -- ++(-.25,-.05) -- ++(.1,-.1);
+      \path (X0) edge[out=160, in=20, looseness=1] (X1);
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+   n
+   (X^T)^{n-1}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \\[1em]
+   \frac{\partial}{\partial X} \mathrm{Tr}(AX^n)
+   &=\sum_{r=0}^{n-1}(X^r A X^{n-1-r})^T
+   &&
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (X0) {$(A$};
+      \node[right=.25 of X0] (X1) {$X$};
+      \node[right=.25 of X1] (X2) {$X$};
+      \node[right=.25 of X2] (X3) {$\dots$};
+      \node[right=.25 of X3] (X4) {$X)$};
+      \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
+      \path (X0) edge[out=160, in=20, looseness=1] (X4);
+      \draw[d] (X4.south east) -- ++(.2,-.2);
+      \draw[d] (X4.south east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+   \sum_{r=0}^{n-1}
+   \hspace{-2em}
+   \begin{tikzpicture}[baseline=(X0.base), inner sep=1pt]
+      \node (A) {$A$};
+      \node[right=.25 of A] (X0) {$X^r$};
+      \node[right=.5 of X0] (X1) {$X^{n-r-1}$};
+      \draw (X0.east) -- ++(.25,.05) -- ++(-.1,.1);
+      \draw (X1.west) -- ++(-.25,-.05) -- ++(.1,-.1);
+      \draw (A) -- (X0);
+      \path (A) edge[out=160, in=20, looseness=1] (X1);
+   \end{tikzpicture}
+   \\
+   &&&=\quad
+   \sum_{r=0}^{n-1}
+   \matmul{(X^r)^T, A^T, (X^{n-r-1})^T}
+\end{align*}
+
+
+\section{Exercises}
+\begin{exercise}
+   Find the derivative of \[x^T A^T x x^T A x\] with respect to $x$.
+\end{exercise}
+
+\begin{exercise}
+   Find the derivative of \[X^T A X\] with respect to $X$.
+\end{exercise}
+
+\begin{exercise}
+   Show the derivatives:
+   \begin{align*}
+   \tag{78}
+   \frac{\partial}{\partial x} (Bx+b)^T C (Dx+d)
+   &= B^TC(Dx+d) + D^TC^T(Bx+b)
+   \\
+   \tag{82}
+   \frac{\partial}{\partial X} b^T X^T D X c
+   &= D^T X b c^T + DXcb^T
+   \\
+   \tag{83}
+   \frac{\partial}{\partial X} (Xb+c)^T D (Xb+c)
+   &= (D+D^T)(Xb+c)b^T
+   \end{align*}
+\end{exercise}
+
+\begin{exercise}
+   Show the remaining second order trace derivatives from the Matrix Cookbook:
+   \begin{align*}
+   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{A X B X})
+   &=\mathbf{A}^T \mathbf{X}^T \mathbf{B}^T+\mathbf{B}^T \mathbf{X}^T \mathbf{A}^T
+   \\
+   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{X}\right)
+   &=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X} \mathbf{X}^T\right)=2 \mathbf{X}
+   \\
+   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B}^T \mathbf{X}^T \mathbf{C X B}\right)
+   &=\mathbf{C}^T \mathbf{X} \mathbf{B B}^T+\mathbf{C X B B}^T
+   \\
+   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{X}^T \mathbf{B X C}\right]
+   &=\mathbf{B X C}+\mathbf{B}^T \mathbf{X} \mathbf{C}^T
+   \\
+   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A X B} \mathbf{X}^T \mathbf{C}\right)
+   &=\mathbf{A}^T \mathbf{C}^T \mathbf{X B}^T+\mathbf{C A X B}
+   \\
+   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[(\mathbf{A X B}+\mathbf{C})(\mathbf{A X B}+\mathbf{C})^T\right]
+   &=2 \mathbf{A}^T(\mathbf{A X B}+\mathbf{C}) \mathbf{B}^T
+   \\
+   \end{align*}
+\end{exercise}
+
+\begin{exercise}
+   Show the derivative of the fourth order trace from the Matrix Cookbook:
+   \begin{align*}
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{B}^T \mathbf{X}^T \mathbf{C X} \mathbf{X}^T \mathbf{C X B}\right]&= \mathbf{C X} \mathbf{X}^T \mathbf{C X B B}{ }^T \\
 & +\mathbf{C}^T \mathbf{X B B} \mathbf{B}^T \mathbf{X}^T \mathbf{C}^T \mathbf{X} \\
 & +\mathbf{C X B B}^T \mathbf{X}^T \mathbf{C X} \\
 & +\mathbf{C}^T \mathbf{X X}^T \mathbf{C}^T \mathbf{X} \mathbf{B B}
-\end{align*}
-
-\subsection{Other}
-$$
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A} \mathbf{X}^{-1} \mathbf{B}\right)=-\left(\mathbf{X}^{-1} \mathbf{B} \mathbf{A} \mathbf{X}^{-1}\right)^T=-\mathbf{X}^{-T} \mathbf{A}^T \mathbf{B}^T \mathbf{X}^{-T}
-$$
-
-Assume $\mathbf{B}$ and $\mathbf{C}$ to be symmetric, then
-$$
-\begin{aligned}
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{A}\right] & =-\left(\mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\right)\left(\mathbf{A}+\mathbf{A}^T\right)\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
-& -2 \mathbf{C X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
-& +2 \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}
-\end{aligned}
-$$
-
-See $[7]$.
-$$
-\frac{\partial \operatorname{Tr}(\sin (\mathbf{X}))}{\partial \mathbf{X}}=\cos (\mathbf{X})^T
-$$
-
+   \end{align*}
+\end{exercise}

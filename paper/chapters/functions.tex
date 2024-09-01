@@ -376,6 +376,21 @@ are common. All pixel-adaptive filters like non-local means, bilateral, etc, and
 Gradient of this f(x) is important \& has a form worth remembering…
 
 
+\subsubsection{Trace identity}
+Assume F(X) to be a differentiable function of each of the elements of X. It
+then holds that
+\[\frac{d \mathrm{Tr}(F(x))}{dX} = f(X)^T,\]
+where $f(\cdot)$ is the scalar derivative of $F(\cdot)$.
+
+TODO: To show this with tensor diagrams, we first need to introduce our notation for functions.
+
+For example
+$$
+\frac{\partial \operatorname{Tr}(\sin (\mathbf{X}))}{\partial \mathbf{X}}=\cos (\mathbf{X})^T
+$$
+% Many more examples here: https://mbustamanter.github.io/ssg-blog/matder1/
+
+
 \subsubsection{Pseudo-linear form}
 Maybe this should just be an example in a table?
 
