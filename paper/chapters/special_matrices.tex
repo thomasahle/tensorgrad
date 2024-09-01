@@ -387,50 +387,35 @@ These typically look like this:
 \[
 \begin{tikzpicture}
   % Draw N/2-point DFT blocks
-  \draw (0, 1) rectangle (3, 5) node[midway] {$\frac{N}{2}$-point DFT};
-  \draw (0, -3) rectangle (3, 1) node[midway] {$\frac{N}{2}$-point DFT};
+  \draw (0, -2.1) rectangle (3, .3) node[midway] {$\frac{N}{2}$-point DFT};
+  \draw (0, -4.5) rectangle (3, -2.1) node[midway] {$\frac{N}{2}$-point DFT};
 
-  % Input nodes
+  % Input nodes, even part
   \foreach \i in {0,2,4,6} {
-    \node at (-1, 4.5 - \i*0.5) {$x[\i]$};
-    \draw[->] (-0.5, 4.5 - \i*0.5) -- (0, 4.5 - \i*0.5);
+    \node at (-1, - \i*0.3) {$x[\i]$};
+    \draw[->] (-0.5, - \i*0.3) -- (0, - \i*0.3);
   }
-  
+  % Odd part
   \foreach \i in {1,3,5,7} {
-    \node at (-1, 4.5 - \i*0.5 - 4) {$x[\i]$};
-    \draw[->] (-0.5, 4.5 - \i*0.5 - 4) -- (0, 4.5 - \i*0.5 - 4);
+    \node at (-1, - \i*0.3 - 2.1) {$x[\i]$};
+    \draw[->] (-0.5, - \i*0.3 - 2.1) -- (0, - \i*0.3 - 2.1);
   }
-
-  % Intermediate outputs E and O
+  % Intermediate outputs E and O their edges
   \foreach \i in {0,1,2,3} {
-    \node at (3.5, 4.5 - \i*0.5) {$E[\i]$};
-    \draw[->] (3, 4.5 - \i*0.5) -- (4, 4.5 - \i*0.5);
+    \node (E) at (4, - \i*0.6) {$E[\i]$};
+    \draw[->] (3, - \i*0.6) -- (E.west);
+    \draw[->] (E.east) -- (8, - \i*0.6);
+    \draw[->] (E.east) -- (8, - \i*0.6 - 2.4);
   }
-  
   \foreach \i in {0,1,2,3} {
-    \node at (3.5, 4.5 - \i*0.5 - 4) {$O[\i]$};
-    \draw[->] (3, 4.5 - \i*0.5 - 4) -- (4, 4.5 - \i*0.5 - 4);
+    \node (O) at (4, - \i*0.6 - 2.4) {$O[\i]$};
+    \draw[->] (3, - \i*0.6 - 2.4) -- (O.west);
+    \draw[->] (O.east) -- (8, - \i*0.6);
+    \draw[->] (O.east) -- (8, - \i*0.6 - 2.4);
   }
-
   % Output nodes X
   \foreach \i in {0,...,7} {
-    \node at (8.5, 4.5 - \i*0.5) {$X[\i]$};
-  }
-  
-  % W_N terms
-  \foreach \i in {0,...,7} {
-    \node at (6.5, 4.5 - \i*0.5) {$W_N^{\i}$};
-  }
-
-  % Connections from E and O to X
-  \foreach \i in {0,...,3} {
-    \draw[->] (4, 4.5 - \i*0.5) -- (8, 4.5 - \i*0.5);
-    \draw[->] (4, 4.5 - \i*0.5) -- (8, 4.5 - \i*0.5 - 2);
-  }
-  
-  \foreach \i in {0,...,3} {
-    \draw[->] (4, 4.5 - \i*0.5 - 4) -- (8, 4.5 - \i*0.5 - 1);
-    \draw[->] (4, 4.5 - \i*0.5 - 4) -- (8, 4.5 - \i*0.5 - 5);
+    \node at (8.5, - \i*0.6) {$X[\i]$};
   }
 \end{tikzpicture}
 \]
