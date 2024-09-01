@@ -1,6 +1,6 @@
 
 \chapter{Statistics and Probability}
-\subsection{Definition of Moments}
+\section{Definition of Moments}
 Let $x\in\mathbb R^{n}$ is a random variable.
 We write $m = E[x]\in\mathbb R^n$ for the expectation and
 $M=\mathrm{Var}[x] = E[(x-m)(x-m)^T]$ for the covariance (when these quantities are defined.)
@@ -16,39 +16,49 @@ In tensor diagrams, we will use square brackets:
 \mathbin{\begin{tikzpicture}[baseline=(n0.base), inner sep=1pt]
    \node (n0) at (0,0) {$M=[$};
    \node [right=1em of n0] (n1) {$(x\ominus m)$};
-   \node [right=.5em of n1] (n2) {$(x\div m)$};
+   \node [right=.5em of n1] (n2) {$(x\ominus m)$};
    \node [right=1em of n2] (n3) {$]$};
    \draw (n0) -- (n1);
    \draw (n2) -- (n3);
 \end{tikzpicture}}
 \]
-Note we used the German minus, $\div$, to distinguish subtraction from contraction edges.
+We will use the circled minus, $\ominus$, to distinguish the operation from contraction edges.
 
 We can also define the third and fourth centralized moment tensors
 \[
    M_3=
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{1em}{(x\div m)}{}{} \\
-      \vecmatvec{1em}{(x\div m)}{}{} \\
-      \vecmatvec{1em}{(x\div m)}{}{}
+      \vecmatvec{1em}{(x\ominus m)}{}{} \\
+      \vecmatvec{1em}{(x\ominus m)}{}{} \\
+      \vecmatvec{1em}{(x\ominus m)}{}{}
    \end{bmatrix}
 \quad\text{and}\quad
 M_4=
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{1em}{(x\div m)}{}{} \\
-      \vecmatvec{1em}{(x\div m)}{}{} \\
-      \vecmatvec{1em}{(x\div m)}{}{} \\
-      \vecmatvec{1em}{(x\div m)}{}{}
+      \vecmatvec{1em}{(x\ominus m)}{}{} \\
+      \vecmatvec{1em}{(x\ominus m)}{}{} \\
+      \vecmatvec{1em}{(x\ominus m)}{}{} \\
+      \vecmatvec{1em}{(x\ominus m)}{}{}
    \end{bmatrix}
 .
 \]
+These are less common in introductory causes, even though the scalar third and fourth moment are common.
+This is presumably because they require higher order tensors.
 
-\subsection{Expectation of Linear Combinations}
+\section{Expectation of Linear Combinations}
 General principle: The ``linearity of expectation'' lets you pull out all parts of the graph not involving $X$.
+\[
+   \vcenter{\hbox{
+      \import{figures/}{linearityOfExpectations.pdf_tex}
+   }}
+\]
+where $M$ is the expectation of the product of the four instances of $X$, with no dependence of the constants $A$, $B$, $C$ and $D$.
+Note however that the way in which in $X$s are multiplied together matters, creating many possible raw ``fourth moments'' this way.
 
-\subsubsection{Linear Forms}
+\subsection{Linear Forms}
+The Matrix Cookbook gives the following simple expectations:
 \begin{align*}
    \tag{312}
    \E[AXB+C] &= A \E[X] B + C
@@ -69,19 +79,19 @@ General principle: The ``linearity of expectation'' lets you pull out all parts 
    &
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{.5em}{A}{}{x} \div [\vecmatvec{.5em}{A}{}{x}] \\
-      \vecmatvec{.5em}{A}{}{x} \div [\vecmatvec{.5em}{A}{}{x}]
+      \vecmatvec{.5em}{A}{}{x} \ominus [\vecmatvec{.5em}{A}{}{x}] \\
+      \vecmatvec{.5em}{A}{}{x} \ominus [\vecmatvec{.5em}{A}{}{x}]
    \end{bmatrix}
    &=
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{.5em}{A}{}{(x\div m)} \\
-      \vecmatvec{.5em}{A}{}{(x\div m)}
+      \vecmatvec{.5em}{A}{}{(x\ominus m)} \\
+      \vecmatvec{.5em}{A}{}{(x\ominus m)}
    \end{bmatrix}
  \\&&&=
    \vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
-      \node (n1) at (0,-.25) {$\vecmatvec{1em}{A}{}{(x\div m)}$};
-      \node (n2) at (0,.25) {$\vecmatvec{1em}{A}{}{(x\div m)}$};
+      \node (n1) at (0,-.25) {$\vecmatvec{1em}{A}{}{(x\ominus m)}$};
+      \node (n2) at (0,.25) {$\vecmatvec{1em}{A}{}{(x\ominus m)}$};
       \node at (-.45, 0) {$\Bigg[$};
       \node at (1, 0) {$\Bigg]$};
    \end{tikzpicture}}}
@@ -89,20 +99,28 @@ General principle: The ``linearity of expectation'' lets you pull out all parts 
    \vecmatvec{.5em}{}{A,M_2,A}{}
 \end{align*}
 
-\subsubsection{Quadratic Forms}
+\subsection{Quadratic Forms}
+We often prefer to write expectations in terms of the simple centered moments, which we can do by pulling out the mean:
 \begin{align*}
-   \E[x^T A x] &= \mathrm{Tr}(A \Sigma) + \mu^T A \mu
-   \\
+   \E[x^T A x]
+   &= \mathrm{Tr}(A \Sigma) + \mu^T A \mu
+   &
    [\vecmatvec{.5em}{x}{A}{x}]
    &=
-   [\vecmatvec{.5em}{(x\div \mu)}{A}{(x \div\mu)}
-   +
-   \vecmatvec{.5em}{\mu}{A}{\mu}]
+   \left[
+      \begin{cases}
+      \vecmatvec{.5em}{(x\ominus \mu)}{A}{(x \ominus\mu)}
+      + \vecmatvec{.5em}{\mu}{A}{\mu}
+      \\
+      \vecmatvec{.5em}{(x\ominus \mu)}{A}{x}
+      + \vecmatvec{.5em}{x}{A}{(x \ominus\mu)}
+   \end{cases}
+   \right]
    \\
-   &=
+   &&&=
    \mathbin{\begin{tikzpicture}[inner sep=1pt]
-      \node (n1) at (0,-.25) {$(x\div m)$};
-      \node (n2) at (0,.25) {$(x\div m)$};
+      \node (n1) at (0,-.25) {$(x\ominus m)$};
+      \node (n2) at (0,.25) {$(x\ominus m)$};
       \node at (-.75, 0) {$\Bigg[$};
       \node at (.75, 0) {$\Bigg]$};
       \node (A) at (1, 0) {$A$};
@@ -112,22 +130,23 @@ General principle: The ``linearity of expectation'' lets you pull out all parts 
    +
    \vecmatvec{.5em}{\mu}{A}{\mu}
    \\
-   &=
+   &&&=
    \trace{\Sigma,A}2
    +
    \vecmatvec{.5em}{\mu}{A}{\mu}
 \end{align*}
 
-\subsubsection{Cubic Forms}
+\subsection{Cubic Forms}
+TODO
 
-\subsection{Weighted Scalar Variable}
+\section{Weighted Scalar Variable}
 Let $y=w^T x$, and let $m=E[y]$, then
 \begin{align*}
    \E[y] &= m = w^T \mu
    \\
-   \E[(y-m)^2] &= \vecmatvec{.5em}{w}{M_2}{w}
+   \E[(y\ominus m)^2] &= \vecmatvec{.5em}{w}{M_2}{w}
    \\
-   \E[(y-m)^3] &=
+   \E[(y\ominus m)^3] &=
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$M_3$};
       \node[above=.3em of a0] (n0) {$w$};
@@ -138,7 +157,7 @@ Let $y=w^T x$, and let $m=E[y]$, then
       \draw (a0.west) -- (n3);
    \end{tikzpicture}}
    \\
-   \E[(y-m)^4] &=
+   \E[(y\ominus m)^4] &=
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$M_4$};
       \node[above=.3em of a0] (n0) {$w$};
@@ -155,12 +174,25 @@ For specific distributions, like $x$ Gaussian, we can often reduce the moment te
 Khintchine's inequality also gives a way to bound all of these in terms of $E[(y-m)^2]$.
 
 
-\subsection{Gaussian Moments}
-\subsubsection{Mean and covariance of linear forms}
-\subsubsection{Mean and variance of square forms}
-\subsubsection{Cubic forms}
-\subsubsection{Mean of Quartic Forms}
-\subsubsection{Gaussian Integration by Parts}
-General principle for Gaussian expectations.
+\section{Gaussian Moments}
+\subsection{Gaussian Integration by Parts}
+If $X$ is a tensor with Gaussian entries, zero mean, and some covariance,
+% General principle for Gaussian expectations.
+Stein's lemma gives the following very general equation, for any differentiable function $f$:
+\[
+   \vcenter{\hbox{
+      \import{figures/}{steins.pdf_tex}
+   }}
+\]
+Combined with the tensor chain rule from chapter~\ref{chapter:functions}, this can be a very powerful way to evaluate many hard expectations.
+
+\subsection{Mean and covariance of linear forms}
+TODO
+\subsection{Mean and variance of square forms}
+TODO
+\subsection{Cubic forms}
+TODO
+\subsection{Mean of Quartic Forms}
+TODO
 
 

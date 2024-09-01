@@ -4,6 +4,7 @@
 \usepackage{xparse}
 \usepackage{amsmath}
 \usepackage{amsfonts}
+\usepackage{amsthm}
 \usepackage{placeins}
 \usepackage[T1]{fontenc}
 \usepackage{import}
@@ -35,6 +36,18 @@
 
 \input{chapters/tikz-styles.tex}
 
+\newtheoremstyle{normalstyle} % Name of the style
+  {3pt}   % Space above
+  {3pt}   % Space below
+  {\normalfont}  % Body font
+  {}      % Indent amount
+  {\bfseries} % Theorem head font
+  {.}     % Punctuation after theorem head
+  { }     % Space after theorem head
+  {}      % Theorem head spec
+\theoremstyle{normalstyle}
+\newtheorem{exercise}{Exercise}
+
 \newcommand{\smat}[1]{\left[\begin{smallmatrix}#1\end{smallmatrix}\right]}
 \newcommand{\svec}[1]{[\begin{smallmatrix}#1\end{smallmatrix}]}
 \newcommand{\E}{\mathrm{E}}
@@ -59,14 +72,14 @@
 \input{chapters/simple_derivatives.tex}
 \input{chapters/statistics.tex}
 \input{chapters/kronecker.tex}
-\input{chapters/functions.tex}
-\input{chapters/determinant.tex}
-\input{chapters/advanced_derivatives.tex}
-\input{chapters/special_matrices.tex}
-\input{chapters/decompositions.tex}
-\input{chapters/ml.tex}
-\input{chapters/tensor_algos.tex}
-\input{chapters/tensorgrad.tex}
+% \input{chapters/functions.tex}
+% \input{chapters/determinant.tex}
+%\input{chapters/advanced_derivatives.tex}
+% \input{chapters/special_matrices.tex}
+% \input{chapters/decompositions.tex}
+% \input{chapters/ml.tex}
+% \input{chapters/tensor_algos.tex}
+% \input{chapters/tensorgrad.tex}
 
 \bibliographystyle{plain}
 \bibliography{references}
