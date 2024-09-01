@@ -23,6 +23,16 @@
         a:hover {
             text-decoration: underline;
         }
+        .diagram {
+            background-color: #f0f0f0;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
     </style>
 </head>
 <body>
@@ -32,6 +42,33 @@
     </header>
 
     <main>
+        <section>
+            <h2>What are Tensor Diagrams?</h2>
+            <p>Tensor diagrams are a powerful visual tool for representing and manipulating tensors, which are generalizations of vectors and matrices to higher dimensions. They provide an intuitive way to understand complex tensor operations and identities.</p>
+            
+            <p>For example, consider the matrix multiplication of A and B:</p>
+            
+            <div class="diagram">
+                <pre>
+    A   B
+    | \ / |
+    |  X  |
+    | / \ |
+      Y
+                </pre>
+            </div>
+            
+            <p>This diagram represents (AB)_ik = sum_j A_ij B_jk. The crossing lines indicate the summation over the index j.</p>
+            
+            <p>Tensor diagrams are particularly useful because they:</p>
+            <ul>
+                <li>Simplify complex tensor expressions</li>
+                <li>Make it easy to spot patterns and symmetries</li>
+                <li>Help in deriving new identities</li>
+                <li>Provide a universal language for tensor operations across different fields</li>
+            </ul>
+        </section>
+
         <section>
             <h2>About the Book</h2>
             <p>The Tensor Cookbook is a comprehensive guide to tensors, using the visual language of tensor diagrams. It closely follows the legendary "Matrix Cookbook" while providing a new way to understand and appreciate tensor operations through diagrams.</p>
