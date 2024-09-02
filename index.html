@@ -17,7 +17,7 @@
         body {
            font-family: Verdana, Helvetica, sans-serif;
            line-height: 1.4;
-           color: #555588;
+           color: #353549;
            max-width: 1000px;
            margin: 0 auto;
            background-color: #fafafa;
@@ -98,7 +98,14 @@
          "main citation"
          "main other"
          "main .";
+      padding: 0 20px;
    }
+  h1 {
+     padding: 20px 0 0 20px;
+  }
+  footer {
+     padding: 10px 20px;
+  }
 
    .main-content { grid-area: main; }
    #access-paper { grid-area: access; }
@@ -111,7 +118,7 @@
    .container {
       grid-template-columns: 1fr;
       grid-template-rows: auto auto 1fr auto auto;
-      grid-template-areas: 
+      grid-template-areas:
          "access"
          "author"
          "main"
@@ -119,11 +126,9 @@
          "other";
    }
 
-   .main-content { grid-area: main; }
-   #access-paper { grid-area: access; }
-   #author-info { grid-area: author; }
-   #citation-info { grid-area: citation; }
-   #other-resources { grid-area: other; }
+   #access-paper h2 { display: none; }
+   #author-info h2 { display: none; }
+   #author-info::before { content: "By "; }
 }
       </style>
    </head>
@@ -177,7 +182,8 @@
             <div id="access-paper">
                <h2>Access Paper:</h2>
                <ul>
-                  <li><a href="https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf"><strong>View PDF</strong></a></li>
+                  
+                  <li><a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf"><strong>View PDF</strong></a></li>
                   <li><a href="https://github.com/thomasahle/tensorgrad/">Github Page</a></li>
                </ul>
             </div>
