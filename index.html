@@ -17,27 +17,23 @@
         body {
            font-family: Verdana, Helvetica, sans-serif;
            line-height: 1.4;
-           color: #333;
+           color: #555588;
            max-width: 1000px;
            margin: 0 auto;
            background-color: #fafafa;
         }
         .container {
-           display: flex;
-           flex-wrap: wrap;
-           gap: 40px;
+           column-gap: 40px;
            background-color: white;
            padding: 0 40px;
+           display: grid;
         }
         .main-content {
            flex: 3;
            padding: 0;
         }
         .sidebar {
-           flex: 1;
            background-color: #fff;
-           display: flex;
-           flex-direction: column;
         }
         h1 {
            color: #555588;
@@ -92,31 +88,43 @@
            font-size: 90%;
            color: #3b3bb2;
         }
-        @media (max-width: 768px) {
-           .container {
-              flex-direction: column;
-              padding: 20px;
-           }
+/* Wide layout */
+   .container {
+      grid-template-columns: 4fr 1fr;
+      grid-template-rows: auto auto auto auto 100fr;
+      grid-template-areas:
+         "main access"
+         "main author"
+         "main citation"
+         "main other"
+         "main .";
+   }
 
-           .sidebar {
-              order: -1; /* Moves sidebar to the top on mobile */
-              flex-direction: row;
-              flex-wrap: wrap;
-              justify-content: space-between;
-           }
+   .main-content { grid-area: main; }
+   #access-paper { grid-area: access; }
+   #author-info { grid-area: author; }
+   #citation-info { grid-area: citation; }
+   #other-resources { grid-area: other; }
 
+/* Mobile layout */
+@media (max-width: 768px) {
+   .container {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto 1fr auto auto;
+      grid-template-areas: 
+         "access"
+         "author"
+         "main"
+         "citation"
+         "other";
+   }
 
-           #citation-info, #other-resources, #access-paper, #author-info  {
-              width: 100%;
-           }
-           #citation-info, #other-resources  {
-              order: 1; /* Moves these to the bottom */
-           }
-
-           pre {
-              width: 100%;
-           }
-        }
+   .main-content { grid-area: main; }
+   #access-paper { grid-area: access; }
+   #author-info { grid-area: author; }
+   #citation-info { grid-area: citation; }
+   #other-resources { grid-area: other; }
+}
       </style>
    </head>
    <body>
@@ -166,7 +174,6 @@
                <li>And much more!</li>
             </ul>
          </div>
-         <div class="sidebar">
             <div id="access-paper">
                <h2>Access Paper:</h2>
                <ul>
@@ -204,7 +211,6 @@
                   <li><a href="https://www.matrixcalculus.org/">Matrix Calculus</a></li>
                </ul>
             </div>
-         </div>
       </div>
       <footer>
          <p>
