@@ -65,11 +65,8 @@
            color: #3f3fcd;
            text-decoration: none;
         }
-        .diagram {
-           background-color: #fff;
-           padding: 15px;
-           margin: 15px 0;
-           border: 1px solid #ccc;
+        .diagram img {
+           max-width: 90%;
         }
         pre {
            white-space: pre-wrap;
@@ -88,10 +85,21 @@
            font-size: 90%;
            color: #3b3bb2;
         }
+        a.button {
+           display: block;
+           padding: 5px 20px;
+           margin: 10px 0;
+           text-align: center;
+           background-color: #3f3fcd;
+           color: white;
+           text-decoration: none;
+           border-radius: 5px;
+           font-size: 1.2em;
+        }
 /* Wide layout */
    .container {
       grid-template-columns: 4fr 1fr;
-      grid-template-rows: auto auto auto auto 100fr;
+      grid-template-rows: auto auto auto auto 1fr;
       grid-template-areas:
          "main access"
          "main author"
@@ -112,6 +120,7 @@
    #author-info { grid-area: author; }
    #citation-info { grid-area: citation; }
    #other-resources { grid-area: other; }
+   #mobile-top { display: none; }
 
 /* Mobile layout */
 @media (max-width: 768px) {
@@ -126,9 +135,9 @@
          "other";
    }
 
-   #access-paper h2 { display: none; }
-   #author-info h2 { display: none; }
-   #author-info::before { content: "By "; }
+   #access-paper { display: none; }
+   #author-info { display: none; }
+   #mobile-top { display: block; }
 }
       </style>
    </head>
@@ -140,28 +149,25 @@
 
             <h2>What are Tensor Diagrams?</h2>
             <p>
-            Tensor diagrams are a powerful visual tool for representing and manipulating tensors, which are generalizations of vectors and matrices to higher dimensions. They provide an intuitive way to understand complex tensor operations and identities.</p>
-
-            <p>For example, consider the matrix multiplication of A and B:</p>
+            Machine learning involves a lot of tensor manipulation, and it's easy to lose track of the bigger picture when manipulating high-dimensional data using notation designed for vectors and matrices.
+            </p><p>
+            It turns out all the trouble with tensors disappears when you instead represent them using graphs:
+            </p>
 
             <div class="diagram">
-               <pre>
-    A   B
-    | \ / |
-    |  X  |
-    | / \ |
-      Y
-               </pre>
+               <img src="paper/figures/front.png" />
             </div>
 
-            <p>This diagram represents (AB)_ik = sum_j A_ij B_jk. The crossing lines indicate the summation over the index j.</p>
+            <p>This book aims to <strong>standardize the notation for tensor diagrams</strong> by rewriting the classical "Matrix Cookbook" using this notation.</p>
 
-            <p>Tensor diagrams are particularly useful because they:</p>
+            <p>
+            Tensor diagrams are better than alternative notation like Index Notation (einsum) because they:
+            </p>
             <ul>
-               <li>Simplify complex tensor expressions</li>
                <li>Make it easy to spot patterns and symmetries</li>
-               <li>Help in deriving new identities</li>
-               <li>Provide a universal language for tensor operations across different fields</li>
+               <li>Avoid all trouble with vectorization and Kronecker products</li>
+               <li>Make Matrix Calculus simple and intuitive</li>
+               <li>Represent functions and broadcasting effortlessly</li>
             </ul>
 
 
@@ -182,7 +188,6 @@
             <div id="access-paper">
                <h2>Access Paper:</h2>
                <ul>
-                  
                   <li><a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf"><strong>View PDF</strong></a></li>
                   <li><a href="https://github.com/thomasahle/tensorgrad/">Github Page</a></li>
                </ul>
@@ -192,6 +197,13 @@
                <h2>Author:</h2>
                <p>Thomas Dybdahl Ahle<br />
                <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
+            </div>
+
+            <div id="mobile-top">
+                  <p>By <a href="https://thomasahle.com">Thomas Ahle</a> @ <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
+                  <a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf" class="button">View PDF</a>
+                  <a href="https://github.com/thomasahle/tensorgrad/" class="button">Github Page</a>
+                  </p>
             </div>
 
             <div id="citation-info">
