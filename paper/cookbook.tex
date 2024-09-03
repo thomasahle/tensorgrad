@@ -10,6 +10,14 @@
 \usepackage{import}
 \usepackage{graphicx}
 \usepackage{adjustbox}
+\usepackage{draftwatermark}
+\usepackage{changepage}
+
+
+\SetWatermarkText{DRAFT}
+\SetWatermarkScale{5}
+\SetWatermarkColor[gray]{0.9}
+
 
 \usepackage{listings}
 \usepackage{xcolor}
@@ -70,9 +78,9 @@
 
 \input{chapters/intro.tex}
 \input{chapters/simple_derivatives.tex}
-\input{chapters/statistics.tex}
 \input{chapters/kronecker.tex}
 \input{chapters/functions.tex}
+\input{chapters/statistics.tex}
 \input{chapters/determinant.tex}
 \input{chapters/advanced_derivatives.tex}
 \input{chapters/special_matrices.tex}

@@ -170,7 +170,8 @@ The second order derivatives are follow from the product rule:
 Note that this rule holds independently of how many edges are between $T$ and $U$, even if there are none.
 
 \noindent
-\makebox[\textwidth]{\parbox{1.1\textwidth}{%
+%\makebox[\textwidth]{\parbox{1.1\textwidth}{%
+\begin{adjustwidth}{-0.05\textwidth}{-0.05\textwidth}
 \begin{align*}
    \tag{76}
    \frac{\partial}{\partial X_{i,j}}
@@ -407,7 +408,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \draw (x) -- (l) node[midway, above right, font=\tiny] {i};
    \end{tikzpicture}
 \end{align*}
-}}
+\end{adjustwidth}
+%}}
 
 
 TODO: Assume $W$ is symmetric, then... (84) - (88)
@@ -642,7 +644,7 @@ The last one uses the Kronecker product, which we may have to introduce first.
 
 \subsection{Second Order}
 \noindent
-\makebox[\textwidth]{\parbox{1.1\textwidth}{%
+\begin{adjustwidth}{-1em}{-1em}
 \begin{align*}
    \frac{\partial}{\partial X} \mathrm{Tr}(X^2)
    &=2 X^T
@@ -911,7 +913,9 @@ The last one uses the Kronecker product, which we may have to introduce first.
    &&=
    \matmul{X, B^T}
    +\matmul{X, B}
-\end{align*}}}
+\end{align*}
+\end{adjustwidth}
+
 The last equation is a bit surprising, since we might assume
 we could simply substitute $X$ for $X^T$ in the previous equation
 and conclude

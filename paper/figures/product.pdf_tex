@@ -38,7 +38,7 @@
   \newcommand*\fsize{\dimexpr\f@size pt\relax}%
   \newcommand*\lineheight[1]{\fontsize{\fsize}{#1\fsize}\selectfont}%
   \ifx\svgwidth\undefined%
-    \setlength{\unitlength}{595.27559055bp}%
+    \setlength{\unitlength}{256.92133866bp}%
     \ifx\svgscale\undefined%
       \relax%
     \else%
@@ -50,22 +50,22 @@
   \global\let\svgwidth\undefined%
   \global\let\svgscale\undefined%
   \makeatother%
-  \begin{picture}(1,1.41428571)%
+  \begin{picture}(1,0.16223413)%
     \lineheight{1}%
     \setlength\tabcolsep{0pt}%
-    \put(0.16387031,1.14577925){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}T\end{tabular}}}}%
+    \put(0.03458922,0.04937072){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}T\end{tabular}}}}%
     \put(0,0){\includegraphics[width=\unitlength,page=1]{product.pdf}}%
-    \put(0.21969197,1.14643597){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}U\end{tabular}}}}%
+    \put(0.16392559,0.05089233){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}U\end{tabular}}}}%
     \put(0,0){\includegraphics[width=\unitlength,page=2]{product.pdf}}%
-    \put(0.32924591,1.14568652){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}T\end{tabular}}}}%
+    \put(0.4177573,0.04915588){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}T\end{tabular}}}}%
     \put(0,0){\includegraphics[width=\unitlength,page=3]{product.pdf}}%
-    \put(0.38506757,1.14634325){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}U\end{tabular}}}}%
+    \put(0.54709367,0.05067749){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}U\end{tabular}}}}%
     \put(0,0){\includegraphics[width=\unitlength,page=4]{product.pdf}}%
-    \put(0.48658248,1.14578898){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}T\end{tabular}}}}%
+    \put(0.78229932,0.04939328){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}T\end{tabular}}}}%
     \put(0,0){\includegraphics[width=\unitlength,page=5]{product.pdf}}%
-    \put(0.54240415,1.1464457){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}U\end{tabular}}}}%
+    \put(0.91163569,0.05091488){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}U\end{tabular}}}}%
     \put(0,0){\includegraphics[width=\unitlength,page=6]{product.pdf}}%
-    \put(0.27640501,1.1444341){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}\textbf{=}\end{tabular}}}}%
-    \put(0.43823798,1.1444341){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}\textbf{+}\end{tabular}}}}%
+    \put(0.29532723,0.04625408){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}\textbf{=}\end{tabular}}}}%
+    \put(0.6702872,0.04625408){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}\textbf{+}\end{tabular}}}}%
   \end{picture}%
 \endgroup%
