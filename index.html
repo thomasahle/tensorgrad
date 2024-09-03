@@ -63,6 +63,7 @@
         }
         a {
            color: #3f3fcd;
+           color: #3b3bb2;
            text-decoration: none;
         }
         .diagram img {
@@ -74,16 +75,11 @@
            background-color: #fff;
            padding: 10px;
            border: 1px solid #ccc;
-           font-size: 0.9em;
-           width: 250px;
            font-size: 80%;
+           width: 250px;
         }
         ul {
            padding-left: 2em;
-        }
-        ul.links a {
-           font-size: 90%;
-           color: #3b3bb2;
         }
         a.button {
            display: block;
@@ -96,49 +92,55 @@
            border-radius: 5px;
            font-size: 1.2em;
         }
-/* Wide layout */
-   .container {
-      grid-template-columns: 4fr 1fr;
-      grid-template-rows: auto auto auto auto 1fr;
-      grid-template-areas:
-         "main access"
-         "main author"
-         "main citation"
-         "main other"
-         "main .";
-      padding: 0 20px;
-   }
-  h1 {
-     padding: 20px 0 0 20px;
-  }
-  footer {
-     padding: 10px 20px;
-  }
+        /* Wide layout */
+        .container {
+           grid-template-columns: 4fr 1fr;
+           grid-template-rows: auto auto auto auto 1fr;
+           grid-template-areas:
+              "main access"
+           "main author"
+           "main citation"
+           "main other"
+           "main .";
+        padding: 0 20px;
+        }
+        h1 {
+           padding: 20px 0 0 20px;
+        }
+        footer {
+           padding: 10px 20px;
+        }
 
-   .main-content { grid-area: main; }
-   #access-paper { grid-area: access; }
-   #author-info { grid-area: author; }
-   #citation-info { grid-area: citation; }
-   #other-resources { grid-area: other; }
-   #mobile-top { display: none; }
+        .main-content { grid-area: main; }
+        #access-paper { grid-area: access; }
+        #author-info { grid-area: author; }
+        #citation-info { grid-area: citation; }
+        #other-resources { grid-area: other; }
+        #mobile-top { display: none; }
 
-/* Mobile layout */
-@media (max-width: 768px) {
-   .container {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto auto 1fr auto auto;
-      grid-template-areas:
-         "access"
-         "author"
-         "main"
-         "citation"
-         "other";
-   }
+        #other-resources li { display: inline; }
+        #other-resources ul { display: inline; padding: 0 }
+        #other-resources li::after {
+           content: ", ";
+        }
 
-   #access-paper { display: none; }
-   #author-info { display: none; }
-   #mobile-top { display: block; }
-}
+        /* Mobile layout */
+        @media (max-width: 768px) {
+           .container {
+              grid-template-columns: 1fr;
+              grid-template-rows: auto auto 1fr auto auto;
+              grid-template-areas:
+                 "access"
+              "author"
+              "main"
+              "citation"
+              "other";
+           }
+
+           #access-paper { display: none; }
+           #author-info { display: none; }
+           #mobile-top { display: block; }
+        }
       </style>
    </head>
    <body>
@@ -185,31 +187,31 @@
                <li>And much more!</li>
             </ul>
          </div>
-            <div id="access-paper">
-               <h2>Access Paper:</h2>
-               <ul>
-                  <li><a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf"><strong>View PDF</strong></a></li>
-                  <li><a href="https://github.com/thomasahle/tensorgrad/">Github Page</a></li>
-               </ul>
-            </div>
+         <div id="access-paper">
+            <h2>Access Paper:</h2>
+            <ul>
+               <li><a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf"><strong>View PDF</strong></a></li>
+               <li><a href="https://github.com/thomasahle/tensorgrad/">Github Page</a></li>
+            </ul>
+         </div>
 
-            <div id="author-info">
-               <h2>Author:</h2>
-               <p>Thomas Dybdahl Ahle<br />
-               <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
-            </div>
+         <div id="author-info">
+            <h2>Author:</h2>
+            <p>Thomas Dybdahl Ahle<br />
+            <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
+         </div>
 
-            <div id="mobile-top">
-                  <p>By <a href="https://thomasahle.com">Thomas Ahle</a> @ <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
-                  <a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf" class="button">View PDF</a>
-                  <a href="https://github.com/thomasahle/tensorgrad/" class="button">Github Page</a>
-                  </p>
-            </div>
+         <div id="mobile-top">
+            <p>By <a href="https://thomasahle.com">Thomas Ahle</a> @ <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
+            <a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf" class="button">View PDF</a>
+            <a href="https://github.com/thomasahle/tensorgrad/" class="button">Github Page</a>
+            </p>
+         </div>
 
-            <div id="citation-info">
-               <h2>How to Cite:</h2>
-               <p>If you use The Tensor Cookbook in your research, please cite it using the following BibTeX entry:</p>
-               <pre>
+         <div id="citation-info">
+            <h2>How to Cite:</h2>
+            <p>If you use The Tensor Cookbook in your research, please cite it using the following BibTeX entry:</p>
+            <pre>
 @book{ahle2024tensorcookbook,
   title={The Tensor Cookbook},
   author={Ahle, Thomas Dybdahl},
@@ -217,18 +219,18 @@
   url={https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf},
   note={Version: August, 2024}
 }</pre>
-            </div>
+         </div>
 
-            <div id="other-resources">
-               <h2>Other Tensor Resources:</h2>
-               <ul class="links">
-                  <li><a href="https://en.wikipedia.org/wiki/Penrose_graphical_notation">Penrose Graphical Notation</a></li>
-                  <li><a href="https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability">Graphical Tensor Notation for Interpretability</a></li>
-                  <li><a href="https://www.math3ma.com/blog/the-tensor-product-demystified">The Tensor Product, Demystified</a></li>
-                  <li><a href="https://tensornetwork.org/diagrams/">Tensor Network Diagrams</a></li>
-                  <li><a href="https://www.matrixcalculus.org/">Matrix Calculus</a></li>
-               </ul>
-            </div>
+         <div id="other-resources">
+            <h2>Other Resources:</h2>
+            <ul class="links">
+               <li><a href="https://en.wikipedia.org/wiki/Penrose_graphical_notation">Penrose Graphical Notation</a></li>
+               <li><a href="https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability">Graphical Tensor Notation for Interpretability</a></li>
+               <li><a href="https://www.math3ma.com/blog/the-tensor-product-demystified">The Tensor Product, Demystified</a></li>
+               <li><a href="https://tensornetwork.org/diagrams/">Tensor Network Diagrams</a></li>
+               <li><a href="https://www.matrixcalculus.org/">Matrix Calculus</a></li>
+            </ul>
+         </div>
       </div>
       <footer>
          <p>
