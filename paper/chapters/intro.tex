@@ -497,6 +497,116 @@ When using named edges, operations from classical vector notation like ``transpo
 The matrix $X^T$ is simply $X$ where the left and right edge have been swapped.
 But if the edges are named, we don't have to keep track on ``where the edge is'' at all.
 
+\section{Transposition}
+TODO: This section is not yet complete.
+
+In classical matrix notation, transposition is denoted by a superscript T, as in $A^T$. This operation flips the indices of a matrix, so that $(A^T)_{ij} = A_{ji}$. In tensor diagram notation, we can represent transposition simply by swapping the positions of the edges:
+
+\[
+A^T = 
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
+   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+\end{tikzpicture}
+\]
+
+When using named edges, the concept of transposition becomes less relevant, as we can simply refer to the edges by their names regardless of their position. This allows for more flexible and intuitive manipulation of tensor expressions.
+
+Let's examine some properties of transposition using tensor diagrams:
+
+\begin{align*}
+(A^T)^T &= A 
+&
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
+   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+\end{tikzpicture}
+&=
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture}
+\\
+(AB)^T &= B^T A^T
+&
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \node[right=.5em of A] (B) {$B$};
+   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$k$};
+   \path (A) edge (B);
+   \draw (B.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+\end{tikzpicture}^T
+&=
+\begin{tikzpicture}[baseline=(B.base), inner sep=1pt]
+   \node (B) {$B$};
+   \node[right=.5em of B] (A) {$A$};
+   \draw (B.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
+   \path (B) edge (A);
+   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$k$};
+\end{tikzpicture}
+\\
+(A + B)^T &= A^T + B^T
+&
+\left(
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture}
++
+\begin{tikzpicture}[baseline=(B.base), inner sep=1pt]
+   \node (B) {$B$};
+   \draw (B.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
+   \draw (B.east) -- ++(.3,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture}
+\right)^T
+&=
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
+   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+\end{tikzpicture}
++
+\begin{tikzpicture}[baseline=(B.base), inner sep=1pt]
+   \node (B) {$B$};
+   \draw (B.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
+   \draw (B.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+\end{tikzpicture}
+\end{align*}
+
+For higher-order tensors, transposition can be generalized to permutation of indices. For example, for a 3rd-order tensor $T_{ijk}$, we might consider $T_{jik}$ or $T_{kji}$. In tensor diagram notation, this simply corresponds to rearranging the edges:
+
+\[
+T_{ijk} = 
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$T$};
+   \draw (T) -- ++(.3,.3) node[above right, font=\tiny] {$i$};
+   \draw (T) -- ++(-.3,.3) node[above left, font=\tiny] {$j$};
+   \draw (T) -- ++(0,-.4) node[below, font=\tiny] {$k$};
+\end{tikzpicture}
+\qquad
+T_{jik} = 
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$T$};
+   \draw (T) -- ++(.3,.3) node[above right, font=\tiny] {$j$};
+   \draw (T) -- ++(-.3,.3) node[above left, font=\tiny] {$i$};
+   \draw (T) -- ++(0,-.4) node[below, font=\tiny] {$k$};
+\end{tikzpicture}
+\qquad
+T_{kji} = 
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$T$};
+   \draw (T) -- ++(.3,.3) node[above right, font=\tiny] {$k$};
+   \draw (T) -- ++(-.3,.3) node[above left, font=\tiny] {$j$};
+   \draw (T) -- ++(0,-.4) node[below, font=\tiny] {$i$};
+\end{tikzpicture}
+\]
+
+This flexibility in representing transposition and index permutation is one of the advantages of tensor diagram notation, as it allows for clear visualization of these operations without the need for additional notation or symbols.
+
 \section{Trace}
 
 The ``trace'' of a square matrix is defined $\mathrm{Tr}(A) = \sum_i A_{i,i}$.
@@ -508,23 +618,6 @@ Let's reproduce them with tensor diagrams:
    &
    \trace{A}{1} &= \trace{A, \sbullet}{2}
    \tag{11}
-   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   \mathrm{Tr}(A) &= \sum_i \lambda_i = \langle 1, \lambda\rangle
-   &
-   \trace{A}1 &=
-   \hspace{-2em}
-   \begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
-      \node (Q) {$Q$};
-      \node[right=1em of Q] (dot) {$\sbullet$};
-      \path (Q) edge (dot);
-      \node[below=.3em of dot] (e) {$\lambda$};
-      \path (dot) edge (e);
-      \node[right=1em of dot] (Qi) {$Q^{-1}$};
-      \path (dot) edge (Qi);
-      \path (Q) edge [out=160, in=20, looseness=1] (Qi);
-   \end{tikzpicture}
-   \hspace{-2em}
-   \tag{12}
    \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \mathrm{Tr}(A) &= \mathrm{Tr}(A^T)
    &
@@ -580,14 +673,19 @@ Let's reproduce them with tensor diagrams:
 
 
 \section{Eigenvalues}
-TODO: What else does the Matrix Cookbook include here?
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+Eigenvalues and eigenvectors are fundamental concepts in linear algebra that have important applications in tensor network theory. In tensor diagram notation, we can represent these concepts in a visually intuitive way.
+
+For a matrix $A$, if there exists a non-zero vector $v$ and a scalar $\lambda$ such that $Av = \lambda v$, then $\lambda$ is called an eigenvalue of $A$, and $v$ is the corresponding eigenvector.
+In tensor diagram notation It's convenient to write its eigendecomposition as $A = Q\Lambda Q^{-1}$, where $Q$ is a matrix whose columns are the eigenvectors of $A$, and $\Lambda$ is a diagonal matrix of the eigenvalues.
+Thus:
+\[
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
    \node (A) {$A$};
    \draw (A.west) -- ++(-.3, 0);
    \draw (A.east) -- ++(+.3, 0);
-\end{tikzpicture}
-=
-\begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
    \node (Q) {$Q$};
    \draw (Q.west) -- ++(-.3, 0);
    \node[right=1em of Q] (dot) {$\sbullet$};
@@ -597,8 +695,48 @@ TODO: What else does the Matrix Cookbook include here?
    \node[right=1em of dot] (Qi) {$Q^{-1}$};
    \path (dot) edge (Qi);
    \draw (Qi.east) -- ++(.3, 0);
-\end{tikzpicture}
-where $\lambda_i$ is the $i$th eigenvalue of $A$.
+   \end{tikzpicture}
+\]
+The trace of a matrix is equal to the sum of its eigenvalues. We can represent this relationship using tensor diagrams:
+\[
+   \tag{12}
+   \text{Tr}(A)
+   =
+   \hspace{-1em}
+   \trace{A}{1}
+   \hspace{-1em}
+   =
+   \hspace{-3em}
+   \begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
+      \node (Q) {$Q$};
+      \node[right=1em of Q] (dot) {$\sbullet$};
+      \path (Q) edge (dot);
+      \node[below=.3em of dot] (e) {$\lambda$};
+      \path (dot) edge (e);
+      \node[right=1em of dot] (Qi) {$Q^{-1}$};
+      \path (dot) edge (Qi);
+      \path (Q.west) edge [out=160, in=20, looseness=2] (Qi.east);
+   \end{tikzpicture}
+   \hspace{-3em}
+   =
+   \hspace{-1em}
+   \begin{tikzpicture}[baseline=(dot.base), inner sep=1pt]
+      \node (dot) {$\sbullet$};
+      \node[below=.3em of dot] (e) {$\lambda$};
+      \path (dot) edge (e);
+      \path (dot) edge [out=160, in=20, loop] ();
+   \end{tikzpicture}
+   \hspace{-1em}
+   =
+   \begin{tikzpicture}[baseline=(dot.base), inner sep=1pt]
+      \node (dot) {$\sbullet$};
+      \node[below=.3em of dot] (e) {$\lambda$};
+      \path (dot) edge (e);
+   \end{tikzpicture}
+   =
+   \sum_i \lambda_i
+\]
+
 
 
 %\begin{enumerate}

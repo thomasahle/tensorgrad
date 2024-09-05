@@ -47,15 +47,89 @@ M_4=
 These are less common in introductory causes, even though the scalar third and fourth moment are common.
 This is presumably because they require higher order tensors.
 
+If the entries of $x$ are independent, the non-diagonal entries disappear, so we get
+\[
+M =
+\left[
+   \begin{tikzpicture}[baseline=(c.base), inner sep=1pt]
+      \node (T1) {$(x\ominus m)$};
+      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
+      \node (c)[right=.7em of T1, yshift=-1em] {$\sbullet$};
+      \draw (T1) -- (c);
+      \draw (T2) -- (c);
+      \draw (c) -- ++(.7em,0);
+   \end{tikzpicture}
+\right]
+\quad\text{and}\quad
+M_3 =
+\left[
+   \begin{tikzpicture}[baseline=(T2.base), inner sep=1pt]
+      \node (T1) {$(x\ominus m)$};
+      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
+      \node (T3)[below=.5em of T2] {$(x\ominus m)$};
+      \node (c)[right=.7em of T2] {$\sbullet$};
+      \draw (T1) -- (c);
+      \draw (T2) -- (c);
+      \draw (T3) -- (c);
+      \draw (c) -- ++(.7em,0);
+   \end{tikzpicture}
+\right]
+\quad\text{and so on.}
+\]
+If the entries are also identically distributed, we simply have
+\[
+   M = \sigma^2
+   \,
+\begin{tikzpicture}[baseline=(T.base), inner sep=0]
+   \node (T) {$\sbullet$};
+   \draw (T) -- ++(0,.3);
+   \draw (T) -- ++(0,-.3);
+\end{tikzpicture}
+   \text{ and }
+   M_3 = \mathrm{E}[(x_0-m_0)^3]
+\begin{tikzpicture}[baseline=(T.base), inner sep=0]
+   \node (T) {$\sbullet$};
+   \draw (T) -- ++(0,.3);
+   \draw (T) -- ++(-.2,-.3);
+   \draw (T) -- ++(.2,-.3);
+\end{tikzpicture}
+.
+\]
+
 \section{Expectation of Linear Combinations}
 General principle: The ``linearity of expectation'' lets you pull out all parts of the graph not involving $X$.
 \[
    \vcenter{\hbox{
-      \import{figures/}{linearityOfExpectations.pdf_tex}
+      \import{figures/}{linearityOfExpectation.pdf_tex}
    }}
 \]
-where $M$ is the expectation of the product of the four instances of $X$, with no dependence of the constants $A$, $B$, $C$ and $D$.
-Note however that the way in which in $X$s are multiplied together matters, creating many possible raw ``fourth moments'' this way.
+where $M_3$ is the expectation
+\(
+\left[
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$x$};
+   \draw (T) -- ++(0,.3);
+   \draw (T) -- ++(-.1,-.3);
+   \draw (T) -- ++(.1,-.3);
+\end{tikzpicture}
+\,
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$x$};
+   \draw (T) -- ++(0,.3);
+   \draw (T) -- ++(-.1,-.3);
+   \draw (T) -- ++(.1,-.3);
+\end{tikzpicture}
+\,
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$x$};
+   \draw (T) -- ++(0,.3);
+   \draw (T) -- ++(-.1,-.3);
+   \draw (T) -- ++(.1,-.3);
+\end{tikzpicture}
+\right]
+\),
+which is an order-9 tensor with no dependence on the constants $A$, $B$, $C$ and $D$.
+In practice you would want to name the edges to keep track of what gets multiplied with what.
 
 \subsection{Linear Forms}
 The Matrix Cookbook gives the following simple expectations:
@@ -101,24 +175,50 @@ The Matrix Cookbook gives the following simple expectations:
 
 \subsection{Quadratic Forms}
 We often prefer to write expectations in terms of the simple centered moments, which we can do by pulling out the mean:
+\renewcommand*{\arraystretch}{1}
+\[
+\begin{bmatrix}
+   x - \\
+   x -
+\end{bmatrix}
+=
+\begin{bmatrix}
+   (x\ominus m) - \\
+   (x\ominus m) -
+\end{bmatrix}
++
+\begin{array}{c}
+   m - \\
+   m -
+\end{array}
+\]
+This makes it easy to handle the quadratic forms from the Matrix Cookbook:
+\renewcommand*{\arraystretch}{1}
 \begin{align*}
    \E[x^T A x]
-   &= \mathrm{Tr}(A \Sigma) + \mu^T A \mu
+   &= \mathrm{Tr}(A \Sigma) + m^T A m
    &
    [\vecmatvec{.5em}{x}{A}{x}]
    &=
-   \left[
-      \begin{cases}
-      \vecmatvec{.5em}{(x\ominus \mu)}{A}{(x \ominus\mu)}
-      + \vecmatvec{.5em}{\mu}{A}{\mu}
-      \\
-      \vecmatvec{.5em}{(x\ominus \mu)}{A}{x}
-      + \vecmatvec{.5em}{x}{A}{(x \ominus\mu)}
-   \end{cases}
-   \right]
+   \left(
+      \begin{bmatrix}
+         (x\ominus m) - \\
+         (x\ominus m) -
+      \end{bmatrix}
+      +
+      \begin{array}{c}
+         m - \\
+         m -
+      \end{array}
+   \right)
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      \node (A) {$A$};
+      \draw (A) -- ++(-.5, .1);
+      \draw (A) -- ++(-.5, -.1);
+   \end{tikzpicture}
    \\
    &&&=
-   \mathbin{\begin{tikzpicture}[inner sep=1pt]
+   \mathbin{\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
       \node (n1) at (0,-.25) {$(x\ominus m)$};
       \node (n2) at (0,.25) {$(x\ominus m)$};
       \node at (-.75, 0) {$\Bigg[$};
@@ -128,16 +228,142 @@ We often prefer to write expectations in terms of the simple centered moments, w
       \draw (n2) -- (A);
    \end{tikzpicture}}
    +
-   \vecmatvec{.5em}{\mu}{A}{\mu}
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      \node (A) {$A$};
+      \node (m1) at (-.75, .2) {$m$};
+      \node (m2) at (-.75, -.2) {$m$};
+      \draw (m1) -- (A) -- (m2);
+   \end{tikzpicture}
    \\
    &&&=
    \trace{\Sigma,A}2
    +
-   \vecmatvec{.5em}{\mu}{A}{\mu}
+   \vecmatvec{.5em}{m}{A}{m}
+   \\
+   E[\mathbf{x}^T A\mathbf{x}] &= \text{Tr}(AM) + m^T Am \tag{318} \\
+\end{align*}
+Note, the later is really a quartic form.
+
+Also, assume $\mathbf{x}$ to be a stochastic vector with mean m, and covariance M.
+Then
+\begin{align*}
+   \text{Var}[\mathbf{x}^T A\mathbf{x}] &= 2\mu_2^2\text{Tr}(A^2) + 4\mu_2 c^T A^2 c + 4\mu_3 c^T Aa + (\mu_4 - 3\mu_2^2)a^T a \tag{319} \\
+   E[(A\mathbf{x} + a)(B\mathbf{x} + b)^T] &= AMB^T + (Am + a)(Bm + b)^T \tag{320} \\
+   E[\mathbf{x}\mathbf{x}^T] &= M + mm^T \tag{321} \\
+   E[\mathbf{x} a^T \mathbf{x}] &= (M + mm^T)a \tag{322} \\
+   E[\mathbf{x}^T a\mathbf{x}^T] &= a^T(M + mm^T) \tag{323} \\
+   E[(A\mathbf{x})(A\mathbf{x})^T] &= A(M + mm^T)A^T \tag{324} \\
+   E[(\mathbf{x} + a)(\mathbf{x} + a)^T] &= M + (m + a)(m + a)^T \tag{325} \\
+   E[(A\mathbf{x} + a)^T(B\mathbf{x} + b)] &= \text{Tr}(AMB^T) + (Am + a)^T(Bm + b) \tag{326} \\
+   E[\mathbf{x}^T \mathbf{x}] &= \text{Tr}(M) + m^T m \tag{327} \\
+   E[\mathbf{x}^T A\mathbf{x}] &= \text{Tr}(AM) + m^T Am \tag{328} \\
+   E[(A\mathbf{x})^T(A\mathbf{x})] &= \text{Tr}(AMA^T) + (Am)^T(Am) \tag{329} \\
+   E[(\mathbf{x} + a)^T(\mathbf{x} + a)] &= \text{Tr}(M) + (m + a)^T(m + a) \tag{330}
 \end{align*}
 
 \subsection{Cubic Forms}
-TODO
+When $x$ is a stochastic vector with mean vector $m$,
+it can be convenient to expand the raw third moment in terms of the central moments:
+\renewcommand*{\arraystretch}{1}
+\begin{align*}
+\begin{bmatrix}
+   x - \\
+   x - \\
+   x -
+\end{bmatrix}
+&=
+\begin{bmatrix}
+   (x\ominus m) - \\
+   (x\ominus m) - \\
+   (x\ominus m) -
+\end{bmatrix}
+\vspace{-.5em}
++
+3
+\hspace{-.25em}
+\begin{array}{l}
+\begin{bmatrix}
+   (x\ominus m) -
+\end{bmatrix}\\[.1em]
+\begin{bmatrix}
+   m - \\
+   m -
+\end{bmatrix}
+\end{array}
+\hspace{-.5em}
++
+3
+\hspace{-.25em}
+\begin{array}{l}
+\begin{bmatrix}
+   m -
+\end{bmatrix}\\[.1em]
+\begin{bmatrix}
+   (x\ominus m) - \\
+   (x\ominus m) -
+\end{bmatrix}
+\end{array}
+\hspace{-.5em}
++
+\hspace{-.5em}
+\begin{array}{c}
+\begin{bmatrix}
+   m -
+\end{bmatrix}\\[.1em]
+\begin{bmatrix}
+   m -
+\end{bmatrix}\\[.1em]
+\begin{bmatrix}
+   m -
+\end{bmatrix}
+\end{array}
+%
+\\&=
+\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+   \node (T) {$M_3$};
+   \draw (T) -- ++(0,.4);
+   \draw (T) -- ++(-.2,-.35);
+   \draw (T) -- ++(.2,-.35);
+\end{tikzpicture}
++
+3
+\hspace{-.25em}
+\begin{array}{c}
+   m - \\
+   -M-
+\end{array}
+\hspace{-.5em}
++
+\begin{array}{c}
+   m - \\
+   m - \\
+   m -
+\end{array}
+\end{align*}
+TODO: The edges from the $m,M$ term needs to be symmetrized.
+
+Assume \(\mathbf{x}\) to be a stochastic vector with independent coordinates, mean \(m\),
+covariance \(M\) and central moments \(v_3 = \mathbb{E}[(\mathbf{x} - m)^3]\). Then (see [7])
+\begin{align*}
+&\mathbb{E}[(A\mathbf{x} + a)(B\mathbf{x} + b)^T (C\mathbf{x} + c)]
+\\&\quad=
+A\mathrm{diag}(B^T C) v_3
+\\&\quad+
+\mathrm{Tr}(BMC^T)(Am + a)
+\\&\quad+
+AMC^T (Bm + b)
+\\&\quad+
+(AMB^T + (Am + a))(Bm + b)^T (Cm + c)
+\\
+  &\mathbb{E}[\mathbf{x} \mathbf{x}^T \mathbf{x}]
+\\&\quad=
+   v_3
+\\&\quad+
+   2 Mm
+\\&\quad+
+   (\text{Tr}(M) + m^T m) m
+\end{align*}
+
 
 \section{Weighted Scalar Variable}
 Let $y=w^T x$, and let $m=E[y]$, then
@@ -194,5 +420,28 @@ TODO
 TODO
 \subsection{Mean of Quartic Forms}
 TODO
+\subsection{Micture of Gaussians}
+\subsection{Derivatives}
 
+\section{Exercises}
+\begin{exercise}
+   \begin{align*}
+   \mathbb{E}[(A\mathbf{x} + a)(A\mathbf{x} + a)^T (A\mathbf{x} + a)] = 
+   \text{Adiag}(A^T A) v_3 \\
+   + [2 AMA^T + (A\mathbf{x} + a)(A\mathbf{x} + a)^T] (Am + a) \\
+   + \text{Tr}(AMA^T)(Am + a)
+   \end{align*}
 
+   \begin{align*}
+   \mathbb{E}[(A\mathbf{x} + a) b^T (C\mathbf{x} + c)(D\mathbf{x} + d)^T] = 
+   (A\mathbf{x} + a) b^T (CMD^T + (Cm + c)(Dm + d)^T) \\
+   + (AMC^T + (Am + a)(Cm + c)^T) b(Dm + d)^T \\
+   + b^T (Cm + c)(AMD^T - (Am + a)(Dm + d)^T)
+   \end{align*}
+\end{exercise}
+\begin{exercise}
+   Find more identities in the Matrix Reference Manual.
+   http://www.ee.ic.ac.uk/hp/staff/dmb/matrix/expect.html
+   And try to prove them.
+   Also try to verify your derivations using tensorgrad.
+\end{exercise}
