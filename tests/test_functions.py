@@ -368,7 +368,7 @@ def test_attention():
     key = (W_k @ X).rename(seq="seq_k")
     value = (W_v @ X).rename(seq="seq_k")
 
-    logits: Tensor["seq_q", "seq_k", "head"] = F.dot(query, key, ["inner"])
+    logits = F.dot(query, key, ["inner"])
     attention_scores = Function("softmax", {"seq_k": seq}, (logits, "seq_k"))
     expr = F.dot(value, attention_scores, ["seq_k"])
     expr = F.dot(W_o, expr, ["inner", "head"])

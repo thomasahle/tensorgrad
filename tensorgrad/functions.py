@@ -117,6 +117,7 @@ def graph(dot_graph, **vars):
     - You can connect edges with different names. For example, 'A -i-j- B' connects edge 'i' of A to edge 'j' of B.
     - Copy tensors are created automatically when a name starting with '*', like '*3' is used.
     - Lines can be separated by newlines or semicolons.
+    - Edges not mentioned in the graph are broadcasted.
 
     Examples:
     ---------
@@ -182,29 +183,36 @@ def graph(dot_graph, **vars):
     ds = DisjointSets()
 
     for v0, e0, e1, v1 in edges:
+        # Syntax checking
         for v, e in ((v0, e0), (v1, e1)):
             if v and not v.startswith("*"):
                 if v not in vars:
                     raise ValueError(f"Variable {v} not found in vars")
                 if e not in vars[v].edges:
                     raise ValueError(f"Edge {e} not found in variable {v}")
-
         if v0 is None and v1 is None:
             raise ValueError("Cannot have two free edges")
+
+        # The case X -i-, where the edge is free
         elif v0 is None or v1 is None:
             v, e = (v1, e1) if v0 is None else (v0, e0)
+            # In the case "*0 -i-" we add the edge to the hyperedge
             if v.startswith("*"):
                 hyperedges[he_names[v]].append(e)
+            # Otherwise we just rename the edge
             else:
                 vars[v] = vars[v].rename(**{e: e0 if v0 is None else e1})
+        # The case *0 -i- *1, that is, two copy edges
         elif v0.startswith("*") and v1.startswith("*"):
             ds.union(he_names[v0], he_names[v1])
+        # The case *0 -i- X, where we have a single copy edge
         elif v0.startswith("*") or v1.startswith("*"):
             v, e, he = (v0, e0, v1) if v1.startswith("*") else (v1, e1, v0)
             c = next(free_edges)
             hyperedges[he_names[he]].append(c)
             hypersizes[he_names[he]].append(vars[v].shape[e])
             vars[v] = vars[v].rename(**{e: c})
+        # The case where a variable is connected to itself
         elif v0 == v1:
             if e0 == e1:
                 raise ValueError("Cannot have a self loop on a single edge")
@@ -213,14 +221,24 @@ def graph(dot_graph, **vars):
             hyperedges[he].extend([c0, c1])
             hypersizes[he].append(vars[v0].shape[e0])
             vars[v0] = vars[v0].rename(**{e0: c0, e1: c1})
+        # A standard connection between two variables
         else:
             e = next(free_edges)
             vars[v0] = vars[v0].rename(**{e0: e})
             vars[v1] = vars[v1].rename(**{e1: e})
 
+    # We want to find all edges that have the same name, but are not connected.
+    # How do we even do that?
+
+    # Create copy tensors for broadcasted edges
+    # for v in vars.values():
+    #    for e in v.edges:
+    #        if e not in {e0 for e0, *_ in edges}:
+    #            vars[v] = vars[v] @ Copy(v.shape[e], e)
+
+    # Create the actual tensors for the copy tensors
     if any(he not in hyperedges for he in he_names.values()):
         raise ValueError("Some hyperedges are not connected to anything.")
-
     partition = defaultdict(list)
     for name in hyperedges.keys():
         partition[ds.find(name)].append(name)

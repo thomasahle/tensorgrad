@@ -57,8 +57,11 @@ The following first order derivatives show the basic linearity properties of the
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
          \node (a0) {};
          \node[right=1em of a0] (a1) {$a$};
-         \path (a0) edge (a1);
-         \draw (a0.east) -- ++(-.1,-.2);
+         \draw (a1) -- ++(-.3, 0) arc (-90:-270:.1);
+      \end{tikzpicture}
+   =
+      \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+         \draw (0,0) node[left] {$a$} -- ++(.3, 0);
       \end{tikzpicture}
    \\
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -86,13 +89,10 @@ The following first order derivatives show the basic linearity properties of the
       \end{tikzpicture}
       =
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
-         \node (a0) {$a$};
-         \node[right=1em of a0] (a1) {};
-         \node[right=1em of a1] (a2) {$b$};
-         \path (a0) edge (a1);
-         \path (a1) edge (a2);
-         \draw (a1.west) -- ++(.1,.2);
-         \draw (a1.east) -- ++(-.1,-.2);
+         \node (a) {$a$};
+         \draw (a) -- ++(.3, 0) arc (270:90:-.1);
+         \node[right=2em of a] (b) {$b$};
+         \draw (b) -- ++(-.3, 0) arc (270:90:.1);
       \end{tikzpicture}
    \\
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
