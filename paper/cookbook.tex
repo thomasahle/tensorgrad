@@ -7,20 +7,32 @@
 \usepackage{amsthm}
 \usepackage{placeins}
 \usepackage[T1]{fontenc}
+\usepackage[]{hyperref}
 \usepackage{import}
 \usepackage{graphicx}
 \usepackage{adjustbox}
-\usepackage{draftwatermark}
-\usepackage{changepage}
-
-
-\SetWatermarkText{DRAFT}
-\SetWatermarkScale{5}
-\SetWatermarkColor[gray]{0.9}
-
-
+\usepackage{changepage} % for adjustwidth
 \usepackage{listings}
 \usepackage{xcolor}
+
+% https://tex.stackexchange.com/a/398211/24956
+\usepackage{environ}
+\NewEnviron{walign}{%
+  \noindent
+  \begin{adjustwidth}{-1em}{-1em}
+  \begin{align*}
+    \BODY
+  \end{align*}
+  \end{adjustwidth}
+}
+
+\newcommand{\vflip}[1]{%
+  \ifmmode
+    \rotatebox[origin=c]{180}{$#1$}%
+  \else
+    \rotatebox[origin=c]{180}{#1}%
+  \fi
+}
 
 \lstset{
   language=Python,
@@ -59,7 +71,6 @@
 \newcommand{\smat}[1]{\left[\begin{smallmatrix}#1\end{smallmatrix}\right]}
 \newcommand{\svec}[1]{[\begin{smallmatrix}#1\end{smallmatrix}]}
 \newcommand{\E}{\mathrm{E}}
-% \newcommand\sbullet[1][.5]{\mathbin{\hbox{\scalebox{#1}{$\bullet$}}}}
 \newcommand\sbullet[1][1.5pt]{%
   \tikz[baseline=-0.5ex]\draw (0,0) circle (#1);%
 }
@@ -76,18 +87,18 @@
 
 \maketitle
 
-%\input{chapters/intro.tex}
+\input{chapters/intro.tex}
 \input{chapters/simple_derivatives.tex}
-%\input{chapters/kronecker.tex}
-%\input{chapters/functions.tex}
-%\input{chapters/statistics.tex}
-%\input{chapters/determinant.tex}
-%\input{chapters/advanced_derivatives.tex}
-%\input{chapters/special_matrices.tex}
-%\input{chapters/decompositions.tex}
-%\input{chapters/ml.tex}
-%\input{chapters/tensor_algos.tex}
-%\input{chapters/tensorgrad.tex}
+\input{chapters/kronecker.tex}
+\input{chapters/functions.tex}
+\input{chapters/statistics.tex}
+\input{chapters/determinant.tex}
+\input{chapters/advanced_derivatives.tex}
+\input{chapters/special_matrices.tex}
+\input{chapters/decompositions.tex}
+\input{chapters/ml.tex}
+\input{chapters/tensor_algos.tex}
+\input{chapters/tensorgrad.tex}
 
 \bibliographystyle{plain}
 \bibliography{references}

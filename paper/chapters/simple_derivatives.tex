@@ -34,34 +34,55 @@ Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
 \subsection{First Order}
 The following first order derivatives show the basic linearity properties of the derivative operator.
 
-\begin{align*}
+\begin{walign}
    \tag{69}
    \frac{\partial x^T a}{\partial x}
-   &= \frac{\partial a^T x}{\partial x}
-   = a
+   &= a
    &
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
          \node (a0) {$(x$};
          \node[right=1em of a0] (a1) {$a)$};
          \path (a0) edge (a1);
-         \draw [d] (a1.east) -- ++(.2,.2);
+         \draw [d] (a1.east) -- ++(-.2,.2);
       \end{tikzpicture}
    &=
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
          \node (a0) {$(x)$};
          \node[right=1em of a0] (a1) {$a$};
          \path (a0) edge (a1);
-         \draw [d] (a0.east) -- ++(.2,.2);
-      \end{tikzpicture}
-   =
-      \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
-         \node (a0) {};
-         \node[right=1em of a0] (a1) {$a$};
-         \draw (a1) -- ++(-.3, 0) arc (-90:-270:.1);
+         \draw [d] (a0.east) -- ++(-.2,.2);
       \end{tikzpicture}
    =
       \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
-         \draw (0,0) node[left] {$a$} -- ++(.3, 0);
+         \draw (0,0) node[right] (a) {$a$} -- ++(-.3, 0);
+      \end{tikzpicture}
+   \\
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{69}
+   \frac{\partial a^T x}{\partial x}
+   &= a
+   &
+      \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+         \node (a0) {$(a$};
+         \node[right=1em of a0] (a1) {$x)$};
+         \path (a0) edge (a1);
+         \draw [d] (a1.east) -- ++(-.2,.2);
+      \end{tikzpicture}
+   &=
+      \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+         \node (a0) {$(x)$};
+         \node[left=1em of a0] (a1) {$a$};
+         \path (a0) edge (a1);
+         \draw [d] (a0.east) -- ++(-.2,.2);
+      \end{tikzpicture}
+   =
+      \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+         \node (a) {$a$};
+         \draw (a.east) -- ++(.1, 0) arc (270:90:-.1) -- ++(-.1, 0);
+      \end{tikzpicture}
+   =
+      \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+         \draw (0,0) node[right] (a) {$a$} -- ++(-.3, 0);
       \end{tikzpicture}
    \\
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -88,7 +109,7 @@ The following first order derivatives show the basic linearity properties of the
          \draw[d] (a1.east) -- ++(.3,.1);
       \end{tikzpicture}
       =
-      \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
          \node (a) {$a$};
          \draw (a) -- ++(.3, 0) arc (270:90:-.1);
          \node[right=2em of a] (b) {$b$};
@@ -103,20 +124,16 @@ The following first order derivatives show the basic linearity properties of the
          \node (a0) {$($};
          \node[right=1em of a0] (a1) {$X$};
          \node[right=1em of a1] (a2) {$)$};
-         \path (a0) edge (a1);
-         \path (a1) edge (a2);
+         \draw (a0) -- (a1) -- (a2);
          \draw[d] (a2.east) -- ++(.2,.2) node[midway, above left, font=\tiny] {i};
          \draw[d] (a2.east) -- ++(.3,.1) node[midway, below right, font=\tiny] {j};
       \end{tikzpicture}
    &=
-      \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
-         \node (a0) {};
-         \node[right=1em of a0] (a1) {};
-         \node[right=1em of a1] (a2) {};
-         \path (a0) edge (a1);
-         \path (a1) edge (a2);
-         \draw (a1.west) -- ++(.1,.2) node[midway, above left, font=\tiny] {i};
-         \draw (a1.east) -- ++(-.1,-.2) node[midway, below right, font=\tiny] {j};
+      \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+         \node (a) {};
+         \draw (a) -- ++(.3, 0) arc (270:90:-.1) node[pos=1, below left, font=\tiny] {i};
+         \node[right=2em of a] (b) {};
+         \draw (b) -- ++(-.3, 0) arc (270:90:.1) node[pos=1, above right, font=\tiny] {j};
       \end{tikzpicture}
    \\
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -158,7 +175,7 @@ The following first order derivatives show the basic linearity properties of the
          \draw (a1.west) -- ++(.1,.2) node[midway, above left, font=\tiny] {m};
          \draw (a1.east) -- ++(-.1,-.2) node[midway, below right, font=\tiny] {n};
       \end{tikzpicture}
-\end{align*}
+\end{walign}
 
 \subsection{Second Order}
 The second order derivatives are follow from the product rule:
@@ -169,10 +186,7 @@ The second order derivatives are follow from the product rule:
 \]
 Note that this rule holds independently of how many edges are between $T$ and $U$, even if there are none.
 
-\noindent
-%\makebox[\textwidth]{\parbox{1.1\textwidth}{%
-\begin{adjustwidth}{-0.05\textwidth}{-0.05\textwidth}
-\begin{align*}
+\begin{walign}
    \tag{76}
    \frac{\partial}{\partial X_{i,j}}
    \sum_{k,l,m,n} X_{k,l} X_{m,n}
@@ -368,13 +382,13 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    \end{tikzpicture}
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \\
-   \tag{80} 
+   \tag{80}
    \frac{\partial}{\partial X_{i,j}} X^TBX &= X^TBJ^{i,j} + J^{j,i}BX 
    &
    \text{(same as above)} &
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \\
-   \tag{81} 
+   \tag{81}
    \frac{\partial}{\partial x} x^TBx &= (B+B^T)x 
    &
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -383,12 +397,21 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \node[right=.5em of a1] (a2) {$x)$};
       \draw (a0) -- (a1);
       \draw (a1) -- (a2);
-      \draw[d] (a2.east) -- ++(.2,.2) node[midway, above left, font=\tiny] {i};
-      \draw[d] (a2.east) -- ++(.3,.1) node[midway, below right, font=\tiny] {j};
+      \draw[d] (a2.east) -- ++(.2,.2);
    \end{tikzpicture}
    &=
    \vecmatvec{.5em}{}{B}{x}
-   + \vecmatvec{.5em}{x}{B}{}
+   +
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$x$};
+      \node[right=.5em of a0] (a1) {$B$};
+      \draw (a0) -- (a1) -- ++(.3,0) arc (270:90:-.1) -- ++(-.3,0);
+   \end{tikzpicture}
+ \\&&&=
+ \vecmatvec{.5em}{
+    (\vecmatvec{.5em}{}{B}{}
+    + \vecmatvec{.5em}{}{B^T}{})}
+    {}{x}
  \\&&&=
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
       \node (a0) at (0,0) {};
@@ -407,9 +430,7 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \node (x) at (-1,.25) {$x$};
       \draw (x) -- (l) node[midway, above right, font=\tiny] {i};
    \end{tikzpicture}
-\end{align*}
-\end{adjustwidth}
-%}}
+\end{walign}
 
 
 TODO: Assume $W$ is symmetric, then... (84) - (88)
@@ -418,10 +439,9 @@ TODO: Assume $W$ is symmetric, then... (84) - (88)
 Integer powers of matrices, like $X^n$, are easy to handle by writing
 out the product and using the product rule.
 The Matrix Cookbook includes a few derivatives we can handle this way.
-\begin{align*}
+\begin{walign}
    \\[.5em]
-   %\tag{77} 
-   %\frac{\partial b^T X^T X c}{\partial X} &= X(bc^T + cb^T) 
+   \tag{90}
    \frac{\partial\left(\mathbf{X}^n\right)_{k l}}{\partial X_{i j}}
    &=
   \sum_{r=0}^{n-1}\left(\mathbf{X}^r \mathbf{J}^{i j} \mathbf{X}^{n-1-r}\right)_{k l}
@@ -477,6 +497,7 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \draw (X1.west) -- ++(-.2,0) -- ++(-.1,-.2) node[midway, below right, font=\tiny] {j};
    \end{tikzpicture}
  \\
+   \tag{91}
    \frac{\partial}{\partial \mathbf{X}} \mathbf{a}^T \mathbf{X}^n \mathbf{b}
    &=\sum_{r=0}^{n-1}\left(\mathbf{X}^r\right)^T \mathbf{a b}^T\left(\mathbf{X}^{n-1-r}\right)^T
    &&
@@ -504,7 +525,7 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \node (X0) {$-(X^r)^T-a$};
       \node[right=.25 of X0] (X1) {$b-(X^{n-r-1})^T-$};
    \end{tikzpicture}
-\end{align*}
+\end{walign}
 
 
 % Could be cool to do exponential here, if I could only find a good result for it...
@@ -519,7 +540,7 @@ These can be elegant in classical notation, since traces are scalar, so the deri
 
 \subsection{First Order}
 
-\begin{align*}
+\begin{walign}
    \tag{99}
    \frac{\partial}{\partial X} \mathrm{Tr}(X)
    &= I
@@ -636,19 +657,18 @@ These can be elegant in classical notation, since traces are scalar, so the deri
    \end{tikzpicture}
  \\&&&=
    \matmul{A^T, B^T}
-\end{align*}
+\end{walign}
 
 
 Continues for (102-105).
 The last one uses the Kronecker product, which we may have to introduce first.
 
 \subsection{Second Order}
-\noindent
-\begin{adjustwidth}{-1em}{-1em}
-\begin{align*}
+\begin{walign}
+   \tag{106}
    \frac{\partial}{\partial X} \mathrm{Tr}(X^2)
    &=2 X^T
-   &
+   &&
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$($};
       \node[right=.5em of a0] (a1) {$X$};
@@ -659,7 +679,7 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a3.east) -- ++(.2,.2);
       \draw[d] (a3.east) -- ++(.3,.1);
    \end{tikzpicture}
-   &=
+ \\&&&=
    \hspace{-2em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$(X)$};
@@ -707,9 +727,10 @@ The last one uses the Kronecker product, which we may have to introduce first.
    2\,\matmul{X^T}
    \\[1em]
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{107}
    \frac{\partial}{\partial X} \mathrm{Tr}(X^2 B)
    &=(XB+BX)^T
-   &
+   &&
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$($};
       \node[right=.5em of a0] (a1) {$X$};
@@ -721,8 +742,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a4.east) -- ++(.2,.2);
       \draw[d] (a4.east) -- ++(.3,.1);
    \end{tikzpicture}
-   &=
-   \hspace{-2em}
+  \\&&&=
+   \hspace{-1.5em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$(X)$};
       \node[right=1em of a1] (a2) {$X$};
@@ -732,9 +753,9 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a1.south east) -- ++(.2,-.2);
       \draw[d] (a1.south east) -- ++(.3,-.1);
    \end{tikzpicture}
-   \hspace{-2em}
+   \hspace{-1.5em}
    +
-   \hspace{-2em}
+   \hspace{-1.5em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$X$};
       \node[right=1em of a1] (a2) {$(X)$};
@@ -744,7 +765,7 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a2.south east) -- ++(.2,-.2);
       \draw[d] (a2.south east) -- ++(.3,-.1);
    \end{tikzpicture}
-   \hspace{-2em}
+   \hspace{-1.5em}
  \\&&&=
    \hspace{-1.5em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -774,10 +795,11 @@ The last one uses the Kronecker product, which we may have to introduce first.
    + \matmul{X^T, B^T}
    \\[1em]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{108, 109, 110}
    \frac{\partial}{\partial X} \mathrm{Tr}(X^T B X)
     &=
    \frac{\partial}{\partial X} \mathrm{Tr}(X X^T B)
-   &
+    &&
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$($};
       \node[right=.5em of a0] (a1) {$X^T$};
@@ -789,7 +811,9 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a4.east) -- ++(.2,.2);
       \draw[d] (a4.east) -- ++(.3,.1);
    \end{tikzpicture}
-   &=
+ \\&
+   =\frac{\partial}{\partial X} \mathrm{Tr}(B X X^T)
+   &&=
    \hspace{-2em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$(X^T)$};
@@ -812,9 +836,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a3.south east) -- ++(.2,-.2);
       \draw[d] (a3.south east) -- ++(.3,-.1);
    \end{tikzpicture}
-   \hspace{-2em}
  \\&
-   =\frac{\partial}{\partial X} \mathrm{Tr}(B X X^T)
+   =(B+B^T)X
    &&=
    \hspace{-1.5em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -837,18 +860,17 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw (a3.west) -- ++(-.2,-.1);
       \draw ($(a3.east)-(0,-.2em)$) -- ++(.2,-.1);
    \end{tikzpicture}
-   \hspace{-1.5em}
- \\&
-   =(B+B^T)X
-   &&=
+   \\
+   &&&=
    \matmul{B, X}
    + \matmul{B^T, X}
    \\[1em]
+   \tag{111, 112, 113}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
     &=
    \frac{\partial}{\partial X} \mathrm{Tr}(X^T X B)
-   &
+    &&
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$($};
       \node[right=.5em of a0] (a1) {$X$};
@@ -860,7 +882,9 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a4.east) -- ++(.2,.2);
       \draw[d] (a4.east) -- ++(.3,.1);
    \end{tikzpicture}
-   &=
+ \\&
+   =\frac{\partial}{\partial X} \mathrm{Tr}(B X^T X)
+   &&=
    \hspace{-2em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$(X)$};
@@ -883,9 +907,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw[d] (a3.south east) -- ++(.2,-.2);
       \draw[d] (a3.south east) -- ++(.3,-.1);
    \end{tikzpicture}
-   \hspace{-2em}
  \\&
-   =\frac{\partial}{\partial X} \mathrm{Tr}(B X^T X)
+   =X(B^T+B)
    &&=
    \hspace{-1.5em}
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -907,14 +930,10 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
    \end{tikzpicture}
-   \hspace{-1.5em}
- \\&
-   =X(B^T+B)
-   &&=
-   \matmul{X, B^T}
-   +\matmul{X, B}
-\end{align*}
-\end{adjustwidth}
+   \\
+   &&&=
+   \matmul{X, B^T} + \matmul{X, B}
+\end{walign}
 
 The last equation is a bit surprising, since we might assume
 we could simply substitute $X$ for $X^T$ in the previous equation
@@ -943,7 +962,8 @@ $\frac{\partial}{\partial X} f(X)^T \neq
 
 
 
-\begin{align*}
+\begin{walign}
+   \tag{121}
    \frac{\partial}{\partial X}\mathrm{Tr}(X^n)
    &=
    n(X^{n-1})^T
@@ -976,6 +996,7 @@ $\frac{\partial}{\partial X} f(X)^T \neq
    (X^T)^{n-1}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \\[1em]
+   \tag{122}
    \frac{\partial}{\partial X} \mathrm{Tr}(AX^n)
    &=\sum_{r=0}^{n-1}(X^r A X^{n-1-r})^T
    &&
@@ -1007,7 +1028,7 @@ $\frac{\partial}{\partial X} f(X)^T \neq
    &&&=\quad
    \sum_{r=0}^{n-1}
    \matmul{(X^r)^T, A^T, (X^{n-r-1})^T}
-\end{align*}
+\end{walign}
 
 
 \section{Exercises}
@@ -1039,23 +1060,29 @@ $\frac{\partial}{\partial X} f(X)^T \neq
 \begin{exercise}
    Show the remaining second order trace derivatives from the Matrix Cookbook:
    \begin{align*}
-   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{A X B X})
-   &=\mathbf{A}^T \mathbf{X}^T \mathbf{B}^T+\mathbf{B}^T \mathbf{X}^T \mathbf{A}^T
+      \tag{114}
+   \frac{\partial}{\partial X} \operatorname{Tr}(A X B X)
+   &=A^T X^T B^T+B^T X^T A^T
    \\
-   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X}^T \mathbf{X}\right)
-   &=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{X} \mathbf{X}^T\right)=2 \mathbf{X}
+   \tag{115}
+   \frac{\partial}{\partial X} \operatorname{Tr}\left(X^T X\right)
+   &=\frac{\partial}{\partial X} \operatorname{Tr}\left(X X^T\right)=2 X
    \\
-   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{B}^T \mathbf{X}^T \mathbf{C X B}\right)
-   &=\mathbf{C}^T \mathbf{X} \mathbf{B B}^T+\mathbf{C X B B}^T
+   \tag{116}
+   \frac{\partial}{\partial X} \operatorname{Tr}\left(B^T X^T C X B\right)
+   &=C^T X B B^T+C X B B^T
    \\
-   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{X}^T \mathbf{B X C}\right]
-   &=\mathbf{B X C}+\mathbf{B}^T \mathbf{X} \mathbf{C}^T
+   \tag{117}
+   \frac{\partial}{\partial X} \operatorname{Tr}\left[X^T B X C\right]
+   &=B X C+B^T X C^T
    \\
-   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left(\mathbf{A X B} \mathbf{X}^T \mathbf{C}\right)
-   &=\mathbf{A}^T \mathbf{C}^T \mathbf{X B}^T+\mathbf{C A X B}
+   \tag{118}
+   \frac{\partial}{\partial X} \operatorname{Tr}\left(A X B X^T C\right)
+   &=A^T C^T X B^T+C A X B
    \\
-   \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[(\mathbf{A X B}+\mathbf{C})(\mathbf{A X B}+\mathbf{C})^T\right]
-   &=2 \mathbf{A}^T(\mathbf{A X B}+\mathbf{C}) \mathbf{B}^T
+   \tag{119}
+   \frac{\partial}{\partial X} \operatorname{Tr}\left[(A X B+C)(A X B+C)^T\right]
+   &=2 A^T(A X B+C) B^T
    \\
    \end{align*}
 \end{exercise}
@@ -1063,9 +1090,11 @@ $\frac{\partial}{\partial X} f(X)^T \neq
 \begin{exercise}
    Show the derivative of the fourth order trace from the Matrix Cookbook:
    \begin{align*}
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\mathbf{B}^T \mathbf{X}^T \mathbf{C X} \mathbf{X}^T \mathbf{C X B}\right]&= \mathbf{C X} \mathbf{X}^T \mathbf{C X B B}{ }^T \\
-& +\mathbf{C}^T \mathbf{X B B} \mathbf{B}^T \mathbf{X}^T \mathbf{C}^T \mathbf{X} \\
-& +\mathbf{C X B B}^T \mathbf{X}^T \mathbf{C X} \\
-& +\mathbf{C}^T \mathbf{X X}^T \mathbf{C}^T \mathbf{X} \mathbf{B B}
+      \tag{123}
+\frac{\partial}{\partial X} \operatorname{Tr}\left[B^T X^T C X X^T C X B\right]
+&= C X X^T C X B B^T 
+\\&+ C^T X B B^T X^T C^T X 
+\\&+ C X B B^T X^T C X 
+\\&+ C^T X X^T C^T X B B^T
    \end{align*}
 \end{exercise}

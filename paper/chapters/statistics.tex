@@ -369,51 +369,6 @@ AMB^T (Cm + c)
 
 
 
-\begin{tikzpicture}
-
-% First row
-\node[box] (box1) {X X---X};
-
-% Second row
-\node[box, below=0.5cm of box1] (box2) {X X X};
-\node[left=0.2cm of box2] (eq1) {=};
-\draw (box2.south east) to[out=-30,in=-150] ++(0.8cm,0);
-
-% Third row
-\node[below=0.8cm of box2] (eq2) {=};
-\node[right=0.2cm of eq2] (paren1) {(};
-\node[right=0.1cm of paren1] (v3) {$v_3$};
-\draw (v3.south) -- ++(0,-0.2cm);
-\draw (v3.south east) circle (0.05cm);
-\node[right=0.3cm of v3] (plus1) {+};
-\node[right=0.2cm of plus1] (mM1) {m M};
-\draw (mM1.north east) -- ++(0.1cm,-0.1cm) -- ++(0.1cm,0.1cm) -- ++(0.1cm,-0.1cm);
-\node[right=0.3cm of mM1] (plus2) {+};
-\node[right=0.2cm of plus2] (mmm1) {m m m};
-\foreach \x in {0,0.25,0.5}
-    \draw ([xshift=\x cm]mmm1.south west) -- ++(0,-0.2cm);
-\node[right=0.2cm of mmm1] (paren2) {)};
-\draw (paren2.north east) to[out=45,in=135] ++(0.4cm,0);
-
-% Fourth row
-\node[below=0.8cm of eq2] (eq3) {=};
-\node[right=0.2cm of eq3] (v3_2) {$v_3$};
-\draw (v3_2.south) -- ++(0,-0.2cm);
-\draw (v3_2.south east) circle (0.05cm);
-\node[right=0.3cm of v3_2] (plus3) {+};
-\node[right=0.2cm of plus3] (mM2) {2 m M};
-\draw (mM2.north east) to[out=45,in=135] ++(0.6cm,0);
-\node[right=0.6cm of mM2] (plus4) {+};
-\node[right=0.2cm of plus4] (mM3) {m M};
-\draw (mM3.south west) -- ++(0,-0.2cm);
-\draw (mM3.north east) to[out=45,in=135] ++(0.6cm,0);
-\node[right=0.6cm of mM3] (plus5) {+};
-\node[right=0.2cm of plus5] (mmm2) {m m m};
-\draw (mmm2.south west) -- ++(0,-0.2cm);
-\draw (mmm2.south west) ++(0.25cm,0) -- ++(0,-0.2cm);
-\draw (mmm2.north east) to[out=45,in=135] ++(0.6cm,0);
-
-\end{tikzpicture}
 
 \section{Weighted Scalar Variable}
 Let $y=w^T x$, and let $m=E[y]$, then
@@ -490,8 +445,6 @@ TODO
    \end{align*}
 \end{exercise}
 \begin{exercise}
-   Find more identities in the Matrix Reference Manual.
-   http://www.ee.ic.ac.uk/hp/staff/dmb/matrix/expect.html
-   And try to prove them.
+   Find more identities in the \href{http://www.ee.ic.ac.uk/hp/staff/dmb/matrix/expect.html}{Matrix Reference Manual} and try to prove them.
    Also try to verify your derivations using tensorgrad.
 \end{exercise}

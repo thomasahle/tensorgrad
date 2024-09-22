@@ -41,13 +41,6 @@ The modern usage of "tensor" was later established by Gregorio Ricci-Curbastro a
 \tableofcontents
 \clearpage
 
-\section{Notation and Nomenclature}
-\[
-   [P] = \begin{cases}
-      1 \text{ if } P \\
-      0 \text{ otherwise}
-   \end{cases}.
-\]
 
 \section{Tensor Diagrams}
 Tensor diagrams are simple graphs (or ``networks'') where
@@ -249,6 +242,7 @@ An order 3 tensor has three edges, so we can multiply it with a vector in three 
       \draw (T) -- ++(-.3,-.3);
    \end{tikzpicture}
 \]
+%
 To be perfectly precise about what each one means, we should give the edges labels.
 For example we would write
 $
@@ -308,7 +302,13 @@ The general order-n tensor is 1 on the diagonal, 0 everywhere else:
    \end{cases}
 \]
 % This is also known as the ``copy'' or ``spider'' tensor, or ``generalized Kronecker delta''.
-Or, using Iversonian notation, $\sbullet_{i,j,k,\dots} = [i=j=k=\dots]$.
+Or, using Iversonian notation,\footnote{%
+For a logical proposition $P$, we define $
+   [P] = \begin{cases}
+      1 \text{ if } P \\
+      0 \text{ otherwise}
+   \end{cases}
+$.} $\sbullet_{i,j,k,\dots} = [i=j=k=\dots]$.
 We see the order-2 copy-tensor, $-\sbullet- = I$, is just the identity matrix,
 so we can simply remove it from graphs like this:
 \[-A\!-\!\sbullet\!-\!B- = -A\!-\!B-\]
@@ -498,114 +498,205 @@ The matrix $X^T$ is simply $X$ where the left and right edge have been swapped.
 But if the edges are named, we don't have to keep track on ``where the edge is'' at all.
 
 \section{Transposition}
-TODO: This section is not yet complete.
-
-In classical matrix notation, transposition is denoted by a superscript T, as in $A^T$. This operation flips the indices of a matrix, so that $(A^T)_{ij} = A_{ji}$. In tensor diagram notation, we can represent transposition simply by swapping the positions of the edges:
-
+In classical matrix notation, transposition flips the indices of a matrix, so that
 \[
-A^T = 
+   (A^T)_{ij} = A_{ji}.
+\]
+In tensor diagram notation, we have two choices depending on whether we want the position of the edges to be significant.
+With significant edge positions, we typically let the ``left edge'' be the first index, and the ``right edge'' be the second index.
+Thus transposition requires flipping the edges:
+\[
+   (\matmul{A})^T
+   =
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$A$};
+      \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
+      \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
+   \end{tikzpicture}
+   =
+   \matmul{A^T}.
+\]
+A fun notation used by some authors is flipping the tensor upside down, $\matmul{\vflip{A}}$, as a simpler way to flip the left and right edges.
+
+In practical computations, keeping track of the edge positions can be easy to mess up.
+It's more robust to name the ``outputs'' of the tensor, and let transposition rename the edges:
+\[
+   (\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture})^T
+=
 \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
    \node (A) {$A$};
-   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
-   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+   \node[font=\tiny] (i) at (-.2,0) {$j$};
+   \node[font=\tiny] (j) at (.2,0) {$i$};
+   \draw (i.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (j.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
 \end{tikzpicture}
 \]
+%
+Renaming can be done using multiplication by identity matrices:
+\[
+(\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture})
+(
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$\sbullet$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$j$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$k$};
+\end{tikzpicture})
+=
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \node[font=\tiny] (j) at (.2,0) {$j$};
+   \draw (j) -- ++(.2,0) node[right, font=\tiny] {$k$};
+\end{tikzpicture},
+\]
+but we have to be careful because overlapping edge names can make multiplication non-associative.
+E.g.
+\[
+   \big[
+(\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture})
+(
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$\sbullet$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$j$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$k$};
+\end{tikzpicture})
+\big]
+(
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$\sbullet$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$k$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture})
+=
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture}
+\neq
+(\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture})
+   \big[
+(
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$\sbullet$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$j$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$k$};
+\end{tikzpicture})
+(
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$\sbullet$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$k$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture})
+\big]
+=
+\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+   \node (A) {$A$};
+   \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$i$};
+   \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
+\end{tikzpicture}
+\,
+\begin{tikzpicture}[baseline=-0.6em, inner sep=1pt]
+   \node (a0) {$\sbullet$};
+   \node[below=.1 of a0] (a1) {$\sbullet$};
+   \draw (a0) -- ++(.1, 0) arc (270:90:-.15) -- (a1);
+   \draw (a1) -- ++(-.1, 0) arc (270:90:.15) -- (a0);
+\end{tikzpicture},
+\]
+where
+$\begin{tikzpicture}[baseline=-0.7em, inner sep=1pt]
+   \node (a0) {$\sbullet$};
+   \node[below=.1 of a0] (a1) {$\sbullet$};
+   \draw (a0) -- ++(.1, 0) arc (270:90:-.15) -- (a1);
+   \draw (a1) -- ++(-.1, 0) arc (270:90:.15) -- (a0);
+\end{tikzpicture}$
+equals the matrix dimension.
+In tensorgrad we solve this problem by requiring that any edge name is present at most twice in any product.
 
-When using named edges, the concept of transposition becomes less relevant, as we can simply refer to the edges by their names regardless of their position. This allows for more flexible and intuitive manipulation of tensor expressions.
-
-Let's examine some properties of transposition using tensor diagrams:
-
-\begin{align*}
+For the purpose of transcribing the matrix cookbook, using the ``significant position'' notation is more convenient.
+We observe the following identities:
+\begin{walign}
 (A^T)^T &= A 
 &
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$A$};
-   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
-   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+   \node (a0) {$A$};
+   \draw (a0) -- ++(.3, 0) arc (270:90:-.1) -- ++(-.6, 0) arc (90:270:.1) -- ++(.6, 0);
+   \draw (a0) -- ++(-.3, 0) arc (270:90:.1) -- ++(.6, 0) arc (90:270:-.1) -- ++(-.6, 0);
 \end{tikzpicture}
 &=
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$A$};
-   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
-   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$j$};
-\end{tikzpicture}
+\matmul{A}
 \\
-(AB)^T &= B^T A^T
-&
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$A$};
-   \node[right=.5em of A] (B) {$B$};
-   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$k$};
-   \path (A) edge (B);
-   \draw (B.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
-\end{tikzpicture}^T
-&=
-\begin{tikzpicture}[baseline=(B.base), inner sep=1pt]
-   \node (B) {$B$};
-   \node[right=.5em of B] (A) {$A$};
-   \draw (B.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
-   \path (B) edge (A);
-   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$k$};
-\end{tikzpicture}
-\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\tag{4}
 (A + B)^T &= A^T + B^T
 &
-\left(
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$A$};
-   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
-   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$j$};
+\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+   \node (a0) {$\left( \matmul{A} + \matmul{B} \right)$};
+   \draw (a0.east) -- ++(.1, 0) arc (270:90:-.15) -- ++(-.6, 0);
+   \draw (a0.west) -- ++(-.1, 0) arc (270:90:.15) -- ++(.6, 0);
 \end{tikzpicture}
-+
-\begin{tikzpicture}[baseline=(B.base), inner sep=1pt]
-   \node (B) {$B$};
-   \draw (B.west) -- ++(-.3,0) node[left, font=\tiny] {$i$};
-   \draw (B.east) -- ++(.3,0) node[right, font=\tiny] {$j$};
-\end{tikzpicture}
-\right)^T
 &=
-\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$A$};
-   \draw (A.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
-   \draw (A.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
-\end{tikzpicture}
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$A$};
+      \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
+      \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
+   \end{tikzpicture}
 +
-\begin{tikzpicture}[baseline=(B.base), inner sep=1pt]
-   \node (B) {$B$};
-   \draw (B.west) -- ++(-.3,0) node[left, font=\tiny] {$j$};
-   \draw (B.east) -- ++(.3,0) node[right, font=\tiny] {$i$};
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$B$};
+      \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
+      \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
+   \end{tikzpicture}
+%\\
+\end{walign}
+\begin{walign}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\tag{5}
+(AB)^T &= B^T A^T
+&
+   \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+      \node (a) {$A$};
+      \node[right=.5em of a] (b) {$B$};
+      \draw (a) -- (b);
+      \draw (b) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
+      \draw (a) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
+   \end{tikzpicture}
+&=
+\begin{tikzpicture}[baseline=-.8em, inner sep=1pt]
+   \node (a) {\vflip{$A$}};
+   \node[below=.3em of a] (b) {\vflip{$B$}};
+   \draw (a) -- ++(.3, 0);
+   \draw (a) -- ++(-.3, 0) arc (90:270:.1) -- ++(.6, 0) arc (270:90:-.1) -- (b);
+   \draw (b) -- ++(-.3, 0);
 \end{tikzpicture}
-\end{align*}
+=
+\matmul{ \vflip{B}, \vflip{A} }
+\end{walign}
 
-For higher-order tensors, transposition can be generalized to permutation of indices. For example, for a 3rd-order tensor $T_{ijk}$, we might consider $T_{jik}$ or $T_{kji}$. In tensor diagram notation, this simply corresponds to rearranging the edges:
+\subsection{Higher order}
+It is possible to generalize the idea of a transpose to higher order tensors.
+It requires partitioning the edges as ``input'' and ``output'' edges, or more commonly, ``contravariant'' and ``covariant'' edges.
+See the section at the end of this chapter for more on this.
 
-\[
-T_{ijk} = 
-\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-   \node (T) {$T$};
-   \draw (T) -- ++(.3,.3) node[above right, font=\tiny] {$i$};
-   \draw (T) -- ++(-.3,.3) node[above left, font=\tiny] {$j$};
-   \draw (T) -- ++(0,-.4) node[below, font=\tiny] {$k$};
-\end{tikzpicture}
-\qquad
-T_{jik} = 
-\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-   \node (T) {$T$};
-   \draw (T) -- ++(.3,.3) node[above right, font=\tiny] {$j$};
-   \draw (T) -- ++(-.3,.3) node[above left, font=\tiny] {$i$};
-   \draw (T) -- ++(0,-.4) node[below, font=\tiny] {$k$};
-\end{tikzpicture}
-\qquad
-T_{kji} = 
-\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-   \node (T) {$T$};
-   \draw (T) -- ++(.3,.3) node[above right, font=\tiny] {$k$};
-   \draw (T) -- ++(-.3,.3) node[above left, font=\tiny] {$j$};
-   \draw (T) -- ++(0,-.4) node[below, font=\tiny] {$i$};
-\end{tikzpicture}
-\]
-
-This flexibility in representing transposition and index permutation is one of the advantages of tensor diagram notation, as it allows for clear visualization of these operations without the need for additional notation or symbols.
+We say matrices are symmetric if $A^T = A$.
+For higher order tensors, there are many ways to be symmetric.
+See the section~\ref{sec:symmetry} for more on this.
 
 \section{Trace}
 
@@ -613,31 +704,66 @@ The ``trace'' of a square matrix is defined $\mathrm{Tr}(A) = \sum_i A_{i,i}$.
 In tensor diagram notation, that corresponds to a self-edge: $\trace{A}{1}$.
 The Matrix Cookbook has a list of identities using traces.
 Let's reproduce them with tensor diagrams:
-\begin{align*}
+\begin{walign}
+   \tag{11}
    \sum_{i=1}^{n} A_{ii} &= \mathrm{Tr}(A) = \mathrm{Tr}(A I)
    &
    \trace{A}{1} &= \trace{A, \sbullet}{2}
-   \tag{11}
-   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \\
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \tag{13}
    \mathrm{Tr}(A) &= \mathrm{Tr}(A^T)
    &
-   \trace{A}1 &= \trace{A}1
-   \tag{13}
-   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   \mathrm{Tr}(AB) &= \mathrm{Tr}(BA)
-   &
-   \trace{A,B}2 &= \trace{B,A}2
+   \trace{A}1
+   \hspace{-1em}
+   &=
+   \hspace{-1em}
+   \vflip{\trace{A}1}
+   \\[0.5em]
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \tag{14}
-   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \mathrm{Tr}(AB)
+   &=
+   \mathrm{Tr}(BA)
+   &
+   \trace{A,B}2
+   \hspace{-.5em}
+   &=
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (a) {$\vflip{B}$};
+      \node[below=.3em of a] (b) {$A$};
+      \draw (a) -- ++(-.3, 0) arc (90:270:.2) -- (b);
+      \draw (a) -- ++(.3, 0) arc (270:90:-.2) -- (b);
+   \end{tikzpicture}
+   \hspace{.5em}
+   =
+   \hspace{-.5em}
+   \trace{B,A}2
+   \\[0.5em]
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \tag{15}
    \mathrm{Tr}(A+B)
    &= \mathrm{Tr}(A) + \mathrm{Tr}(B)
    &
-   \trace{(A+B),\sbullet}1
+   %\trace{(A+B),\sbullet}1
+   %\trace{(\matmul{A}+\matmul{B}),\sbullet}1
+   %\trace{(\matmul{A}+\matmul{B})}1
    %\trace{(\matmul{A}+\matmul{B}),\sbullet}{2}
-   &= \trace{A,\sbullet}2
- \\&&&+\trace{B,\sbullet}2
-   \\%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+      \node (a) {(\matmul{A}+\matmul{B})};
+      \draw (a.west) -- ++(-.1, 0) arc (270:90:.2) -- ++(3.5, 0) arc (270:90:-.2) -- (a.east);
+   \end{tikzpicture}
+   &=
+   \hspace{-1em}
+   \trace{A}1
+   \hspace{-1em}
+   +
+   \hspace{-1em}
+   \trace{B}1
+   \hspace{-1em}
+   \\[0.5em]
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    \tag{16}
    \mathrm{Tr}(ABC) &= \mathrm{Tr}(BCA)
    &
@@ -668,9 +794,51 @@ Let's reproduce them with tensor diagrams:
       \path (a0) edge [out=160, in=20, looseness=2] (a1);
    \end{tikzpicture}
    \hspace{-1em}
-\end{align*}
+\end{walign}
 
-
+\subsection{Higher order traces}
+For higher order tensors, we still define the trace as the sum of the diagonal elements.
+That is, for a tensor $A$ of order $n$, the trace is just the product with the order $n$ copy tensor:
+\[
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (Tr) {Tr(};
+      \node[right=.3em of Tr] (T) {$T$};
+      \node[right=.3em of T] (p) {)};
+      \draw (T) -- ++(.3,-.3);
+      \draw (T) -- ++(-.3,-.3);
+      \draw (T) -- ++(0,.35);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$T$};
+      \node[right=2em of T] (s) {$\sbullet$};
+      \path (T) edge [out=90, in=120] (s);
+      \path (T) edge [out=-30, in=200] (s);
+      \path (T) edge [out=-120, in=220] (s);
+   \end{tikzpicture}
+   .
+\]
+In quantum mechanics, it is common to use a ``partial trace'', which we can define using index notation:
+\[
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (Tr) {Tr$_{i,j}$(};
+      \node[right=.3em of Tr] (T) {$T$};
+      \node[right=.3em of T] (p) {)};
+      \draw (T) -- ++(.3,-.3) node[midway, below left, font=\tiny] {j};
+      \draw (T) -- ++(-.3,-.3) node[midway, below right, font=\tiny] {i};
+      \draw (T) -- ++(0,.35) node[midway, above right, font=\tiny] {k};
+   \end{tikzpicture}
+   =
+   \hspace{-.5em}
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$T$};
+      \draw (T) -- ++(0,.35) node[midway, above right, font=\tiny] {k};
+      \path (T) edge [out=-120, in=-60, loop] (T);
+   \end{tikzpicture}
+   .
+\]
+Of course with tensor diagrams, we can also use partial traces without naming the indices.
+We don't even have to think about whether the contractions we use are traces or not.
 
 \section{Eigenvalues}
 Eigenvalues and eigenvectors are fundamental concepts in linear algebra that have important applications in tensor network theory. In tensor diagram notation, we can represent these concepts in a visually intuitive way.
@@ -738,17 +906,44 @@ The trace of a matrix is equal to the sum of its eigenvalues. We can represent t
 \]
 
 
+\section{Covariance and Contravariance}
 
-%\begin{enumerate}
-   %\item Contractions are associative: You can contract edges in any order.
-   %\item distributive law of sums/products.
-   %\item Sums and broadcasting.
-   %\item You can always contract connected subgraphs of Copy tensors.
-%\end{enumerate}
+In physics it's often relevant to change between different coordinate systems.
+Most such changes transform the left and right side of matrices differently, and similarly row and column vectors.
+For tensors this generalize to the concepts of covariance and contravariance.
+With notion, we keep track of ``input'' and ``output'' vectors.
+We'll also need to distinguish between things such as the identity matrix, $\matmul{\sbullet}$,
+$\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0) -- ++(-.17,.1);
+   \draw (a0) -- ++(-.17,-.1);
+\end{tikzpicture}$,
+and
+$\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
+   \node (a0) {$\sbullet$};
+   \draw (a0) -- ++(.17,.1);
+   \draw (a0) -- ++(.17,-.1);
+\end{tikzpicture}$.
+
+This notion allows some ability to ``algebraically'' combine tensors, by connecting input edges to output edges, just like we do with matrices and vectors.
+However, for more complicated tensors, we need to know which edges to combine, and index notation is more useful.
+
+In computer science and machine learning, the concept of covariance and contravariance is typically not useful, so we won't use it in this book.
 
 \section{Exercises}
 \begin{exercise}
    Given a sequence of matrices $A_1, A_2, \ldots, A_n \in \mathbb R^{n\times n}$,
    and vectors $v_1, v_2, \ldots, v_n \in \mathbb R^n$,
    draw, using tensor diagrams, the matrix made of vectors $A_1v_1, A_2v_2, \ldots, A_nv_n$.
+\end{exercise}
+\begin{exercise}
+Represent the Hadamard product (element-wise multiplication) of two matrices using tensor diagrams.
+How does this differ from regular matrix multiplication?
+(We will see more about this in \ref{sec:hadamard}.)
+\end{exercise}
+\begin{exercise}
+Represent the SVD of a matrix $A = U\Sigma V^T$ using tensor diagrams.
+How does this compare to the eigendecomposition diagram?
+How can you generalize it to higher order tensors?
+(In section \ref{sec:HOSVD} we will see more about this.)
 \end{exercise}
