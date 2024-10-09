@@ -1,0 +1,17 @@
+\def\Ax{0}
+\def\Bx{2}
+\def\Cx{7}
+\begin{tikzpicture}[thick, every node/.style={scale=1.5}, tensor/.style={minimum size=0.5cm}]
+    \node[tensor] (A) at (\Ax,0) {$A$};
+    \node[tensor] (B) at (\Bx,0) {$B$};
+    \node[tensor] (Aprime) at (\Cx,0) {$A'$};
+    
+    \draw (A.north) -- +(0,0.8) node[midway, right] {\footnotesize 2};
+    \draw (A.west) -- +(-0.8,0) node[midway, above] {\footnotesize 2};
+    \draw (B.north) -- +(0,0.8) node[midway, right] {\footnotesize 2};
+    \draw (A.east) -- (B.west) node[midway, above] {\footnotesize 4};
+    \draw (Aprime.north) -- +(0,0.8) node[midway, right] {\footnotesize 2};
+    \draw (Aprime.west) -- +(-0.8,0) node[midway, above] {\footnotesize 2};
+
+    \draw[->] (\Bx + 1.0, 0) -- (\Cx - 2.0, 0) node[midway, above] {\footnotesize Contraction};
+\end{tikzpicture}
