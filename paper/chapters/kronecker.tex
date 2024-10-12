@@ -43,47 +43,50 @@ Using this notation we can write
    \end{tikzpicture}
    .
 \]
-The basic property of $\triangleright$ is that opposing triangles cancel:
+%The basic property of $\triangleright$ is that opposing triangles cancel:
+Some basic properties of $\triangleright$:
 \begin{align}
-\begin{tikzpicture}[baseline=-.3em]
-\node (X) at (.5,0) {\phantom{X}};
-\node[triangle] (c0) at (1.5,0) {};
-\node[triangle, rotate=180] (c1) at (2.5,0) {};
-\node (Y) at (3.5,0) {\phantom{Y}};
-\draw (X) edge[bend left] (c0);
-\draw (X) edge[bend right] (c0);
-\draw[double] (c0) -- (c1);
-\draw (Y) edge[bend left] (c1);
-\draw (Y) edge[bend right] (c1);
-\end{tikzpicture}
-&=
-\begin{tikzpicture}[baseline=-.3em]
-\node (X) at (0,0) {\phantom{X}};
-\node (Y) at (1.5,0) {\phantom{Y}};
-\draw (X) edge[bend left] (Y);
-\draw (X) edge[bend right] (Y);
-\end{tikzpicture}
-\\\text{and}
-\begin{tikzpicture}[baseline=-.3em]
-\node (X) at (.5,0) {\phantom{X}};
-\node[triangle, rotate=180] (c0) at (1.5,0) {};
-\node[triangle] (c1) at (2.5,0) {};
-\node (Y) at (3.5,0) {\phantom{Y}};
-\draw[double] (X) -- (c0);
-\draw (c0) edge[bend left] (c1);
-\draw (c0) edge[bend right] (c1);
-\draw[double] (Y) -- (c1);
-\end{tikzpicture}
-&=
-\begin{tikzpicture}[baseline=-.3em]
-\node (X) at (0,0) {\phantom{X}};
-\node (Y) at (1.5,0) {\phantom{Y}};
-\draw[double] (X) -- (Y);
-\end{tikzpicture}
-.
-\end{align}
-It's also easy to convince oneself of the following ``mixed'' property:
-\begin{align}
+   \begin{tikzpicture}[baseline=-.3em]
+   \node (X) at (.5,0) {\phantom{X}};
+   \node[triangle] (c0) at (1.5,0) {};
+   \node[triangle, rotate=180] (c1) at (2.5,0) {};
+   \node (Y) at (3.5,0) {\phantom{Y}};
+   \draw (X) edge[bend left] (c0);
+   \draw (X) edge[bend right] (c0);
+   \draw[double] (c0) -- (c1);
+   \draw (Y) edge[bend left] (c1);
+   \draw (Y) edge[bend right] (c1);
+   \end{tikzpicture}
+   &=
+   \begin{tikzpicture}[baseline=-.3em]
+   \node (X) at (0,0) {\phantom{X}};
+   \node (Y) at (1.5,0) {\phantom{Y}};
+   \draw (X) edge[bend left] (Y);
+   \draw (X) edge[bend right] (Y);
+   \end{tikzpicture}
+   \\
+   %\text{and}
+   \begin{tikzpicture}[baseline=-.3em]
+   \node (X) at (.5,0) {\phantom{X}};
+   \node[triangle, rotate=180] (c0) at (1.5,0) {};
+   \node[triangle] (c1) at (2.5,0) {};
+   \node (Y) at (3.5,0) {\phantom{Y}};
+   \draw[double] (X) -- (c0);
+   \draw (c0) edge[bend left] (c1);
+   \draw (c0) edge[bend right] (c1);
+   \draw[double] (Y) -- (c1);
+   \end{tikzpicture}
+   &=
+   \begin{tikzpicture}[baseline=-.3em]
+   \node (X) at (0,0) {\phantom{X}};
+   \node (Y) at (1.5,0) {\phantom{Y}};
+   \draw[double] (X) -- (Y);
+   \end{tikzpicture}
+   \\
+%.
+%\end{walign}
+%It's also easy to convince oneself of the following ``mixed'' property:
+%\begin{align}
    \begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
       \node (F0) at (0,0) {$\sbullet$};
       \node[triangle, rotate=180, inner sep=3pt] (Fab0) at (.5,.25) {};
@@ -100,7 +103,7 @@ It's also easy to convince oneself of the following ``mixed'' property:
       \draw (Fcd0) -- (C);
       \draw (Fcd0) -- (D);
    \end{tikzpicture}
-     \quad=\quad
+   \quad&=\quad
    \begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
       \node[triangle, rotate=180, inner sep=3pt] (F0) at (0,0) {};
       \node (Fab0) at (.5,.25) {$\sbullet$};
@@ -118,8 +121,36 @@ It's also easy to convince oneself of the following ``mixed'' property:
       \draw (Fcd0) -- (D);
    \end{tikzpicture}
    \label{eq:flatten_mix}
+%\end{align}
+   \\
+   \label{eq:tensor_diag}
+   \begin{tikzpicture}[baseline=-.5em, inner sep=0pt]
+      \node (b) at (.5,0) {$\sbullet$};
+      \node[triangle, rotate=180, inner sep=3pt] (r) at (1,0) {};
+      \node[triangle, inner sep=3pt] (l) at (0,0) {};
+      \draw[double] (b) -- (r);
+      \draw[double] (b) -- (l);
+      \node[triangle, rotate=90, inner sep=3pt] (F) at (.5,-.4) {};
+      \draw[double] (F) -- (b);
+      \draw (F) edge[bend left] ++(.05, -.4);
+      \draw (F) edge[bend right] ++(-.05, -.4);
+      \draw (r) edge[bend left] ++(.4, .05);
+      \draw (r) edge[bend right] ++(.4, -.05);
+      \draw (l) edge[bend left] ++(-.4, -.05);
+      \draw (l) edge[bend right] ++(-.4, .05);
+   \end{tikzpicture}
+   \quad&=\quad
+   \begin{tikzpicture}[baseline=-.5em, inner sep=0pt]
+      \node (b1) at (.4,.1) {$\sbullet$};
+      \node (b2) at (.6,-.1) {$\sbullet$};
+      \draw (b1) -- (0, .1);
+      \draw (b2) -- (0, -.1);
+      \draw (b1) -- (1, .1);
+      \draw (b2) -- (1, -.1);
+      \draw (b1) -- ++(0, -.5);
+      \draw (b2) -- ++(0, -.5);
+   \end{tikzpicture}
 \end{align}
-
 
 \section{The Kronecker Product}
 The Kronecker product of an $m\times n$ matrix $A$ and an $r \times q$ matrix $B$, is an $mr \times nq$ matrix, $A \otimes B$ defined as
@@ -151,9 +182,7 @@ $A\otimes B=$
 .
 
 The Kronecker product has the following properties:
-\noindent
-%\makebox[\textwidth]{\parbox{1.1\textwidth}{%
-\begin{align*}
+\begin{walign}
    \tag{506}
    A \otimes (B + C) &= A \otimes B + A \otimes C
                      &
@@ -395,12 +424,13 @@ The Kronecker product has the following properties:
    \hspace{-2em}
     \trace{B}{1}
    \hspace{-1em}
-   \\
+\end{walign}
+Recalling the eigen decomposition of a matrix, \eqref{eq:eigen-decomposition}, we also get:
+\begin{walign}
    \tag{519}
-   \hspace{-1cm}
    \mathrm{eig}(A \otimes B) &= \mathrm{eig}(A) \mathrm{eig}(B)
-                             &
-   \begin{tikzpicture}[baseline=-.25em]
+                             &&
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node[triangle, rotate=180] (F0) at (0,0) {};
       \node (Q1) at (.6,.25) {$Q_1$};
       \node (Q2) at (.6,-.25) {$Q_2$};
@@ -416,8 +446,8 @@ The Kronecker product has the following properties:
       \draw (b1) -- ++(0, .25) node[anchor=south] {$\lambda_1$};
       \draw (b2) -- ++(0, -.25) node[anchor=north] {$\lambda_2$};
    \end{tikzpicture}
-                             &=
-   \begin{tikzpicture}[baseline=-.25em]
+                           \\&&&=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node[triangle, rotate=180] (F0) at (0,0) {};
       \node (Q1) at (.55,.25) {$Q_1$};
       \node (Q2) at (.55,-.25) {$Q_2$};
@@ -444,16 +474,16 @@ The Kronecker product has the following properties:
       \draw (b2) -- ++(0, -.25) node[anchor=north] {$\lambda_2$};
    \end{tikzpicture}
                            \\&&&=
-   \begin{tikzpicture}[baseline=-.25em]
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node[triangle, rotate=180] (F0) at (0,0) {};
       \node (Q1) at (.55,.25) {$Q_1$};
       \node (Q2) at (.55,-.25) {$Q_2$};
       \node[triangle] (F1) at (1.1,0) {};
-      \node (b) at (1.9,0) {$\sbullet$};
-      \node[triangle, rotate=180] (F4) at (2.7,0) {};
-      \node (Q1i) at (3.35,.25) {$Q_1^{-1}$};
-      \node (Q2i) at (3.35,-.25) {$Q_2^{-1}$};
-      \node[triangle] (F5) at (4,0) {};
+      \node (b) at (1.6,0) {$\sbullet$};
+      \node[triangle, rotate=180] (F4) at (2.1,0) {};
+      \node (Q1i) at (2.75,.25) {$Q_1^{-1}$};
+      \node (Q2i) at (2.75,-.25) {$Q_2^{-1}$};
+      \node[triangle] (F5) at (3.4,0) {};
       \draw[double] (F0) -- ++(-.4,0);
       \draw[double] (F5) -- ++(.4,0);
       \draw (F0) -- (Q1) -- (F1);
@@ -466,37 +496,37 @@ The Kronecker product has the following properties:
       \draw (Fb) -- ++(-.1, -.25) node[anchor=north east] {$\lambda_1$};
       \draw (Fb) -- ++(.1, -.25) node[anchor=north west] {$\lambda_2$};
    \end{tikzpicture}
-\end{align*}
-%}}
+\end{walign}
+where the last step is due to \eqref{eq:tensor_diag}.
 
-Here the last equation shows an interesting general property of $\triangleright$:
-\begin{align}
-   \begin{tikzpicture}[baseline=-.25em]
-      \node[triangle, rotate=180] (F0) at (0,0) {};
-      \node (b1) at (.4,.25) {$\sbullet$};
-      \node (b2) at (.6,-.25) {$\sbullet$};
-      \node[triangle] (F1) at (1,0) {};
-      \draw[double] (F0) -- ++(-.4,0);
-      \draw[double] (F1) -- ++(.4,0);
-      \draw (F0) -- (b1) -- (F1);
-      \draw (F0) -- (b2) -- (F1);
-      \node (M) at (.3,-.6) {M};
-      \draw (M) -- (b1);
-      \draw (M) -- (b2);
-   \end{tikzpicture}
-   =
-   \begin{tikzpicture}[baseline=-.25em]
-      \node (b) at (.5,0) {$\sbullet$};
-      \draw[double] (b) -- ++(-.4,0);
-      \draw[double] (b) -- ++(.4,0);
-      \node[triangle, rotate=90] (F) at (.5,-.5) {};
-      \draw[double] (F) -- (b);
-      \node (M) at (.5,-1.1) {M};
-      \draw (M) edge[bend left] (F);
-      \draw (M) edge[bend right] (F);
-   \end{tikzpicture}.
-   \label{eq:tensor_diag}
-\end{align}
+% Here the last equation shows an interesting general property of $\triangleright$:
+% \begin{align}
+%    \begin{tikzpicture}[baseline=-.25em]
+%       \node[triangle, rotate=180] (F0) at (0,0) {};
+%       \node (b1) at (.4,.25) {$\sbullet$};
+%       \node (b2) at (.6,-.25) {$\sbullet$};
+%       \node[triangle] (F1) at (1,0) {};
+%       \draw[double] (F0) -- ++(-.4,0);
+%       \draw[double] (F1) -- ++(.4,0);
+%       \draw (F0) -- (b1) -- (F1);
+%       \draw (F0) -- (b2) -- (F1);
+%       \node (M) at (.3,-.6) {M};
+%       \draw (M) -- (b1);
+%       \draw (M) -- (b2);
+%    \end{tikzpicture}
+%    =
+%    \begin{tikzpicture}[baseline=-.25em]
+%       \node (b) at (.5,0) {$\sbullet$};
+%       \draw[double] (b) -- ++(-.4,0);
+%       \draw[double] (b) -- ++(.4,0);
+%       \node[triangle, rotate=90] (F) at (.5,-.5) {};
+%       \draw[double] (F) -- (b);
+%       \node (M) at (.5,-1.1) {M};
+%       \draw (M) edge[bend left] (F);
+%       \draw (M) edge[bend right] (F);
+%    \end{tikzpicture}.
+%    \label{eq:tensor_diag}
+% \end{align}
 This is easier to see when we consider that
 $
    V =
@@ -513,9 +543,7 @@ $
    \end{tikzpicture}
 $
 represents the tensor where $V_{i,j,i,j} = M_{i,j}$ and 0 otherwise.
-So flattening $V$ on both sides is the same as $\mathrm{diag}(\mathrm{vec}(M))$,
-which is the rhs of \eqref{eq:tensor_diag}.
-
+So flattening $V$ on both sides is the same as $\mathrm{diag}(\mathrm{vec}(M))$.
 
 
 \section{The Vec Operator}
@@ -542,7 +570,7 @@ $
 $.
 The Matrix Cookbook gives the following properties of the vec-operator:
 
-\begin{align*}
+\begin{walign}
    \tag{520}
    \mathrm{vec}(A^T X B)
    &=
@@ -680,7 +708,85 @@ The Matrix Cookbook gives the following properties of the vec-operator:
       \draw (B2) -- (c2);
       \draw[double] (c2) -- ++(.4,0);
    \end{tikzpicture}
-\end{align*}
+\end{walign}
+
+\section{Kronecker Vector Product}
+
+Sometimes it's convenient to write the Kronecker product between two vectors as a matrix.
+We define
+\begin{align}
+   A \otimes v
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node[triangle, rotate=180] (F0) at (0,0) {};
+      \node (A) at (.5,.25) {A};
+      \node (B) at (.5,-.25) {v};
+      \draw[double] (F0) -- ++(-.4,0);
+      \draw (F0) -- (A) -- ++(.5, 0);
+      \draw (F0) -- (B);
+   \end{tikzpicture}
+   \label{eq:kronecker-vector}
+   \\
+   A \otimes v^T
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node[triangle] (F0) at (1,0) {};
+      \node (A) at (.5,.25) {A};
+      \node (B) at (.5,-.25) {v};
+      \draw[double] (F0) -- ++(.4,0);
+      \draw (F0) -- (A) -- ++(-.5, 0);
+      \draw (F0) -- (B);
+   \end{tikzpicture}
+   \\
+   v \otimes A
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node[triangle, rotate=180] (F0) at (0,0) {};
+      \node (A) at (.5,.25) {v};
+      \node (B) at (.5,-.25) {A};
+      \draw[double] (F0) -- ++(-.4,0);
+      \draw (F0) -- (A);
+      \draw (F0) -- (B) -- ++(.5, 0);
+   \end{tikzpicture}
+   \\
+   v^T \otimes A
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node[triangle] (F0) at (1,0) {};
+      \node (A) at (.5,.25) {v};
+      \node (B) at (.5,-.25) {A};
+      \draw[double] (F0) -- ++(.4,0);
+      \draw (F0) -- (A);
+      \draw (F0) -- (B) -- ++(-.5, 0);
+   \end{tikzpicture}
+\end{align}
+
+Similarly, we can define the Kronecker product between two vectors:
+\begin{align}
+   v \otimes w
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node[triangle, rotate=180] (F0) at (0,0) {};
+      \node (A) at (.5,.25) {v};
+      \node (B) at (.5,-.25) {w};
+      \draw[double] (F0) -- ++(-.4,0);
+      \draw (F0) -- (A);
+      \draw (F0) -- (B);
+   \end{tikzpicture}
+   \\
+   v^T \otimes w^T
+   &=
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node[triangle] (F0) at (1,0) {};
+      \node (A) at (.5,.25) {v};
+      \node (B) at (.5,-.25) {w};
+      \draw[double] (F0) -- ++(.4,0);
+      \draw (F0) -- (A);
+      \draw (F0) -- (B);
+   \end{tikzpicture}
+\end{align}
+
+% TODO: Which of the identities 506-515 hold for the Kronecker product of vectors?
 
 \section{General Matrification}
 
@@ -700,10 +806,10 @@ where $C'$, $D'$ and $E'$ are rank 3 tensors flattened on one side, and $\mathrm
 \subsection{The Lyapunov Equation}
 
 A nice application of Kronecker product rewritings is to solve equations like
-\begin{align*}
+\begin{walign}
    \tag{272}
    AX + XB = C.
-\end{align*}
+\end{walign}
 We use the rewriting
 $
    \mathrm{vec}(AX + XB)
@@ -775,19 +881,19 @@ which follows from the tensor diagram massaging:
    \end{tikzpicture}
 \]
 after which we can take the normal matrix inverse to get
-\begin{align*}
+\begin{walign}
    \tag{273}
    \mathrm{vec}(X) = (I \otimes A + B^T \otimes I)^{-1}\mathrm{vec}(C).
-\end{align*}
+\end{walign}
 
 \subsection{Encapsulating Sum}
 This is a generalization of the previous equation.
-\begin{align*}
+\begin{walign}
    \tag{274}
    \sum_n A_nXB_n &= C \\
    \tag{275}
    \mathrm{vec}(X) &= (\sum_n B_n^T \otimes A_n)^{-1} \mathrm{vec}(C)
-\end{align*}
+\end{walign}
 
 \section{The Hadamard Product}
 \label{sec:hadamard}
@@ -804,7 +910,9 @@ We define the Hadamard product of two $2\times 2$ matrices $A$ and $B$ as
    .
 \]
 In tensor notation, the Hadamard product can be represented using two rank-3 copy tensors:
-$
+\[
+   A \circ B
+   =
    \begin{tikzpicture}[baseline=-.25em]
       \node (c0) at (0,0) {$\sbullet$};
       \node (A) at (.6,.25) {A};
@@ -815,13 +923,14 @@ $
       \draw (c0) -- ++(-.4,0);
       \draw (c1) -- ++(.4,0);
    \end{tikzpicture}
-$.
+.
+\]
 Some properties of the Hadamard product are:
-\begin{align*}
+\begin{walign}
    x^T (A \circ B) y
    &= \mathrm{tr}(A^T D_x B D_y)
    &
-   \begin{tikzpicture}[baseline=-.25em]
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node (c0) at (0,0) {$\sbullet$};
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
@@ -833,7 +942,7 @@ Some properties of the Hadamard product are:
    \end{tikzpicture}
    &=
    \hspace{-2em}
-   \begin{tikzpicture}[baseline=-.25em]
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node (A) at (0,0) {$A^T$};
       \node (c0) at (.7,0) {$\sbullet$};
       \node (B) at (1.3,0) {B};
@@ -847,7 +956,7 @@ Some properties of the Hadamard product are:
    \\
    (A \otimes B)\circ(C \otimes D) &= (A\circ C) \otimes (B\circ D)
                                    &
-   \begin{tikzpicture}[baseline=-.25em]
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node (F0) at (0,0) {$\sbullet$};
       \node[triangle, rotate=180] (Fab0) at (.5,.5) {};
       \node (A) at (1,.75) {A};
@@ -870,7 +979,7 @@ Some properties of the Hadamard product are:
       \draw (Fcd0) -- (D) -- (Fcd1);
    \end{tikzpicture}
                                    &=
-   \begin{tikzpicture}[baseline=-.25em]
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node[triangle, rotate=180] (F0) at (0,0) {};
       \node (Fab0) at (.5,.5) {$\sbullet$};
       \node (A) at (1,.75) {A};
@@ -894,7 +1003,7 @@ Some properties of the Hadamard product are:
       \draw (B.east) -- (Fcd1);
       \draw (Fcd0) -- (D) -- (Fcd1);
    \end{tikzpicture}
-\end{align*}
+\end{walign}
 The first equation is simply massaging the tensor diagram.
 The second follows from \eqref{eq:flatten_mix}.
 Alternatively, it suffices to follow the double lines to see that $A$ and $C$ both use the ``upper'' part of the double edge, while $B$ and $D$ use the lower part.
@@ -903,7 +1012,7 @@ Alternatively, it suffices to follow the double lines to see that $A$ and $C$ bo
 \section{Khatri–Rao product}
 Also known as the column-wise Kronecker, row-wise Kronecker or ``Face-splitting Product''.
 We use the symbols $\ast$ and $\bullet$ for the column and row-wise Kronecker products, respectively.
-\begin{align*}
+\begin{walign}
    A \ast B &=
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
@@ -932,10 +1041,10 @@ We use the symbols $\ast$ and $\bullet$ for the column and row-wise Kronecker pr
       A_{11}  B_{11} & A_{11} B_{12} & A_{12} B_{11} & A_{12} B_{12} \\
       A_{21}  B_{21} & A_{21} B_{22} & A_{22} B_{21} & A_{22} B_{22}
    \end{bmatrix}
-\end{align*}
+\end{walign}
 
 In terms of tensor diagrams, these products correspond simply to flattening the product on one side, and using a copy tensor on the other:
-\begin{align*}
+\begin{walign}
    A \ast B &=
    \begin{tikzpicture}[baseline=-.25em]
       \node[triangle, rotate=180] (c0) at (0,0) {};
@@ -959,12 +1068,12 @@ In terms of tensor diagrams, these products correspond simply to flattening the 
       \draw (c0) -- ++(-.4,0);
       \draw[double] (c1) -- ++(.4,0);
    \end{tikzpicture}
-\end{align*}
+\end{walign}
 Clearly the two are identical up to transpose.
 Indeed, $(A \ast B)^T = B^T \bullet A^T$ and $(A \bullet B)^T = B^T \ast A^T$.
 
 There are multiple ``mixed product'' identities:
-\begin{align*}
+\begin{walign}
    (A \bullet B)(C \otimes D) &= (A C) \bullet (B D)
                               &
    \begin{tikzpicture}[baseline=-.25em]
@@ -1026,7 +1135,7 @@ There are multiple ``mixed product'' identities:
       \draw (c2) -- (x);
       \draw (c2) -- (y);
    \end{tikzpicture}
-\end{align*}
+\end{walign}
 
 
 \subsection{Stacking}
@@ -1146,6 +1255,8 @@ Also notice that this is what quantum comp people call ``controlling''.
 
 Also have a bunch of properties like $A\otimes(B\oplus C) = A\otimes B\oplus A\otimes C$.
 
+\section{Derivatives}
+
 
 \section{Exercises}
 \begin{exercise}
@@ -1199,3 +1310,40 @@ that is, you just flatten on one side.
    % TODO: Find tag name
    \[\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I}\]
 \end{exercise}
+
+\begin{exercise}
+   Take the derivative of
+   \[
+      \mathrm{Tr}(G (A \otimes X))
+   \]
+   with respect to $X$, where $G$ is an $\mathbb R^{n^2} \times \mathbb R^{n^2}$ matrix,
+   and $A$ and $X$ are $\mathbb R^{n \times n}$ matrices.
+
+   Write the result in terms of $\mathrm{vec}(A)$ a reshaped version of $G$.
+\end{exercise}
+
+\begin{exercise}
+   Verify the following identity:
+   \[
+      \frac{d}{dx}
+      \mathrm{vec}(
+         \mathrm{diag}(x)\, A\, \mathrm{diag}(x)
+         )
+         = \mathrm{diag}(\mathrm{vec}(A)) (I \otimes x + x \otimes I)
+         .
+   \]
+      Hint: Use the matrix-vector identities \eqref{eq:kronecker-vector}.
+\end{exercise}
+
+\begin{exercise}
+      Show that
+      \[
+         \frac{\partial}{\partial x} x^T\, A\, (x \otimes x)
+         =
+         A(x\otimes x) + (x^T \otimes I + I \otimes x^T) A^T x
+      \]
+      Hint: Use the matrix-vector identities \eqref{eq:kronecker-vector}.
+\end{exercise}
+
+% Other good candidates for exercises:
+% - https://math.stackexchange.com/questions/1551034

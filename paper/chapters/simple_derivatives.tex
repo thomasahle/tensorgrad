@@ -1098,3 +1098,15 @@ $\frac{\partial}{\partial X} f(X)^T \neq
 \\&+ C^T X X^T C^T X B B^T
    \end{align*}
 \end{exercise}
+
+\begin{exercise}
+   Find the second derivative of
+   \[
+      x^T A^T x x^T A x
+   \]
+   with respect to $x$.
+   % Using tensorgrad we get that it is
+   % https://math.stackexchange.com/questions/3015464/second-derivative-of-a-matrix-quartic-form/4977819#4977819
+   % 2 ((x^T S)(S x) + x^T A x S),
+   % where S = A^T + A.
+\end{exercise}

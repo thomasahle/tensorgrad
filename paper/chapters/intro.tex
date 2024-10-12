@@ -846,7 +846,8 @@ Eigenvalues and eigenvectors are fundamental concepts in linear algebra that hav
 For a matrix $A$, if there exists a non-zero vector $v$ and a scalar $\lambda$ such that $Av = \lambda v$, then $\lambda$ is called an eigenvalue of $A$, and $v$ is the corresponding eigenvector.
 In tensor diagram notation It's convenient to write its eigendecomposition as $A = Q\Lambda Q^{-1}$, where $Q$ is a matrix whose columns are the eigenvectors of $A$, and $\Lambda$ is a diagonal matrix of the eigenvalues.
 Thus:
-\[
+\begin{align}
+   \label{eq:eigen-decomposition}
    \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
    \node (A) {$A$};
    \draw (A.west) -- ++(-.3, 0);
@@ -864,7 +865,7 @@ Thus:
    \path (dot) edge (Qi);
    \draw (Qi.east) -- ++(.3, 0);
    \end{tikzpicture}
-\]
+\end{align}
 The trace of a matrix is equal to the sum of its eigenvalues. We can represent this relationship using tensor diagrams:
 \[
    \tag{12}
