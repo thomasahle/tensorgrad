@@ -11,164 +11,6 @@ from tensorgrad.tensor import Copy
 from tensorgrad.testutils import rand_values, assert_close
 
 
-def test_frobenius2():
-    a, b, c = symbols("a b c")
-    t = torch.randn(2, 3, 4, names=("a", "b", "c"))
-    v = Variable("t", a=a, b=b, c=c)
-    frob = F.frobenius2(v)
-    res = frob.evaluate({v: t})
-    expected = (t * t).sum()
-    assert_close(res, expected)
-
-
-def test_diag():
-    a, b = symbols("a b")
-    v = Variable("v", a=a)
-    mat = F.diag(v, {"a": a, "b": b})
-    t = torch.randn(2, names=("a",))
-    res = mat.evaluate({v: t})
-    expected = torch.diag(t.rename(None)).rename("a", "b")
-    assert_close(res, expected)
-
-
-def test_kronecker():
-    i, j, k, l = symbols("i j k l")
-    a = Variable("a", i=i, j=j)
-    b = Variable("b", k=k, l=l)
-    t_a = torch.randn(2, 3, names=("i", "j"))
-    t_b = torch.randn(4, 5, names=("k", "l"))
-    result = F.kronecker(a, b).evaluate({a: t_a, b: t_b})
-    expected = (
-        torch.kron(t_a.rename(None), t_b.rename(None))
-        .reshape(2, 4, 3, 5)
-        .rename("i", "k", "j", "l")
-        .align_to("i", "j", "k", "l")
-    )
-    torch.testing.assert_close(result.rename(None), expected.rename(None))
-
-
-def test_sum():
-    i, j = symbols("i j")
-    a = Variable("a", i=i, j=j)
-    t_a = torch.randn(2, 3, names=("i", "j"))
-
-    # Test sum over one dimension
-    result = F.sum(a, {"i": i}).evaluate({a: t_a})
-    expected = t_a.sum(dim="i")
-    torch.testing.assert_close(result.rename(None), expected.rename(None))
-
-    # Test sum over multiple dimensions
-    result = F.sum(a, {"i": i, "j": j}).evaluate({a: t_a})
-    expected = t_a.sum(dim=("i", "j"))
-    torch.testing.assert_close(result.rename(None), expected.rename(None))
-
-
-def test_mean():
-    i, j = symbols("i j")
-    a = Variable("a", i=i, j=j)
-    t_a = torch.randn(2, 3, names=("i", "j"))
-
-    # Test mean over one dimension
-    result1 = F.mean(a, ["i"]).evaluate({a: t_a})
-    result2 = F.mean(a, ["i"]).simplify().evaluate({a: t_a})
-    expected = t_a.mean(dim="i")
-    assert_close(result1, expected)
-    assert_close(result2, expected)
-
-    # Test mean over multiple dimensions
-    result1 = F.mean(a, ["i", "j"]).evaluate({a: t_a})
-    result2 = F.mean(a, ["i", "j"]).simplify().evaluate({a: t_a})
-    expected = t_a.mean(dim=("i", "j"))
-    assert_close(result1, expected)
-    assert_close(result2, expected)
-
-
-def test_pow():
-    i, j = symbols("i j")
-    a = Variable("a", i=i, j=j)
-    t_a = torch.randn(2, 3, names=("i", "j")).abs()
-    result = F.pow(a, -1).evaluate({a: t_a})
-    expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
-    assert_close(result, expected)
-
-
-def test_pow_cancel_1():
-    #      S - T - * - j
-    # (S - T)^(-1) ┘
-    i, j = symbols("i j")
-    S = Variable("S", i)
-    T = Variable("T", i, j)
-    ST = S @ T
-    expr = ST * F.pow(ST, -1)
-    print(expr.full_simplify())
-    assert expr.full_simplify() == Copy(j, "j")
-
-
-def test_pow_cancel_1b():
-    i, j = symbols("i j")
-    S = Variable("S", i)
-    expr = S * S * F.pow(S, -1)
-    assert expr.full_simplify() == S
-
-
-def test_pow_cancel_2():
-    i, j = symbols("i j")
-    S = Variable("S", i)
-    T = Variable("T", i, j)
-    ST = S @ T
-    expr = F.pow(ST, 2) * F.pow(ST, -1)
-    assert expr.full_simplify() == ST
-
-
-def test_pow_cancel_3():
-    i, j = symbols("i j")
-    S = Variable("S", i)
-    T = Variable("T", i, j)
-    ST = S @ T
-    expr = F.pow(ST, 3) * F.pow(ST, -1)
-    assert expr.full_simplify() == F.pow(ST, 2)
-
-
-def test_log():
-    i, j = symbols("i j")
-    a = Variable("a", i=i, j=j)
-    t_a = torch.randn(2, 3, names=("i", "j")).abs()
-    result = F.log(a).evaluate({a: t_a})
-    expected = torch.log(t_a.rename(None)).rename("i", "j")
-    assert_close(result, expected)
-
-
-def test_log_grad():
-    i = symbols("i")
-    v = Variable("v", i=i)
-    t_v = torch.randn(3, names=("i",)).abs()
-    assert F.log(v).edges == {"i"}
-    jacobian = F.log(v).grad(v).simplify()
-    assert jacobian.edges == {"i", "i_"}
-    result = jacobian.evaluate({v: t_v})
-    expected = torch.diag(torch.pow(t_v.rename(None), -1)).rename("i", "i_")
-    assert_close(result, expected)
-
-
-def test_exp():
-    i, j = symbols("i j")
-    a = Variable("a", i=i, j=j)
-    t_a = torch.randn(2, 3, names=("i", "j"))
-    result = F.exp(a).evaluate({a: t_a})
-    expected = torch.exp(t_a.rename(None)).rename("i", "j")
-    assert_close(result, expected)
-
-
-def test_relu_jac():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    ts = rand_values([x], {i: 3})
-    expr = F.relu(x).grad(x).simplify()
-    res = expr.evaluate({x: ts[x]})
-    expected = jacobian(lambda x: tF.relu(x), ts[x].rename(None)).rename("i", "i_")
-    assert_close(res, expected)
-
-
 @pytest.mark.parametrize("dims", [1, 2])
 @pytest.mark.parametrize(
     "functions",
@@ -177,6 +19,7 @@ def test_relu_jac():
         (F.exp, torch.exp),
         (F.log, torch.log),
         (F.abs, torch.abs),
+        (F.gt0, lambda x: torch.where(x > 0, 1.0, 0.0)),
         (F.sign, torch.sign),
         (F.sqrt, torch.sqrt),
         (F.tanh, torch.tanh),
@@ -246,6 +89,7 @@ def test_all_elementwise(dims, functions):
         (lambda x, y: x * y, lambda x, y: x * y),
         (lambda x, y: x / y, lambda x, y: x / y),
         (lambda x, y: x**2 + y**3, lambda x, y: x**2 + y**3),
+        (lambda x, y: (x - y) ** 3, lambda x, y: (x - y) ** 3),
         (F.gt, lambda x, y: (torch.sign(x - y) + 1) / 2),
         (F.maximum, torch.maximum),
         (partial(F.cross_entropy, dim="C"), partial(tF.cross_entropy, reduction="none")),
@@ -429,40 +273,122 @@ def test_ce_hess():
             assert_close(my_hessians[i][j], torch_hessians[i][j].rename("C_", "C__"))
 
 
-def test_pow_hess():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    ts = rand_values([x], {i: 3})
-    ce = F.sum(F.pow(x, 3))
-    my_hessian = ce.grad(x).grad(x).simplify().evaluate(ts.copy())
-    torch_hessian = hessian(lambda x: x.pow(3).sum(), ts[x].rename(None)).rename("i_", "i__")
-    assert_close(my_hessian, torch_hessian)
+def test_frobenius2():
+    a, b, c = symbols("a b c")
+    t = torch.randn(2, 3, 4, names=("a", "b", "c"))
+    v = Variable("t", a=a, b=b, c=c)
+    frob = F.frobenius2(v)
+    res = frob.evaluate({v: t})
+    expected = (t * t).sum()
+    assert_close(res, expected)
 
 
-def test_pow_hess2():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    y = Variable("y", i=i)
-    ts = rand_values([x, y], {i: 2})
-    ce = F.sum(F.pow((x - y), 3))
-    my_hessians = [
-        [
-            ce.grad(x).grad(x).simplify().evaluate(ts.copy()),
-            ce.grad(x).grad(y).simplify().evaluate(ts.copy()),
-        ],
-        [
-            ce.grad(y).grad(x).simplify().evaluate(ts.copy()),
-            ce.grad(y).grad(y).simplify().evaluate(ts.copy()),
-        ],
-    ]
-    torch_hessians = hessian(
-        lambda x, y: torch.pow(x - y, 3).sum(),
-        (ts[x].rename(None), ts[y].rename(None)),
+def test_diag():
+    a, b = symbols("a b")
+    v = Variable("v", a=a)
+    mat = F.diag(v, {"a": a, "b": b})
+    t = torch.randn(2, names=("a",))
+    res = mat.evaluate({v: t})
+    expected = torch.diag(t.rename(None)).rename("a", "b")
+    assert_close(res, expected)
+
+
+def test_kronecker():
+    i, j, k, l = symbols("i j k l")
+    a = Variable("a", i=i, j=j)
+    b = Variable("b", k=k, l=l)
+    t_a = torch.randn(2, 3, names=("i", "j"))
+    t_b = torch.randn(4, 5, names=("k", "l"))
+    result = F.kronecker(a, b).evaluate({a: t_a, b: t_b})
+    expected = (
+        torch.kron(t_a.rename(None), t_b.rename(None))
+        .reshape(2, 4, 3, 5)
+        .rename("i", "k", "j", "l")
+        .align_to("i", "j", "k", "l")
     )
-    for i in range(2):
-        for j in range(2):
-            names = my_hessians[i][j].names
-            assert_close(my_hessians[i][j], torch_hessians[i][j].rename(*names))
+    torch.testing.assert_close(result.rename(None), expected.rename(None))
+
+
+def test_sum():
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
+    t_a = torch.randn(2, 3, names=("i", "j"))
+
+    # Test sum over one dimension
+    result = F.sum(a, {"i": i}).evaluate({a: t_a})
+    expected = t_a.sum(dim="i")
+    torch.testing.assert_close(result.rename(None), expected.rename(None))
+
+    # Test sum over multiple dimensions
+    result = F.sum(a, {"i": i, "j": j}).evaluate({a: t_a})
+    expected = t_a.sum(dim=("i", "j"))
+    torch.testing.assert_close(result.rename(None), expected.rename(None))
+
+
+def test_mean():
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
+    t_a = torch.randn(2, 3, names=("i", "j"))
+
+    # Test mean over one dimension
+    result1 = F.mean(a, ["i"]).evaluate({a: t_a})
+    result2 = F.mean(a, ["i"]).simplify().evaluate({a: t_a})
+    expected = t_a.mean(dim="i")
+    assert_close(result1, expected)
+    assert_close(result2, expected)
+
+    # Test mean over multiple dimensions
+    result1 = F.mean(a, ["i", "j"]).evaluate({a: t_a})
+    result2 = F.mean(a, ["i", "j"]).simplify().evaluate({a: t_a})
+    expected = t_a.mean(dim=("i", "j"))
+    assert_close(result1, expected)
+    assert_close(result2, expected)
+
+
+def test_pow():
+    i, j = symbols("i j")
+    a = Variable("a", i=i, j=j)
+    t_a = torch.randn(2, 3, names=("i", "j")).abs()
+    result = F.pow(a, -1).evaluate({a: t_a})
+    expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
+    assert_close(result, expected)
+
+
+def test_pow_cancel_1():
+    #      S - T - * - j
+    # (S - T)^(-1) ┘
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    T = Variable("T", i, j)
+    ST = S @ T
+    expr = ST * F.pow(ST, -1)
+    print(expr.full_simplify())
+    assert expr.full_simplify() == Copy(j, "j")
+
+
+def test_pow_cancel_1b():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    expr = S * S * F.pow(S, -1)
+    assert expr.full_simplify() == S
+
+
+def test_pow_cancel_2():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    T = Variable("T", i, j)
+    ST = S @ T
+    expr = F.pow(ST, 2) * F.pow(ST, -1)
+    assert expr.full_simplify() == ST
+
+
+def test_pow_cancel_3():
+    i, j = symbols("i j")
+    S = Variable("S", i)
+    T = Variable("T", i, j)
+    ST = S @ T
+    expr = F.pow(ST, 3) * F.pow(ST, -1)
+    assert expr.full_simplify() == F.pow(ST, 2)
 
 
 def test_trace():
@@ -472,46 +398,6 @@ def test_trace():
     res = F.trace(x).simplify().evaluate({x: ts[x]})
     expected = ts[x].rename(None).trace()
     assert_close(res, expected)
-
-
-def test_relu_hessian():
-    batch, in_dim, out_dim = symbols("batch in_dim out_dim")
-    X = Variable("X", batch=batch, in_dim=in_dim)
-    W = Variable("W", in_dim=in_dim, out_dim=out_dim)
-    b = Variable("b", out_dim=out_dim)
-
-    Y = F.relu(X @ W + b)
-    loss = F.sum(Y * Y)
-    grad = loss.grad(W)
-    hessian = grad.grad(W)
-    # TODO: Test output better
-
-
-def test_batch_norm():
-    batch, features = symbols("batch features")
-    X = Variable("X", batch, features)
-    gamma = Variable("gamma", features)
-    beta = Variable("beta", features)
-    epsilon = 1
-
-    mean = F.mean(X, ["batch"])
-    var = F.mean((X - mean) ** 2, ["batch"])
-    X_norm = (X - mean) / F.sqrt(var + epsilon)
-    Y = gamma * X_norm + beta
-
-    loss = F.sum(Y)
-    grad = loss.grad(gamma)
-
-    # TODO: Test output better
-
-
-def test_l1_reg():
-    in_dim, out_dim = symbols("in_dim out_dim")
-    W = Variable("W", in_dim=in_dim, out_dim=out_dim)
-    l1_reg = F.sum(F.abs(W))
-    grad = l1_reg.grad(W)
-
-    # TODO: Test output better
 
 
 def test_rnn():
@@ -527,27 +413,6 @@ def test_rnn():
     grad = loss.grad(W_hh)
 
     # TODO: Test output better
-
-
-def test_abs_and_sign():
-    i = symbols("i")
-    X = Variable("X", i=i)
-    ts = rand_values([X], {i: 3})
-
-    # Test abs
-    result = F.abs(X).evaluate(ts)
-    expected = ts[X].abs()
-    assert_close(result, expected)
-
-    # Test sign
-    result = F.sign(X).evaluate(ts)
-    expected = 2 * (ts[X] > 0).float() - 1
-    assert_close(result, expected)
-
-    # Test derivative of abs
-    result = F.abs(X).grad(X).simplify().evaluate(ts)
-    expected = torch.diag(torch.sign(ts[X].rename(None))).rename("i", "i_")
-    assert_close(result, expected)
 
 
 def test_flatten():
@@ -640,35 +505,6 @@ def test_dot():
     assert_close(out, expected)
 
 
-def test_tanh():
-    """
-    Test F.tanh by verifying output matches PyTorch's tanh in an
-    elementwise sense. Behavior check: we only compare final values,
-    not intermediate shapes or symbolic edges.
-    """
-    i, j = symbols("i j")
-    X = Variable("X", i, j)
-    tX = torch.randn(2, 3, names=("i", "j"))
-
-    out = F.tanh(X).evaluate({X: tX})
-    expected = torch.tanh(tX.rename(None)).rename("i", "j")
-    assert_close(out, expected)
-
-
-def test_sqrt():
-    """
-    Test F.sqrt by verifying output matches PyTorch's sqrt in an
-    elementwise sense. We ensure positivity, but only check the final
-    numeric behavior.
-    """
-    i, j = symbols("i j")
-    X = Variable("X", i=i, j=j)
-    tX = torch.abs(torch.randn(2, 3, names=("i", "j"))) + 0.1
-    out = F.sqrt(X).evaluate({X: tX})
-    expected = tX.rename(None).sqrt().rename("i", "j")
-    assert_close(out, expected)
-
-
 def test_pairwise_distance():
     """
     Test F.pairwise_distance(t1, t2, dims) by comparing it to a manual
@@ -688,22 +524,7 @@ def test_pairwise_distance():
     assert_close(out, expected)
 
 
-def test_gt0():
-    """
-    Test F.gt0 by verifying that it yields 1 where inputs > 0 else 0.
-    Behavior check: an elementwise threshold function.
-    """
-    i = symbols("i")
-    X = Variable("X", i=i)
-    tX = torch.tensor([-1.0, 0.0, 1.0, 2.0], names=("i",))
-    out = F.gt0(X).evaluate({X: tX})
-
-    # Behavior: 1 if t>0 else 0
-    manual = torch.where(tX.rename(None) > 0, 1.0, 0.0).rename("i")
-    assert_close(out, manual)
-
-
-def test_gt1():
+def test_max_grad():
     """
     Test F.gt0 by verifying that it yields 1 where inputs > 0 else 0.
     Behavior check: an elementwise threshold function.
@@ -736,38 +557,7 @@ def test_gt1():
     )
 
 
-@pytest.mark.parametrize("keepdim", [False, True])
-@pytest.mark.parametrize("dims", [(), ("i",), ("j",), ("i", "j")])
-def test_max(keepdim, dims):
-    i, j = symbols("i j")
-    X = Variable("X", i, j)
-    ts = rand_values([X], {i: 3, j: 4})
-    names = ts[X].names
-    tX = ts[X].rename(None)
-    if not keepdim:
-        names = tuple(n for n in names if n not in dims and dims)
-
-    # Test max operation
-    res = F.max(X, dims, keepdim=keepdim).evaluate(ts)
-    adims = tuple(ts[X].names.index(d) for d in dims)
-    expected = tX.amax(dim=adims, keepdim=keepdim)
-    expected = expected.rename(*names)
-    assert_close(res, expected)
-
-    # Test gradients using autograd
-    # Note that if we used F.sum/torch.sum we would get a factor i*j off,
-    # since our version of keepdim also _keeps the size of the dimensions_
-    # where pytorch just uses dummy/size-1 dimensions.
-    res_max = F.max(X, dims, keepdim=keepdim)
-    res = F.mean(res_max).grad(X).simplify().evaluate(ts)
-    x = tX.clone().detach().requires_grad_(True)
-    y = x.amax(dim=adims, keepdim=keepdim).rename(*names)
-    y.mean().backward()
-    expected = x.grad.rename("i_", "j_")
-    assert_close(res, expected)
-
-
-def test_grad_max():
+def test_max_grad2():
     """
     Verify that the subgradient of max(t) along a dimension matches PyTorch’s
     partial derivative for ties, i.e. each maximal element gets 1/k if there
@@ -819,3 +609,34 @@ def test_grad_max():
         # e.g. for [2,2,1], subgradient => [0.5, 0.5, 0]
         manual = torch.tensor(expected_subgrad, names=("i_",))
         assert_close(tg_grad, manual)
+
+
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("dims", [(), ("i",), ("j",), ("i", "j")])
+def test_max(keepdim, dims):
+    i, j = symbols("i j")
+    X = Variable("X", i, j)
+    ts = rand_values([X], {i: 3, j: 4})
+    names = ts[X].names
+    tX = ts[X].rename(None)
+    if not keepdim:
+        names = tuple(n for n in names if n not in dims and dims)
+
+    # Test max operation
+    res = F.max(X, dims, keepdim=keepdim).evaluate(ts)
+    adims = tuple(ts[X].names.index(d) for d in dims)
+    expected = tX.amax(dim=adims, keepdim=keepdim)
+    expected = expected.rename(*names)
+    assert_close(res, expected)
+
+    # Test gradients using autograd
+    # Note that if we used F.sum/torch.sum we would get a factor i*j off,
+    # since our version of keepdim also _keeps the size of the dimensions_
+    # where pytorch just uses dummy/size-1 dimensions.
+    res_max = F.max(X, dims, keepdim=keepdim)
+    res = F.mean(res_max).grad(X).simplify().evaluate(ts)
+    x = tX.clone().detach().requires_grad_(True)
+    y = x.amax(dim=adims, keepdim=keepdim).rename(*names)
+    y.mean().backward()
+    expected = x.grad.rename("i_", "j_")
+    assert_close(res, expected)
