@@ -336,6 +336,17 @@ def test_pow_cancel_3():
     assert expr.full_simplify() == F.pow(ST, 2)
 
 
+def test_pow_multi():
+    S = Variable("S")
+    x = torch.ones(1)
+    expr = F.pow(S, 5)
+    val = 1
+    for n in range(5, -1, -1):
+        assert expr.evaluate({S: x}) == val
+        expr = expr.grad(S)
+        val *= n
+
+
 def test_trace():
     i = symbols("i")
     x = Variable("x", i=i, j=i)
@@ -426,6 +437,14 @@ def test_symmetrize():
     for perm in itertools.permutations(keys):
         manual_sum += X.rename(**dict(zip(keys, perm)))
 
+    assert symX.simplify() == manual_sum.simplify()
+
+
+def test_anti_symmetrize():
+    i = symbols("i")
+    X = Variable("X", i, j=i)
+    symX = F.symmetrize(X, signed=True)
+    manual_sum = X - X.rename(j="i", i="j")
     assert symX.simplify() == manual_sum.simplify()
 
 

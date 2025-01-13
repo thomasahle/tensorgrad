@@ -24,6 +24,17 @@ def test_frobenius():
     assert F.frobenius2(X) == F.graph("X -i- X1 -j- X", X=X, X1=X)
 
 
+def test_copy_circle():
+    i = symbols("i j")
+    X = Variable("X", i, j=i)
+    assert F.trace(X) == F.graph("""
+        *1 -i- *2
+        *2 -i- *3
+        *3 -i- X
+        X -j- *1
+        """)
+
+
 def test_aXXb():
     # Based on https://math.stackexchange.com/questions/4948734
     i = symbols("i")

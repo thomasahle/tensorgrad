@@ -1,4 +1,4 @@
-from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy, Zero, Ones, simple_function
+from tensorgrad import Variable, Product, Function, Derivative, Sum, Copy, Zero, Ones, function
 from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
@@ -9,14 +9,12 @@ from tensorgrad.imgtools import save_steps, save_as_image
 from sympy import symbols
 
 
-
-
 def main():
     i = symbols("i")
     a = Variable("a", i)
     b = Variable("b", i)
     X = Variable("X", i, j=i)
-    expr = F.graph('a -i- X1 -j-i- X2 -j-i- b', a=a, X1=X, X2=X, b=b)
+    expr = F.graph("a -i- X1 -j-i- X2 -j-i- b", a=a, X1=X, X2=X, b=b)
     # expr = Derivative(Derivative(graph, X), X)
     print(to_pytorch(expr))
 
@@ -25,7 +23,7 @@ def main():
     logits = Variable("logits", C)
     target = Variable("target", C)
     e = F.exp(logits)
-    softmax = e / (1 + F.sum(e)) # Altnernative softmax
+    softmax = e / (1 + F.sum(e))  # Altnernative softmax
     ce = -F.sum(target * F.log(softmax))
     expr = ce.grad(logits).grad(logits)
     expr = expr.full_simplify()
@@ -52,7 +50,7 @@ def main2():
     i, j = symbols("i j")
     x = Variable("x", i)
     A = Variable("A", i, j=i)
-    xAx = x.rename(i='j') @ A @ x
+    xAx = x.rename(i="j") @ A @ x
     xAxxAx = xAx @ xAx
     expr = Derivative(Derivative(xAxxAx, x), x)
     expr = expr.simplify()
@@ -62,7 +60,7 @@ def main2():
 def main3():
     i, j = symbols("i j")
     R = Variable("R", i, j)
-    p = R / F.sum(R, edges=['i'])
+    p = R / F.sum(R, edges=["i"])
     U = Variable("U", i, j)
     z = U @ p
     expr = Derivative(z, R)
@@ -87,29 +85,42 @@ def main5():
     i = symbols("i")
     eps = symbols("e")
     u = Variable(f"u", i)
-    X = Copy(i, "i", "j") + u @ u.rename(i="j")# * Copy(eps)
+    X = Copy(i, "i", "j") + u @ u.rename(i="j")  # * Copy(eps)
     # X = u @ u.rename(i="j") @ Copy(eps)
     M = Variable("M", i, j=i).with_symmetries("i j")
     if K == 3:
-        prod = F.graph('''*1 -i- X1 -j- M1
+        prod = F.graph(
+            """*1 -i- X1 -j- M1
                        M1 -i- X2 -j- M2
                        M2 -i- X3 -j- M3
-                       M3 -i- *1''',
-                       X1=X, M1=M, X2=X, M2=M, X3=X, M3=M)
+                       M3 -i- *1""",
+            X1=X,
+            M1=M,
+            X2=X,
+            M2=M,
+            X3=X,
+            M3=M,
+        )
     if K == 2:
-        prod = F.graph('''*1 -i- X1 -j- M1
+        prod = F.graph(
+            """*1 -i- X1 -j- M1
                        M1 -i- X2 -j- M2
-                       M2 -i- *1''',
-                       X1=X, M1=M, X2=X, M2=M)
+                       M2 -i- *1""",
+            X1=X,
+            M1=M,
+            X2=X,
+            M2=M,
+        )
     expr = Expectation(prod, u)
     expr = expr.full_simplify()
     print(expr)
     print(len(expr.tensors))
     print("expanding")
-    expr = expr.simplify({'expand': True})
+    expr = expr.simplify({"expand": True})
     print(expr)
     print(len(expr.tensors))
     # save_as_image(expr, 'm3.png')
+
 
 def main6():
     K = 2
@@ -126,10 +137,9 @@ def main6():
     expr = Expectation(trXMkXMkt, u)
     # expr = Expectation(XMk, u) @ Copy(i, "i", "j")
     expr = expr.full_simplify()
-    expr = expr.simplify({'extract_constants_from_expectation': True})
+    expr = expr.simplify({"extract_constants_from_expectation": True})
     print(expr)
     save_steps(expr)
-
 
 
 def main7():
@@ -138,6 +148,7 @@ def main7():
     expr = Derivative(F.max(X, "i"), X)
     print(expr)
     save_steps(expr)
+
 
 def main8():
     i, j = symbols("i j")
@@ -156,28 +167,29 @@ def main10():
     y = Variable("target", N=N, C=C)
 
     expr = x
-    expr = F.sum(expr).grad(x)#.grad(x)
+    expr = F.sum(expr).grad(x)  # .grad(x)
     print(expr)
 
     save_steps(expr)
+
 
 def main11():
     N, C = symbols("N C")
     x = Variable("logits", N=N, C=C)
     expr = Product(
-                [
-                    #x,
-                    Copy(N, "N"),
-                    Copy(N, "N"),
-                    Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}),
-                    #Zero({'C': C, 'N_': N, 'C_': C})
-                ]
-            )
+        [
+            # x,
+            Copy(N, "N"),
+            Copy(N, "N"),
+            Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}),
+            # Zero({'C': C, 'N_': N, 'C_': C})
+        ]
+    )
     print(Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}).simplify())
     print(Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}).shape)
     print(Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}).simplify().shape)
     print(to_tikz(expr))
 
+
 if __name__ == "__main__":
     main11()
-

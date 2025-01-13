@@ -11,7 +11,7 @@ dependencies = [
    "pdf2image",
    "sympy"
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 authors = [
   {name = "Thomas Ahle", email = "lobais@gmail.com"},
 ]

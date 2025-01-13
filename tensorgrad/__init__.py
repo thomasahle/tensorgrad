@@ -9,6 +9,6 @@ from .tensor import (
     Ones,
     Derivative,
     make_distinct,
-    simple_function,  # noqa: F401
+    function,  # noqa: F401
 )  # noqa: F401
 from .functions import frobenius2, kronecker, diag, sum, log, pow, trace  # noqa: F401

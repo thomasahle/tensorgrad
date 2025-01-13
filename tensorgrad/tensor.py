@@ -875,8 +875,11 @@ class FunctionSignature(ABC):
         return f"FunctionSignature('{self.name}', {set(self.edges)}, {[set(s) for s in self.inputs]})"
 
 
-def simple_function(
-    name, output_shape: dict[str, Symbol], *inputs: tuple[Tensor | str, ...], orig_out: dict[str, str] = None
+def function(
+    name,
+    output_shape: dict[str, Symbol],
+    *inputs: tuple[Tensor | str, ...],
+    orig_out: dict[str, str] = None,
 ) -> "Function":
     return Function(
         FunctionSignature(

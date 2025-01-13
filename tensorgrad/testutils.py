@@ -8,7 +8,7 @@ from tensorgrad import Copy, Ones, Tensor, Zero, Variable
 import networkx as nx
 
 
-def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}):
+def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}) -> dict[Variable, torch.Tensor]:
     values = {}
     for v in variables:
         if v.order == 0:
@@ -169,12 +169,6 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
         for r in range(1, len(symbols_list) + 1)
         for symbols in itertools.combinations(symbols_list, r)
     ]
-    copys = [
-        (Copy(s0, *map(str, symbols)), generate_copy(sizes[s0], list(map(str, symbols))))
-        for s0 in symbols_list
-        for r in range(1, len(symbols_list) + 1)
-        for symbols in itertools.combinations(symbols_list, r)
-    ]
 
     def inner(depth):
         if depth == 0:
@@ -182,12 +176,12 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
             return random.choice(vars)
         left, left_torch = inner(depth - 1)
         right, right_torch = inner(depth - 1)
-        if random.random() < 0.1:
-            # TODO: We're doing division here, but we could also just randomly
-            # apply a function to right or left, like a power(-1) function.
+        rand = random.random()
+        if rand < 0.3:
             left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
-            return left / right, left_aligned / right_aligned
-        if random.random() < 0.5:
+            k = random.randint(-2, 4)
+            return left * right**k, left_aligned * right_aligned**k
+        if rand < 0.6:
             left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
             return left + right, left_aligned + right_aligned
         else:
