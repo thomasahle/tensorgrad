@@ -1,14 +1,13 @@
 # tensorgrad
-Tensorgrad is a library for automatic symbolic differentiation using tensor diagrams.
+A tensor & deep learning framework. PyTorch meets SymPy.
 
-Tensor network diagrams, also known as [Penrose graphical notation](https://en.wikipedia.org/wiki/Penrose_graphical_notation) or [tensor diagram notation](https://tensornetwork.org/), provide a powerful visual representation for tensors and their contractions. Introduced by Roger Penrose in 1971, these diagrams have become widely used in various fields such as quantum physics, multilinear algebra, and machine learning. They allow complex tensor equations to be represented in a way that makes the structure of the contraction clear, without cluttering the notation with explicit indices.
-
-# Basics 
-
-The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know about tensor networks. 
+The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know about tensor networks. They allow complex tensor equations to be represented in a way that makes the structure of the contraction clear, without cluttering the notation with explicit indices. 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="70%">
 
-For a beautiful introduction to tensor networks, see also [Jordan Taylor's blog post](https://www.lesswrong.com/posts/BQKKQiBmc63fwjDrj/graphical-tensor-notation-for-interpretability)
+Install with
+```
+pip install tensorg
+```
 
 # Example of Tensorgrad
 
