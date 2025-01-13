@@ -13,6 +13,7 @@ dependencies = [
    "torch",
    "nbval",
    "pytest",
+   "einops",
    "pdf2image",
    "sympy"
 ]
@@ -25,5 +26,6 @@ line-length = 110
 indent-width = 4
 
 [tool.pytest.ini_options]
-addopts = "-s"
+addopts = "-s --cov=tensorgrad --cov-report=term-missing --cov-report=xml"
 # addopts = "--nbval"
+
