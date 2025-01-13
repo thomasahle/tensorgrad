@@ -1,17 +1,26 @@
 # tensorgrad
 A tensor & deep learning framework. PyTorch meets SymPy.
 
-The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know about tensor networks. They allow complex tensor equations to be represented in a way that makes the structure of the contraction clear, without cluttering the notation with explicit indices. 
+Tensor diagrams let you manipulate high dimensional tensors are graphs in a way that makes derivatives and complex products easy to understand.
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="70%">
-
-Install with
-```
-pip install tensorg
-```
+The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know.
 
 # Example of Tensorgrad
 
-To run the examples for yourself, you can use [the main.py file](https://github.com/thomasahle/tensorgrad/blob/main/main.py) or [this colab notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
+To run the examples for yourself, see [this colab notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
+
+Install tensorgrad with
+```bash
+pip install tensorg
+```
+
+For visualizations we need some latex packages:
+```bash
+apt-get install texlive-luatex
+apt-get install texlive-latex-extra
+apt-get install texlive-fonts-extra
+apt-get install poppler-utils
+```
 
 ## Derivative of L2 Loss
 
