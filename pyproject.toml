@@ -1,8 +1,8 @@
 [project]
-name = "tensorgrad"
+name = "tensorg"
 version = "0.1"
 dependencies = [
-   "networkx",
+   "networkx==3.2.1",
    "torch",
    "nbval",
    "pytest",
