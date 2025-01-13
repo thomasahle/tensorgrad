@@ -1,1 +1,1 @@
-from .expectation import Expectation
+from .expectation import Expectation  # noqa: F401
