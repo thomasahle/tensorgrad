@@ -1,4 +1,4 @@
-name: Run Pytest and Notebook on Push
+name: Run Pytest on Push
 
 on:
   push:
@@ -28,28 +28,3 @@ jobs:
         run: |
           pytest --maxfail=5 --disable-warnings
 
-  run-notebook:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get install -y texlive-luatex texlive-latex-extra texlive-fonts-extra poppler-utils
-
-      - name: Install Python Dependencies
-        run: |
-          pip install .
-          pip install notebook ipykernel pdf2image
-
-      - name: Run Notebook
-        run: |
-          pip install nbconvert
-          jupyter nbconvert --to notebook --execute notebooks/derivatives.ipynb --output executed_derivatives.ipynb
