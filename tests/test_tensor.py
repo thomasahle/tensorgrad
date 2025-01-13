@@ -311,8 +311,6 @@ def test_pseudo_linear_gradient():
     assert expr.edges == {"j", "i_"}
     D_0A = simple_function("D_0A", {"i": i, "j": j, "i__": i}, (x, "i")).rename(i__="i_")
     expected = (D_0A @ x + A.rename(i="i_")).simplify()
-    print(expr)
-    print(expected)
     assert expr == expected
 
 

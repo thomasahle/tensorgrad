@@ -49,7 +49,6 @@ def test_names4():
     # Transposing the outer product should give the transposed covariance
     xt = x.rename(i="j", j="i")
     x2t = xt.rename(i="i2", j="j2")
-    print("xxxx", xt @ x2t)
     covart = covar.rename(i="j", j="i", i2="j2", j2="i2")
     ex = Expectation(xt @ x2t, x, zero, covar, covar_names)
     res = ex.simplify()
@@ -158,7 +157,6 @@ def test_quartic2():
     expected_covar = torch.cov(X.reshape(-1, j_val).T).rename("j", "l")
     assert_close(S.evaluate(ts), expected_covar, rtol=0.05, atol=1e-2)
 
-    print(f"{ts[M]=}")
     X += ts[M].rename(None)
 
     expected = (

@@ -110,9 +110,7 @@ class TikzGraph:
         if isinstance(node_id, dict):
             node_id = node_id["node_id"]
         node_id = name_dict[node_id]
-        if node_id in self.node_ids:
-            print("Warning: Node already exists. Ignoring")
-            return
+        assert node_id not in self.node_ids, f"Node {node_id} already exists."
         self.node_ids.add(node_id)
         if label is not None:
             label, extra_style = format_label(label)
@@ -194,7 +192,6 @@ class TikzGraph:
         else:
             end_text = label
 
-        print(start_text, label, end_text)
         if start_text == end_text:
             # assert label == start_text
             self.lines.append(

@@ -459,7 +459,6 @@ class PowerFunction(FunctionSignature):
         # Find an existing power, like pow(X, k=2), and merge other powers of X,
         # or instances of X, into it.
         s = ",\n    ".join(map(repr, tensors))
-        print(f"_combine_powers(\n    {s})")
         seen = set()
         while True:
             # Find the next power function we haven't seen yet
@@ -472,7 +471,6 @@ class PowerFunction(FunctionSignature):
             except StopIteration:
                 break
             seen.add(t)
-            print("found a power", t)
             if t.signature.k > 5:
                 break
 
@@ -506,14 +504,11 @@ class PowerFunction(FunctionSignature):
                         (comp,) = comp.inputs
                 partition[MatchEdgesKey(comp, **hyperedges)].append((power, comp))
 
-            print(f"{partition=}")
-
             # Now we have a partition of tensors that share the same edges, and we can combine them.
             # Or in some cases they cancel each other.
             tensors = copys
             for ts in partition.values():
                 k = _sum(k for k, t in ts)
-                print(f"Sum of ks={k}")
                 (_, t0) = ts[0]  # All the tensors should be the same t
                 tensors.append(pow(t0, k))
                 # The remaining tensors have been reduced to ones. This prevents leaving unattached edges
@@ -523,7 +518,6 @@ class PowerFunction(FunctionSignature):
                     # make our method loop forever as it collects powers of nothing.
                     if t.shape:
                         tensors.append(Ones(**t.shape))
-            print("new tensors", tensors)
         return tensors
 
     @classmethod

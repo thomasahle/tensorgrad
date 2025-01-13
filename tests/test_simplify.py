@@ -6,7 +6,6 @@ from tensorgrad.tensor import Copy, Product, Sum, Variable
 def test_copy_loop():
     i = symbols("i")
     expr = Copy(i, "i, j") @ Copy(i, "i, j")
-    print(expr.simplify())
     assert expr.simplify() == Copy(i)
 
 

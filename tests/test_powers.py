@@ -29,7 +29,6 @@ def test_combine_powers():
     )
     assert F.pow(Copy(i), k=3) in out
 
-    print("\n" * 3 + "=" * 80 + "\n" * 3)
     out = F.PowerFunction._combine_powers(
         [
             F.pow(Copy(i), k=5),

@@ -36,10 +36,6 @@ def test_simple3():
     A0 = Variable("A", x__=i, x_=i, _orig={"x__": "x", "x_": "y"})
     assert A0.orig == A1.orig
     assert A0._symmetries == A1._symmetries
-    print(A0.graph_to_string())
-    print(A1.graph_to_string())
-    print(f"{A0=}")
-    print(f"{A1=}")
     assert A0 == A1
     (mapping,) = A2.isomorphisms(A0)
     assert mapping == {"x": "x__", "y": "x_"}

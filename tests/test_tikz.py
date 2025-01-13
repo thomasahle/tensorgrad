@@ -147,7 +147,6 @@ def test_sum_of_products_and_flatten():
     """
     i, j, k = symbols("i j k")
     x = Variable("x", i, j)
-    y = Variable("y", j, k)
     z = Variable("z", i, k)
 
     # Provide 3 edges as strings if your code demands strings:

@@ -11,7 +11,6 @@ def _edge(graph, id1, id2, label):
         ("tail_name", "ltail", id1),
         ("head_name", "lhead", id2),
     ]:
-        # print(name, sub_name, id_)
         if isinstance(id_, tuple):
             cluster_id, inner_id = id_
             kwargs[name] = inner_id

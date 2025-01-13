@@ -1,8 +1,8 @@
 import torch
-from sympy import Symbol, symbols
-from tensorgrad import Variable, Function
+from sympy import symbols
+from tensorgrad import Variable
 import tensorgrad.functions as F
-from tensorgrad.tensor import Copy, FunctionSignature, Product, Tensor, simple_function
+from tensorgrad.tensor import Copy, Product, simple_function
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -27,7 +27,6 @@ def test_simple_hessian():
     quad = x @ A @ x.rename(x="y")
     res = quad.grad(x).grad(x).simplify()
     assert res == F.symmetrize(A).simplify()
-    print(res)
     ApAt = (ts[A].rename(None) + ts[A].rename(None).T).rename("x_", "x__")
     assert_close(res.evaluate(ts), ApAt)
 
@@ -155,8 +154,6 @@ def test_f_2_2_multi_input():
         (x, "i"),
         (y, "k"),
     ).rename(j="j_0", i__="i_") @ Copy(j, "j, j_, j_0")
-    print(expr)
-    print(expected)
     assert expr == expected
 
 
@@ -225,8 +222,6 @@ def test_f_1_2_nested():
             ).rename(k="k_", i__="i_", j__="j_"),
         ]
     )
-    print(expr)
-    print(expected)
     assert expr == expected
 
 
@@ -248,8 +243,6 @@ def test_f_2_2_nested():
             ).rename(k="k_", l="l_", i__="i_", j__="j_"),
         ]
     )
-    print(expr)
-    print(expected)
     assert expr == expected
 
 
@@ -282,6 +275,4 @@ def test_f_2_2_double_nested():
             ).rename(i__="i_", j__="j_"),
         ]
     )
-    print(expr)
-    print(expected)
     assert expr == expected

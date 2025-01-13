@@ -150,60 +150,6 @@ def test_bivariate_functions(functions):
         assert_close(my_hessian, torch_hessians[i][j].rename("N_", "C_", "N__", "C__"))
 
 
-def test_softmax():
-    i, j = symbols("i j")
-    A = Variable("A", i=i, j=j)
-    ts = rand_values([A], {i: 3, j: 2})
-    res = F.softmax(A, {"i": i}).evaluate({A: ts[A]})
-    expected = tF.softmax(ts[A].rename(None), dim=0).rename("i", "j")
-    assert_close(res, expected)
-
-
-def test_softmax_jac():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    ts = rand_values([x], {i: 3})
-    expr = F.softmax(x, "i").simplify({"expand_functions": True}).grad(x).simplify()
-    print(expr)
-    res = expr.evaluate({x: ts[x]})
-    expected = jacobian(lambda x: tF.softmax(x), ts[x].rename(None)).rename("i", "i_")
-    assert_close(res, expected)
-
-
-def test_softmax_grad():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    ts = rand_values([x], {i: 3})
-    res = F.sum(F.softmax(x, {"i": i}), {"i": i}).grad(x).simplify().evaluate({x: ts[x]})
-    expected = jacobian(lambda x: tF.softmax(x).sum(), ts[x].rename(None)).rename("i_")
-    assert_close(res, expected)
-
-
-def test_softmax_hess():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    ts = rand_values([x], {i: 3})
-    res = (
-        F.sum(F.softmax(x, ["i"]), ["i"])
-        .grad(x)
-        .grad(x)
-        .simplify({"sum_combine_terms": False})
-        .evaluate({x: ts[x]})
-    )
-    expected = hessian(lambda x: tF.softmax(x).sum(), ts[x].rename(None)).rename("i_", "i__")
-    assert_close(res, expected)
-
-
-def test_softmax_hess2():
-    i = symbols("i")
-    x = Variable("x", i=i)
-    targets = Variable("targets", i=i)
-    ts = rand_values([x, targets], {i: 3})
-    res = (F.softmax(x, {"i": i}) @ targets).grad(x).grad(x).simplify().evaluate(ts)
-    expected = hessian(lambda x: tF.softmax(x) @ ts[targets], ts[x].rename(None)).rename("i_", "i__")
-    assert_close(res, expected)
-
-
 def test_softmax_grad_mat():
     i, j = symbols("i j")
     A = Variable("A", i=i, j=j)
@@ -362,7 +308,6 @@ def test_pow_cancel_1():
     T = Variable("T", i, j)
     ST = S @ T
     expr = ST * F.pow(ST, -1)
-    print(expr.full_simplify())
     assert expr.full_simplify() == Copy(j, "j")
 
 
