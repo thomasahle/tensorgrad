@@ -3,6 +3,7 @@ name = "tensorg"
 version = "0.1"
 dependencies = [
    "networkx==3.2.1",
+   "numpy",
    "torch",
    "nbval",
    "pytest",
