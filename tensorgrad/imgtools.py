@@ -84,6 +84,13 @@ def combine_images_vertically(
     return combined_image_path
 
 
+def save_as_image(expr, path):
+    latex_code = to_tikz(expr)
+    image_path = compile_latex(latex_code)
+    os.rename(image_path, path)
+    print(f"Image saved to {path}")
+
+
 def save_steps_old(expr, min_steps=None):
     images = []
     latex_code = to_tikz(expr)

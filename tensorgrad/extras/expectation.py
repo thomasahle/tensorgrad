@@ -11,8 +11,9 @@ from tensorgrad.tensor import (
     unused_edge_names,
     Copy,
     Zero,
+    Function,
 )
-import tensorgrad.functions as F
+from tensorgrad.functions import PowerFunction
 import networkx as nx
 
 
@@ -59,7 +60,8 @@ class Expectation(Tensor):
         elif covar_names is None:
             raise ValueError("If covar is not given, covar_names must be given.")
         if covar.shape != wrt.shape | {covar_names[k]: s for k, s in wrt.shape.items()}:
-            raise ValueError(f"{covar.shape=} != {wrt.shape=} | {covar_names=}")
+            co_size = {covar_names[k]: s for k, s in wrt.shape.items()}
+            raise ValueError(f"{covar.shape=} != {wrt.shape=} | {co_size=}")
         assert covar.order % 2 == 0, f"{covar.order=}"
 
         assert covar_names.keys() == wrt.edges, f"{covar_names.keys()=} != {wrt.edges=}"
@@ -76,16 +78,88 @@ class Expectation(Tensor):
         values: dict["Variable", torch.Tensor],
         dims: dict[Symbol, int] | None = None,
     ) -> torch.Tensor:
-        # TODO: Could do a numerical integration here
-        # A neat approach would be if could substitute self.wrt with a tensor with an extra edge.
-        # This edge would be "number of samples" and we'd evantually take the mean over it.
-        # So we'd add a method tensor.substitute(variable_old, variable_new) which would require
-        # that variable_new's edges are a superset of variable_old's edges.
-        # It would be nice to have one more application of such a method to help inform the design.
-        raise NotImplementedError
+        """
+        Numerically approximate E[tensor] via Monte Carlo sampling from N(mu, covar),
+        storing a *batch* dimension ("samples") in wrt and taking the mean over that dimension.
+
+        Steps:
+        - Evaluate mu, covar => align/flatten => sample in R^D
+        - Reshape to (samples, *wrt.shape)
+        - Insert that into values[self.wrt]
+        - Evaluate self.tensor(...) => shape (samples, *rest)
+        - .mean over 'samples' => final result
+        """
+
+        # If we already computed this Expectation, return cached value:
+        if self in values:
+            return values[self]
+
+        # If user pinned a specific wrt => just evaluate the tensor directly
+        if self.wrt in values:
+            out = self.tensor.evaluate(values, dims)
+            values[self] = out
+            return out
+
+        if dims is None:
+            dims = {}
+
+        # 1) Evaluate mu and covar numerically
+        mu_torch = self.mu.evaluate(values, dims)  # named edges = same as self.mu.edges
+        covar_torch = self.covar.evaluate(values, dims)
+
+        # 2) Align mu => shape(*self.wrt.edges)
+        #    Example: if wrt.edges = (i, j), we call mu_torch.align_to("i","j").
+        #    That ensures the dimension order matches wrt's order.
+        mu_aligned = mu_torch.align_to(*self.wrt.edges)
+        # Flatten to (D,)
+        D = mu_aligned.numel()
+        mu_flat = mu_aligned.rename(None).reshape(D)
+
+        # 3) Align covar => shape(*self.wrt.edges, *mapped_wrt_edges)
+        #    For example: (i, j, i2, j2).  Let's define the order explicitly:
+        #    first the "row" edges (i, j), then the "column" edges (i2, j2).
+        col_edges = [self.covar_names[e] for e in self.wrt.edges]
+        covar_aligned = covar_torch.align_to(*self.wrt.edges, *col_edges)
+        # Flatten to (D, D)
+        covar_reshaped = covar_aligned.rename(None).reshape(D, D)
+
+        # 4) Number of samples
+        num_samples = dims.get("samples", 1000)
+        if "seed" in dims:
+            torch.manual_seed(dims["seed"])
+
+        # 5) Cholesky
+        L = torch.linalg.cholesky(covar_reshaped)
+
+        # 6) Sample => shape (samples, D)
+        z = torch.randn(num_samples, D, device=mu_flat.device, dtype=mu_flat.dtype)
+        x_flat = mu_flat + (z @ L.T)  # shape (samples, D)
+
+        # 7) Reshape => (samples, *wrt.shape)  => name the leading dim "samples"
+        wrt_shape = mu_aligned.shape  # e.g. (2,3)
+        x_batched = x_flat.reshape(num_samples, *wrt_shape)
+        x_batched_named = x_batched.refine_names("samples", *self.wrt.edges)
+
+        # 8) Insert into values => call self.tensor.evaluate
+        temp_values = dict(values)
+        temp_values[self.wrt] = x_batched_named  # Now wrt has a leading 'samples' dimension
+        out_batched = self.tensor.evaluate(temp_values, dims)  # => shape (samples, ...)
+
+        # 9) Take mean over the "samples" dimension
+        out_batched_unnamed = out_batched.rename(None)  # drop named dims to index them
+        out_mean = out_batched_unnamed.mean(dim=0)  # remove 'samples' from the front
+
+        # 10) Rename the result to the free edges => i.e. self.tensor.edges
+        #     but "out_batched" might have shape (samples, E...) => after mean => shape(E...).
+        #     So we can do:
+        out_named = out_mean.refine_names(*self.tensor.edges)
+
+        # Cache
+        values[self] = out_named
+        return out_named
 
     def simplify(self, args=None):
-        # We don't currently support Product functions directly, so we prefer to expand them.
+        # We don't currently support pow() functions directly, so we prefer to expand them.
         args = self._check_simplify(args) | {"combine_products": False}
         inner = self.tensor.simplify(args=args)
 
@@ -161,6 +235,78 @@ class Expectation(Tensor):
                 )
                 assert res.edges == self.edges, f"{res.edges=} != {self.edges=}"
                 return res.simplify(args=args)
+
+            # Look for a power function with exponent >= 1 and pull out a factor
+            if (
+                fn := next(
+                    (
+                        t
+                        for t in prod.tensors
+                        if isinstance(t, Function)
+                        and isinstance(t.signature, PowerFunction)
+                        and t.signature.k >= 1
+                    ),
+                    None,
+                )
+            ) is not None:
+                assert isinstance(fn, Function)
+                subs = prod.tensors[:]
+                subs.remove(fn)
+                (inner,) = fn.inputs
+                subs.append(inner * fn.weight)  # We pull the weight out as well
+                if fn.signature.k > 1:
+                    subs.append(pow(inner, fn.signature.k - 1))
+                return Expectation(Product(subs), self.wrt, self.mu, self.covar, self.covar_names).simplify(
+                    args=args
+                )
+
+            # Otherwise we look for constant factors to pull out
+            elif args.get("extract_constants_from_expectation") and any(
+                not t.depends_on(self.wrt) for t in prod.tensors
+            ):
+                # Separate into constant and wrt-dependent factors
+                constant_terms, wrt_terms = [], []
+                for t in prod.tensors:
+                    if t.depends_on(self.wrt):
+                        wrt_terms.append(t)
+                    else:
+                        constant_terms.append(t)
+                assert len(wrt_terms) > 0
+                assert len(constant_terms) > 0
+
+                # Pull out the constant terms.
+                # Note we need to avoid introducing a Product with a single element,
+                # so we don't get an infinite loop in the simplify method.
+                constant_prod = Product(constant_terms).simplify(args=args)
+                wrt_prod = Product(wrt_terms).simplify(args=args)
+
+                # Compute E[wrt-dependent part] and multiply by constants
+                return (
+                    constant_prod @ Expectation(wrt_prod, self.wrt, self.mu, self.covar, self.covar_names)
+                ).simplify(args=args)
+
+            # Finally check if any factors contain sums that we can expand
+            if False and (
+                sum_idx := next(
+                    (i for i, t in enumerate(prod.tensors) if isinstance(t, Sum) and t.depends_on(self.wrt)),
+                    None,
+                )
+                is not None
+            ):
+                sum_term = prod.tensors[sum_idx]
+                assert isinstance(sum_term, Sum)
+                other_terms = prod.tensors[:sum_idx] + prod.tensors[sum_idx + 1 :]
+
+                # Distribute the product over the sum
+                return Sum(
+                    [
+                        Expectation(
+                            Product([t] + other_terms), self.wrt, self.mu, self.covar, self.covar_names
+                        )
+                        for t in sum_term.tensors
+                    ],
+                    sum_term.weights,
+                ).simplify(args=args)
 
         # If nothing was found that we know how to simplify, we just return the original
         return Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)

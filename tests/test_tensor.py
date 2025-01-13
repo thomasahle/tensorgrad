@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 from tensorgrad.functions import frobenius2
-from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones
+from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, simple_function
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -239,15 +239,15 @@ def test_equality():
 def test_func_grad():
     x = symbols("x")
     x_var = Variable("x", x)
-    f = Function("f", [], (x_var, "x"))
+    f = simple_function("f", {}, (x_var, "x"))
     assert f.grad(x_var, {"x": "x_"}).edges == {"x_"}
 
 
 def test_two_func_grad():
     x, y = symbols("x y")
     x_var = Variable("x", x)
-    v = Function("v", {"y": y}, (x_var, "x"))
-    f = Function("f", {}, (v, "y"))
+    v = simple_function("v", {"y": y}, (x_var, "x"))
+    f = simple_function("f", {}, (v, "y"))
     assert f.grad(x_var).edges == {"x_"}
 
 
@@ -306,10 +306,10 @@ def test_broadcast_zero_rank_ones():
 def test_pseudo_linear_gradient():
     i, j = symbols("i j")
     x = Variable("x", i)
-    A = Function("A", {"i": i, "j": j}, (x, "i"))
+    A = simple_function("A", {"i": i, "j": j}, (x, "i"))
     expr = (A @ x).grad(x).simplify()
     assert expr.edges == {"j", "i_"}
-    D_0A = Function("D_0A", {"i": i, "j": j, "i_": i}, (x, "i"), orig_out={"i_": "i__", "j": "j", "i": "i"})
+    D_0A = simple_function("D_0A", {"i": i, "j": j, "i__": i}, (x, "i")).rename(i__="i_")
     expected = (D_0A @ x + A.rename(i="i_")).simplify()
     print(expr)
     print(expected)

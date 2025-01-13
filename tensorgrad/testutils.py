@@ -4,8 +4,89 @@ import torch
 from typing import Iterable, Tuple, Dict
 import random
 import string
-from tensorgrad import Copy, Ones, Tensor, Zero, Variable, Product, Sum
+from tensorgrad import Copy, Ones, Tensor, Zero, Variable
 import networkx as nx
+
+# Product(
+#     [
+#         Product(
+#             [
+#                 Product(
+#                     [
+#                         Function("max", {}, Variable("X", i, j)),
+#                         Product([Copy(i, "i")]),
+#                     ]
+#                 ),
+#                 Copy(j, "j"),
+#                 Copy(i, "i"),
+#             ]
+#         ),
+#         Function(
+#             "pow(k=-1)",
+#             {},
+#             Product(
+#                 [
+#                     Copy(j),
+#                     Copy(i),
+#                 ]
+#             ),
+#         ),
+#     ]
+# )
+
+# Product(
+#     [
+#         Product(
+#             [
+#                 Product(
+#                     [
+#                         Function(FunctionSignature(max, set(), [{"i"}]), Variable("X", i, j), {}),
+#                         Product([Copy(i, "i")]),
+#                     ]
+#                 ),
+#                 Copy(j, "j"),
+#                 Copy(i, "i"),
+#             ]
+#         ),
+#         Function(
+#             FunctionSignature(pow(k=-1), set(), [set()]),
+#             Product(
+#                 [
+#                     Copy(j),
+#                     Copy(i),
+#                 ]
+#             ),
+#             {},
+#         ),
+#     ]
+# )
+
+# Product(
+#     [
+#         Product(
+#             [
+#                 Product(
+#                     [
+#                         Function(FunctionSignature(max, set(), [{"i"}]), Variable("X", i, j), {}),
+#                         Product([Copy(i, "i")]),
+#                     ]
+#                 ),
+#                 Copy(j, "j"),
+#                 Copy(i, "i"),
+#             ]
+#         ),
+#         Function(
+#             FunctionSignature(pow(k=-1), set(), [set()]),
+#             Product(
+#                 [
+#                     Copy(j),
+#                     Copy(i),
+#                 ]
+#             ),
+#             {},
+#         ),
+#     ]
+# )
 
 
 def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}):
@@ -19,10 +100,11 @@ def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}):
     return values
 
 
-def assert_close(a, b, rtol=1e-4, atol=1e-5):
-    assert set(a.names) == set(b.names)
-    a = a.align_to(*b.names)
-    torch.testing.assert_close(a.rename(None), b.rename(None), rtol=rtol, atol=atol)
+def assert_close(actual, expected, rtol=1e-4, atol=1e-5):
+    assert set(actual.names) == set(expected.names), f"{actual.names=} != {expected.names=}"
+    actual = actual.align_to(*expected.names).rename(None)
+    expected = expected.expand_as(actual).rename(None)
+    torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol)
 
 
 def broadcast_tensors(left_torch, right_torch):
@@ -181,6 +263,11 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
             return random.choice(vars)
         left, left_torch = inner(depth - 1)
         right, right_torch = inner(depth - 1)
+        if random.random() < 0.1:
+            # TODO: We're doing division here, but we could also just randomly
+            # apply a function to right or left, like a power(-1) function.
+            left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
+            return left / right, left_aligned / right_aligned
         if random.random() < 0.5:
             left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
             return left + right, left_aligned + right_aligned
@@ -193,3 +280,81 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
 
     tensor, tensor_torch = inner(depth=max_depth)
     return tensor, tensor_torch, {v: t for v, t in vars}
+
+
+def random_tensor_expr2(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, dict]:
+    # 1) Randomized symbol set
+    chosen_letters = random.sample(string.ascii_lowercase, max_dim)
+    symbols_list = symbols(" ".join(chosen_letters))
+
+    # 2) More interesting shape selection
+    interesting_sizes = [1, 2, 3, 4, 8]
+    sizes = {s: random.choice(interesting_sizes) for s in symbols_list}
+
+    # 3) Create a smaller subset of variables / copies
+    #    instead of enumerating all combinations
+    possible_combinations = list(
+        itertools.chain.from_iterable(
+            itertools.combinations(symbols_list, r) for r in range(1, len(symbols_list) + 1)
+        )
+    )
+    random.shuffle(possible_combinations)
+
+    # let's only keep up to 5 random combos
+    combos_subset = possible_combinations[:5]
+
+    vars_pool = []
+    for combo in combos_subset:
+        name = "_".join(str(x) for x in combo)
+        var = Variable(f"var_{name}", *combo)
+        t = torch.randn([sizes[s] for s in combo], names=[str(s) for s in combo])
+        vars_pool.append((var, t))
+
+    # same for copys
+    copys_pool = []
+    for s0 in symbols_list:
+        # generate 2 random combos for each symbol
+        local_combos = random.sample(possible_combinations, k=2)
+        for combo in local_combos:
+            cpy = Copy(s0, *map(str, combo))
+            copy_torch = generate_copy(sizes[s0], list(map(str, combo)))
+            copys_pool.append((cpy, copy_torch))
+
+    LEAF_POOL = vars_pool + copys_pool
+
+    def inner(depth):
+        # Base case
+        if depth == 0 or random.random() < 0.2:
+            return random.choice(LEAF_POOL)
+
+        # Recur on sub-expressions
+        left_expr, left_torch = inner(depth - 1)
+        right_expr, right_torch = inner(depth - 1)
+
+        # Randomly pick an operation
+        op = random.choice(["add", "einsum"])
+        if op == "add":
+            left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
+            return (left_expr + right_expr, left_aligned + right_aligned)
+        else:
+            # create a random einsum pattern
+            contracted = left_expr.edges & right_expr.edges
+            rhs = "".join(e for e in left_torch.names + right_torch.names if e not in contracted)
+            eq = f"{''.join(left_torch.names)},{''.join(right_torch.names)}->{rhs}"
+            torch_result = torch.einsum(eq, left_torch.rename(None), right_torch.rename(None))
+            return (left_expr @ right_expr, torch_result.rename(*rhs))
+
+    expr, expr_torch = inner(max_depth)
+
+    # 4) (Optional) final random mutation pass
+    # e.g., with 10% chance, multiply top-level by a scalar
+    if random.random() < 0.1:
+        scalar = random.choice([0.5, -1.0, 2.0])
+        expr = scalar * expr
+        expr_torch = expr_torch * scalar
+
+    # 5) Build final variable dict
+    #    (the union of those used in vars_pool)
+    var_dict = {v: t for (v, t) in vars_pool}
+
+    return expr, expr_torch, var_dict

@@ -261,6 +261,94 @@ Then
    E[(\mathbf{x} + a)^T(\mathbf{x} + a)] &= \text{Tr}(M) + (m + a)^T(m + a) \tag{330}
 \end{align*}
 
+\begin{walign}
+   \tag{319}
+   \text{Var}[x^T A x] &= 2\mu_2^2\text{Tr}(A^2) + 4\mu_2 c^T A^2 c + 4\mu_3 c^T A a + (\mu_4 - 3\mu_2^2)a^T a
+   &&
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      % Start with y = x^T A x
+      \node (a0) {$x^T A x$};
+      \node[right=1em of a0] (sq) {${}^2$};
+      \draw[d] (sq.east) -- ++(.2,.2);
+      \draw[d] (sq.east) -- ++(.3,.1);
+   \end{tikzpicture}
+ \\&&&=
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      % Expand x into m + (x⊖m)
+      \node (x1) {$(x \ominus m)$};
+      \node[right=1em of x1] (A) {$A$};
+      \node[right=1em of A] (x2) {$(x \ominus m)$};
+      \draw (x1) -- (A) -- (x2);
+      \node[above=0.3em of A] {$+$ terms\,with\,m$\,\,$};
+      % This diagram represents one of the central terms of the quartic expansion
+   \end{tikzpicture}
+   +
+   \dots
+ \\&&&=
+   % Here we would show all pairings using Isserlis/Wick expansions:
+   % Terms with (x⊖m)⁴ → μ_4 or μ_2²
+   % Terms with (x⊖m)³ m → μ_3
+   % Terms with (x⊖m)² m² → μ_2
+   % Terms with m³ (x⊖m) → linear terms in μ_3
+   % and pure m^4 terms
+   % After careful collection of all terms:
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (res) {$2\mu_2^2\text{Tr}(A^2) + 4\mu_2 c^T A^2 c + 4\mu_3 c^T A a + (\mu_4 - 3\mu_2^2)a^T a$};
+   \end{tikzpicture}
+\end{walign}
+
+\begin{walign}
+   \tag{320}
+   E[(A x + a)(B x + b)^T] &= A M B^T + (A m + a)(B m + b)^T
+   &&
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      \node (A) {$A$};
+      \node[right=.5em of A] (x) {$x$};
+      \node[right=.7em of x] (+a) {$+\,a$};
+      \node[right=2em of +a] (B) {$B$};
+      \node[right=.5em of B] (x2) {$x$};
+      \node[right=.7em of x2] (+b) {$+\,b$};
+      \draw[d] (+b.east) -- ++(.2,.2);
+      \draw[d] (+b.east) -- ++(.3,.1);
+   \end{tikzpicture}
+ \\&&&=
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+      % Distribute expectation:
+      % E[(A x)(B x)^T] + E[(A x)b^T] + E[a(B x)^T] + a b^T
+      \node (A) {$A$};
+      \node[right=.5em of A] (xx) {$[x x^T]$};
+      \node[right=.5em of xx] (B) {$B^T$};
+      \draw (A) -- (xx) -- (B);
+      \draw[d] (B.east) -- ++(.2,-.2);
+      \draw[d] (B.east) -- ++(.3,-.1);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=(m.base), inner sep=1pt]
+      \node (A) {$A$};
+      \node[right=.5em of A] (m) {$m$};
+      \node[right=.5em of m] (b) {$b^T$};
+      \draw (A) -- (m);
+      \draw (m) -- (b);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+      \node (a) {$a$};
+      \node[right=.5em of a] (B) {$B$};
+      \node[right=.5em of B] (m2) {$m^T$};
+      \draw (a) -- (B);
+      \draw (B) -- (m2);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
+      \node (a) {$a$};
+      \node[right=.5em of a] (b) {$b^T$};
+      \draw (a) -- (b);
+   \end{tikzpicture}
+ \\&&&=
+   A(M + m m^T) B^T + (A m + a)(B m + b)^T
+   \quad=\quad A M B^T + (A m + a)(B m + b)^T.
+\end{walign}
+
 \subsection{Cubic Forms}
 When $x$ is a stochastic vector with mean vector $m$,
 it can be convenient to expand the raw third moment in terms of the central moments:
@@ -405,7 +493,35 @@ For specific distributions, like $x$ Gaussian, we can often reduce the moment te
 Khintchine's inequality also gives a way to bound all of these in terms of $E[(y-m)^2]$.
 
 
+Similarly,
+\[
+\mathbb{E}[(y\ominus m_y)^3]
+=
+\begin{tikzpicture}[baseline=(M3.base), inner sep=1pt]
+   \node (M3) {$M_3$};
+   \node[above=.3em of M3] (w0) {$w$};
+   \node[left=.3em of M3] (w1) {$w$};
+   \node[right=.3em of M3] (w2) {$w$};
+   \draw (M3) -- (w0);
+   \draw (M3) -- (w1);
+   \draw (M3) -- (w2);
+\end{tikzpicture}
+= w^T M_3 (w,w).
+\]
 \section{Gaussian Moments}
+
+For a Gaussian vector $x \sim \mathcal{N}(m,M)$:
+- All odd centered moments vanish: $M_3 = 0$, etc.
+- Even moments can be computed via Isserlis' theorem.
+
+For instance:
+\[
+\mathbb{E}[(x \ominus m)^{\otimes 4}]
+=
+M \otimes M + M \otimes M + \dots
+\]
+(summing over the different pairings of indices).
+
 \subsection{Gaussian Integration by Parts}
 If $X$ is a tensor with Gaussian entries, zero mean, and some covariance,
 % General principle for Gaussian expectations.
@@ -425,8 +541,26 @@ TODO
 TODO
 \subsection{Mean of Quartic Forms}
 TODO
-\subsection{Micture of Gaussians}
+For the fourth moment of a Gaussian with zero mean, Isserlis' theorem gives:
+\[
+E[x_i x_j x_k x_l] = M_{ij}M_{kl} + M_{ik}M_{jl} + M_{il}M_{jk}.
+\]
+With a nonzero mean, add corresponding terms involving $m$.
+
+\subsection{Mixture of Gaussians}
+For a mixture of Gaussians:
+\[
+   x \sim \sum_k \pi_k \mathcal{N}(m_k, M_k),
+\]
+the moments are weighted sums:
+\[
+   E[x] = \sum_k \pi_k m_k, \quad
+   \mathrm{Var}[x] = \sum_k \pi_k (M_k + m_k m_k^T) - \left(\sum_k \pi_k m_k\right)\left(\sum_k \pi_k m_k\right)^T.
+\]
+Higher moments similarly combine via linearity.
+
 \subsection{Derivatives}
+Derivatives of moments with respect to $m$ or $M$ can be found by differentiating under the integral sign, and using Stein's lemma for Gaussian cases.
 
 \section{Exercises}
 \begin{exercise}

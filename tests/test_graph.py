@@ -24,24 +24,6 @@ def test_frobenius():
     assert F.frobenius2(X) == F.graph("X -i- X1 -j- X", X=X, X1=X)
 
 
-def test_all_copy():
-    with pytest.raises(ValueError):
-        F.graph("*1 -i- *2")
-    with pytest.raises(ValueError):
-        F.graph("*1 -i-")
-
-
-def _test_group():
-    i = symbols("i")
-    X = Variable("X", i)
-    Y = Variable("Y", i)
-    # Graphviz also supports grouping, so we could have a graph like this:
-    # But let's wait before trying to implement stuff like that.
-    F.graph("""
-        {X Y} -i- * -i-
-    """)
-
-
 def test_aXXb():
     # Based on https://math.stackexchange.com/questions/4948734
     i = symbols("i")
@@ -51,6 +33,7 @@ def test_aXXb():
     with pytest.raises(ValueError):
         graph = F.graph("a -i- X -j-i- X -j-i- b", a=a, X=X, b=b)
     graph = F.graph("a -i- X0 -j-i- X1 -j-i- b", a=a, X0=X, X1=X, b=b)
+    assert graph.simplify() == (((a @ X).rename(j="i") @ X).rename(j="i") @ b).simplify()
 
 
 def test_XAXBXCX():

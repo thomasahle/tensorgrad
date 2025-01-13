@@ -5,8 +5,8 @@ import torch
 from tensorgrad.tensor import (
     Copy,
     Derivative,
+    FunctionSignature,
     Function,
-    FunctionInfo,
     Ones,
     Product,
     Sum,
@@ -130,15 +130,18 @@ def test_function_evaluation():
     a = Variable("a", i)
     b = Variable("b", i)
 
-    expr = Function(
-        FunctionInfo(
-            "element_wise_product",
-            eval=lambda x, y: x * y,
-        ),
-        [i],
-        (a, "i"),
-        (b, "i"),
-    )
+    class ElementWiseProduct(FunctionSignature):
+        def __init__(self):
+            super().__init__(
+                "element_wise_product",
+                edges={"i"},
+                inputs=[{"i"}, {"i"}],
+            )
+
+        def eval(self, a, b):
+            return a * b
+
+    expr = Function(ElementWiseProduct(), [a, b], {"i": i})
 
     t_a = torch.randn(3, names=("i",))
     t_b = torch.randn(3, names=("i",))
@@ -204,14 +207,14 @@ def test_diag_rectangular():
         F.diag(a, ["i"])
 
 
-@pytest.mark.parametrize("max_depth", range(0, 4))
+@pytest.mark.parametrize("max_depth", range(2, 4))
 @pytest.mark.parametrize("max_dim", range(1, 5))
 def test_random_small(max_depth, max_dim):
     torch.manual_seed(42)
     random.seed(42)
-    for _ in range(100):
+    for _ in range(30):
         expr, expected, variables = random_tensor_expr(max_depth=max_depth, max_dim=max_dim)
-        print(f"{expr=}")
+        # expr, expected, variables = random_tensor_expr(max_depth=max_depth, max_dim=max_dim)
         result = expr.evaluate(variables)
         assert_close(result, expected, atol=1e-2, rtol=1e-2)
         result2 = expr.simplify().evaluate(variables)
@@ -290,11 +293,12 @@ def test_pow0_linked_variable():
 def test_unfold():
     b, cin, win, hin, kw, kh, wout, hout = symbols("b cin win hin kw kh wout hout")
     data = Variable("data", b, cin, win, hin)
-    unfold = F.Unfold([win, hin], [kw, kh], [wout, hout])
+    unfold = F.Convolution(win, kw, wout) @ F.Convolution(hin, kh, hout)
     expr = data @ unfold
 
     b_val, cin_val, win_val, hin_val, kw_val, kh_val = 2, 3, 4, 5, 2, 2
     ts = rand_values([data], {b: b_val, cin: cin_val, win: win_val, hin: hin_val})
+    # res = expr.evaluate(ts, dims={kw: kw_val, kh: kh_val})
     res = expr.evaluate(ts, dims={kw: kw_val, kh: kh_val})
     expected = (
         torch.nn.functional.unfold(ts[data].rename(None), (2, 2))

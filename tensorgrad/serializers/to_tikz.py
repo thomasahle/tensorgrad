@@ -1,5 +1,4 @@
 from collections import Counter, defaultdict
-from typing import Dict
 from tensorgrad.functions import Convolution, Flatten
 from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
 from tensorgrad.extras import Expectation
@@ -120,9 +119,10 @@ class TikzGraph:
         else:
             label, extra_style = "", ""
         nudge = f"nudge=(left:{random.random()-.5:.3f}em)"
-        # nudge = ""
+
         if node_type == "identity":
-            self.lines.append(f"  {node_id}[identity,as=,{nudge}];")
+            label = f"${label}$" if label else ""
+            self.lines.append(f"  {node_id}[identity,as={label},{nudge}];")
         elif node_type == "var":
             style = "var"
             if degree is not None and degree < 5:
@@ -137,7 +137,10 @@ class TikzGraph:
         elif node_type == "flatten":
             self.lines.append(f"  {node_id}[flatten,as=flatten,{nudge}];")
         elif node_type == "function":
-            if len(label) == 1 or "_" in label:
+            label = label.replace("_", "\\_")
+            label = label.replace("k=", "")
+            label = label.replace("=", "")
+            if label:
                 label = f"${label}$"
             style = "function" if degree is None or degree >= 5 else f"degree{degree}"
             self.lines.append(f"  {node_id}[{style},as={label},style={{{extra_style}}},{nudge}];")
@@ -203,7 +206,12 @@ class TikzGraph:
             )
 
     def add_subgraph(self, subgraph, style: str, layout: str, cluster_id: str):
+        """
+        style or layout might be empty. Ensure we don't produce 'None'.
+        """
         cluster_id = name_dict[cluster_id]
+        style = style or ""  # never let it be None
+        layout = layout or ""
         self.lines.append(f"{cluster_id}[{style}] // [{layout}] {{")
         self.lines += subgraph.lines
         self.lines.append("},")
@@ -241,6 +249,9 @@ def layout(depth):
 
 
 def to_tikz(tensor):
+    """
+    Main entry point: produce the LaTeX (TikZ) code for 'tensor'.
+    """
     tikz_code = [prefix + f"\\graph [{layout(depth=0)}] {{"]
     graph = TikzGraph()
     free_edges = _to_tikz(tensor, graph, depth=1)
@@ -278,7 +289,7 @@ def _to_tikz(tensor, graph, depth=0):
     node_id = str(random.randrange(2**64))
 
     if isinstance(tensor, Copy):
-        graph.add_node(node_id, "identity")
+        graph.add_node(node_id, "identity", label=str(tensor._size))
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Variable):
@@ -301,10 +312,10 @@ def _to_tikz(tensor, graph, depth=0):
         cluster_id = f"cluster+{node_id}"
         subgraph = TikzGraph()
 
-        subgraph.add_node(node_id, "function", label=tensor.fn_info.name, degree=len(tensor.edges_out))
+        subgraph.add_node(node_id, "function", label=tensor.signature.name, degree=len(tensor.edges_out))
 
         free_edges = {}
-        for t, *es in tensor.inputs:
+        for t, es in zip(tensor.inputs, tensor.signature.inputs):
             edges = _to_tikz(t, subgraph, depth + 1)
             for e in es:
                 sub_id = edges.pop(e)
@@ -324,7 +335,7 @@ def _to_tikz(tensor, graph, depth=0):
         subgraph = TikzGraph()
         edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
         # Add new free edges with Circle- arrow-start, similar to Penrose
-        for e in tensor.new_names:
+        for e in tensor.new_names.values():
             edges[e] = {"node_id": cluster_id, "style": "Circle-"}
         graph.add_subgraph(subgraph, "derivative+subgraph", layout(depth), cluster_id)
         return edges
@@ -349,7 +360,7 @@ def _to_tikz(tensor, graph, depth=0):
         # Handle contractions (edges with multiple sub_ids)
         cnt = Counter()
         for e, ts in sub_ids.items():
-            assert len(ts) <= 2, "Shouldn't happen"
+            assert len(ts) <= 2, f"Too many ({len(ts)}) tensors with edge {e}"
             if len(ts) == 2:
                 key = tuple(sorted(eid["node_id"] if isinstance(eid, dict) else eid for eid in ts))
                 cnt[key] += 1
@@ -392,7 +403,7 @@ def _to_tikz(tensor, graph, depth=0):
         graph.add_subgraph(subgraph, f"inner sep=1em, {style}", layout(depth), cluster_id)
         return {e: cluster_id for e in free_edges.keys()}
 
-    assert False, "Unknown tensor type"
+    raise RuntimeError(f"Unknown tensor type: {type(tensor)}")
 
 
 def format_weight(w, i):

@@ -1,4 +1,4 @@
-import itertools
+import math
 from sympy import symbols
 import torch
 from einops import einsum
@@ -249,3 +249,15 @@ def test_strassen():
             Copy(p),
         ]
     )
+
+
+def test_outer_product():
+    i = symbols("i")
+    u = Variable("u", i)
+    prods = [
+        Expectation(Product([u.rename(i=f"i{i}") for i in range(k)]), u).full_simplify() for k in range(1, 5)
+    ]
+    assert prods[0] == Zero(i0=i)
+    assert prods[1] == Copy(i, "i0, i1")
+    assert prods[2] == Zero(i0=i, i1=i, i2=i)
+    assert prods[3] == (F.symmetrize(Copy(i, "i0, i1") @ Copy(i, "i2, i3")) / 8).full_simplify()

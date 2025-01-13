@@ -2,6 +2,7 @@ from sympy import symbols
 
 from tensorgrad import Variable, Function
 from tensorgrad import functions as F
+from tensorgrad.tensor import simple_function
 
 
 def test_attention():
@@ -16,7 +17,7 @@ def test_attention():
     key = (W_k @ X).rename(seq="seq_k")
     value = (W_v @ X).rename(seq="seq_k")
     logits = F.dot(query, key, ["inner"])
-    attention_scores = Function("softmax", {"seq_k": seq}, (logits, "seq_k"))
+    attention_scores = simple_function("softmax", {"seq_k": seq}, (logits, "seq_k"))
     expr = F.dot(value, attention_scores, ["seq_k"])
     expr = F.dot(W_o, expr, ["inner", "head"])
 
@@ -43,7 +44,7 @@ def test_attention_2():
     )
     assert logits.edges == {"batch", "seq", "sk", "head"}
 
-    attention_scores = F.softmax(logits, ["seq_k"])
+    attention_scores = F.softmax(logits, ["sk"])
 
     expr = F.graph(
         """

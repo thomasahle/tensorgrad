@@ -1137,6 +1137,15 @@ There are multiple ``mixed product'' identities:
    \end{tikzpicture}
 \end{walign}
 
+\section{Tracy-Singh product}
+TODO
+\begin{tikzpicture}
+   \node[draw, thick] (A) at (0,0) {\(A\)};
+   \node[draw, thick] (B) at (0,-1.5) {\(B\)};
+   \draw[thick, orange] (-1,0.5) -- (A.north west) -- (A.south west) -- (B.north west) -- (B.south west) -- (-1,-2);
+   \draw[thick, orange] (1,0.5) -- (A.north east) -- (A.south east) -- (B.north east) -- (B.south east) -- (1,-2);
+\end{tikzpicture}
+% See https://arxiv.org/pdf/1903.01366
 
 \subsection{Stacking}
 Can be part of Kronecker section

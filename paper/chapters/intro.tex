@@ -907,6 +907,165 @@ The trace of a matrix is equal to the sum of its eigenvalues. We can represent t
 \]
 
 
+
+\section{Symmetry and Symmetrization}
+\label{sec:symmetry}
+
+A common property of tensors is symmetry.
+For matrices, symmetry means that $A^T = A$.
+For tensors it means that permuting its indices does not change its value.
+Typical examples are Covariance or Hessian matrices,
+but also certain higher-order statistical moments, like the third or fourth moment tensors, can exhibit symmetries.
+Sometimes only with respect to particular group, but most of the time with respect to all permutations of edges.
+The Copy Tensor is a simple example of a completely symmetric tensor.
+
+Sometimes it will be useful to symmetrize a tensor by summing over all permutations of its indices.
+We write this using a squiggly line over the symmetrized edges:
+\[
+   \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,0);
+      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.5,-.7) to (0.5,1.7);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,0);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,1);
+      \draw (0,1) -- ++(1,-1);
+   \end{tikzpicture}
+   ,\quad
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,0);
+      \draw (0,2) -- ++(1,0);
+      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.5,-.7) to (0.5,2.7);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,0);
+      \draw (0,2) -- ++(1,0);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,1);
+      \draw (0,2) -- ++(1,-1);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,1);
+      \draw (0,1) -- ++(1,-1);
+      \draw (0,2) -- ++(1,0);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,1);
+      \draw (0,1) -- ++(1,1);
+      \draw (0,2) -- ++(1,-2);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,2);
+      \draw (0,1) -- ++(1,-1);
+      \draw (0,2) -- ++(1,-1);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,2);
+      \draw (0,1) -- ++(1,0);
+      \draw (0,2) -- ++(1,-2);
+   \end{tikzpicture}
+\]
+For example, if $A$ is a square matrix,
+\(
+   A + A^T =
+   \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=2em, y=2em]
+      \node (A) at (0,0) {$A$};
+      \draw (A) -- ++(-1,0);
+      \draw (A) -- ++(1,0);
+    \draw [very thick, decorate, decoration={snake, amplitude=.5mm, segment length=2.1mm}]
+        ($(A)+(.6,-.3)$) arc [start angle=-20, end angle=200, x radius=0.6, y radius=0.5];
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=1.5em, y=2em]
+      \node (A) at (0,0) {$A$};
+      \draw (A) -- ++(-1,0);
+      \draw (A) -- ++(1,0);
+   \end{tikzpicture}
+   +
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$A$};
+      \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
+      \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
+   \end{tikzpicture}
+   .
+\)
+There is a complementary notion of \emph{anti-symmetrization} (or \emph{skew-symmetrization}), where we sum over \emph{all permutations with appropriate sign}.
+For instance, a rank-2 skew-symmetric matrix \(A\) satisfies \(A_{ij} = -A_{ji}\).
+We can anti-symmetrize using a flat thick line:
+\(
+   \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=2em, y=2em]
+      \node (A) at (0,0) {$A$};
+      \draw (A) -- ++(-1,0);
+      \draw (A) -- ++(1,0);
+    \draw [very thick] ($(A)+(.6,-.2)$) arc [start angle=-10, end angle=190, x radius=0.6, y radius=0.5];
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=1.5em, y=2em]
+      \node (A) at (0,0) {$A$};
+      \draw (A) -- ++(-1,0);
+      \draw (A) -- ++(1,0);
+   \end{tikzpicture}
+   -
+   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+      \node (a0) {$A$};
+      \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
+      \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
+   \end{tikzpicture}
+   .
+\)
+In higher-rank cases, the sign of each term is determined by the parity of the permutation.
+
+Both tensors are idempotent, since symmetrizing a symmetric tensor has no effect:
+\[
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(2,0);
+      \draw (0,1) -- ++(2,0);
+      \draw (0,2) -- ++(2,0);
+      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.66,-.7) to (0.66,2.7);
+      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (1.33,-.7) to (1.33,2.7);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,0);
+      \draw (0,2) -- ++(1,0);
+      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.5,-.7) to (0.5,2.7);
+   \end{tikzpicture}
+   ,\quad
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(2,0);
+      \draw (0,1) -- ++(2,0);
+      \draw (0,2) -- ++(2,0);
+      \draw [very thick] (0.66,-.7) to (0.66,2.7);
+      \draw [very thick] (1.33,-.7) to (1.33,2.7);
+   \end{tikzpicture}
+   =
+   \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
+      \draw (0,0) -- ++(1,0);
+      \draw (0,1) -- ++(1,0);
+      \draw (0,2) -- ++(1,0);
+      \draw [very thick] (0.5,-.7) to (0.5,2.7);
+   \end{tikzpicture}
+   .
+\]
+
+
 \section{Covariance and Contravariance}
 
 In physics it's often relevant to change between different coordinate systems.
