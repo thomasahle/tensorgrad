@@ -338,11 +338,11 @@ def test_pow_cancel_3():
 
 def test_pow_multi():
     S = Variable("S")
-    x = torch.ones(1)
+    x = torch.tensor(1.0)
     expr = F.pow(S, 5)
     val = 1
     for n in range(5, -1, -1):
-        assert expr.evaluate({S: x}) == val
+        assert expr.simplify().evaluate({S: x}) == val
         expr = expr.grad(S)
         val *= n
 

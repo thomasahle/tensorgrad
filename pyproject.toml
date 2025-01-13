@@ -1,6 +1,6 @@
 [project]
 name = "tensorg"
-version = "0.1"
+version = "0.1.1"
 dependencies = [
    "networkx==3.2.1",
    "numpy",
@@ -46,6 +46,6 @@ line-length = 110
 indent-width = 4
 
 [tool.pytest.ini_options]
-addopts = "-s"
+# addopts = "-s"
 # addopts = "--nbval"
 

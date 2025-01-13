@@ -6,6 +6,11 @@ import random
 import re
 from dataclasses import dataclass
 
+# Requirements:
+# !sudo apt-get install texlive-luatex
+# !sudo apt-get install texlive-latex-extra
+# !sudo apt-get install texlive-fonts-extra
+# !sudo apt-get install poppler-utils
 
 # TODO:
 # - If two tensors are contracted over two edges (like hadamard product) the edges are drawn on top of each other.

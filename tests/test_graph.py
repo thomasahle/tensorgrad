@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 
-from tensorgrad.tensor import Copy, Derivative, Variable
+from tensorgrad.tensor import Copy, Variable
 import tensorgrad.functions as F
 
 
@@ -25,14 +25,20 @@ def test_frobenius():
 
 
 def test_copy_circle():
-    i = symbols("i j")
+    i = symbols("i")
     X = Variable("X", i, j=i)
-    assert F.trace(X) == F.graph("""
+    assert (
+        F.trace(X)
+        == F.graph(
+            """
         *1 -i- *2
         *2 -i- *3
         *3 -i- X
         X -j- *1
-        """)
+        """,
+            X=X,
+        ).simplify()
+    )
 
 
 def test_aXXb():
