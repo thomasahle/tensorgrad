@@ -3,7 +3,7 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Callable, Iterable, Iterator, Optional, Union, TypeVar, Sequence, Set, Tuple
+from typing import Any, Callable, Iterable, Iterator, Union, TypeVar, Sequence, set, tuple
 from numbers import Number
 from sympy import Symbol
 import torch
@@ -796,10 +796,10 @@ def abs(t: Tensor) -> Tensor:
 
 
 class _MaxGradFunction(FunctionSignature):
-    def __init__(self, dims: Set[str]):
+    def __init__(self, dims: set[str]):
         self.name = "max-grad"
-        self.inputs: Tuple[Set[str], ...] = (frozenset(dims),)
-        self.edges: Set[str] = frozenset(dims)
+        self.inputs: tuple[set[str], ...] = (frozenset(dims),)
+        self.edges: set[str] = frozenset(dims)
 
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         # Zero doesn't broadcast edges that were given as input,
