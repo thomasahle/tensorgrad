@@ -3,7 +3,8 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Set, Union
+from typing import Any, Callable, Iterable, Iterator, Optional, Union, TypeVar, Sequence
+from numbers import Number
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
@@ -42,7 +43,8 @@ def taylor(f: Tensor, wrt: Variable, eps: Tensor, n: int) -> Tensor:
     for i in range(1, n + 1):
         connection_names = unused_edge_names(wrt.edges, f.edges)
         fg = f.grad(wrt, new_names=connection_names)
-        total += fg @ eps.rename(**connection_names) / math.factorial(i)
+        scaled_eps = eps.rename(**connection_names)
+        total = total + (fg @ scaled_eps) * (1.0 / math.factorial(i))
     return total
 
 
@@ -646,10 +648,8 @@ def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -> Tensor:
 
 class _SimpleFunction(FunctionSignature):
     def __init__(self, name: str, eval_fn: Callable[[torch.Tensor], torch.Tensor], 
-                 derivative: "FunctionSignature"):
-        self.name = name
-        self.inputs: Tuple[Set[str], ...] = (frozenset(),)
-        self.edges: Set[str] = frozenset()
+                 derivative: Optional["FunctionSignature"]) -> None:
+        super().__init__(name, frozenset(), (frozenset(),))
         self._eval_fn = eval_fn
         self._derivative = derivative
 
