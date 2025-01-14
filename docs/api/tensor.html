@@ -1,0 +1,2952 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<meta name="generator" content="pdoc3 0.11.5">
+<title>tensorgrad.tensor API documentation</title>
+<meta name="description" content="">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source > summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible;min-width:max-content}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin:1em 0}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => {
+hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
+hljs.highlightAll();
+/* Collapse source docstrings */
+setTimeout(() => {
+[...document.querySelectorAll('.hljs.language-python > .hljs-string')]
+.filter(el => el.innerHTML.length > 200 && ['"""', "'''"].includes(el.innerHTML.substring(0, 3)))
+.forEach(el => {
+let d = document.createElement('details');
+d.classList.add('hljs-string');
+d.innerHTML = '<summary>"""</summary>' + el.innerHTML.substring(3);
+el.replaceWith(d);
+});
+}, 100);
+})</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>tensorgrad.tensor</code></h1>
+</header>
+<section id="section-intro">
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="tensorgrad.tensor.Ones"><code class="name flex">
+<span>def <span class="ident">Ones</span></span>(<span>*shape0: sympy.core.symbol.Symbol, **shape1: sympy.core.symbol.Symbol) ‑> <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def Ones(*shape0: Symbol, **shape1: Symbol) -&gt; Tensor:
+    &#34;&#34;&#34;Matrix such that O_{i,j,k} = 1 for all i, j, k&#34;&#34;&#34;
+    # Implemented in practice by a simple outer product of Copy&#39;s
+    shape = Tensor._check_shape(shape0, shape1)
+    return Product([Copy(s, e) for e, s in shape.items()])</code></pre>
+</details>
+<div class="desc"><p>Matrix such that O_{i,j,k} = 1 for all i, j, k</p></div>
+</dd>
+<dt id="tensorgrad.tensor.add_structural_graph"><code class="name flex">
+<span>def <span class="ident">add_structural_graph</span></span>(<span>G, tensor, root_edge_label=None)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def add_structural_graph(G, tensor, root_edge_label=None):
+    &#34;&#34;&#34;Computes the structural graph of tensor, and unions it with G.&#34;&#34;&#34;
+    # We assert that Gx has nodes named [0, Gx.number_of_nodes())
+    assert set(G.nodes()) == set(range(G.number_of_nodes())), f&#34;{G.nodes()}&#34;
+    Gx, x_edges = tensor.structural_graph()
+    offset = G.number_of_nodes()
+    assert set(Gx.nodes()) == set(range(Gx.number_of_nodes())), f&#34;{Gx.nodes()}&#34;
+    # We also assume that 0 is the root
+    Gx = nx.relabel_nodes(Gx, {i: i + offset for i in Gx.nodes()})
+    x_root = offset
+    x_edges = {e: (n + offset) for e, n in x_edges.items()}
+    G = nx.union(G, Gx)
+    # Make sure to connect the root of Gx to the root of G, possibly with an &#34;edge label&#34;
+    if root_edge_label is not None:
+        e = G.number_of_nodes()
+        G.add_node(e, name=root_edge_label)
+        G.add_edge(e, x_root)
+        G.add_edge(0, e)
+    else:
+        G.add_edge(0, x_root)
+    assert x_edges.keys() == tensor.edges, f&#34;{x_edges.keys()} != {tensor.edges}&#34;
+    return G, x_edges</code></pre>
+</details>
+<div class="desc"><p>Computes the structural graph of tensor, and unions it with G.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.function"><code class="name flex">
+<span>def <span class="ident">function</span></span>(<span>name,<br>output_shape: dict[str, sympy.core.symbol.Symbol],<br>*inputs: tuple[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a> | str, ...],<br>orig_out: dict[str, str] = None) ‑> <a title="tensorgrad.tensor.Function" href="#tensorgrad.tensor.Function">Function</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def function(
+    name,
+    output_shape: dict[str, Symbol],
+    *inputs: tuple[Tensor | str, ...],
+    orig_out: dict[str, str] = None,
+) -&gt; &#34;Function&#34;:
+    return Function(
+        FunctionSignature(
+            name,
+            output_shape.keys(),
+            [set(es) for (t, *es) in inputs],
+        ),
+        [t for (t, *es) in inputs],
+        output_shape,
+        orig_out=orig_out,
+    )</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="tensorgrad.tensor.group_edges"><code class="name flex">
+<span>def <span class="ident">group_edges</span></span>(<span>tensors: Iterable[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>]) ‑> dict[str, list[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>]]</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def group_edges(tensors: Iterable[Tensor]) -&gt; dict[str, list[Tensor]]:
+    &#34;&#34;&#34;Group tensors by their edge names.&#34;&#34;&#34;
+    groups = defaultdict(list)
+    for t in tensors:
+        for e in t.edges:
+            groups[e].append(t)
+    return groups</code></pre>
+</details>
+<div class="desc"><p>Group tensors by their edge names.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.make_distinct"><code class="name flex">
+<span>def <span class="ident">make_distinct</span></span>(<span>*tensors: list['<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>'],<br>used_names=None) ‑> list[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>]</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def make_distinct(*tensors: list[&#34;Tensor&#34;], used_names=None) -&gt; list[&#34;Tensor&#34;]:
+    &#34;&#34;&#34;Makes sure all tensors have distinct edges.
+    Optionally takes used_names, an extra set of names to avoid.
+    suffix is an optional string to append to the new names.
+    &#34;&#34;&#34;
+    # Copy the set, so we don&#39;t modify the input
+    used_names = set() if used_names is None else set(used_names)
+    # No reason to rename the names that are unique
+    cnt = Counter(e for t in tensors for e in t.edges)
+    unique_names = {e for e, c in cnt.items() if c == 1}
+    # Unless the names are already used, then we can&#39;t save them
+    unique_names -= used_names
+    used_names |= unique_names
+
+    res, renames = [], []
+    for i, t in enumerate(tensors):
+        edges = t.edges - unique_names
+        rename = unused_edge_names(edges, used_names, suffix=f&#34;_{i}&#34;)
+        # Make sure all t.edges are present in rename
+        rename.update({e: e for e in unique_names})
+        used_names.update(rename.values())
+        res.append(t.rename(**rename))
+        renames.append(rename)
+    return res, renames</code></pre>
+</details>
+<div class="desc"><p>Makes sure all tensors have distinct edges.
+Optionally takes used_names, an extra set of names to avoid.
+suffix is an optional string to append to the new names.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.unused_edge_names"><code class="name flex">
+<span>def <span class="ident">unused_edge_names</span></span>(<span>edges: Iterable[str], used_names: Iterable[str], suffix: str = '') ‑> dict[str, str]</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = &#34;&#34;) -&gt; dict[str, str]:
+    &#34;&#34;&#34;Given a list of edges, return a dict[str, str] that renames the original names into
+    new fresh names, not in either edges nor used_names.
+    Also append suffix to the new names.
+    &#34;&#34;&#34;
+    used_names = set(used_names)
+    rename = {}
+    for e in edges:
+        candidate = e + suffix
+        while candidate in used_names:
+            candidate += &#34;_&#34;
+        rename[e] = candidate
+        used_names.add(candidate)
+    return rename</code></pre>
+</details>
+<div class="desc"><p>Given a list of edges, return a dict[str, str] that renames the original names into
+new fresh names, not in either edges nor used_names.
+Also append suffix to the new names.</p></div>
+</dd>
+</dl>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="tensorgrad.tensor.Constant"><code class="flex name class">
+<span>class <span class="ident">Constant</span></span>
+<span>(</span><span>*shape0: sympy.core.symbol.Symbol, **shape1: sympy.core.symbol.Symbol)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Constant(Tensor, ABC):
+    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, **shape1: Symbol):
+        &#34;&#34;&#34;
+        A constant tensor with the given edges.
+
+        Args:
+            edges: The names of the edges of this constant tensor.
+            link: An optional variable that this tensor is associated with, used to compute edge dimensions.
+        &#34;&#34;&#34;
+        self._shape = self._check_shape(shape0, shape1)
+        self._symmetries = self._check_symmetries(self._shape, _symmetries)
+
+    def __repr__(self) -&gt; str:
+        return f&#34;{type(self).__name__}({self.shape})&#34;
+
+    def with_symmetries(self, symmetries: str | set[frozenset[str]]) -&gt; &#34;Variable&#34;:
+        return type(self)(self.name, **self._shape, _symmetries=symmetries)
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=type(self).__name__, tensor=self)
+        edges = {}
+        for size in set(self.shape.values()):
+            # All of this is more or less equal to Variable
+            G.add_node(size_node := G.number_of_nodes(), name=f&#34;size={size.name}({id(size)})&#34;)
+            G.add_edge(0, size_node)
+            # Find each orbit with the given size (see note above about fine-grained-ness)
+            for orbit in self._symmetries:
+                e, *_ = orbit
+                if self.shape[e] != size:
+                    continue
+                G.add_node(orbit_node := G.number_of_nodes(), name=&#34;Orbit Node&#34;)
+                G.add_edge(size_node, orbit_node)
+                for e in orbit:
+                    edges[e] = orbit_node
+        return G, edges
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        c = type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
+        assert c.edges == {kwargs.get(e, e) for e in self.edges}
+        return c
+
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        new_names = self._check_grad(x, new_names)
+        return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return False</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>A constant tensor with the given edges.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>edges</code></strong></dt>
+<dd>The names of the edges of this constant tensor.</dd>
+<dt><strong><code>link</code></strong></dt>
+<dd>An optional variable that this tensor is associated with, used to compute edge dimensions.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.functions.Convolution" href="functions.html#tensorgrad.functions.Convolution">Convolution</a></li>
+<li><a title="tensorgrad.functions.Flatten" href="functions.html#tensorgrad.functions.Flatten">Flatten</a></li>
+<li><a title="tensorgrad.tensor.Copy" href="#tensorgrad.tensor.Copy">Copy</a></li>
+<li><a title="tensorgrad.tensor.Zero" href="#tensorgrad.tensor.Zero">Zero</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.Constant.with_symmetries"><code class="name flex">
+<span>def <span class="ident">with_symmetries</span></span>(<span>self, symmetries: str | set[frozenset[str]]) ‑> <a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def with_symmetries(self, symmetries: str | set[frozenset[str]]) -&gt; &#34;Variable&#34;:
+    return type(self)(self.name, **self._shape, _symmetries=symmetries)</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.Copy"><code class="flex name class">
+<span>class <span class="ident">Copy</span></span>
+<span>(</span><span>size: sympy.core.symbol.Symbol, *edges: str)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Copy(Constant):
+    &#34;&#34;&#34;The &#34;Copy&#34; tensor is defined by C_{i,j,k} = 1 if i == j == k, else 0
+    Or alternatively as Δₙ = ∑ₓ (eₓ)⊗ⁿ, where are e_i are basis vectors
+    For order 2, this is the identity matrix.
+        Note: For higher order, the identity tensor is the product of n identity matrices,
+        (order 2 Copy&#39;s), not the order-n Copy tensor.
+    For order 0, the Copy tensor is defined as |n|, where n is the size/dimension of the tensor.
+    &#34;&#34;&#34;
+
+    def __init__(self, size: Symbol, *edges: str):
+        edges = self._check_edges(edges)
+        super().__init__(**{e: size for e in edges})
+        assert isinstance(size, (Symbol, Number)), &#34;Size must be a sympy symbol&#34;
+        self._size = size
+
+    @property
+    def size(self):
+        return self._size
+
+    def __repr__(self):
+        if not self.edges:
+            return f&#34;Copy({self.size})&#34;
+        return f&#34;Copy({self.size}, \&#34;{&#39;, &#39;.join(self.edges)}\&#34;)&#34;
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        size = dims[self.size]
+        if not self.edges:
+            return torch.tensor(size)
+        copy = torch.zeros([size] * self.order)
+        for idx in range(size):
+            copy[(idx,) * len(self.edges)] = 1
+        return copy.rename(*self.edges)
+
+    def rename(self, **kwargs: dict[str, str]):
+        return Copy(self.size, *[kwargs.get(e, e) for e in self.edges])
+
+    @classmethod
+    def simplify_outer(cls, tensors: list[Tensor]) -&gt; list[Tensor]:
+        &#34;&#34;&#34;Simplifies a list of tensors assumed to be a product.&#34;&#34;&#34;
+        while True:
+            tensors, done = cls._simplify_step(tensors)
+            if done:
+                break
+        return tensors
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=type(self).__name__, tensor=self)
+        G.add_node(size_node := G.number_of_nodes(), name=f&#34;size={self.size.name}({id(self.size)})&#34;)
+        G.add_edge(0, size_node)
+        return G, {e: size_node for e in self.edges}
+
+    ################################################################################
+    # There are many simplify rules for Copy. We split them into separate methods for clarity.
+
+    @classmethod
+    def _simplify_step(cls, tensors: list[Tensor]) -&gt; tuple[list[Tensor], bool]:
+        &#34;&#34;&#34;Performs one step of simplification. Returns a new list if changed, or the original if not.&#34;&#34;&#34;
+        for e, ts in group_edges(tensors).items():
+            if len(ts) == 1:
+                continue
+            t1, t2 = ts
+            assert t1.shape[e] == t2.shape[e], f&#34;{t1.shape[e]=} != {t2.shape[e]}, {e=}&#34;
+
+            # Remove t1 and t2 from tensors.  We use the &#34;is&#34; operator, since equality
+            # means isomorphic, so it might remove too many unintended tensors.
+            other = [t for t in tensors if t is not t1 and t is not t2]
+
+            for simplification in [cls._merge_copy_tensors, cls._remove_identity_matrix]:
+                if (new := simplification(t1, t2, e)) is not None:
+                    return other + new, False
+
+        return tensors, True
+
+    @staticmethod
+    def _merge_copy_tensors(t1: Tensor, t2: Tensor, e: str) -&gt; Optional[list[Tensor]]:
+        if not (isinstance(t1, Copy) and isinstance(t2, Copy)):
+            return None
+
+        # We can&#39;t merge order 0 copy tensors, since we now give them a value equal to their size.
+        # In principle we could create a new Copy(size1 * size2, []) tensor, but then we start having
+        # arbitrary expressions as sizes, which I&#39;m not sure we want yet.
+        # Also, merging an order 0 with and order &gt; 0 was never going to work, unless the size of the
+        # order 0 Copy was 1, which it probably never is.
+        # In either case, this method should only be called if the tensors share an edge, which they
+        # can&#39;t if one of them has order 0.
+        assert t1.order != 0 and t2.order != 0, &#34;Can&#39;t merge order 0 Copy tensors&#34;
+
+        # Since the tensors are connected, we can assume they have the same size
+        assert t1.size == t2.size, &#34;Contracted Copy tensors must have same size&#34;
+        size = t1.size
+
+        # We don&#39;t just remove e, but remove all shared edges
+        # The amazing thing is that even in the case where all edges disappear, we
+        # still get to keep information on the &#34;size&#34; of the Copy tensor.
+        return [Copy(size, *(t1.edges ^ t2.edges))]
+
+    @staticmethod
+    def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -&gt; bool:
+        # If both are Copy&#39;s, we use the previous method
+        if isinstance(t1, Copy) and isinstance(t2, Copy):
+            return None
+
+        # Make t1 the identity matrix
+        if isinstance(t2, Copy) and t2.order == 2:
+            t1, t2 = t2, t1
+
+        if isinstance(t1, Copy) and t1.order == 2:
+            # Find the edge of t1 that&#39;s not e
+            other_edge = next(iter(set(t1.edges) - {e}))
+            # Don&#39;t create self loops. We never connect a tensor to itself.
+            # Unless it&#39;s another Copy, in which case we already handled it above.
+            if other_edge not in t2.edges:
+                return [t2.rename(**{e: other_edge})]
+        return None</code></pre>
+</details>
+<div class="desc"><p>The "Copy" tensor is defined by C_{i,j,k} = 1 if i == j == k, else 0
+Or alternatively as Δₙ = ∑ₓ (eₓ)⊗ⁿ, where are e_i are basis vectors
+For order 2, this is the identity matrix.
+Note: For higher order, the identity tensor is the product of n identity matrices,
+(order 2 Copy's), not the order-n Copy tensor.
+For order 0, the Copy tensor is defined as |n|, where n is the size/dimension of the tensor.</p>
+<p>A constant tensor with the given edges.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>edges</code></strong></dt>
+<dd>The names of the edges of this constant tensor.</dd>
+<dt><strong><code>link</code></strong></dt>
+<dd>An optional variable that this tensor is associated with, used to compute edge dimensions.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Constant" href="#tensorgrad.tensor.Constant">Constant</a></li>
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Static methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.Copy.simplify_outer"><code class="name flex">
+<span>def <span class="ident">simplify_outer</span></span>(<span>tensors: list[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>]) ‑> list[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>]</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Simplifies a list of tensors assumed to be a product.</p></div>
+</dd>
+</dl>
+<h3>Instance variables</h3>
+<dl>
+<dt id="tensorgrad.tensor.Copy.size"><code class="name">prop <span class="ident">size</span></code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def size(self):
+    return self._size</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Constant" href="#tensorgrad.tensor.Constant">Constant</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Constant.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.Derivative"><code class="flex name class">
+<span>class <span class="ident">Derivative</span></span>
+<span>(</span><span>tensor: <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>,<br>x: <a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a>,<br>new_names: dict[str] | None = None)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Derivative(Tensor):
+    def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[dict[str]] = None):
+        &#34;&#34;&#34;
+        A tensor representing the derivative of another tensor.
+
+        Args:
+            tensor: The tensor to take the derivative of.
+            x: The variable to take the derivative with respect to.
+            new_names: The names to use for the new edges created by the derivative. If not provided, they will be generated.
+        &#34;&#34;&#34;
+        self.tensor = tensor
+        self.x = x
+        # _check_grad makes sure the new_names are not already present in self.edges.
+        # But we haven&#39;t set self.edges yet, so we call it on tensor instead of self.
+        self.new_names = tensor._check_grad(x, new_names)
+        self._shape = tensor.shape | {self.new_names[o]: x.shape[e] for e, o in x.orig.items()}
+
+    def simplify(self, args: dict[str, Any] = None):
+        args = self._check_simplify(args)
+        if not self.tensor.depends_on(self.x):
+            return Zero(**self.shape)
+        inner = self.tensor.simplify(args)
+        if args[&#34;grad_steps&#34;] == 0:
+            # If grad_steps is 0, we pass the simplify through the derivative.
+            res = Derivative(inner, self.x, self.new_names)
+        else:
+            args[&#34;grad_steps&#34;] -= 1
+            # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
+            res = inner.grad(self.x, self.new_names).simplify(args)
+        assert res.shape == self.shape, f&#34;Shape changed from {self.shape} to {res.shape}&#34;
+        return res
+
+    def grad(self, x: Variable, new_names: dict[str, str] | None = None) -&gt; Tensor:
+        new_names = self._check_grad(x, new_names)
+        # To avoid an infinite loop, we let the grad pass through us, rather than creating a double derivative.
+        res = Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
+        assert res.edges == self.edges | new_names.values()
+        return res
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        # The free edges of Derivative are both the free edges of self.tensor and the new_names.
+        # This is the only place where we need to rename the &#34;internal edges&#34; of the tensor.
+        res = Derivative(
+            self.tensor.rename(**kwargs),
+            self.x,
+            {o: kwargs.get(e, e) for o, e in self.new_names.items()},
+        )
+        assert res.edges == {kwargs.get(e, e) for e in self.edges}
+        return res
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=&#34;Derivative&#34;, tensor=self)
+        edges = {}
+        # We add a node for the &#34;wrt&#34; tensor
+        G, x_edges = add_structural_graph(G, self.x, root_edge_label=&#34;self.x&#34;)
+        # This might be controversial, but we&#39;ll have new_edges point to the respective edges in self.x
+        x_old_to_new = {oe: e for e, oe in self.x.orig.items()}
+        edges |= {e: x_edges[x_old_to_new[oe]] for oe, e in self.new_names.items()}
+        # Then we add the differentiated tensor
+        G, t_edges = add_structural_graph(G, self.tensor, root_edge_label=&#34;self.tensor&#34;)
+        edges |= t_edges
+        assert edges.keys() == self.edges
+        return G, edges
+
+    def __repr__(self):
+        return f&#34;Derivative({self.tensor}, {self.x}, {self.new_names})&#34;
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        # We could use numerical differentiation here...  But it would potentially require quite a lot of
+        # evaluations, since we need to evaluate the tensor in all directions.
+        raise ValueError(&#34;Derivative tensors cannot be evaluated directly. Please use simplify() first.&#34;)
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return self.tensor.depends_on(x)</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>A tensor representing the derivative of another tensor.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>tensor</code></strong></dt>
+<dd>The tensor to take the derivative of.</dd>
+<dt><strong><code>x</code></strong></dt>
+<dd>The variable to take the derivative with respect to.</dd>
+<dt><strong><code>new_names</code></strong></dt>
+<dd>The names to use for the new edges created by the derivative. If not provided, they will be generated.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.Function"><code class="flex name class">
+<span>class <span class="ident">Function</span></span>
+<span>(</span><span>signature: <a title="tensorgrad.tensor.FunctionSignature" href="#tensorgrad.tensor.FunctionSignature">FunctionSignature</a>,<br>inputs: Iterable[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>],<br>shape_out: dict[str, sympy.core.symbol.Symbol],<br>orig_out: dict[str, str] = None)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Function(Tensor):
+    def __init__(
+        self,
+        signature: FunctionSignature,
+        inputs: Iterable[Tensor],
+        shape_out: dict[str, Symbol],
+        orig_out: dict[str, str] = None,
+    ):
+        &#34;&#34;&#34;
+        A function tensor that takes one or more input tensors and produces an output tensor.
+
+        Args:
+            signature: The FunctionSignature defining this function, or a string giving the function name.
+            inputs: The input tensors and their input edge names. [(t0, e00, e01, ...), (t1, e10, ...), ...]
+            shape_out: The names of the output edges of this function.
+            orig_out: If provided, a dict mapping each output edge to its signature edge name. (new -&gt; old)
+                      If not provided, we assume the output edges are the same as in the signature.
+        &#34;&#34;&#34;
+        self.shape_out = self._check_shape([], shape_out)
+        self.inputs = list(inputs)
+        self.signature = signature
+
+        # We need to keep track of the original edges of the function, since we might rename them.
+        self.edges_out = self.shape_out.keys()
+        # self.orig_out = {e: e for e in self.edges_out} if not orig_out else orig_out
+        self.orig_out = {} if orig_out is None else dict(orig_out)
+        self.orig_out |= {e: e for e in self.signature.edges if e not in self.orig_out.values()}
+        # assert self.edges_out == self.orig_out.keys()
+        assert self.orig_out.keys() - self.edges_out == set(), f&#34;{self.orig_out=}, {self.edges_out=}&#34;
+
+        # Validation
+        if (orig_mapped := {self.orig_out.get(e, e) for e in self.shape_out.keys()}) != signature.edges:
+            raise ValueError(
+                &#34;The shape_out keys must match signature.edges, once mapped back by orig_out.&#34;
+                + f&#34; Got {orig_mapped=} != {signature.edges}&#34;
+            )
+        if len(self.inputs) != len(signature.inputs):
+            raise ValueError(f&#34;Expected {len(signature.inputs)} inputs, got {len(self.inputs)}&#34;)
+        for t, es in zip(self.inputs, signature.inputs):
+            if es - t.edges:
+                raise ValueError(f&#34;Input edges {es} not subset of {t.edges=}&#34;)
+
+        # Build final shape = union of output edges + broadcast edges from each input
+        # Note that this approach pushes all the broadcasted edges to the end of the shape.
+        # But we don&#39;t care about the order of the edges, so it&#39;s fine.
+        self._shape = dict(self.shape_out)
+        # We allow “broadcasting” for edges that are not in fn_sig.inputs[i].
+        # So if an input has edges that are not used, they’re broadcasted.
+        for t, es in zip(self.inputs, self.signature.inputs):
+            # any edges in t.edges - es are &#34;broadcast&#34;
+            broadcast_edges = t.edges - es
+            if broadcast_edges &amp; self._shape.keys():
+                raise ValueError(&#34;Broadcast edges must not be shared between inputs&#34;)
+            for b in broadcast_edges:
+                self._shape[b] = t.shape[b]
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        renamed_inputs = []
+        for t, es in zip(self.inputs, self.signature.inputs):
+            # Only rename external edges of input tensors.
+            rename = {e: v for e, v in kwargs.items() if e not in es}
+            renamed_inputs.append(t.rename(**rename))
+        res = Function(
+            self.signature,
+            renamed_inputs,
+            {kwargs.get(e, e): s for e, s in self.shape_out.items()},
+            orig_out={kwargs.get(e, e): o for e, o in self.orig_out.items()},
+        )
+        assert res.edges == {kwargs.get(e, e) for e in self.edges}
+        return res
+
+    def simplify(self, args: dict[str, Any] = None):
+        args = self._check_simplify(args)
+        new_inputs = [t.simplify(args=args) for t in self.inputs]
+
+        # Broadcasting can be pulled out of the function.
+        pulled_out = []
+        new_inputs2 = []
+        for t, es in zip(new_inputs, self.signature.inputs):
+            if isinstance(t, Product):
+                new_prod = []
+                for u in t.tensors:
+                    if (
+                        isinstance(u, Copy)
+                        and u.order == 1
+                        and list(u.edges)[0] in t.edges
+                        and list(u.edges)[0] not in es
+                    ):
+                        pulled_out.append(u)
+                    else:
+                        new_prod.append(u)
+                new_inputs2.append(Product(new_prod))
+            else:
+                new_inputs2.append(t)
+        new_inputs = new_inputs2
+
+        res = Function(self.signature, new_inputs, self.shape_out, self.orig_out)
+        res = self.signature.simplify(res, args)
+
+        if pulled_out:
+            res = Product([res] + pulled_out)
+
+        assert res.shape == self.shape, &#34;Free edges should be preserved&#34;
+        return res
+
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        # First find the new names for the gradient edges. These will be guaranteed
+        # to avoid any outer edges of the Function tensor as well as the edges of x.
+        new_names = self._check_grad(x, new_names)
+        new_edges = set(new_names.values())
+
+        # We sum over each input function, just like the normal chain rule:
+        # d/dx f(g₁(x), …, gₖ(x)) = Σᵢ₌₁ᵏ (d/dx gᵢ(x)) Dᵢf(g₁(x), …, gₖ(x))
+
+        # D_i adds a new output edge to the function, which is contracted with
+        # the normal output edge of the tensor. So we need to make sure this doesn&#39;t
+        # clash with an existing output edge of f.
+        parts = []
+        for i, (t, input_edges) in enumerate(zip(self.inputs, self.signature.inputs)):
+            # Take the derivative of the outer function
+            # We need &#34;connection&#34; edges for each edge in input_edges. Mostly we could just use the same name
+            # but they need to avoid clashing with &#34;new_names&#34; and the output edges of the tensor.
+            connection_names = unused_edge_names(input_edges, self.edges | new_edges, suffix=&#34;_&#34;)
+            connection_shape = {connection_names[e]: t.shape[e] for e in input_edges}
+            # Just like simple calculus, we need the derivative of the outside times the derivative of the inside
+            outside = Function(
+                self.signature.derivative(i, connection_names),
+                self.inputs,
+                self.shape_out | connection_shape,
+                self.orig_out,
+            )
+            # The derivative will have the same output edges as the function, but we may have been renamed
+            outside = outside.rename(**{o: e for e, o in self.orig_out.items()})
+            # Actually, now that we give orig_out to the derivative, we don&#39;t need to rename it here.
+            assert (
+                outside.edges == self.edges | connection_names.values()
+            ), f&#34;{outside.edges=}, {self.edges=}, {connection_names=}&#34;
+
+            # The the derivative of the inner function
+            # We rename the (former) input edges to the connection edges, but keep the remaining edges
+            # (which are part of self.edges) untouched.
+            inner = Derivative(t.rename(**connection_names), x, new_names)
+
+            # The two parts are then multiplied together on the connection names,
+            # while broadcasted on their remaining shared edges.
+            from .functions import dot  # Import here to avoid circular import
+
+            part = dot(outside, inner, connection_names.values())
+            parts.append(part)
+        res = Sum(parts)
+        assert res.edges == self.edges | new_edges, f&#34;{res.edges} != {self.edges} | {new_edges}&#34;
+        return res
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, int, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=(type(self).__name__, self.signature.name), tensor=self)
+        edges = {}
+        # (1) We add a node for the &#34;function&#34; tensor itself
+        # TODO: Why is this needed?
+        G.add_node(1, name=(&#34;f&#34;, self.signature.name), tensor=self)
+        G.add_edge(0, 1)
+        # (2) We add a node for each output edge
+        # TODO: We should group out-edges by the size-type, similarly to Variable/Constant
+        # And of course when we add symmetries to outputs, we need to add that too.
+        for i, (e, o) in enumerate(self.orig_out.items()):
+            G.add_node(i + 2, name=(&#34;Original Edge Out&#34;, o))
+            G.add_edge(1, i + 2)
+            edges[e] = i + 2
+        # (3) And we add nodes for all the input tensors
+        for i, (t, input_edges) in enumerate(zip(self.inputs, self.signature.inputs)):
+            # Compute graph from input tensor, and ensure it uses distinct node numbers
+            # Tag the inputs with {i} since order matters for function inputs.
+            G, t_edges = add_structural_graph(G, t, root_edge_label=f&#34;{i}&#34;)
+            # Connect tensor to function. We don&#39;t need to label here, since
+            # the input tensor already has labeled its own edges as much as it needs to.
+            for e in input_edges:
+                G.add_edge(t_edges[e], 1)
+            # Finally register free edges
+            for e in t.edges:
+                if e not in input_edges:
+                    edges[e] = t_edges[e]
+        return G, edges
+
+    def __repr__(self):
+        args = []
+        args.append(repr(self.signature))
+        args.append(&#34;, &#34;.join(map(repr, self.inputs)))
+        args.append(f&#34;{self.shape_out}&#34;)
+        if any(e != o for e, o in self.orig_out.items()):
+            args.append(f&#34;orig_out={self.orig_out}&#34;)
+        return f&#34;Function({&#39;, &#39;.join(args)})&#34;
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        xvals = [t.evaluate(values, dims) for t in self.inputs]
+        res = self.signature.eval(*xvals)
+        # This is weird, I rename back from new names to old
+        # but then I assume the names match self. That&#39;s backwards, no?
+        # Should I use inverse orig out here?
+        rename = {o: e for e, o in self.orig_out.items()}
+        # res = res.rename(*(self.orig_out.get(e, e) for e in res.names))
+        res = res.rename(*(rename.get(e, e) for e in res.names))
+        res = res.align_to(*self.edges)  # self.signature might use a different order
+        return res
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return any(t.depends_on(x) for t in self.inputs)</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>A function tensor that takes one or more input tensors and produces an output tensor.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>signature</code></strong></dt>
+<dd>The FunctionSignature defining this function, or a string giving the function name.</dd>
+<dt><strong><code>inputs</code></strong></dt>
+<dd>The input tensors and their input edge names. [(t0, e00, e01, &hellip;), (t1, e10, &hellip;), &hellip;]</dd>
+<dt><strong><code>shape_out</code></strong></dt>
+<dd>The names of the output edges of this function.</dd>
+<dt><strong><code>orig_out</code></strong></dt>
+<dd>If provided, a dict mapping each output edge to its signature edge name. (new -&gt; old)
+If not provided, we assume the output edges are the same as in the signature.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.FunctionSignature"><code class="flex name class">
+<span>class <span class="ident">FunctionSignature</span></span>
+<span>(</span><span>name: str, edges: set[str], inputs: tuple[set[str], ...])</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@dataclass
+class FunctionSignature(ABC):
+    &#34;&#34;&#34;
+    An abstract base class representing a function that takes one or more tensors as input
+    and produces a new tensor as output.
+
+    This class is designed to capture the symbolic structure of a tensor operation by
+    listing its output edges (`edges`) and the input edges (`inputs`) each of its input
+    tensors must provide. Subclasses are required to implement the `eval` and `derivative`
+    methods, while `simplify` has a default no-op implementation that may be overridden.
+
+    Parameters
+    ----------
+    name : str
+        A descriptive name for the function (e.g., &#34;matmul&#34;, &#34;unfold&#34;, &#34;ce&#34;, &#34;attention&#34;).
+    edges : Set[str]
+        The output edges of this function. These are string identifiers that symbolically
+        represent the dimensions of the output tensor.
+    inputs : Tuple[Set[str], ...]
+        A tuple where each element is a set of edges required from one input tensor.
+        For example, if the first input tensor must share dimension edges {&#34;b&#34;, &#34;i&#34;} and
+        the second input tensor must share dimension edges {&#34;b&#34;, &#34;j&#34;}, then
+        `inputs = ({&#34;b&#34;, &#34;i&#34;}, {&#34;b&#34;, &#34;j&#34;})`.
+
+    Examples
+    --------
+    1) **Matrix multiplication**:
+       Suppose `x` has shape (b, i, j) and `y` has shape (b, j, k). We might define:
+
+       .. code-block:: python
+
+          f = MatmulSignature(
+              name=&#34;matmul&#34;,
+              edges={&#34;i&#34;, &#34;k&#34;},
+              inputs=({&#34;i&#34;, &#34;j&#34;}, {&#34;j&#34;, &#34;k&#34;})
+          )
+
+       Here, the function consumes edges `i` and `j` from `x` and edges `j` and `k` from `y`.
+       The edge `b` is shared between the two inputs and broadcasted. The output tensor
+       eventually has shape (b, i, k).
+
+    2) **Unfold**:
+       Suppose we have a tensor `x` with shape (b, c, w, h) and we want to produce a series
+       of patches. We might define:
+
+       .. code-block:: python
+
+          f = UnfoldSignature(
+              name=&#34;unfold&#34;,
+              edges={&#34;patch&#34;, &#34;c_out&#34;, &#34;w_out&#34;, &#34;h_out&#34;},
+              inputs=({&#34;c_in&#34;, &#34;w_in&#34;, &#34;h_in&#34;},)
+          )
+
+       This function consumes edges ``c, w, h`` from `x` and introduces a new edge
+       named ``patch`` of size (w_in - w_out + 1)*(h_in - h_out + 1).
+
+    3) **Cross-entropy**:
+       This is an example of a function that takes two inputs, for example logits and
+       probabilities. Suppose:
+       - `x` has shape (b, logits)
+       - `y` has shape (b, probs)
+
+       We might define:
+
+       .. code-block:: python
+
+          f = CrossEntropySignature(
+              name=&#34;ce&#34;,
+              edges={&#34;ce&#34;},
+              inputs=({&#34;logits&#34;}, {&#34;probs&#34;})
+          )
+
+       Both inputs share the batch edge ``b``. The new edge ``ce`` could represent the
+       cross-entropy output dimension (often scalar per example, so shape (b, ce)).
+
+    4) **Multi-query Dot Product Attention**:
+       Suppose we have tensors:
+       - `q` with shape (b, n_q, d)
+       - `k` with shape (b, seq, d)
+       - `v` with shape (b, seq, d_out)
+
+       Conceptually, to compute multi-query attention:
+
+       - We form (b, n_q, seq) via a dot product of `q` and `k`.
+       - We apply a softmax to get (b, n_q, prob).
+       - We multiply by `v` to get (b, n_q, d_out).
+
+       A possible signature might be:
+
+       .. code-block:: python
+
+          f = AttentionSignature(
+              name=&#34;attention&#34;,
+              edges={&#34;n_q&#34;, &#34;d_out&#34;},
+              inputs=(
+                  {&#34;n_q&#34;, &#34;d&#34;},
+                  {&#34;seq&#34;, &#34;d&#34;},
+                  {&#34;seq&#34;, &#34;d_out&#34;},
+              )
+          )
+
+       The edge ``b`` is shared among all inputs (broadcast). The final output
+       has shape (b, n_q, d_out).
+    &#34;&#34;&#34;
+
+    name: str
+    # The output edges of the function. Note no Symbols here, since we don&#39;t know the sizes yet.
+    edges: set[str]
+    # Defines the number of input tensors the function takes, and what edges it needs from each
+    inputs: tuple[set[str], ...]
+
+    # TODO: Functions should support symmetric outputs, just like Constant and Variable.
+    # Actually we could define symmetries for the inputs too, since the order doesn&#39;t always matter.
+
+    def eval(self, *input_tensors: torch.Tensor) -&gt; torch.Tensor:
+        &#34;&#34;&#34;
+        Evaluates this function given a list of input torch tensors,
+        corresponding to the edges specified in `inputs`.
+        &#34;&#34;&#34;
+        raise NotImplementedError
+
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -&gt; &#34;FunctionSignature&#34;:
+        &#34;&#34;&#34;
+        Returns a new FunctionSignature that represents the derivative
+        with respect to the i-th input, and where edges are created
+        according to `new_edges` a dict {old_name : new_name}.
+        &#34;&#34;&#34;
+        if new_edges is None:
+            new_edges = {}
+        if self.inputs[i] != new_edges.keys():
+            raise ValueError(f&#34;Expected {self.inputs[i]} but got {new_edges.keys()}&#34;)
+        if self.edges &amp; new_edges.values():
+            raise ValueError(f&#34;New edges {new_edges.values()} clash with {self.edges=}&#34;)
+        return FunctionSignature(f&#34;D_{i}{self.name}&#34;, self.edges | new_edges.values(), self.inputs)
+
+    def simplify(self, t: &#34;Function&#34;, args: dict[str, Any]) -&gt; Tensor:
+        &#34;&#34;&#34;
+        Simplifies the Function tensor that uses this signature.
+        Default implementation returns `t` unchanged.
+        Subclasses can override this method for custom simplifications.
+        &#34;&#34;&#34;
+        return t
+
+    def __repr__(self):
+        return f&#34;FunctionSignature(&#39;{self.name}&#39;, {set(self.edges)}, {[set(s) for s in self.inputs]})&#34;</code></pre>
+</details>
+<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
+and produces a new tensor as output.</p>
+<p>This class is designed to capture the symbolic structure of a tensor operation by
+listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
+tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
+methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
+<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
+<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
+<dd>The output edges of this function. These are string identifiers that symbolically
+represent the dimensions of the output tensor.</dd>
+<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
+<dd>A tuple where each element is a set of edges required from one input tensor.
+For example, if the first input tensor must share dimension edges {"b", "i"} and
+the second input tensor must share dimension edges {"b", "j"}, then
+<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
+</dl>
+<h2 id="examples">Examples</h2>
+<p>1) <strong>Matrix multiplication</strong>:
+Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
+<p>.. code-block:: python</p>
+<pre><code>  f = MatmulSignature(
+      name="matmul",
+      edges={"i", "k"},
+      inputs=({"i", "j"}, {"j", "k"})
+  )
+</code></pre>
+<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
+The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
+eventually has shape (b, i, k).</p>
+<p>2) <strong>Unfold</strong>:
+Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
+of patches. We might define:</p>
+<p>.. code-block:: python</p>
+<pre><code>  f = UnfoldSignature(
+      name="unfold",
+      edges={"patch", "c_out", "w_out", "h_out"},
+      inputs=({"c_in", "w_in", "h_in"},)
+  )
+</code></pre>
+<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
+named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
+<p>3) <strong>Cross-entropy</strong>:
+This is an example of a function that takes two inputs, for example logits and
+probabilities. Suppose:
+- <code>x</code> has shape (b, logits)
+- <code>y</code> has shape (b, probs)</p>
+<p>We might define:</p>
+<p>.. code-block:: python</p>
+<pre><code>  f = CrossEntropySignature(
+      name="ce",
+      edges={"ce"},
+      inputs=({"logits"}, {"probs"})
+  )
+</code></pre>
+<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
+cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
+<p>4) <strong>Multi-query Dot Product Attention</strong>:
+Suppose we have tensors:
+- <code>q</code> with shape (b, n_q, d)
+- <code>k</code> with shape (b, seq, d)
+- <code>v</code> with shape (b, seq, d_out)</p>
+<p>Conceptually, to compute multi-query attention:</p>
+<ul>
+<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
+<li>We apply a softmax to get (b, n_q, prob).</li>
+<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
+</ul>
+<p>A possible signature might be:</p>
+<p>.. code-block:: python</p>
+<pre><code>  f = AttentionSignature(
+      name="attention",
+      edges={"n_q", "d_out"},
+      inputs=(
+          {"n_q", "d"},
+          {"seq", "d"},
+          {"seq", "d_out"},
+      )
+  )
+</code></pre>
+<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
+has shape (b, n_q, d_out).</p></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>abc.ABC</li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.functions.MaxFunction" href="functions.html#tensorgrad.functions.MaxFunction">MaxFunction</a></li>
+<li><a title="tensorgrad.functions.MaxGradFunction" href="functions.html#tensorgrad.functions.MaxGradFunction">MaxGradFunction</a></li>
+<li><a title="tensorgrad.functions.PowerFunction" href="functions.html#tensorgrad.functions.PowerFunction">PowerFunction</a></li>
+<li><a title="tensorgrad.functions.RenameFunction" href="functions.html#tensorgrad.functions.RenameFunction">RenameFunction</a></li>
+<li><a title="tensorgrad.functions.ScaleFunction" href="functions.html#tensorgrad.functions.ScaleFunction">ScaleFunction</a></li>
+<li><a title="tensorgrad.functions.SoftmaxFunction" href="functions.html#tensorgrad.functions.SoftmaxFunction">SoftmaxFunction</a></li>
+<li><a title="tensorgrad.functions.ZeroFunction" href="functions.html#tensorgrad.functions.ZeroFunction">ZeroFunction</a></li>
+<li>tensorgrad.functions._SimpleFunction</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="tensorgrad.tensor.FunctionSignature.edges"><code class="name">var <span class="ident">edges</span> : set[str]</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="tensorgrad.tensor.FunctionSignature.inputs"><code class="name">var <span class="ident">inputs</span> : tuple[set[str], ...]</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="tensorgrad.tensor.FunctionSignature.name"><code class="name">var <span class="ident">name</span> : str</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.FunctionSignature.derivative"><code class="name flex">
+<span>def <span class="ident">derivative</span></span>(<span>self, i: int, new_edges: dict[str, str] = None) ‑> <a title="tensorgrad.tensor.FunctionSignature" href="#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def derivative(self, i: int, new_edges: dict[str, str] = None) -&gt; &#34;FunctionSignature&#34;:
+    &#34;&#34;&#34;
+    Returns a new FunctionSignature that represents the derivative
+    with respect to the i-th input, and where edges are created
+    according to `new_edges` a dict {old_name : new_name}.
+    &#34;&#34;&#34;
+    if new_edges is None:
+        new_edges = {}
+    if self.inputs[i] != new_edges.keys():
+        raise ValueError(f&#34;Expected {self.inputs[i]} but got {new_edges.keys()}&#34;)
+    if self.edges &amp; new_edges.values():
+        raise ValueError(f&#34;New edges {new_edges.values()} clash with {self.edges=}&#34;)
+    return FunctionSignature(f&#34;D_{i}{self.name}&#34;, self.edges | new_edges.values(), self.inputs)</code></pre>
+</details>
+<div class="desc"><p>Returns a new FunctionSignature that represents the derivative
+with respect to the i-th input, and where edges are created
+according to <code>new_edges</code> a dict {old_name : new_name}.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.FunctionSignature.eval"><code class="name flex">
+<span>def <span class="ident">eval</span></span>(<span>self, *input_tensors: torch.Tensor) ‑> torch.Tensor</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def eval(self, *input_tensors: torch.Tensor) -&gt; torch.Tensor:
+    &#34;&#34;&#34;
+    Evaluates this function given a list of input torch tensors,
+    corresponding to the edges specified in `inputs`.
+    &#34;&#34;&#34;
+    raise NotImplementedError</code></pre>
+</details>
+<div class="desc"><p>Evaluates this function given a list of input torch tensors,
+corresponding to the edges specified in <code>inputs</code>.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.FunctionSignature.simplify"><code class="name flex">
+<span>def <span class="ident">simplify</span></span>(<span>self,<br>t: <a title="tensorgrad.tensor.Function" href="#tensorgrad.tensor.Function">Function</a>,<br>args: dict[str, typing.Any]) ‑> <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def simplify(self, t: &#34;Function&#34;, args: dict[str, Any]) -&gt; Tensor:
+    &#34;&#34;&#34;
+    Simplifies the Function tensor that uses this signature.
+    Default implementation returns `t` unchanged.
+    Subclasses can override this method for custom simplifications.
+    &#34;&#34;&#34;
+    return t</code></pre>
+</details>
+<div class="desc"><p>Simplifies the Function tensor that uses this signature.
+Default implementation returns <code>t</code> unchanged.
+Subclasses can override this method for custom simplifications.</p></div>
+</dd>
+</dl>
+</dd>
+<dt id="tensorgrad.tensor.MatchEdgesKey"><code class="flex name class">
+<span>class <span class="ident">MatchEdgesKey</span></span>
+<span>(</span><span>value, **edge_names: str)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class MatchEdgesKey:
+    &#34;&#34;&#34;Normally Tensors use isomorphism as their test for equality, but they don&#39;t include
+    the edge names in the comparison. This class is used to compare tensors based on their
+    edge names. It is used in the Sum tensor to combine tensors with the same edge names.&#34;&#34;&#34;
+
+    def __init__(self, value, **edge_names: str):
+        self.value = value
+        self.hash = hash(value)
+        self.edge_names = edge_names
+
+    def __eq__(self, other):
+        if isinstance(other, MatchEdgesKey):
+            return self.value.is_isomorphic(other.value, edge_names=self.edge_names, match_edges=True)
+        return False
+
+    def __hash__(self):
+        return self.hash</code></pre>
+</details>
+<div class="desc"><p>Normally Tensors use isomorphism as their test for equality, but they don't include
+the edge names in the comparison. This class is used to compare tensors based on their
+edge names. It is used in the Sum tensor to combine tensors with the same edge names.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Product"><code class="flex name class">
+<span>class <span class="ident">Product</span></span>
+<span>(</span><span>tensors: Iterable[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>])</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Product(Tensor):
+    def __init__(self, tensors: Iterable[Tensor]):
+        &#34;&#34;&#34;
+        A product of multiple tensors.
+
+        Args:
+            tensors: The tensors to multiply together.
+        &#34;&#34;&#34;
+        self.tensors = list(tensors)
+        self._shape = {}
+        for edge, ts in group_edges(self.tensors).items():
+            if len(ts) == 1:
+                self._shape[edge] = ts[0].shape[edge]
+            elif len(ts) == 2:
+                s1, s2 = [t.shape[edge] for t in ts]
+                if s1 != s2:
+                    raise ValueError(f&#34;Edge {edge} has different sizes, {s1} != {s2}&#34;)
+            else:
+                raise ValueError(
+                    f&#34;edge {edge} had multiplicity {len(ts)}. Use an identity tensor to combine multiple edges.&#34;
+                )
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        # Rename the inner edges (contractions) to avoid the new names introduced
+        # by the renaming of the free edges.
+        new_names = {kwargs.get(e, e) for e in self.edges}
+        contractions = {e for t in self.tensors for e in t.edges} - self.edges
+        # Note the `unused_edge_names` function avoids introducing new clashes
+        # between the edges being renamed.
+        rename = unused_edge_names(contractions, new_names)
+        # It&#39;s safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
+        # contain keys that are in self.edges.
+        rename |= kwargs
+        res = Product([t.rename(**rename) for t in self.tensors])
+        assert res.edges == new_names
+        return res
+
+    @staticmethod
+    def merge(products: list[&#34;Product&#34;]) -&gt; &#34;Product&#34;:
+        &#34;&#34;&#34;Rename internal edges (multiplicity &gt; 1) to be distinct between each group.&#34;&#34;&#34;
+        # The union of free edges from each product contains the free edges and &#34;level 1&#34; inner edges.
+        used_edges = {e for p in products for e in p.edges}
+        res = []
+        for p in products:
+            # Maybe this could also be expressed in terms of avoid_internal_edges
+            inner_edges = {e for t in p.tensors for e in t.edges if e not in p.edges}
+            rename = unused_edge_names(inner_edges, used_edges)
+            for t in p.tensors:
+                res.append(t.rename(**rename))
+            used_edges.update(rename.values())  # Later renames should not clash with this one
+        return Product(res)
+
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        # This checks that there is no overlap between the new names and the free edges.
+        new_names = self._check_grad(x, new_names)
+
+        # Since we are adding new edges to an internal tensor in the product, we need to make sure
+        # none of the other tensors in the product have edges that clash with these new edges.
+        inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
+        new_edges = set(new_names.values()) | self.edges
+        rename = unused_edge_names(inner_names, new_edges)
+        new_prod = Product([t.rename(**rename) for t in self.tensors])
+        assert new_prod == self and new_prod.shape == self.shape, &#34;Renaming should not change the product&#34;
+        # Note: We don&#39;t have to update they keys of new_names, sinc ethey refer to variable orig_names, which never change
+
+        # The classic product rule of Calculus: d/dx (f * g) = f&#39; * g + f * g&#39;
+        res = Sum(
+            [
+                Product(new_prod.tensors[:i] + [Derivative(t, x, new_names)] + new_prod.tensors[i + 1 :])
+                for i, t in enumerate(new_prod.tensors)
+            ]
+        )
+        assert res.edges == self.edges | new_edges, f&#34;{res.edges} != {self.edges} | {new_edges}&#34;
+        return res
+
+    def __repr__(self):
+        if len(self.tensors) &lt;= 1:
+            return f&#34;Product({self.tensors})&#34;
+        else:
+            inner = &#34;    &#34; + &#34;,\n    &#34;.join(map(repr, self.tensors)) + &#34;,&#34;
+            return f&#34;Product([\n{inner}\n])&#34;
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        # TODO: Keep track of how many contractions we made
+        # extras[&#34;contractions&#34;] = extras.get(&#34;contractions&#34;, 0) + len(self.contractions)
+        if not self.tensors:
+            return torch.tensor(1.0)
+        # We use &#34;operator&#34; einsum interface, which doesn&#39;t require single letter names.
+        # e.g.  einsum(&#39;i,i&#39;, b, b)  =  einsum(b, [0], b, [0])
+        # and   einsum(&#39;ij,jk-&gt;ik&#39;, b, c)  =  einsum(b, [0, 1], c, [1, 2], [0, 2])
+        edge_numbers = {e: i for i, e in enumerate({e for t in self.tensors for e in t.edges})}
+        # TODO: We can make this more efficient by removing Copy tensors.
+        parts = []
+        for t in self.tensors:
+            torch_tensor = t.evaluate(values, dims)
+            parts.append(torch_tensor.rename(None))
+            parts.append([edge_numbers[e] for e in torch_tensor.names])
+        parts.append([edge_numbers[e] for e in self.edges])
+        out = torch.einsum(*parts).rename(*self.edges)
+        assert out.names == tuple(self.edges)
+        return out
+
+    def simplify(self, args: dict[str, Any] = None):
+        args = self._check_simplify(args)
+
+        tensors = [t.simplify(args=args) for t in self.tensors]
+
+        # If any tensor in a product is 0, so is the whole product
+        if any(isinstance(t, Zero) for t in tensors):
+            return Zero(**self.shape)
+
+        # Decide whether to push products through sums. This can be useful to simplify networks for
+        # presentation, but it can also blow up the number of terms. So we make it optional.
+        if args.get(&#34;distributed_products&#34;, False):
+            raise NotImplementedError(&#34;Not implemented yet&#34;)
+
+        # Combine nested products. Note that not combining products may be useful to keep the
+        # &#34;natural&#34; contraction order. This can speed up evaluation, since sub-tensors can be reused.
+        if args[&#34;associative_products&#34;]:
+            sub_products = [t if isinstance(t, Product) else Product([t]) for t in tensors]
+            tensors = Product.merge(sub_products).tensors
+
+        # We can do a &#34;small&#34; kind of distributed products, which is handling children that are single sums
+        # Also, if a child is a sum with a single element, we can pull the weight up.
+        # In general, we can pull out the least common multiple of the weights of the children.
+        if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.tensors) == 1]:
+            tensors = [t if t not in single_sums else t.tensors[0] for t in tensors]
+            res_weight = math.prod(t.weights[0] for t in single_sums)
+        else:
+            res_weight = 1
+
+        def verify_edges(tensors, msg=&#34;&#34;):
+            cnt = Counter(e for t in tensors for e in t.edges)
+            if cnt:
+                assert cnt.most_common()[0][1] &lt;= 2, msg
+
+        # Simplify Copy Tensors
+        verify_edges(tensors)
+        tensors = Copy.simplify_outer(tensors)
+        verify_edges(tensors)
+
+        # Combine / Cancel Product Functions
+        if args[&#34;combine_products&#34;]:
+            from tensorgrad.functions import PowerFunction
+
+            verify_edges(tensors)
+            before = tensors
+            tensors = PowerFunction.simplify_outer(tensors, args)
+            verify_edges(tensors, f&#34;{before} -&gt; {tensors}&#34;)
+
+        # Base cases
+        if len(tensors) == 1:
+            res = tensors[0]
+        elif args[&#34;expand&#34;]:
+            terms = [[]]
+            weights = [1]
+            for t in tensors:
+                if isinstance(t, Sum):
+                    # Create cartesian product
+                    terms = [term + [t0] for term in terms for t0 in t.tensors]
+                    weights = [w * w0 for w in weights for w0 in t.weights]
+                else:
+                    for term in terms:
+                        term.append(t)
+            # Recurse with expand=False to avoid infinite descent
+            res = Sum([Product(ts) for ts in terms], weights).simplify(args={&#34;expand&#34;: False})
+        else:
+            res = Product(tensors)
+
+        if res_weight != 1:
+            res = res_weight * res
+
+        assert res.shape == self.shape, f&#34;Edges changed from {self.edges} to {res.edges}&#34;
+        return res
+
+    def components(self) -&gt; list[&#34;Product&#34;]:
+        &#34;&#34;&#34;Find all disjoint components, that is, subgraphs that are not connected by an edge.
+
+        Returns:
+            - A list of disjoint components, each represented by a Product tensor.
+        &#34;&#34;&#34;
+        # Create graph of tensor connections
+        G = nx.Graph()
+        G.add_nodes_from(range(len(self.tensors)))
+        for i, t1 in enumerate(self.tensors):
+            for j, t2 in enumerate(self.tensors[i + 1 :], i + 1):
+                if set(t1.edges) &amp; set(t2.edges):
+                    G.add_edge(i, j)
+
+        # Find connected components
+        component_sets = list(nx.connected_components(G))
+        components = [Product([self.tensors[i] for i in comp]) for comp in component_sets]
+        assert Product(components).edges == self.edges
+        return components
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=self.__class__.__name__, tensor=self)
+        edges = {}
+        inner_edges = defaultdict(list)
+        for t in self.tensors:
+            G, t_edges = add_structural_graph(G, t)
+            for e, node in t_edges.items():
+                inner_edges[e].append(node)
+        for e, nodes in inner_edges.items():
+            if len(nodes) == 2:
+                # Note that inner edges are bidirectional, since tensor products
+                # are associative.
+                n1, n2 = nodes
+                G.add_edge(n1, n2)
+                G.add_edge(n2, n1)
+            else:
+                # If the edge is only present once, it&#39;s an outer edge
+                assert e in self.edges, f&#34;{e} not in {self.edges}&#34;
+                (n1,) = nodes
+                edges[e] = n1
+        assert edges.keys() == self.edges
+        return G, edges
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return any(t.depends_on(x) for t in self.tensors)</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>A product of multiple tensors.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>tensors</code></strong></dt>
+<dd>The tensors to multiply together.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Static methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.Product.merge"><code class="name flex">
+<span>def <span class="ident">merge</span></span>(<span>products: list['<a title="tensorgrad.tensor.Product" href="#tensorgrad.tensor.Product">Product</a>']) ‑> <a title="tensorgrad.tensor.Product" href="#tensorgrad.tensor.Product">Product</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@staticmethod
+def merge(products: list[&#34;Product&#34;]) -&gt; &#34;Product&#34;:
+    &#34;&#34;&#34;Rename internal edges (multiplicity &gt; 1) to be distinct between each group.&#34;&#34;&#34;
+    # The union of free edges from each product contains the free edges and &#34;level 1&#34; inner edges.
+    used_edges = {e for p in products for e in p.edges}
+    res = []
+    for p in products:
+        # Maybe this could also be expressed in terms of avoid_internal_edges
+        inner_edges = {e for t in p.tensors for e in t.edges if e not in p.edges}
+        rename = unused_edge_names(inner_edges, used_edges)
+        for t in p.tensors:
+            res.append(t.rename(**rename))
+        used_edges.update(rename.values())  # Later renames should not clash with this one
+    return Product(res)</code></pre>
+</details>
+<div class="desc"><p>Rename internal edges (multiplicity &gt; 1) to be distinct between each group.</p></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.Product.components"><code class="name flex">
+<span>def <span class="ident">components</span></span>(<span>self) ‑> list[<a title="tensorgrad.tensor.Product" href="#tensorgrad.tensor.Product">Product</a>]</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def components(self) -&gt; list[&#34;Product&#34;]:
+    &#34;&#34;&#34;Find all disjoint components, that is, subgraphs that are not connected by an edge.
+
+    Returns:
+        - A list of disjoint components, each represented by a Product tensor.
+    &#34;&#34;&#34;
+    # Create graph of tensor connections
+    G = nx.Graph()
+    G.add_nodes_from(range(len(self.tensors)))
+    for i, t1 in enumerate(self.tensors):
+        for j, t2 in enumerate(self.tensors[i + 1 :], i + 1):
+            if set(t1.edges) &amp; set(t2.edges):
+                G.add_edge(i, j)
+
+    # Find connected components
+    component_sets = list(nx.connected_components(G))
+    components = [Product([self.tensors[i] for i in comp]) for comp in component_sets]
+    assert Product(components).edges == self.edges
+    return components</code></pre>
+</details>
+<div class="desc"><p>Find all disjoint components, that is, subgraphs that are not connected by an edge.</p>
+<h2 id="returns">Returns</h2>
+<ul>
+<li>A list of disjoint components, each represented by a Product tensor.</li>
+</ul></div>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.Sum"><code class="flex name class">
+<span>class <span class="ident">Sum</span></span>
+<span>(</span><span>tensors: Iterable[<a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>],<br>weights: Iterable[int] | None = None)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Sum(Tensor):
+    def __init__(self, tensors: Iterable[Tensor], weights: None | Iterable[int] = None):
+        &#34;&#34;&#34;
+        A weighted sum of multiple tensors.
+
+        Args:
+            tensors: The tensors to add together.
+            weights: The weights of each tensor in the sum. If not provided, all weights are 1.
+        &#34;&#34;&#34;
+        tensors = list(tensors)
+
+        # Broadcasting means we always upgrade to the super set of edges
+        self._shape = {}
+        for e, ts in group_edges(tensors).items():
+            s = ts[0].shape[e]
+            if not all(t.shape[e] == s for t in ts):
+                raise ValueError(f&#34;Edge {e} had different sizes in tensors: {ts}&#34;)
+            self._shape[e] = s
+
+        # Any tensors that lacks an edge will be broadcasted to have that edge.
+        all_edges = self._shape.keys()
+        self.tensors = []
+        for t in tensors:
+            missing = {e: self._shape[e] for e in all_edges - t.edges}
+            # Note: don&#39;t broadcast if the tensor is already full, since that would create new
+            # Ones([]) objects after simplification is supposed to have completed.
+            self.tensors.append(t @ Ones(**missing) if missing else t)
+
+        self.weights = [1] * len(tensors) if weights is None else list(weights)
+        assert len(tensors) == len(self.weights)
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        res = Sum([t.rename(**kwargs) for t in self.tensors], self.weights)
+        assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
+        return res
+
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+        new_names = self._check_grad(x, new_names)
+        return Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
+
+    def simplify(self, args: dict[str, Any] = None):
+        args = self._check_simplify(args)
+        terms = [t.simplify(args=args) for t in self.tensors]
+
+        term_counter = Counter()
+        for w, t in zip(self.weights, terms):
+            if args[&#34;associative_sums&#34;] and isinstance(t, Sum):
+                for w1, t1 in zip(t.weights, t.tensors):
+                    term_counter[MatchEdgesKey(t1)] += w * w1
+            else:
+                term_counter[MatchEdgesKey(t)] += w
+
+        if args[&#34;sum_combine_terms&#34;]:
+            # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
+            # It is important that isomorphic tensors with different outer edge labels don&#39;t get matched. For example
+            # (o-i o-&lt;jk) is isomorphic with (o-j o-&lt;ik), but they shouldn&#39;t be combined. This example comes up in the
+            # Hessian of softmax.
+            ws_tensors = [
+                (w, key.value)
+                for key, w in term_counter.items()
+                if w != 0 and not isinstance(key.value, Zero)
+            ]
+        else:
+            ws_tensors = [(w, key.value) for key, w in term_counter.items()]
+
+        # Remove zero tensors or zero weights.
+        # Note: This won&#39;t change the shape of the tensor, since all summands have been broadcasted.
+        ws_tensors = [(w, t) for w, t in ws_tensors if w != 0 and not isinstance(t, Zero)]
+        # Base case. Here we can&#39;t just return Zero([]), since that would change the signature of the tensor.
+        if not ws_tensors:
+            return Zero(**self.shape)
+        weights, tensors = zip(*ws_tensors)
+        # If there is just one tensor with weight 1, we don&#39;t need LinearComb
+        if weights == (1,):
+            return tensors[0]
+        res = Sum(tensors, weights)
+        assert res.shape == self.shape, f&#34;Edges changed from {self.edges} to {res.edges}&#34;
+        return res
+
+    def __repr__(self):
+        return f&#34;Sum({self.tensors}, {self.weights})&#34;
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=self.__class__.__name__, tensor=self)
+        edges = {}
+        # Create special &#34;Plus nodes&#34; to collect common edges
+        for i, e in enumerate(self.edges):
+            # Note: No need to add the shape here. It&#39;s already in the sub-tensors
+            G.add_node(i + 1, name=&#34;Plus Node&#34;)
+            edges[e] = i + 1
+        for t, w in zip(self.tensors, self.weights):
+            # The weights are a little akward. There a lot of options for how to handle them.
+            # E.g. the idea of just using a weighted Copy([]) somehow. But this works.
+            G, t_edges = add_structural_graph(G, t, root_edge_label=f&#34;Weight {w}&#34;)
+            # Connect tensor edges to the plus nodes
+            for e, node in t_edges.items():
+                G.add_edge(node, edges[e])
+        assert edges.keys() == self.edges
+        return G, edges
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        values = [t.evaluate(values, dims).align_to(*self.edges) for t in self.tensors]
+        res = sum(float(w) * v for w, v in zip(self.weights, values))
+        assert set(res.names) == self.edges, f&#34;Expected {self.edges}, got {res.names}&#34;
+        return res
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return any(t.depends_on(x) for t in self.tensors)</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>A weighted sum of multiple tensors.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>tensors</code></strong></dt>
+<dd>The tensors to add together.</dd>
+<dt><strong><code>weights</code></strong></dt>
+<dd>The weights of each tensor in the sum. If not provided, all weights are 1.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.Tensor"><code class="flex name class">
+<span>class <span class="ident">Tensor</span></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Tensor(ABC):
+    @property
+    def edges(self) -&gt; set[str]:
+        &#34;&#34;&#34;Returns an _ordered_ set of edge names&#34;&#34;&#34;
+        return self.shape.keys()
+
+    @property
+    def shape(self) -&gt; dict[str, Symbol]:
+        if not hasattr(self, &#34;_shape&#34;):
+            raise NotImplementedError
+        return self._shape
+
+    @property
+    def order(self):
+        &#34;&#34;&#34;The number of edges the tensor has.&#34;&#34;&#34;
+        return len(self.shape)
+
+    def grad(self, x: &#34;Variable&#34;, new_names: Optional[dict[str, str]]) -&gt; &#34;Tensor&#34;:
+        &#34;&#34;&#34;
+        Take the derivative of this tensor with respect to the variable x.
+
+        Args:
+            x: The variable to take the derivative with respect to.
+            new_names: Optional list of names to use for the new edges created by the derivative.
+                If not provided, new names will be generated based on the edges of x.
+
+        Note:
+            Pushes the derivative one step through the tensor.
+            If you want to push it all the way through, use .simplify().
+
+        Returns:
+            The tensor representing the derivative.
+        &#34;&#34;&#34;
+        new_names = self._check_grad(x, new_names)
+        raise NotImplementedError
+
+    def rename(self, **kwargs: dict[str, str]) -&gt; &#34;Tensor&#34;:
+        &#34;&#34;&#34;
+        Rename free edges of this tensor.
+
+        Args:
+            kwargs: A dictionary mapping old edge names to new edge names.
+                Only free edges can be renamed. Inner edges may get renamed
+                if necessary to avoid clashes with the new free edge names.
+
+        Returns:
+            A new tensor with the edges renamed according to kwargs.
+        &#34;&#34;&#34;
+        kwargs = self._check_rename(kwargs)
+        raise NotImplementedError
+
+    def simplify(self, args: dict[str, Any] = None) -&gt; &#34;Tensor&#34;:
+        &#34;&#34;&#34;
+        Apply simplification rules to this tensor.
+
+        This may rename inner edges but should never change the free edges.
+
+        Args:
+            args: Optional dictionary of arguments controlling the simplification.
+
+        Returns:
+            A simplified version of this tensor.
+        &#34;&#34;&#34;
+        return self
+
+    def full_simplify(self) -&gt; &#34;Tensor&#34;:
+        &#34;&#34;&#34;Applies multiple simplification rules until the expression no longer changes&#34;&#34;&#34;
+        expr = self
+        while (new := expr.simplify()) != expr:
+            expr = new
+        expr = expr.simplify({&#34;expand&#34;: True})
+        while (new := expr.simplify()) != expr:
+            expr = new
+        return expr
+
+    def __hash__(self) -&gt; int:
+        return hash(self.weisfeiler_lehman)
+
+    @cached_property
+    def weisfeiler_lehman(self) -&gt; str:
+        &#34;&#34;&#34;Hexadecimal string for WL-hash of the input graph.&#34;&#34;&#34;
+        G, _ = self.edge_structural_graph(match_edges=False)
+        return nx.algorithms.weisfeiler_lehman_graph_hash(G, node_attr=&#34;name&#34;)
+
+    def __eq__(self, other) -&gt; bool:
+        return self.is_isomorphic(other)
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        &#34;&#34;&#34;Check if this tensor depends on the variable x.&#34;&#34;&#34;
+        raise NotImplementedError
+
+    @cached_property
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, str]]:
+        &#34;&#34;&#34;Create a graph representation of the tensor, which can be used for isomorphism testing.
+
+        Returns:
+            A tuple with the following values:
+            - A NetworkX directed graph.
+                - Each node in the top tree is labeled with the producing tensor.
+                - Use name=hashable to label vertices
+            - &#34;edges&#34;, a dict of edge_name -&gt; node id
+            - Node 0 should be the root
+        &#34;&#34;&#34;
+        raise NotImplementedError
+
+    def edge_structural_graph(
+        self, match_edges=True, edge_names: None | dict[str, str] = None
+    ) -&gt; nx.MultiDiGraph:
+        &#34;&#34;&#34;Like structural_graph(), but adds dummy nodes for the outer edges.
+
+        Args:
+            if match_edges is True, the edge names are used to match the edges of the two tensors.
+            if edge_names is given, it is used to rename the edges of the tensor.
+        &#34;&#34;&#34;
+        if edge_names is None:
+            edge_names = {}
+
+        G, edges = self.structural_graph()
+
+        for e in edges.keys():
+            if e not in edge_names:
+                edge_names[e] = (&#34;Outer Edge&#34;, e) if match_edges else &#34;&#34;
+
+        for e, node in edges.items():
+            n = G.number_of_nodes()
+            G.add_node(n, name=edge_names[e])
+            G.add_edge(node, n)
+        return G, list(edges.keys())
+
+    def graph_to_string(self):
+        &#34;&#34;&#34;Returns an ASCII tree-like representation of the structural graph.&#34;&#34;&#34;
+        G, _ = self.edge_structural_graph(match_edges=True)
+        return &#34;\n&#34;.join(nx.generate_network_text(G, with_labels=&#34;name&#34;, sources=[0]))
+
+    # Overloaded ops
+
+    def __add__(self, other) -&gt; &#34;Tensor&#34;:
+        w = 1
+        if isinstance(other, Number):
+            other, w = Product([]), other
+        return Sum([self, other], [1, w])
+
+    def __radd__(self, other) -&gt; &#34;Tensor&#34;:
+        return self + other
+
+    def __rsub__(self, other) -&gt; &#34;Tensor&#34;:
+        # Handle `other - self`
+        return -self + other
+
+    def __sub__(self, other) -&gt; &#34;Tensor&#34;:
+        # Handle `self - other`
+        w = 1
+        if isinstance(other, Number):
+            other, w = Product([]), other
+        return Sum([self, other], [1, -w])
+
+    def __neg__(self) -&gt; &#34;Tensor&#34;:
+        return Sum([self], [-1])
+
+    def __matmul__(self, other) -&gt; &#34;Tensor&#34;:
+        if isinstance(other, Number):
+            other = Sum([Product([])], [other])
+        return Product([self, other])
+
+    def __rmatmul__(self, other):
+        if isinstance(other, Number):
+            return self * other
+        return self @ other
+
+    def __rmul__(self, other) -&gt; &#34;Tensor&#34;:
+        return self * other
+
+    def __mul__(self, other) -&gt; &#34;Tensor&#34;:
+        &#34;&#34;&#34;Contract self and other, but use a 3d-identity to keep the shared edges free.&#34;&#34;&#34;
+        if isinstance(other, Number):
+            if other == 0:
+                return Zero(**self.shape)
+            if other == 1:
+                return self
+            return Sum([self], [other])
+        # Element-wise (Hadamard) product is easy to implement using Copy tensors
+        # These are the edges we multiply over
+        shared_edges = self.edges &amp; other.edges
+        (t0, t1), (rename0, rename1) = make_distinct(self, other, used_names=shared_edges)
+        return Product([t0, t1] + [Copy(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
+
+    def __rtruediv__(self, other) -&gt; &#34;Tensor&#34;:
+        # Handle other / self
+        from tensorgrad.functions import pow  # Avoid circular import
+
+        return other * pow(self, -1)
+
+    def __truediv__(self, other) -&gt; &#34;Tensor&#34;:
+        # Handle self / other
+        from tensorgrad.functions import pow  # Avoid circular import
+
+        if isinstance(other, int):
+            return Sum([self], [Fraction(1, other)])
+        if isinstance(other, Number):
+            return Sum([self], [1 / other])
+        return self * pow(other, -1)
+
+    def __pow__(self, other):
+        from tensorgrad.functions import pow  # Avoid circular import
+
+        if not isinstance(other, int):
+            raise ValueError(&#34;Only integer powers are supported.&#34;)
+        return pow(self, other)
+
+    def is_isomorphic(
+        self, other: &#34;Tensor&#34;, match_edges=False, edge_names: None | dict[str, str] = None
+    ) -&gt; bool:
+        if self.weisfeiler_lehman != other.weisfeiler_lehman:
+            return False
+        G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+        G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+        return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get(&#34;name&#34;) == n2.get(&#34;name&#34;))
+
+    def isomorphisms(self, other: &#34;Tensor&#34;) -&gt; Generator[dict[str, str], None, None]:
+        &#34;&#34;&#34;Given self and other are isomorphic, this method returns a dictionary that renames self into other.&#34;&#34;&#34;
+        # We need the edges1 and edges2 lists to keep track of the order of edges added to the graph
+        G1, edges1 = self.edge_structural_graph(match_edges=False)
+        G2, edges2 = other.edge_structural_graph(match_edges=False)
+        for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
+            G1, G2, node_match=lambda n1, n2: n1.get(&#34;name&#34;) == n2.get(&#34;name&#34;)
+        ).isomorphisms_iter():
+            # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
+            # We are only interested in then `len(self.edges)` last nodes, which correspond to the outer edges
+            start_i = G1.number_of_nodes() - len(self.edges)
+            start_j = G2.number_of_nodes() - len(self.edges)
+            yield {
+                edges1[i - start_i]: edges2[j - start_j]
+                for i, j in matching.items()
+                if i &gt;= start_i and j &gt;= start_j
+            }
+
+    @cached_property
+    def symmetries(self) -&gt; set[frozenset[str]]:
+        &#34;&#34;&#34;Return the orbits of the automorphism group of the tensor.&#34;&#34;&#34;
+        # The orbits are the sets of edges that ever get mapped to each other.
+        G = nx.Graph([(i, j) for mapping in self.isomorphisms(self) for i, j in mapping.items()])
+        symmetries = set(map(frozenset, nx.connected_components(G)))
+        if hasattr(self, &#34;_symmetries&#34;):
+            assert symmetries == self._symmetries, f&#34;{symmetries=} {self._symmetries=}&#34;
+        return symmetries
+
+    def evaluate(
+        self,
+        values: dict[&#34;Variable&#34;, torch.Tensor],
+        dims: dict[Symbol, int] | None = None,
+    ) -&gt; torch.Tensor:
+        &#34;&#34;&#34;
+        Evaluate this tensor given values for the variable tensors.
+
+        Args:
+            values: A dict mapping variable tensors to their values.
+            dims: Optional dict specifying the dimensions of free edges.
+        &#34;&#34;&#34;
+        if dims is None:
+            dims = {}
+
+        # Check dimension consistency for all variables pinned in `values`
+        for v, t in values.items():
+            if not isinstance(v, Variable):
+                continue
+            old_to_new = {o: e for e, o in v.orig.items()}
+
+            # For each name &#39;o&#39; in the actual PyTorch tensor &#39;t&#39;,
+            # we see if &#39;o&#39; is a known edge in `v.orig`.
+            for o, ts in zip(t.names, t.shape):
+                # If &#39;o&#39; is not an original edge, skip.
+                # This handles e.g. &#39;samples&#39; dimension which is external.
+                if o not in old_to_new:
+                    continue
+
+                # Otherwise check consistency
+                vs = v.shape[old_to_new[o]]  # symbolic dimension
+                if vs not in dims:
+                    dims[vs] = ts
+                elif dims[vs] != ts:
+                    raise ValueError(f&#34;Conflicting size for dim {o}&#34;)
+
+        # See if we have already evaluated a tensor isomorphic to this one
+        if self in values:
+            # Find the isomorphic representative that we matched
+            other, tensor = next((v, t) for v, t in values.items() if v.is_isomorphic(self))
+            mapping = next(other.isomorphisms(self), None)
+            # The fix is just this &#34;...&#34; before *self.edges
+            res = tensor.rename(**mapping).align_to(..., *self.edges)
+
+            if __debug__:
+                expected = self._inner_evaluate(values, dims)
+                # We guarantee that inner_evaluate returns the edges in the same order as self.edges,
+                # and res has had the order forced on it by align_to.
+                assert expected.names == res.names, f&#34;{expected.names=} {res.names=} {self.edges=}&#34;
+                torch.testing.assert_close(res.rename(None), expected.rename(None))
+            return res
+
+        res = self._inner_evaluate(values, dims)
+        # We guarantee that inner_evaluate returns the edges in the same order as self.edges
+        assert res.names == tuple(self.edges), f&#34;Expected {self.edges=} but got {res.names=}&#34;
+        values[self] = res
+        return res
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        &#34;&#34;&#34;
+        The inner implementation of tensor evaluation.
+
+        Subclasses should override this to define the actual evaluation logic.
+
+        Args:
+            values: A dictionary mapping variable tensors to their values.
+            dims: A dictionary mapping edge names to their dimensions.
+
+        Returns:
+            The result of evaluating this tensor.
+        &#34;&#34;&#34;
+        raise NotImplementedError
+
+    def _check_rename(self, kwargs: dict[str, str]):
+        &#34;&#34;&#34;Check that the renaming is valid, and return the renaming dictionary.&#34;&#34;&#34;
+        if len({kwargs.get(e, e) for e in self.edges}) != len(self.edges):
+            raise ValueError(f&#34;Renamed an edge to an existing edge name. {self.edges=} {kwargs=}&#34;)
+        # Restrict renaming to free edges
+        return {new: old for new, old in kwargs.items() if new in self.edges}
+
+    def _check_grad(self, x: &#34;Variable&#34;, new_names: Optional[dict[str, str]] = None) -&gt; dict[str, str]:
+        &#34;&#34;&#34;
+        When taking a derivative with respect to a variable, we need some edge names for the derivative.
+        If new_names is not given, we generate names based on the edge names of x.
+        However, we need to make sure they don&#39;t clash with any names already present in the tensor.
+        If new_names is already given, we just check to make sure they are not already present in the tensor.
+        &#34;&#34;&#34;
+        if new_names is not None:
+            if set(x.orig.values()) != set(new_names.keys()):
+                raise ValueError(f&#34;The {new_names.keys()=} must match {x.orig.values()=}&#34;)
+            # Check that the new names don&#39;t clash with self.edges
+            if used := self.edges &amp; new_names.values():
+                raise ValueError(f&#34;{used} are already present in {self.edges=}&#34;)
+            return new_names
+        # Make new names that are _based_ on x.orig and _avoid_ self.edges
+        # This is important, since different instantiations of x might be using different names.
+        return unused_edge_names(x.orig.values(), self.edges, suffix=&#34;_&#34;)
+        # Why not base the new_names on x.edges? They are the publicly known ones after all...
+        # return unused_edge_names(x.edges, self.edges, suffix=&#34;_&#34;)
+
+    @staticmethod
+    def _check_simplify(args: dict[str, Any] | None = None):
+        if args is None:
+            args = {}
+        # args[&#34;grad_steps&#34;] allows us to control how far we propagate the derivative.
+        args.setdefault(&#34;grad_steps&#34;, float(&#34;inf&#34;))
+        args.setdefault(&#34;associative_products&#34;, True)
+        args.setdefault(&#34;associative_sums&#34;, True)
+        args.setdefault(&#34;sum_combine_terms&#34;, True)
+        args.setdefault(&#34;combine_products&#34;, True)
+        args.setdefault(&#34;factor_components&#34;, True)
+        args.setdefault(&#34;expand_functions&#34;, True)
+        args.setdefault(&#34;expand&#34;, False)
+        return args
+
+    @staticmethod
+    def _check_edges(edges: Iterable[str]) -&gt; list[str]:
+        if edges is None:
+            return None
+        if not isinstance(edges, Iterable):
+            raise ValueError(&#34;Edges must be an iterable of strings&#34;)
+        edges = list(edges)
+        if not all(isinstance(e, str) for e in edges):
+            raise ValueError(&#34;Edges must be an iterable of strings&#34;)
+        if len(edges) == 1:
+            edges = edges[0].split(&#34;,&#34;)
+            return [e.strip() for e in edges]
+        return edges
+
+    @staticmethod
+    def _check_shape(shape0: Iterable[Symbol], shape1: dict[str, Symbol]) -&gt; dict[str, Symbol]:
+        shape0 = tuple(shape0)
+        if not isinstance(shape0, tuple) or not all(isinstance(s, Symbol) for s in shape0):
+            raise ValueError(&#34;Shape0 must be a tuple of sympy symbols&#34;)
+        if not isinstance(shape1, dict) or not all(isinstance(s, Symbol) for s in shape1.values()):
+            raise ValueError(&#34;Shape1 must be a dict of sympy symbols&#34;)
+        shape0 = {s.name: s for s in shape0}
+        if double_keys := shape0.keys() &amp; shape1.keys():
+            raise ValueError(f&#34;Duplicate edge names: {double_keys}&#34;)
+        return shape0 | shape1
+
+    @staticmethod
+    def _check_symmetries(shape: dict[str, Symbol], symmetries: str | set[frozenset[str]]):
+        if symmetries is None:
+            return {frozenset({e}) for e in shape.keys()}
+        if isinstance(symmetries, str):
+            symmetries = {frozenset(word.split()) for word in symmetries.split(&#34;,&#34;)}
+        # Check symmetries are sets of strings
+        assert all(isinstance(e, str) for group in symmetries for e in group), f&#34;{symmetries=}&#34;
+        if len({e for group in symmetries for e in group}) != len(shape):
+            raise ValueError(&#34;Symmetry groups must contain all edges&#34;)
+        # Check symmetries are compatible with shape
+        for group in symmetries:
+            if any(e not in shape for e in group):
+                raise ValueError(f&#34;Symmetry group {group} contains edges not in shape&#34;)
+            if len({shape[e] for e in group}) != 1:
+                raise ValueError(f&#34;Symmetry group {group} must all have same dim size&#34;)
+        return symmetries</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>abc.ABC</li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.extras.expectation.Expectation" href="extras/expectation.html#tensorgrad.extras.expectation.Expectation">Expectation</a></li>
+<li><a title="tensorgrad.tensor.Constant" href="#tensorgrad.tensor.Constant">Constant</a></li>
+<li><a title="tensorgrad.tensor.Derivative" href="#tensorgrad.tensor.Derivative">Derivative</a></li>
+<li><a title="tensorgrad.tensor.Function" href="#tensorgrad.tensor.Function">Function</a></li>
+<li><a title="tensorgrad.tensor.Product" href="#tensorgrad.tensor.Product">Product</a></li>
+<li><a title="tensorgrad.tensor.Sum" href="#tensorgrad.tensor.Sum">Sum</a></li>
+<li><a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a></li>
+</ul>
+<h3>Instance variables</h3>
+<dl>
+<dt id="tensorgrad.tensor.Tensor.edges"><code class="name">prop <span class="ident">edges</span> : set[str]</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def edges(self) -&gt; set[str]:
+    &#34;&#34;&#34;Returns an _ordered_ set of edge names&#34;&#34;&#34;
+    return self.shape.keys()</code></pre>
+</details>
+<div class="desc"><p>Returns an <em>ordered</em> set of edge names</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.order"><code class="name">prop <span class="ident">order</span></code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def order(self):
+    &#34;&#34;&#34;The number of edges the tensor has.&#34;&#34;&#34;
+    return len(self.shape)</code></pre>
+</details>
+<div class="desc"><p>The number of edges the tensor has.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.shape"><code class="name">prop <span class="ident">shape</span> : dict[str, sympy.core.symbol.Symbol]</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def shape(self) -&gt; dict[str, Symbol]:
+    if not hasattr(self, &#34;_shape&#34;):
+        raise NotImplementedError
+    return self._shape</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.structural_graph"><code class="name">var <span class="ident">structural_graph</span> : tuple[networkx.classes.multidigraph.MultiDiGraph, dict[str, str]]</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@cached_property
+def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, str]]:
+    &#34;&#34;&#34;Create a graph representation of the tensor, which can be used for isomorphism testing.
+
+    Returns:
+        A tuple with the following values:
+        - A NetworkX directed graph.
+            - Each node in the top tree is labeled with the producing tensor.
+            - Use name=hashable to label vertices
+        - &#34;edges&#34;, a dict of edge_name -&gt; node id
+        - Node 0 should be the root
+    &#34;&#34;&#34;
+    raise NotImplementedError</code></pre>
+</details>
+<div class="desc"><p>Create a graph representation of the tensor, which can be used for isomorphism testing.</p>
+<h2 id="returns">Returns</h2>
+<p>A tuple with the following values:
+- A NetworkX directed graph.
+- Each node in the top tree is labeled with the producing tensor.
+- Use name=hashable to label vertices
+- "edges", a dict of edge_name -&gt; node id
+- Node 0 should be the root</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.symmetries"><code class="name">var <span class="ident">symmetries</span> : set[frozenset[str]]</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@cached_property
+def symmetries(self) -&gt; set[frozenset[str]]:
+    &#34;&#34;&#34;Return the orbits of the automorphism group of the tensor.&#34;&#34;&#34;
+    # The orbits are the sets of edges that ever get mapped to each other.
+    G = nx.Graph([(i, j) for mapping in self.isomorphisms(self) for i, j in mapping.items()])
+    symmetries = set(map(frozenset, nx.connected_components(G)))
+    if hasattr(self, &#34;_symmetries&#34;):
+        assert symmetries == self._symmetries, f&#34;{symmetries=} {self._symmetries=}&#34;
+    return symmetries</code></pre>
+</details>
+<div class="desc"><p>Return the orbits of the automorphism group of the tensor.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.weisfeiler_lehman"><code class="name">var <span class="ident">weisfeiler_lehman</span> : str</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@cached_property
+def weisfeiler_lehman(self) -&gt; str:
+    &#34;&#34;&#34;Hexadecimal string for WL-hash of the input graph.&#34;&#34;&#34;
+    G, _ = self.edge_structural_graph(match_edges=False)
+    return nx.algorithms.weisfeiler_lehman_graph_hash(G, node_attr=&#34;name&#34;)</code></pre>
+</details>
+<div class="desc"><p>Hexadecimal string for WL-hash of the input graph.</p></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.Tensor.depends_on"><code class="name flex">
+<span>def <span class="ident">depends_on</span></span>(<span>self,<br>x: <a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a>) ‑> bool</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+    &#34;&#34;&#34;Check if this tensor depends on the variable x.&#34;&#34;&#34;
+    raise NotImplementedError</code></pre>
+</details>
+<div class="desc"><p>Check if this tensor depends on the variable x.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.edge_structural_graph"><code class="name flex">
+<span>def <span class="ident">edge_structural_graph</span></span>(<span>self, match_edges=True, edge_names: None | dict[str, str] = None) ‑> networkx.classes.multidigraph.MultiDiGraph</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def edge_structural_graph(
+    self, match_edges=True, edge_names: None | dict[str, str] = None
+) -&gt; nx.MultiDiGraph:
+    &#34;&#34;&#34;Like structural_graph(), but adds dummy nodes for the outer edges.
+
+    Args:
+        if match_edges is True, the edge names are used to match the edges of the two tensors.
+        if edge_names is given, it is used to rename the edges of the tensor.
+    &#34;&#34;&#34;
+    if edge_names is None:
+        edge_names = {}
+
+    G, edges = self.structural_graph()
+
+    for e in edges.keys():
+        if e not in edge_names:
+            edge_names[e] = (&#34;Outer Edge&#34;, e) if match_edges else &#34;&#34;
+
+    for e, node in edges.items():
+        n = G.number_of_nodes()
+        G.add_node(n, name=edge_names[e])
+        G.add_edge(node, n)
+    return G, list(edges.keys())</code></pre>
+</details>
+<div class="desc"><p>Like structural_graph(), but adds dummy nodes for the outer edges.</p>
+<h2 id="args">Args</h2>
+<p>if match_edges is True, the edge names are used to match the edges of the two tensors.
+if edge_names is given, it is used to rename the edges of the tensor.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.evaluate"><code class="name flex">
+<span>def <span class="ident">evaluate</span></span>(<span>self,<br>values: dict['<a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a>', torch.Tensor],<br>dims: dict[sympy.core.symbol.Symbol, int] | None = None) ‑> torch.Tensor</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def evaluate(
+    self,
+    values: dict[&#34;Variable&#34;, torch.Tensor],
+    dims: dict[Symbol, int] | None = None,
+) -&gt; torch.Tensor:
+    &#34;&#34;&#34;
+    Evaluate this tensor given values for the variable tensors.
+
+    Args:
+        values: A dict mapping variable tensors to their values.
+        dims: Optional dict specifying the dimensions of free edges.
+    &#34;&#34;&#34;
+    if dims is None:
+        dims = {}
+
+    # Check dimension consistency for all variables pinned in `values`
+    for v, t in values.items():
+        if not isinstance(v, Variable):
+            continue
+        old_to_new = {o: e for e, o in v.orig.items()}
+
+        # For each name &#39;o&#39; in the actual PyTorch tensor &#39;t&#39;,
+        # we see if &#39;o&#39; is a known edge in `v.orig`.
+        for o, ts in zip(t.names, t.shape):
+            # If &#39;o&#39; is not an original edge, skip.
+            # This handles e.g. &#39;samples&#39; dimension which is external.
+            if o not in old_to_new:
+                continue
+
+            # Otherwise check consistency
+            vs = v.shape[old_to_new[o]]  # symbolic dimension
+            if vs not in dims:
+                dims[vs] = ts
+            elif dims[vs] != ts:
+                raise ValueError(f&#34;Conflicting size for dim {o}&#34;)
+
+    # See if we have already evaluated a tensor isomorphic to this one
+    if self in values:
+        # Find the isomorphic representative that we matched
+        other, tensor = next((v, t) for v, t in values.items() if v.is_isomorphic(self))
+        mapping = next(other.isomorphisms(self), None)
+        # The fix is just this &#34;...&#34; before *self.edges
+        res = tensor.rename(**mapping).align_to(..., *self.edges)
+
+        if __debug__:
+            expected = self._inner_evaluate(values, dims)
+            # We guarantee that inner_evaluate returns the edges in the same order as self.edges,
+            # and res has had the order forced on it by align_to.
+            assert expected.names == res.names, f&#34;{expected.names=} {res.names=} {self.edges=}&#34;
+            torch.testing.assert_close(res.rename(None), expected.rename(None))
+        return res
+
+    res = self._inner_evaluate(values, dims)
+    # We guarantee that inner_evaluate returns the edges in the same order as self.edges
+    assert res.names == tuple(self.edges), f&#34;Expected {self.edges=} but got {res.names=}&#34;
+    values[self] = res
+    return res</code></pre>
+</details>
+<div class="desc"><p>Evaluate this tensor given values for the variable tensors.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>values</code></strong></dt>
+<dd>A dict mapping variable tensors to their values.</dd>
+<dt><strong><code>dims</code></strong></dt>
+<dd>Optional dict specifying the dimensions of free edges.</dd>
+</dl></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.full_simplify"><code class="name flex">
+<span>def <span class="ident">full_simplify</span></span>(<span>self) ‑> <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def full_simplify(self) -&gt; &#34;Tensor&#34;:
+    &#34;&#34;&#34;Applies multiple simplification rules until the expression no longer changes&#34;&#34;&#34;
+    expr = self
+    while (new := expr.simplify()) != expr:
+        expr = new
+    expr = expr.simplify({&#34;expand&#34;: True})
+    while (new := expr.simplify()) != expr:
+        expr = new
+    return expr</code></pre>
+</details>
+<div class="desc"><p>Applies multiple simplification rules until the expression no longer changes</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.grad"><code class="name flex">
+<span>def <span class="ident">grad</span></span>(<span>self,<br>x: <a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a>,<br>new_names: None | dict[str, str]) ‑> <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def grad(self, x: &#34;Variable&#34;, new_names: Optional[dict[str, str]]) -&gt; &#34;Tensor&#34;:
+    &#34;&#34;&#34;
+    Take the derivative of this tensor with respect to the variable x.
+
+    Args:
+        x: The variable to take the derivative with respect to.
+        new_names: Optional list of names to use for the new edges created by the derivative.
+            If not provided, new names will be generated based on the edges of x.
+
+    Note:
+        Pushes the derivative one step through the tensor.
+        If you want to push it all the way through, use .simplify().
+
+    Returns:
+        The tensor representing the derivative.
+    &#34;&#34;&#34;
+    new_names = self._check_grad(x, new_names)
+    raise NotImplementedError</code></pre>
+</details>
+<div class="desc"><p>Take the derivative of this tensor with respect to the variable x.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>x</code></strong></dt>
+<dd>The variable to take the derivative with respect to.</dd>
+<dt><strong><code>new_names</code></strong></dt>
+<dd>Optional list of names to use for the new edges created by the derivative.
+If not provided, new names will be generated based on the edges of x.</dd>
+</dl>
+<h2 id="note">Note</h2>
+<p>Pushes the derivative one step through the tensor.
+If you want to push it all the way through, use .simplify().</p>
+<h2 id="returns">Returns</h2>
+<p>The tensor representing the derivative.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.graph_to_string"><code class="name flex">
+<span>def <span class="ident">graph_to_string</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def graph_to_string(self):
+    &#34;&#34;&#34;Returns an ASCII tree-like representation of the structural graph.&#34;&#34;&#34;
+    G, _ = self.edge_structural_graph(match_edges=True)
+    return &#34;\n&#34;.join(nx.generate_network_text(G, with_labels=&#34;name&#34;, sources=[0]))</code></pre>
+</details>
+<div class="desc"><p>Returns an ASCII tree-like representation of the structural graph.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.is_isomorphic"><code class="name flex">
+<span>def <span class="ident">is_isomorphic</span></span>(<span>self,<br>other: <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>,<br>match_edges=False,<br>edge_names: None | dict[str, str] = None) ‑> bool</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def is_isomorphic(
+    self, other: &#34;Tensor&#34;, match_edges=False, edge_names: None | dict[str, str] = None
+) -&gt; bool:
+    if self.weisfeiler_lehman != other.weisfeiler_lehman:
+        return False
+    G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+    G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
+    return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get(&#34;name&#34;) == n2.get(&#34;name&#34;))</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.isomorphisms"><code class="name flex">
+<span>def <span class="ident">isomorphisms</span></span>(<span>self,<br>other: <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a>) ‑> Generator[dict[str, str], None, None]</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def isomorphisms(self, other: &#34;Tensor&#34;) -&gt; Generator[dict[str, str], None, None]:
+    &#34;&#34;&#34;Given self and other are isomorphic, this method returns a dictionary that renames self into other.&#34;&#34;&#34;
+    # We need the edges1 and edges2 lists to keep track of the order of edges added to the graph
+    G1, edges1 = self.edge_structural_graph(match_edges=False)
+    G2, edges2 = other.edge_structural_graph(match_edges=False)
+    for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
+        G1, G2, node_match=lambda n1, n2: n1.get(&#34;name&#34;) == n2.get(&#34;name&#34;)
+    ).isomorphisms_iter():
+        # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
+        # We are only interested in then `len(self.edges)` last nodes, which correspond to the outer edges
+        start_i = G1.number_of_nodes() - len(self.edges)
+        start_j = G2.number_of_nodes() - len(self.edges)
+        yield {
+            edges1[i - start_i]: edges2[j - start_j]
+            for i, j in matching.items()
+            if i &gt;= start_i and j &gt;= start_j
+        }</code></pre>
+</details>
+<div class="desc"><p>Given self and other are isomorphic, this method returns a dictionary that renames self into other.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.rename"><code class="name flex">
+<span>def <span class="ident">rename</span></span>(<span>self, **kwargs: dict[str, str]) ‑> <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def rename(self, **kwargs: dict[str, str]) -&gt; &#34;Tensor&#34;:
+    &#34;&#34;&#34;
+    Rename free edges of this tensor.
+
+    Args:
+        kwargs: A dictionary mapping old edge names to new edge names.
+            Only free edges can be renamed. Inner edges may get renamed
+            if necessary to avoid clashes with the new free edge names.
+
+    Returns:
+        A new tensor with the edges renamed according to kwargs.
+    &#34;&#34;&#34;
+    kwargs = self._check_rename(kwargs)
+    raise NotImplementedError</code></pre>
+</details>
+<div class="desc"><p>Rename free edges of this tensor.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>kwargs</code></strong></dt>
+<dd>A dictionary mapping old edge names to new edge names.
+Only free edges can be renamed. Inner edges may get renamed
+if necessary to avoid clashes with the new free edge names.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<p>A new tensor with the edges renamed according to kwargs.</p></div>
+</dd>
+<dt id="tensorgrad.tensor.Tensor.simplify"><code class="name flex">
+<span>def <span class="ident">simplify</span></span>(<span>self, args: dict[str, typing.Any] = None) ‑> <a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def simplify(self, args: dict[str, Any] = None) -&gt; &#34;Tensor&#34;:
+    &#34;&#34;&#34;
+    Apply simplification rules to this tensor.
+
+    This may rename inner edges but should never change the free edges.
+
+    Args:
+        args: Optional dictionary of arguments controlling the simplification.
+
+    Returns:
+        A simplified version of this tensor.
+    &#34;&#34;&#34;
+    return self</code></pre>
+</details>
+<div class="desc"><p>Apply simplification rules to this tensor.</p>
+<p>This may rename inner edges but should never change the free edges.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>args</code></strong></dt>
+<dd>Optional dictionary of arguments controlling the simplification.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<p>A simplified version of this tensor.</p></div>
+</dd>
+</dl>
+</dd>
+<dt id="tensorgrad.tensor.Variable"><code class="flex name class">
+<span>class <span class="ident">Variable</span></span>
+<span>(</span><span>name, *shape0: sympy.core.symbol.Symbol, **shape1: sympy.core.symbol.Symbol)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Variable(Tensor):
+    def __init__(
+        self,
+        name,
+        *shape0: Symbol,
+        _symmetries: None | str | set[frozenset[str]] = None,
+        _orig: None | dict[str, str] = None,
+        **shape1: Symbol,
+    ):
+        &#34;&#34;&#34;
+        A tensor holding a variable.
+
+        Args:
+            name: The name of this variable.
+            shape: Dict from edge name to size (Sympy symbol). Can also be a string or list of str.
+            orig: Dict from new name to original name. If not provided, the names in `edges` are used directly.
+            symmetries: Sets of edges (original names) that should be considered equivalent.
+        &#34;&#34;&#34;
+        self.name = name
+        self._shape = self._check_shape(shape0, shape1)
+
+        self._symmetries = self._check_symmetries(self._shape, _symmetries)
+
+        # The original edges are saved so evaluation can happen with the original
+        # edge names given to the variable, without caring about what renaming we
+        # might have done in the meantime.
+        self.orig = _orig if _orig is not None else {e: e for e in self.edges}
+        assert self.orig.keys() == self.edges, f&#34;Missing original name for {self.edges=} {self.orig=}&#34;
+
+    def with_symmetries(self, symmetries: str | set[frozenset[str]]) -&gt; &#34;Variable&#34;:
+        return Variable(self.name, **self.shape, _symmetries=symmetries, _orig=self.orig)
+
+    def grad(self, x: &#34;Variable&#34;, new_names: Optional[dict[str, str]] = None):
+        new_names = self._check_grad(x, new_names)
+        if x == self:
+            orig_shape = {self.orig[e]: s for e, s in self.shape.items()}
+            other_shape = {x.orig[e]: s for e, s in x.shape.items()}
+            assert orig_shape == other_shape
+            # TODO: If X has symmetries, the derivative can actually be more complex than this.
+            # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
+            # Note that new_names are based on _the original names_ of x, not the current names.
+            return Product(Copy(s, e, new_names[self.orig[e]]) for e, s in self.shape.items())
+            # iso_rename = next(self.isomorphisms(x))
+            # return Product(Copy(s, iso_rename[e], new_names[e]) for e, s in self.shape.items())
+        # Note: We don&#39;t need to tell Zero the symmetries, since it&#39;s automatically
+        # symmetric in all dimensions that have compatible sizes.
+        return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
+
+    def __repr__(self):
+        args = [f&#34;\&#34;{self.name}\&#34;, {&#39;, &#39;.join(self.edges)}&#34;]
+        symmetries = &#34;&#34;
+        if self._symmetries != {frozenset({e}) for e in self.edges}:
+            groups = &#34;, &#34;.join(sorted(&#34; &#34;.join(sorted(group)) for group in self._symmetries))
+            symmetries = f&#39;.with_symmetries(&#34;{groups}&#34;)&#39;
+        if any(k != v for k, v in self.orig.items()):
+            args.append(f&#34;orig={self.orig}&#34;)
+        return f&#34;Variable({&#39;, &#39;.join(args)}){symmetries}&#34;
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        name = f&#34;{self.name}({&#39;, &#39;.join(sorted(self.orig.values()))})&#34;
+        G.add_node(0, name=(&#34;Variable&#34;, name), tensor=self)
+        edges = {}
+        # Symmetries are more fine-grained than shapes, since two dims can have
+        # the same size, but not be symmetric. E.g. an assymetric square matrix.
+        # Example of variable with 2 sizes, 3 symmetri orbits and 4 edges:
+        # +-size 1-sym 1-e 1
+        # |  +-----sym 2-e 2
+        # +-size 2-sym 3-e 3
+        #           +----e 4
+        for size in set(self.shape.values()):
+            # Symbols are identified by name and assumptions. We might want to have edges
+            # with the same name but different assumptions, so add the id to the node name.
+            G.add_node(size_node := G.number_of_nodes(), name=(f&#34;size={size.name}&#34;, id(size)))
+            G.add_edge(0, size_node)
+            # Find each orbit with the given size (see note above about fine-grained-ness)
+            for orbit in self._symmetries:
+                e, *_ = orbit
+                if self.shape[e] != size:
+                    continue
+                orbit_name = &#34; &#34;.join(sorted(self.orig[e] for e in orbit))
+                G.add_node(orbit_node := G.number_of_nodes(), name=(&#34;Orbit Node&#34;, orbit_name))
+                G.add_edge(size_node, orbit_node)
+                # All the free edges point to an orbit node
+                for e in orbit:
+                    edges[e] = orbit_node
+        assert edges.keys() == self.edges
+        return G, edges
+
+    def simplify(self, args: dict[str, Any] = None):
+        return self
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
+        return Variable(
+            self.name,
+            **{kwargs.get(e, e): s for e, s in self.shape.items()},
+            _symmetries={frozenset({kwargs.get(e, e) for e in group}) for group in self._symmetries},
+            _orig={kwargs.get(e, e): o for e, o in self.orig.items()},
+        )
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return x == self
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        tensor = values.get(self)
+        if tensor is None:
+            raise ValueError(f&#34;Missing value for {self}, got {values}&#34;)
+        # The given named tensor will use original names. We rename the new names
+        assert set(tensor.names) == set(self.orig.values()), f&#34;{tensor.names=} != {set(self.orig.values())}&#34;
+        old_to_new = {o: e for e, o in self.orig.items()}
+        return tensor.rename(*[old_to_new[e] for e in tensor.names])</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>A tensor holding a variable.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>name</code></strong></dt>
+<dd>The name of this variable.</dd>
+<dt><strong><code>shape</code></strong></dt>
+<dd>Dict from edge name to size (Sympy symbol). Can also be a string or list of str.</dd>
+<dt><strong><code>orig</code></strong></dt>
+<dd>Dict from new name to original name. If not provided, the names in <code>edges</code> are used directly.</dd>
+<dt><strong><code>symmetries</code></strong></dt>
+<dd>Sets of edges (original names) that should be considered equivalent.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="tensorgrad.tensor.Variable.with_symmetries"><code class="name flex">
+<span>def <span class="ident">with_symmetries</span></span>(<span>self, symmetries: str | set[frozenset[str]]) ‑> <a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def with_symmetries(self, symmetries: str | set[frozenset[str]]) -&gt; &#34;Variable&#34;:
+    return Variable(self.name, **self.shape, _symmetries=symmetries, _orig=self.orig)</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="tensorgrad.tensor.Zero"><code class="flex name class">
+<span>class <span class="ident">Zero</span></span>
+<span>(</span><span>*shape0: sympy.core.symbol.Symbol, **shape1: sympy.core.symbol.Symbol)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Zero(Constant):
+    &#34;&#34;&#34;Matrix such that Z_{i,j,k} = 0 for all i, j, k&#34;&#34;&#34;
+
+    def _inner_evaluate(self, values: dict[&#34;Tensor&#34;, torch.Tensor], dims: dict[Symbol, int]) -&gt; torch.Tensor:
+        return torch.zeros([dims[s] for s in self.shape.values()]).rename(*self.edges)</code></pre>
+</details>
+<div class="desc"><p>Matrix such that Z_{i,j,k} = 0 for all i, j, k</p>
+<p>A constant tensor with the given edges.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>edges</code></strong></dt>
+<dd>The names of the edges of this constant tensor.</dd>
+<dt><strong><code>link</code></strong></dt>
+<dd>An optional variable that this tensor is associated with, used to compute edge dimensions.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Constant" href="#tensorgrad.tensor.Constant">Constant</a></li>
+<li><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Constant" href="#tensorgrad.tensor.Constant">Constant</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Constant.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Constant.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="tensorgrad" href="index.html">tensorgrad</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="tensorgrad.tensor.Ones" href="#tensorgrad.tensor.Ones">Ones</a></code></li>
+<li><code><a title="tensorgrad.tensor.add_structural_graph" href="#tensorgrad.tensor.add_structural_graph">add_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.function" href="#tensorgrad.tensor.function">function</a></code></li>
+<li><code><a title="tensorgrad.tensor.group_edges" href="#tensorgrad.tensor.group_edges">group_edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.make_distinct" href="#tensorgrad.tensor.make_distinct">make_distinct</a></code></li>
+<li><code><a title="tensorgrad.tensor.unused_edge_names" href="#tensorgrad.tensor.unused_edge_names">unused_edge_names</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="tensorgrad.tensor.Constant" href="#tensorgrad.tensor.Constant">Constant</a></code></h4>
+<ul class="">
+<li><code><a title="tensorgrad.tensor.Constant.with_symmetries" href="#tensorgrad.tensor.Constant.with_symmetries">with_symmetries</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Copy" href="#tensorgrad.tensor.Copy">Copy</a></code></h4>
+<ul class="">
+<li><code><a title="tensorgrad.tensor.Copy.simplify_outer" href="#tensorgrad.tensor.Copy.simplify_outer">simplify_outer</a></code></li>
+<li><code><a title="tensorgrad.tensor.Copy.size" href="#tensorgrad.tensor.Copy.size">size</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Derivative" href="#tensorgrad.tensor.Derivative">Derivative</a></code></h4>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Function" href="#tensorgrad.tensor.Function">Function</a></code></h4>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.FunctionSignature" href="#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></code></h4>
+<ul class="two-column">
+<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
+<li><code><a title="tensorgrad.tensor.FunctionSignature.edges" href="#tensorgrad.tensor.FunctionSignature.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
+<li><code><a title="tensorgrad.tensor.FunctionSignature.inputs" href="#tensorgrad.tensor.FunctionSignature.inputs">inputs</a></code></li>
+<li><code><a title="tensorgrad.tensor.FunctionSignature.name" href="#tensorgrad.tensor.FunctionSignature.name">name</a></code></li>
+<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.MatchEdgesKey" href="#tensorgrad.tensor.MatchEdgesKey">MatchEdgesKey</a></code></h4>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Product" href="#tensorgrad.tensor.Product">Product</a></code></h4>
+<ul class="">
+<li><code><a title="tensorgrad.tensor.Product.components" href="#tensorgrad.tensor.Product.components">components</a></code></li>
+<li><code><a title="tensorgrad.tensor.Product.merge" href="#tensorgrad.tensor.Product.merge">merge</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Sum" href="#tensorgrad.tensor.Sum">Sum</a></code></h4>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Tensor" href="#tensorgrad.tensor.Tensor">Tensor</a></code></h4>
+<ul class="">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.evaluate" href="#tensorgrad.tensor.Tensor.evaluate">evaluate</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.is_isomorphic" href="#tensorgrad.tensor.Tensor.is_isomorphic">is_isomorphic</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.shape" href="#tensorgrad.tensor.Tensor.shape">shape</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Variable" href="#tensorgrad.tensor.Variable">Variable</a></code></h4>
+<ul class="">
+<li><code><a title="tensorgrad.tensor.Variable.with_symmetries" href="#tensorgrad.tensor.Variable.with_symmetries">with_symmetries</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="tensorgrad.tensor.Zero" href="#tensorgrad.tensor.Zero">Zero</a></code></h4>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.5</a>.</p>
+</footer>
+</body>
+</html>
