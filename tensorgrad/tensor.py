@@ -553,13 +553,14 @@ class Constant(Tensor, ABC):
             edges: The names of the edges of this constant tensor.
             link: An optional variable that this tensor is associated with, used to compute edge dimensions.
         """
+        self.name = "NotImplemented"
         self._shape = self._check_shape(shape0, shape1)
         self._symmetries = self._check_symmetries(self._shape, _symmetries)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.shape})"
 
-    def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
+    def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Constant":
         return type(self)(self.name, **self._shape, _symmetries=symmetries)
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
@@ -693,7 +694,7 @@ class Copy(Constant):
         return [Copy(size, *(t1.edges ^ t2.edges))]
 
     @staticmethod
-    def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> bool:
+    def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
         # If both are Copy's, we use the previous method
         if isinstance(t1, Copy) and isinstance(t2, Copy):
             return None

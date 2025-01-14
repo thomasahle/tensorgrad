@@ -979,7 +979,7 @@ class Convolution(Constant):
         w_out = w_in - k_size + 1
 
         # Check consistency
-        if w_out_given := dims.get(self.shape[self.output_name]) is not None:
+        if (w_out_given := dims.get(self.shape[self.output_name])) is not None:
             assert w_out == w_out_given, (
                 f"Convolution expects its output dim to be win - kw + 1, "
                 f"but got {w_in} - {k_size} + 1 = {w_out} vs. {w_out_given}."
