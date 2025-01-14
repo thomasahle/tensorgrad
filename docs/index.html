@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+ <html lang="en">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>TensorGrad Documentation</title>
+     <link rel="stylesheet"
+ href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css">
+     <link rel="stylesheet"
+ href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css">
+     <style>
+         body { max-width: 800px; margin: 0 auto; padding: 20px; }
+         pre { background: #f5f5f5; padding: 15px; border-radius: 5px; }
+         code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; }
+         .warning { background: #fff3cd; padding: 15px; border-radius: 5px; }
+         nav { margin: 20px 0; }
+         nav a { margin-right: 15px; }
+         img { max-width: 100%; height: auto; }
+     </style>
+ </head>
+ <body>
+     <h1>TensorGrad Documentation</h1>
+
+     <nav>
+         <a href="index.html">Home</a>
+         <a href="guide.html">User Guide</a>
+         <a href="api/index.html">API Reference</a>
+     </nav>
+
+     <p>TensorGrad is a tensor & deep learning framework that combines PyTorch's computationa
+ power with symbolic manipulation capabilities. It provides powerful visualization tools for
+ tensor networks and automatic differentiation.</p>
+
+     <h2>Key Features</h2>
+     <ul>
+         <li>Symbolic tensor manipulation with Penrose graphical notation</li>
+         <li>Automatic differentiation with visual step-by-step derivations</li>
+         <li>Integration with PyTorch Named Tensors</li>
+         <li>Visualization tools for tensor networks</li>
+         <li>Support for expectations of Gaussian tensors</li>
+     </ul>
+
+     <h2>Installation</h2>
+     <pre><code>pip install tensorgrad</code></pre>
+
+     <div class="warning">
+         <p><strong>Note:</strong> For visualizations, additional LaTeX packages are
+ required:</p>
+         <pre><code>apt-get install texlive-luatex
+ apt-get install texlive-latex-extra
+ apt-get install texlive-fonts-extra
+ apt-get install poppler-utils</code></pre>
+     </div>
+
+     <h2>Quick Example</h2>
+     <pre><code>from tensorgrad import Variable
+ import tensorgrad.functions as F
+ from sympy import symbols
+
+ # Create symbolic dimensions
+ b, x, y = symbols("b x y")
+
+ # Define variables
+ X = Variable("X", b, x)
+ Y = Variable("Y", b, y)
+ W = Variable("W", x, y)
+
+ # Create computation
+ XWmY = X @ W - Y
+ l2 = XWmY @ XWmY
+
+ # Compute gradient
+ grad = l2.grad(W)
+
+ # The result can be:
+ # - Evaluated with actual tensors
+ # - Visualized as a tensor diagram
+ # - Converted to PyTorch code</code></pre>
+
+     <h2>Learn More</h2>
+     <ul>
+         <li><a href="guide.html">User Guide</a> - Detailed explanations and examples</li>
+         <li><a href="api.html">API Reference</a> - Complete API documentation</li>
+         <li><a
+ href="https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf">Tensor Cookbook
+ (PDF)</a> - In-depth theory and applications</li>
+     </ul>
+
+ </body>
+ </html>
