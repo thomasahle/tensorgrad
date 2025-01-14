@@ -648,7 +648,7 @@ def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -> Tensor:
 
 class _SimpleFunction(FunctionSignature):
     def __init__(self, name: str, eval_fn: Callable[[torch.Tensor], torch.Tensor], 
-                 derivative: Optional["FunctionSignature"]) -> None:
+                 derivative: "FunctionSignature" | None) -> None:
         super().__init__(name, frozenset(), (frozenset(),))
         self._eval_fn = eval_fn
         self._derivative = derivative
