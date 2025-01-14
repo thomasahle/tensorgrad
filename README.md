@@ -1,11 +1,13 @@
-# tensorgrad
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="100%">
+
+
+# Tensorgrad
 A tensor & deep learning framework. PyTorch meets SymPy.
 
 Tensor diagrams let you manipulate high dimensional tensors are graphs in a way that makes derivatives and complex products easy to understand.
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="100%">
 The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know.
 
-# Example of Tensorgrad
+## Examples
 
 To run the examples for yourself, see [this colab notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
 
@@ -22,7 +24,7 @@ apt-get install texlive-fonts-extra
 apt-get install poppler-utils
 ```
 
-## Derivative of L2 Loss
+### Derivative of L2 Loss
 
 ```python
 from tensorgrad import Variable
@@ -52,7 +54,7 @@ X_subtraction = torch.einsum('bx,by -> xy', X, subtraction)
 final_result = 2 * X_subtraction
 ```
 
-## Hessian of CE Loss
+### Hessian of CE Loss
 
 For a more complicated example, consider the following program for computing the Entropy of Cross Entropy Loss:
 
@@ -76,7 +78,7 @@ display_pdf_image(to_tikz(H.full_simplify()))
 
 This is tensor diagram notation for `(diag(p) - pp^T) sum(target)`, where `p = softmax(logits)`.
 
-## Expectations
+### Expectations
 
 Tensorgrad can also take expectations of arbitrary functions with respect to Gaussian tensors.
 
@@ -98,18 +100,18 @@ display_pdf_image(to_tikz(E.full_simplify()))
 Note that the covariance is a rank-4 tensor (illustrated with a star) since we take the expectation with respect to a matrix.
 This is different from the normal "matrix shaped" covariance you get if you take expectation with respect to a vector.
 
-## Evaluation
+### Evaluation
 
 Tensorgrad can evaluate your diagrams using [Pytorch Named Tensors](https://pytorch.org/docs/stable/named_tensor.html).
 It uses graph isomorphism detection to eliminated common subexpressions.
 
-## Code Generation
+### Code Generation
 
 Tensorgrad can convert your diagrams back into pytorch code.
 This gives a super optimized way to do gradients and higher order derivatives in neural networks.
 
 
-# Matrix Calculus
+### Matrix Calculus
 
 In Penrose's book, The Road to Reality: A Complete Guide to the Laws of the Universe, he introduces a notation for taking derivatives on tensor networks. In this library we try to follow Penrose's notation, expanding it as needed to handle a full "chain rule" on tensor functions.
 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Penrose_covariant_derivate.svg/2880px-Penrose_covariant_derivate.svg.png" width="100%">
@@ -118,11 +120,13 @@ Another source of inspiration was Yaroslav Bulatov's [derivation of the hessian 
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/hessian_yaroslaw.png">
 
-# Transformers
+# More stuff
+
+## Transformers
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/attention.png">
 
-# Convolutional Neural Networks 
+## Convolutional Neural Networks 
 
 The main ingredient in CNNs are the linear operations Fold and Unfold. 
 Unfold takes an image, with dimensions HxW and outputs P "patches" of size K^2, where K is the kernel size. Fold is the reverse operation. 
@@ -144,9 +148,7 @@ expr = data @ unfold @ kernel
 And then easily find the jacobian symbolically with `expr.grad(kernel)`:
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/conv_jac.png">
 
-
-
-# Tensor Sketch
+## Tensor Sketch
 
 Taken from [this Twitter thread](https://twitter.com/thomasahle/status/1674572437953089536):
 I wish I had know about Tensor Graphs back when i worked on Tensor-sketching.
@@ -173,17 +175,8 @@ We can mitigate this issue by replacing each order-3 tensor with a simple order-
 
 Finally we can speed up each matrix multiplication by using FastJL, which is itself basically an outer product of a bunch of tiny matrices. But at this point my picture is starting to get a bit overwhelming.
 
-# See also
+## See also
 
 - [Tool for creating tensor diagrams from einsum](https://thomasahle.com/blog/einsum_to_dot.html?q=abc,cde,efg,ghi,ija-%3Ebdfhj&layout=circo) by Thomas Ahle
 - [Ideograph: A Language for Expressing and Manipulating Structured Data](https://arxiv.org/pdf/2303.15784.pdf) by Stephen Mell, Osbert Bastani, Steve Zdancewic
-
-
-# Step by Step Instructions
-
-The neat thing about tensorgrad is that it will also give you the step by step instructions to see how the rules of derivatives are computed on tensors like this:
-
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w.png" width="100%">
-
-
 
