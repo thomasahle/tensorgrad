@@ -3,7 +3,7 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Callable, Iterable, Iterator, Union, TypeVar, Sequence, set, tuple
+from typing import Any, Callable, Iterable, Iterator, Union, TypeVar, Sequence
 from numbers import Number
 from sympy import Symbol
 import torch
