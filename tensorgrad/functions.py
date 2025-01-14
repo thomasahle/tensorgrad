@@ -3,7 +3,7 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
@@ -28,6 +28,7 @@ from tensorgrad.utils import DisjointSets
 # We include a "sum" function, which overloads the python sum. So we keep a reference
 # here to the builtin, so we can use it in this module
 _sum = sum
+DimType = None | str | Iterable[str]
 
 # We mostly try to follow the behavior of pytorch's named tensors:
 # https://pytorch.org/docs/stable/name_inference.html
@@ -70,7 +71,7 @@ def _is_even_permutation(permutation: tuple[int]) -> bool:
 # TODO: Make a SymmetrizeFunctionSignature class. This will be extra nice
 # when FunctionSignature supports symmetries, since we can then symmetrize stuff
 # without having to pay for the super-exponential cost of all permutations.
-def symmetrize(t: Tensor, signed=False) -> Tensor:
+def symmetrize(t: Tensor, signed: bool = False) -> Tensor:
     """Sum over all permutations of the edges."""
     edges = list(t.edges)
     res = []
@@ -84,7 +85,7 @@ def symmetrize(t: Tensor, signed=False) -> Tensor:
     return Sum(res, weights)
 
 
-def graph(dot_graph, **vars):
+def graph(dot_graph: str, **vars: Tensor) -> Tensor:
     """
     Create a tensor network using a DOT-like graph syntax.
 
@@ -269,7 +270,7 @@ def graph(dot_graph, **vars):
     return Product(copies + list(vars.values()))
 
 
-def kronecker(*tensors):
+def kronecker(*tensors: Tensor) -> Tensor:
     # Basically just rename everything to be distinct, then contraction
     # Note: This function returns the tensor product, which is different from the
     #       Kronecker product as often described in the literature. To get the
@@ -278,7 +279,7 @@ def kronecker(*tensors):
     return Product(dis_tensors)
 
 
-def diag(t: Tensor, new_edges: list[str]):
+def diag(t: Tensor, new_edges: list[str]) -> Tensor:
     """If `t` is a vector, this creates a diagonal tensor with `t` and creates a diagonal.
     In einsum that means "i->iii".
     If `t` is a higher order tensor, with all dims the same size, this extracts the diagonal as a vector.
@@ -304,7 +305,7 @@ def trace(tensor: Tensor) -> Tensor:
     return diag(tensor, [])
 
 
-def parse_dim(tensor_edges: set[str], dim: set[str] | str = None, none_is="error"):
+def parse_dim(tensor_edges: set[str], dim: DimType = None, none_is: str = "error") -> set[str]:
     if dim is None:
         if none_is == "all":
             dim = frozenset(tensor_edges)
@@ -319,7 +320,7 @@ def parse_dim(tensor_edges: set[str], dim: set[str] | str = None, none_is="error
     return dim
 
 
-def sum(tensor: Tensor, dim: set[str] | str = None, keepdims=False) -> Tensor:
+def sum(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     """Sum the tensor over the given dimensions."""
     dim = parse_dim(tensor.edges, dim, none_is="all")
     out = Product([tensor] + [Copy(tensor.shape[e], e) for e in dim])
@@ -329,7 +330,7 @@ def sum(tensor: Tensor, dim: set[str] | str = None, keepdims=False) -> Tensor:
     return out
 
 
-def mean(tensor: Tensor, dim: list[str] | str = None, keepdims=False) -> Tensor:
+def mean(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     dim = parse_dim(tensor.edges, dim, none_is="all")
     s = sum(tensor, dim, keepdims)
     normalization = 1
@@ -338,13 +339,13 @@ def mean(tensor: Tensor, dim: list[str] | str = None, keepdims=False) -> Tensor:
     return s / normalization
 
 
-def dot(t1: Tensor, t2: Tensor, dim: list[str]) -> Tensor:
+def dot(t1: Tensor, t2: Tensor, dim: DimType = None) -> Tensor:
     """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges."""
     dim = parse_dim(t1.edges & t2.edges, dim)
     return sum(t1 * t2, dim)
 
 
-class ScaleFunction(FunctionSignature):
+class _ScaleFunction(FunctionSignature):
     def __init__(self, inner: FunctionSignature, alpha: Number):
         # Represents alpha * inner(x, ...)
         # This mostly exists to help represent the PowerFunction derivative
@@ -357,15 +358,15 @@ class ScaleFunction(FunctionSignature):
     def eval(self, *xs: torch.Tensor) -> torch.Tensor:
         return self.alpha * self.inner.eval(*xs)
 
-    def derivative(self, i, new_edges=None):
-        return ScaleFunction(self.inner.derivative(i, new_edges), self.alpha)
+    def derivative(self, i, new_edges=None) -> FunctionSignature:
+        return _ScaleFunction(self.inner.derivative(i, new_edges), self.alpha)
 
-    def simplify(self, f: Function, args: dict[str, Any]):
+    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         assert f.signature is self
         return self.alpha * Function(self.inner, f.inputs, f.shape_out, f.orig_out).simplify(args)
 
 
-class PowerFunction(FunctionSignature):
+class _PowerFunction(FunctionSignature):
     def __init__(self, k: int):
         self.name = f"pow({k=})"
         self.edges = frozenset()
@@ -377,11 +378,11 @@ class PowerFunction(FunctionSignature):
             x = x.to(torch.float)
         return torch.pow(x, float(self.k))
 
-    def derivative(self, i, new_edges) -> FunctionSignature:
-        assert i == 0 and not new_edges
-        return ScaleFunction(PowerFunction(self.k - 1), self.k)
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+        assert i == 0 and (new_edges is None or not new_edges)
+        return _ScaleFunction(_PowerFunction(self.k - 1), self.k)
 
-    def simplify(self, func: Function, args: dict[str, Any]):
+    def simplify(self, func: Function, args: dict[str, Any]) -> Tensor:
         assert func.signature is self
         assert len(func.inputs) == 1, "pow should only have one input"
         (inner,) = func.inputs
@@ -419,9 +420,9 @@ class PowerFunction(FunctionSignature):
             return inner
 
         # Combine nested pows
-        if isinstance(inner, Function) and isinstance(inner.signature, PowerFunction):
+        if isinstance(inner, Function) and isinstance(inner.signature, _PowerFunction):
             return Function(
-                PowerFunction(k=inner.signature.k * self.k),
+                _PowerFunction(k=inner.signature.k * self.k),
                 inner.inputs,
                 func.shape_out,
                 **kwargs,
@@ -466,7 +467,7 @@ class PowerFunction(FunctionSignature):
                 i, t = next(
                     (i, t)
                     for i, t in enumerate(tensors)
-                    if isinstance(t, Function) and isinstance(t.signature, PowerFunction) and t not in seen
+                    if isinstance(t, Function) and isinstance(t.signature, _PowerFunction) and t not in seen
                 )
             except StopIteration:
                 break
@@ -499,7 +500,7 @@ class PowerFunction(FunctionSignature):
                 power = 1
                 if len(comp.tensors) == 1:
                     comp = comp.tensors[0]
-                    if isinstance(comp, Function) and isinstance(comp.signature, PowerFunction):
+                    if isinstance(comp, Function) and isinstance(comp.signature, _PowerFunction):
                         power = comp.signature.k
                         (comp,) = comp.inputs
                 partition[MatchEdgesKey(comp, **hyperedges)].append((power, comp))
@@ -528,7 +529,7 @@ class PowerFunction(FunctionSignature):
             power = 1
             if len(p.tensors) == 1:
                 (t,) = p.tensors
-                if isinstance(t, Function) and isinstance(t.signature, PowerFunction):
+                if isinstance(t, Function) and isinstance(t.signature, _PowerFunction):
                     power = t.signature.k
                     (t,) = t.inputs
             else:
@@ -542,13 +543,13 @@ class PowerFunction(FunctionSignature):
         return tensors
 
 
-def pow(tensor: Tensor, k: int) -> Tensor:
+def pow(tensor: Tensor, k: int | Fraction) -> Tensor:
     """Elementwise t^k"""
     if k == 0:
         return Ones(**tensor.shape)
     if k == 1:
         return tensor
-    return Function(PowerFunction(k), [tensor], {})
+    return Function(_PowerFunction(k), [tensor], {})
 
 
 def sqrt(tensor: Tensor) -> Tensor:
@@ -556,7 +557,7 @@ def sqrt(tensor: Tensor) -> Tensor:
     return pow(tensor, Fraction(1, 2))
 
 
-def ExpFunction():
+def _ExpFunction() -> FunctionSignature:
     # Small hack to handle recursive initialization
     exp_function = _SimpleFunction("exp", torch.exp, None)
     exp_function._derivative = exp_function
@@ -564,18 +565,18 @@ def ExpFunction():
 
 
 def exp(t: Tensor) -> Tensor:
-    return Function(ExpFunction(), [t], {})
+    return Function(_ExpFunction(), [t], {})
 
 
-def LogFunction():
+def _LogFunction() -> FunctionSignature:
     # If we want to support more complicated simplification rules,
     # like expanding log(a*b) into log(a) + log(b),
     # we should define a custom function signature.
-    return _SimpleFunction("log", torch.log, PowerFunction(-1))
+    return _SimpleFunction("log", torch.log, _PowerFunction(-1))
 
 
 def log(t: Tensor) -> Tensor:
-    return Function(LogFunction(), [t], {})
+    return Function(_LogFunction(), [t], {})
 
 
 def tanh(t: Tensor) -> Tensor:
@@ -590,7 +591,7 @@ def sigmoid(t: Tensor) -> Tensor:
     return 1 / (1 + exp(-t))
 
 
-class SoftmaxFunction(FunctionSignature):
+class _SoftmaxFunction(FunctionSignature):
     # We don't really need this function signature, as we could just use the basic
     # functions of exp, sum and pow(-1) to implement it. However it is useful as a
     # proof of concept, and allows us to represent softmax "unexpanded".
@@ -598,10 +599,10 @@ class SoftmaxFunction(FunctionSignature):
     def __init__(self, dims: set[str]):
         super().__init__("softmax", frozenset(dims), (frozenset(dims),))
 
-    def derivative(self, i, new_edges=None):
+    def derivative(self, i: int, new_edges: dict[str, str] = None):
         raise NotImplementedError("Simplify and then differentiate")
 
-    def eval(self, x):
+    def eval(self, x: torch.Tensor) -> torch.Tensor:
         (dims,) = self.inputs
         sizes = [x.size(d) for d in dims]
         names = [d for d in x.names if d not in dims]
@@ -611,7 +612,7 @@ class SoftmaxFunction(FunctionSignature):
         y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
         return y.softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
 
-    def simplify(self, f: Function, args: dict[str, Any]):
+    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         if args["expand_functions"]:
             (dims,) = self.inputs
             (inner,) = f.inputs
@@ -624,19 +625,19 @@ class SoftmaxFunction(FunctionSignature):
         return super().simplify(f, args)
 
 
-def softmax(t: Tensor, dim: list[str] | str) -> Tensor:
+def softmax(t: Tensor, dim: DimType = None) -> Tensor:
     dim = parse_dim(t.edges, dim)
-    return Function(SoftmaxFunction(dim), [t], {e: t.shape[e] for e in dim})
+    return Function(_SoftmaxFunction(dim), [t], {e: t.shape[e] for e in dim})
 
 
-def pairwise_distance(t1: Tensor, t2: Tensor, dim: list[str]):
+def pairwise_distance(t1: Tensor, t2: Tensor, dim: DimType = None) -> Tensor:
     # If t1 and t2 have shape (x, i), pairwise_distance(t1, t2)_b is
     # ||t1[b] - t2[b]||_2^2
     dim = parse_dim(t1.edges, dim)
     return sum(pow(t1 - t2, 2), dim)
 
 
-def cross_entropy(t: Tensor, y: Tensor, dim: list[str]) -> Tensor:
+def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -> Tensor:
     # We could make a FunctionSignature for cross entropy, if we want
     # the option of not always expanding it.
     dim = parse_dim(t.edges, dim)
@@ -656,7 +657,7 @@ class _SimpleFunction(FunctionSignature):
         return self._derivative
 
 
-class RenameFunction(FunctionSignature):
+class _RenameFunction(FunctionSignature):
     def __init__(self, inner: Function, renames: dict[str, str]):
         # Note: The name is important for equality checking, since two functions
         # with the same name, inputs and edges are considered equal.
@@ -672,9 +673,9 @@ class RenameFunction(FunctionSignature):
         return self.inner.eval(x).rename(**self.renames)
 
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
-        return RenameFunction(self.inner.derivative(i, new_edges), self.renames)
+        return _RenameFunction(self.inner.derivative(i, new_edges), self.renames)
 
-    def simplify(self, f: Function, args: dict[str, Any]):
+    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         assert f.signature is self
         # Since the Function object also keeps track of renaming, we have a chain:
         # inner -> rename -> inverse(orig_out) -> shape_out
@@ -699,7 +700,7 @@ class RenameFunction(FunctionSignature):
         ).simplify(args)
 
 
-class ZeroFunction(FunctionSignature):
+class _ZeroFunction(FunctionSignature):
     def __init__(self, new_edges: dict[str, str] = None):
         """
         Takes an input with shape (i, j, ...) and outputs a zero tensor with shape
@@ -711,10 +712,10 @@ class ZeroFunction(FunctionSignature):
         self.inputs = (frozenset(self.new_edges.values()),)
         self.edges = frozenset(self.new_edges.keys())
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         # Derivative gets new_edges : {old_name : new_name}
         inverse_new_edges = {v: k for k, v in new_edges.items()}
-        return ZeroFunction(self.new_edges | inverse_new_edges)
+        return _ZeroFunction(self.new_edges | inverse_new_edges)
 
     def eval(self, x: torch.Tensor) -> torch.Tensor:
         # Like any function, we have to support broadcasted inputs, so we detect
@@ -725,17 +726,17 @@ class ZeroFunction(FunctionSignature):
             names=broadcasted + list(self.new_edges.keys()),
         )
 
-    def simplify(self, t: Function, args: dict[str, Any]):
+    def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
         # Instead of trying to calculate the shape ourselves, which is complicated
         # because of broadcasting, and that the function may have been renamed,
         # we can just copy the function's shape.
         return Zero(**t.shape)
 
 
-def SignFunction():
+def _SignFunction() -> FunctionSignature:
     # We keep these FunctionObject functions around, since they are used both
     # for the function itself (like sign) and in derivatives (like abs)
-    return _SimpleFunction("sign", torch.sign, ZeroFunction())
+    return _SimpleFunction("sign", torch.sign, _ZeroFunction())
 
 
 def sign(t: Tensor) -> Tensor:
@@ -744,21 +745,21 @@ def sign(t: Tensor) -> Tensor:
     a)  0 where t = 0
     a) -1 where t < 0
     like torch.sign"""
-    return Function(SignFunction(), (t,), {})
+    return Function(_SignFunction(), (t,), {})
 
 
-def Gt0Function():
+def _Gt0Function() -> FunctionSignature:
     # This could also be implemented as (sign(x) + 1) / 2
     return _SimpleFunction(
         "gt0",
         lambda x: torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names),
-        ZeroFunction(),
+        _ZeroFunction(),
     )
 
 
 def gt0(t: Tensor) -> Tensor:
     """Returns a tensor that's 1 where t is > 0 else 0 elsewhere"""
-    return Function(Gt0Function(), (t,), {})
+    return Function(_Gt0Function(), (t,), {})
 
 
 def gt(x: Tensor, y: Tensor) -> Tensor:
@@ -776,7 +777,7 @@ def maximum(x: Tensor, y: Tensor) -> Tensor:
 
 def relu(t: Tensor) -> Tensor:
     return Function(
-        _SimpleFunction("relu", torch.relu, Gt0Function()),
+        _SimpleFunction("relu", torch.relu, _Gt0Function()),
         (t,),
         {},
     )
@@ -784,24 +785,24 @@ def relu(t: Tensor) -> Tensor:
 
 def abs(t: Tensor) -> Tensor:
     return Function(
-        _SimpleFunction("abs", torch.abs, SignFunction()),
+        _SimpleFunction("abs", torch.abs, _SignFunction()),
         (t,),
         {},
     )
 
 
-class MaxGradFunction(FunctionSignature):
+class _MaxGradFunction(FunctionSignature):
     def __init__(self, dims: set[str]):
         self.name = "max-grad"
         self.inputs = (frozenset(dims),)
         self.edges = frozenset(dims)
 
-    def derivative(self, i, new_edges=None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         # Zero doesn't broadcast edges that were given as input,
         # so we have to include them manually here
         inverse = {n: o for o, n in new_edges.items()}
         identity = {o: o for o, e in new_edges.items()}
-        return ZeroFunction(inverse | identity)
+        return _ZeroFunction(inverse | identity)
 
     def eval(self, x: torch.Tensor) -> torch.Tensor:
         (dims,) = self.inputs
@@ -813,7 +814,7 @@ class MaxGradFunction(FunctionSignature):
         return res.rename(*names)
 
 
-def max_grad(t: Tensor, dim: str | tuple[str] = None) -> Tensor:
+def max_grad(t: Tensor, dim: DimType = None) -> Tensor:
     """
     Tie-splitting subgradient for max. If multiple elements tie for max,
     each gets 1/k of the gradient.
@@ -839,12 +840,12 @@ def max_grad(t: Tensor, dim: str | tuple[str] = None) -> Tensor:
         dim = set(t.edges)
 
     # All the edges that are consumed by the function are also produced by the function
-    func = Function(MaxGradFunction(dim), [t], {e: t.shape[e] for e in dim})
+    func = Function(_MaxGradFunction(dim), [t], {e: t.shape[e] for e in dim})
     assert func.edges == t.edges
     return func
 
 
-class MaxFunction(FunctionSignature):
+class _MaxFunction(FunctionSignature):
     def __init__(self, dims: set[str]):
         self.name = "max"
         self.edges = frozenset()
@@ -863,10 +864,10 @@ class MaxFunction(FunctionSignature):
         # We only get new_edges for the self.inputs edges, not the broadcasted ones.
         # So our derivative function should handle this broadcasting by itself.
         assert dims == new_edges.keys(), "New edges should be a dict: old -> new names"
-        return RenameFunction(MaxGradFunction(dims), new_edges)
+        return _RenameFunction(_MaxGradFunction(dims), new_edges)
 
 
-def max(t: Tensor, dim: str | tuple[str] = (), keepdim=False) -> Tensor:
+def max(t: Tensor, dim: DimType = None, keepdim: bool = False) -> Tensor:
     """
     Return the max along 'dim'. If dim=(), it's the global max (0D).
     The derivative is tie-splitting, handled by gt(...).
@@ -877,7 +878,7 @@ def max(t: Tensor, dim: str | tuple[str] = (), keepdim=False) -> Tensor:
     if not dim:
         dim = tuple(t.edges)
 
-    fn = Function(MaxFunction(dim), [t], {})
+    fn = Function(_MaxFunction(dim), [t], {})
     if keepdim:
         fn = fn @ Ones(**{e: t.shape[e] for e in dim})
     return fn
@@ -949,10 +950,10 @@ class Convolution(Constant):
         super().__init__(_symmetries=symmetries, **shape)
         self.input_name, self.kernel_name, self.output_name = e0, e1, e2
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Convolution({self.input_name}, {self.kernel_name}, {self.output_name})"
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)
         return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 

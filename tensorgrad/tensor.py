@@ -2,7 +2,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 import math
-from typing import Any, Generator, Iterable, Optional
+from typing import Any, Generator, Iterable, Optional, Union
 from abc import ABC
 from fractions import Fraction
 from numbers import Number
@@ -24,7 +24,7 @@ class Tensor(ABC):
         return self._shape
 
     @property
-    def order(self):
+    def order(self) -> int:
         """The number of edges the tensor has."""
         return len(self.shape)
 
@@ -47,7 +47,7 @@ class Tensor(ABC):
         new_names = self._check_grad(x, new_names)
         raise NotImplementedError
 
-    def rename(self, **kwargs: dict[str, str]) -> "Tensor":
+    def rename(self, **kwargs: str) -> "Tensor":
         """
         Rename free edges of this tensor.
 
@@ -95,15 +95,17 @@ class Tensor(ABC):
         G, _ = self.edge_structural_graph(match_edges=False)
         return nx.algorithms.weisfeiler_lehman_graph_hash(G, node_attr="name")
 
-    def __eq__(self, other) -> bool:
-        return self.is_isomorphic(other)
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Tensor):
+            return self.is_isomorphic(other)
+        return False
 
     def depends_on(self, x: "Variable") -> bool:
         """Check if this tensor depends on the variable x."""
         raise NotImplementedError
 
     @cached_property
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, str]]:
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         """Create a graph representation of the tensor, which can be used for isomorphism testing.
 
         Returns:
@@ -117,8 +119,8 @@ class Tensor(ABC):
         raise NotImplementedError
 
     def edge_structural_graph(
-        self, match_edges=True, edge_names: None | dict[str, str] = None
-    ) -> nx.MultiDiGraph:
+        self, match_edges: bool = True, edge_names: None | dict[str, str] = None
+    ) -> tuple[nx.MultiDiGraph, list[str]]:
         """Like structural_graph(), but adds dummy nodes for the outer edges.
 
         Args:
@@ -140,27 +142,27 @@ class Tensor(ABC):
             G.add_edge(node, n)
         return G, list(edges.keys())
 
-    def graph_to_string(self):
+    def graph_to_string(self) -> str:
         """Returns an ASCII tree-like representation of the structural graph."""
         G, _ = self.edge_structural_graph(match_edges=True)
         return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
 
     # Overloaded ops
 
-    def __add__(self, other) -> "Tensor":
+    def __add__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         w = 1
         if isinstance(other, Number):
             other, w = Product([]), other
         return Sum([self, other], [1, w])
 
-    def __radd__(self, other) -> "Tensor":
+    def __radd__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         return self + other
 
-    def __rsub__(self, other) -> "Tensor":
+    def __rsub__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         # Handle `other - self`
         return -self + other
 
-    def __sub__(self, other) -> "Tensor":
+    def __sub__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         # Handle `self - other`
         w = 1
         if isinstance(other, Number):
@@ -170,20 +172,20 @@ class Tensor(ABC):
     def __neg__(self) -> "Tensor":
         return Sum([self], [-1])
 
-    def __matmul__(self, other) -> "Tensor":
+    def __matmul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         if isinstance(other, Number):
             other = Sum([Product([])], [other])
         return Product([self, other])
 
-    def __rmatmul__(self, other):
+    def __rmatmul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         if isinstance(other, Number):
             return self * other
         return self @ other
 
-    def __rmul__(self, other) -> "Tensor":
+    def __rmul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         return self * other
 
-    def __mul__(self, other) -> "Tensor":
+    def __mul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         """Contract self and other, but use a 3d-identity to keep the shared edges free."""
         if isinstance(other, Number):
             if other == 0:
@@ -197,13 +199,13 @@ class Tensor(ABC):
         (t0, t1), (rename0, rename1) = make_distinct(self, other, used_names=shared_edges)
         return Product([t0, t1] + [Copy(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
 
-    def __rtruediv__(self, other) -> "Tensor":
+    def __rtruediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         # Handle other / self
         from tensorgrad.functions import pow  # Avoid circular import
 
         return other * pow(self, -1)
 
-    def __truediv__(self, other) -> "Tensor":
+    def __truediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         # Handle self / other
         from tensorgrad.functions import pow  # Avoid circular import
 
@@ -213,15 +215,15 @@ class Tensor(ABC):
             return Sum([self], [1 / other])
         return self * pow(other, -1)
 
-    def __pow__(self, other):
+    def __pow__(self, other: Number) -> "Tensor":
         from tensorgrad.functions import pow  # Avoid circular import
 
-        if not isinstance(other, int):
-            raise ValueError("Only integer powers are supported.")
+        if not isinstance(other, (int, Fraction)):
+            raise ValueError("Only integer and fractional powers are supported.")
         return pow(self, other)
 
     def is_isomorphic(
-        self, other: "Tensor", match_edges=False, edge_names: None | dict[str, str] = None
+        self, other: "Tensor", match_edges: bool = False, edge_names: None | dict[str, str] = None
     ) -> bool:
         if self.weisfeiler_lehman != other.weisfeiler_lehman:
             return False
@@ -330,7 +332,7 @@ class Tensor(ABC):
         """
         raise NotImplementedError
 
-    def _check_rename(self, kwargs: dict[str, str]):
+    def _check_rename(self, kwargs: dict[str, str]) -> dict[str, str]:
         """Check that the renaming is valid, and return the renaming dictionary."""
         if len({kwargs.get(e, e) for e in self.edges}) != len(self.edges):
             raise ValueError(f"Renamed an edge to an existing edge name. {self.edges=} {kwargs=}")
@@ -358,7 +360,7 @@ class Tensor(ABC):
         # return unused_edge_names(x.edges, self.edges, suffix="_")
 
     @staticmethod
-    def _check_simplify(args: dict[str, Any] | None = None):
+    def _check_simplify(args: dict[str, Any] | None = None) -> dict[str, Any]:
         if args is None:
             args = {}
         # args["grad_steps"] allows us to control how far we propagate the derivative.
@@ -399,7 +401,9 @@ class Tensor(ABC):
         return shape0 | shape1
 
     @staticmethod
-    def _check_symmetries(shape: dict[str, Symbol], symmetries: str | set[frozenset[str]]):
+    def _check_symmetries(
+        shape: dict[str, Symbol], symmetries: str | set[frozenset[str]]
+    ) -> set[frozenset[str]]:
         if symmetries is None:
             return {frozenset({e}) for e in shape.keys()}
         if isinstance(symmetries, str):
@@ -425,7 +429,7 @@ class Tensor(ABC):
 class Variable(Tensor):
     def __init__(
         self,
-        name,
+        name: str,
         *shape0: Symbol,
         _symmetries: None | str | set[frozenset[str]] = None,
         _orig: None | dict[str, str] = None,
@@ -454,7 +458,7 @@ class Variable(Tensor):
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
         return Variable(self.name, **self.shape, _symmetries=symmetries, _orig=self.orig)
 
-    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None):
+    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> Tensor:
         new_names = self._check_grad(x, new_names)
         if x == self:
             orig_shape = {self.orig[e]: s for e, s in self.shape.items()}
@@ -470,7 +474,7 @@ class Variable(Tensor):
         # symmetric in all dimensions that have compatible sizes.
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         args = [f"\"{self.name}\", {', '.join(self.edges)}"]
         symmetries = ""
         if self._symmetries != {frozenset({e}) for e in self.edges}:
@@ -511,10 +515,10 @@ class Variable(Tensor):
         assert edges.keys() == self.edges
         return G, edges
 
-    def simplify(self, args: dict[str, Any] = None):
+    def simplify(self, args: dict[str, Any] = None) -> Tensor:
         return self
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]) -> Tensor:
         kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
         return Variable(
             self.name,
@@ -578,13 +582,13 @@ class Constant(Tensor, ABC):
                     edges[e] = orbit_node
         return G, edges
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: dict[str, str]) -> Tensor:
         kwargs = self._check_rename(kwargs)
         c = type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
         assert c.edges == {kwargs.get(e, e) for e in self.edges}
         return c
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
         new_names = self._check_grad(x, new_names)
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
@@ -608,7 +612,7 @@ class Copy(Constant):
         self._size = size
 
     @property
-    def size(self):
+    def size(self) -> Symbol:
         return self._size
 
     def __repr__(self):
@@ -871,12 +875,12 @@ class FunctionSignature(ABC):
         """
         return t
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"FunctionSignature('{self.name}', {set(self.edges)}, {[set(s) for s in self.inputs]})"
 
 
 def function(
-    name,
+    name: str,
     output_shape: dict[str, Symbol],
     *inputs: tuple[Tensor | str, ...],
     orig_out: dict[str, str] = None,
@@ -949,7 +953,7 @@ class Function(Tensor):
             for b in broadcast_edges:
                 self._shape[b] = t.shape[b]
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)
         renamed_inputs = []
         for t, es in zip(self.inputs, self.signature.inputs):
@@ -965,7 +969,7 @@ class Function(Tensor):
         assert res.edges == {kwargs.get(e, e) for e in self.edges}
         return res
 
-    def simplify(self, args: dict[str, Any] = None):
+    def simplify(self, args: dict[str, Any] = None) -> Tensor:
         args = self._check_simplify(args)
         new_inputs = [t.simplify(args=args) for t in self.inputs]
 
@@ -999,7 +1003,7 @@ class Function(Tensor):
         assert res.shape == self.shape, "Free edges should be preserved"
         return res
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
         # First find the new names for the gradient edges. These will be guaranteed
         # to avoid any outer edges of the Function tensor as well as the edges of x.
         new_names = self._check_grad(x, new_names)
@@ -1329,11 +1333,11 @@ class Product(Tensor):
 
         # Combine / Cancel Product Functions
         if args["combine_products"]:
-            from tensorgrad.functions import PowerFunction
+            from tensorgrad.functions import _PowerFunction
 
             verify_edges(tensors)
             before = tensors
-            tensors = PowerFunction.simplify_outer(tensors, args)
+            tensors = _PowerFunction.simplify_outer(tensors, args)
             verify_edges(tensors, f"{before} -> {tensors}")
 
         # Base cases
@@ -1415,7 +1419,7 @@ class Product(Tensor):
 
 
 class Sum(Tensor):
-    def __init__(self, tensors: Iterable[Tensor], weights: None | Iterable[int] = None):
+    def __init__(self, tensors: Iterable[Tensor], weights: None | Iterable[Number] = None):
         """
         A weighted sum of multiple tensors.
 
@@ -1559,7 +1563,7 @@ def group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
     return groups
 
 
-def add_structural_graph(G, tensor, root_edge_label=None):
+def add_structural_graph(G, tensor: Tensor, root_edge_label: bool = None):
     """Computes the structural graph of tensor, and unions it with G."""
     # We assert that Gx has nodes named [0, Gx.number_of_nodes())
     assert set(G.nodes()) == set(range(G.number_of_nodes())), f"{G.nodes()}"

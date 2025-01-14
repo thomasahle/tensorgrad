@@ -13,7 +13,7 @@ from tensorgrad.tensor import (
     Zero,
     Function,
 )
-from tensorgrad.functions import PowerFunction
+from tensorgrad.functions import _PowerFunction
 import networkx as nx
 
 
@@ -243,7 +243,7 @@ class Expectation(Tensor):
                         t
                         for t in prod.tensors
                         if isinstance(t, Function)
-                        and isinstance(t.signature, PowerFunction)
+                        and isinstance(t.signature, _PowerFunction)
                         and t.signature.k >= 1
                     ),
                     None,
