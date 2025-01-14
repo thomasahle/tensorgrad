@@ -5,7 +5,7 @@ import math
 from typing import Any, Generator, Iterable, Optional, Union
 from abc import ABC
 from fractions import Fraction
-from numbers import Number
+from numbers import Number, Rational
 import networkx as nx
 from sympy import Symbol
 import torch
@@ -104,7 +104,6 @@ class Tensor(ABC):
         """Check if this tensor depends on the variable x."""
         raise NotImplementedError
 
-    @cached_property
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         """Create a graph representation of the tensor, which can be used for isomorphism testing.
 
@@ -205,7 +204,7 @@ class Tensor(ABC):
 
         return other * pow(self, -1)
 
-    def __truediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __truediv__(self, other: Union[Rational, "Tensor"]) -> "Tensor":
         # Handle self / other
         from tensorgrad.functions import pow  # Avoid circular import
 
@@ -518,7 +517,7 @@ class Variable(Tensor):
     def simplify(self, args: dict[str, Any] = None) -> Tensor:
         return self
 
-    def rename(self, **kwargs: dict[str, str]) -> Tensor:
+    def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
         return Variable(
             self.name,
@@ -582,7 +581,7 @@ class Constant(Tensor, ABC):
                     edges[e] = orbit_node
         return G, edges
 
-    def rename(self, **kwargs: dict[str, str]) -> Tensor:
+    def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)
         c = type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
         assert c.edges == {kwargs.get(e, e) for e in self.edges}
@@ -615,7 +614,7 @@ class Copy(Constant):
     def size(self) -> Symbol:
         return self._size
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if not self.edges:
             return f"Copy({self.size})"
         return f"Copy({self.size}, \"{', '.join(self.edges)}\")"
@@ -629,7 +628,7 @@ class Copy(Constant):
             copy[(idx,) * len(self.edges)] = 1
         return copy.rename(*self.edges)
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -> Tensor:
         return Copy(self.size, *[kwargs.get(e, e) for e in self.edges])
 
     @classmethod
@@ -883,7 +882,7 @@ def function(
     name: str,
     output_shape: dict[str, Symbol],
     *inputs: tuple[Tensor | str, ...],
-    orig_out: dict[str, str] = None,
+    orig_out: dict[str, str] | None = None,
 ) -> "Function":
     return Function(
         FunctionSignature(
@@ -1051,7 +1050,7 @@ class Function(Tensor):
         assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"
         return res
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, int, dict[str, int]]:
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
         G.add_node(0, name=(type(self).__name__, self.signature.name), tensor=self)
         edges = {}
@@ -1081,7 +1080,7 @@ class Function(Tensor):
                     edges[e] = t_edges[e]
         return G, edges
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         args = []
         args.append(repr(self.signature))
         args.append(", ".join(map(repr, self.inputs)))
@@ -1123,7 +1122,7 @@ class Derivative(Tensor):
         self.new_names = tensor._check_grad(x, new_names)
         self._shape = tensor.shape | {self.new_names[o]: x.shape[e] for e, o in x.orig.items()}
 
-    def simplify(self, args: dict[str, Any] = None):
+    def simplify(self, args: dict[str, Any] = None) -> Tensor:
         args = self._check_simplify(args)
         if not self.tensor.depends_on(self.x):
             return Zero(**self.shape)
@@ -1145,7 +1144,7 @@ class Derivative(Tensor):
         assert res.edges == self.edges | new_names.values()
         return res
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)
         # The free edges of Derivative are both the free edges of self.tensor and the new_names.
         # This is the only place where we need to rename the "internal edges" of the tensor.
@@ -1172,7 +1171,7 @@ class Derivative(Tensor):
         assert edges.keys() == self.edges
         return G, edges
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
 
     def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
@@ -1211,7 +1210,7 @@ class Product(Tensor):
                     f"edge {edge} had multiplicity {len(ts)}. Use an identity tensor to combine multiple edges."
                 )
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)
         # Rename the inner edges (contractions) to avoid the new names introduced
         # by the renaming of the free edges.
@@ -1242,7 +1241,7 @@ class Product(Tensor):
             used_edges.update(rename.values())  # Later renames should not clash with this one
         return Product(res)
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
         # This checks that there is no overlap between the new names and the free edges.
         new_names = self._check_grad(x, new_names)
 
@@ -1265,7 +1264,7 @@ class Product(Tensor):
         assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"
         return res
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if len(self.tensors) <= 1:
             return f"Product({self.tensors})"
         else:
@@ -1292,7 +1291,7 @@ class Product(Tensor):
         assert out.names == tuple(self.edges)
         return out
 
-    def simplify(self, args: dict[str, Any] = None):
+    def simplify(self, args: dict[str, Any] = None) -> Tensor:
         args = self._check_simplify(args)
 
         tensors = [t.simplify(args=args) for t in self.tensors]
@@ -1321,7 +1320,7 @@ class Product(Tensor):
         else:
             res_weight = 1
 
-        def verify_edges(tensors, msg=""):
+        def verify_edges(tensors: list[Tensor], msg: str = "") -> None:
             cnt = Counter(e for t in tensors for e in t.edges)
             if cnt:
                 assert cnt.most_common()[0][1] <= 2, msg
@@ -1449,17 +1448,17 @@ class Sum(Tensor):
         self.weights = [1] * len(tensors) if weights is None else list(weights)
         assert len(tensors) == len(self.weights)
 
-    def rename(self, **kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)
         res = Sum([t.rename(**kwargs) for t in self.tensors], self.weights)
         assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
         return res
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None):
+    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
         new_names = self._check_grad(x, new_names)
         return Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
 
-    def simplify(self, args: dict[str, Any] = None):
+    def simplify(self, args: dict[str, Any] = None) -> Tensor:
         args = self._check_simplify(args)
         terms = [t.simplify(args=args) for t in self.tensors]
 
@@ -1498,7 +1497,7 @@ class Sum(Tensor):
         assert res.shape == self.shape, f"Edges changed from {self.edges} to {res.edges}"
         return res
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Sum({self.tensors}, {self.weights})"
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
@@ -1540,17 +1539,17 @@ class MatchEdgesKey:
     the edge names in the comparison. This class is used to compare tensors based on their
     edge names. It is used in the Sum tensor to combine tensors with the same edge names."""
 
-    def __init__(self, value, **edge_names: str):
+    def __init__(self, value: Any, **edge_names: str):
         self.value = value
         self.hash = hash(value)
         self.edge_names = edge_names
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, MatchEdgesKey):
             return self.value.is_isomorphic(other.value, edge_names=self.edge_names, match_edges=True)
         return False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.hash
 
 
@@ -1563,7 +1562,9 @@ def group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
     return groups
 
 
-def add_structural_graph(G, tensor: Tensor, root_edge_label: bool = None):
+def add_structural_graph(
+    G: nx.MultiDiGraph, tensor: Tensor, root_edge_label: bool = None
+) -> tuple[nx.MultiDiGraph, dict[str, int]]:
     """Computes the structural graph of tensor, and unions it with G."""
     # We assert that Gx has nodes named [0, Gx.number_of_nodes())
     assert set(G.nodes()) == set(range(G.number_of_nodes())), f"{G.nodes()}"
@@ -1603,7 +1604,7 @@ def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: s
     return rename
 
 
-def make_distinct(*tensors: list["Tensor"], used_names=None) -> list["Tensor"]:
+def make_distinct(*tensors: list["Tensor"], used_names: Iterable[str] = None) -> list["Tensor"]:
     """Makes sure all tensors have distinct edges.
     Optionally takes used_names, an extra set of names to avoid.
     suffix is an optional string to append to the new names.

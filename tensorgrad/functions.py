@@ -3,8 +3,7 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Callable, Iterable, Iterator, Union, TypeVar, Sequence
-from numbers import Number
+from typing import Any, Callable, Iterable, Iterator, Union
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
@@ -166,7 +165,7 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
     # and "A -i- B - C" -> [("A", "i", "i", "B"), ("B", "i", "i", "C")]
     # and "*1 - *2" -> ("*1", None, None, "*2")
     lines = re.split(r"[\n;]", dot_graph.strip())
-    edges: list[tuple[str, str, str, str]] = []
+    edges = []
     for line in lines:
         parts = line.split()
         last_var = None
@@ -360,7 +359,7 @@ class _ScaleFunction(FunctionSignature):
     def eval(self, *xs: torch.Tensor) -> torch.Tensor:
         return self.alpha * self.inner.eval(*xs)
 
-    def derivative(self, i, new_edges=None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         return _ScaleFunction(self.inner.derivative(i, new_edges), self.alpha)
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
@@ -647,8 +646,12 @@ def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -> Tensor:
 
 
 class _SimpleFunction(FunctionSignature):
-    def __init__(self, name: str, eval_fn: Callable[[torch.Tensor], torch.Tensor], 
-                 derivative: Union["FunctionSignature", None]) -> None:
+    def __init__(
+        self,
+        name: str,
+        eval_fn: Callable[[torch.Tensor], torch.Tensor],
+        derivative: Union["FunctionSignature", None],
+    ) -> None:
         super().__init__(name, frozenset(), (frozenset(),))
         self._eval_fn = eval_fn
         self._derivative = derivative
@@ -1002,10 +1005,10 @@ class Flatten(Constant):
         groups[self.output_edge].append(self.output_edge)
         super().__init__(_symmetries=set(map(frozenset, groups.values())), **shape)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Flatten({self.input_edges}, {self.output_edge})"
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((type(self).__name__, len(self.edges)))
 
     def rename(self, **kwargs: str) -> "Tensor":

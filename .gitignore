@@ -164,3 +164,4 @@ cython_debug/
 #.idea/
 .vscode/settings.json
 iso.py
+.aider*

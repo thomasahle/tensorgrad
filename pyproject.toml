@@ -50,6 +50,8 @@ indent-width = 4
 check_untyped_defs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+exclude = "tests/"
+
 
 [tool.pytest.ini_options]
 # addopts = "-s"
