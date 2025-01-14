@@ -1,5 +1,11 @@
+<div align="center">
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="100%">
+<h3>
+  
+[Book](https://tensorcookbook.com) | [Documentation](https://tensorcookbook.com/docs) | [API Reference](https://tensorcookbook.com/docs/api)
 
+</h3>
+</div>
 
 # Tensorgrad
 A tensor & deep learning framework. PyTorch meets SymPy.
