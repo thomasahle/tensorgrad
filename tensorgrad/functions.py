@@ -3,7 +3,7 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Set, Union
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
@@ -34,7 +34,7 @@ DimType = None | str | Iterable[str]
 # https://pytorch.org/docs/stable/name_inference.html
 
 
-def taylor(f: "Tensor", wrt: "Variable", eps: "Tensor", n: int) -> "Tensor":
+def taylor(f: Tensor, wrt: Variable, eps: Tensor, n: int) -> Tensor:
     """Return the nth order Taylor approximation of f at x+eps."""
     if eps.edges != wrt.edges:
         raise ValueError("eps must have the same edges as wrt.")
