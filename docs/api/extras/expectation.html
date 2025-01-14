@@ -93,7 +93,7 @@ el.replaceWith(d);
 
         if covar is None:
             if covar_names is None:
-                covar_names = unused_edge_names(wrt.edges, wrt.edges)
+                covar_names = _unused_edge_names(wrt.edges, wrt.edges)
             covar = Product([Copy(wrt.shape[e], e, e2) for e, e2 in covar_names.items()])
         elif covar_names is None:
             raise ValueError(&#34;If covar is not given, covar_names must be given.&#34;)
@@ -249,7 +249,7 @@ el.replaceWith(d);
 
                 # Before we can rename covar with iso_rename, we have to make sure it there&#39;s
                 # no clash with the covar_names.
-                out_rename = unused_edge_names(self.covar_names.values(), x.edges | rest.edges)
+                out_rename = _unused_edge_names(self.covar_names.values(), x.edges | rest.edges)
                 covar = self.covar.rename(**(out_rename | iso_rename))
                 expected = x.shape | {out_rename[self.covar_names[k]]: s for k, s in self.wrt.shape.items()}
                 assert covar.shape == expected, f&#34;{covar.shape=} != {expected=}&#34;
@@ -281,7 +281,7 @@ el.replaceWith(d);
                         t
                         for t in prod.tensors
                         if isinstance(t, Function)
-                        and isinstance(t.signature, PowerFunction)
+                        and isinstance(t.signature, _PowerFunction)
                         and t.signature.k &gt;= 1
                     ),
                     None,
@@ -362,11 +362,11 @@ el.replaceWith(d);
     def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
         G.add_node(0, name=type(self).__name__, tensor=self)
-        G, t_edges = add_structural_graph(G, self.tensor, root_edge_label=&#34;self.tensor&#34;)
-        G, _ = add_structural_graph(G, self.wrt, root_edge_label=&#34;self.wrt&#34;)
-        G, _ = add_structural_graph(G, self.mu, root_edge_label=&#34;self.mu&#34;)
+        G, t_edges = _add_structural_graph(G, self.tensor, root_edge_label=&#34;self.tensor&#34;)
+        G, _ = _add_structural_graph(G, self.wrt, root_edge_label=&#34;self.wrt&#34;)
+        G, _ = _add_structural_graph(G, self.mu, root_edge_label=&#34;self.mu&#34;)
         # TODO: We should add the covar_names here
-        G, _ = add_structural_graph(G, self.covar, root_edge_label=&#34;self.covar&#34;)
+        G, _ = _add_structural_graph(G, self.covar, root_edge_label=&#34;self.covar&#34;)
         return G, t_edges
 
     def rename(self, **kwargs: dict[str, str]):

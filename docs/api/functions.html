@@ -44,71 +44,6 @@ el.replaceWith(d);
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
-<dt id="tensorgrad.functions.ExpFunction"><code class="name flex">
-<span>def <span class="ident">ExpFunction</span></span>(<span>)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def ExpFunction():
-    # Small hack to handle recursive initialization
-    exp_function = _SimpleFunction(&#34;exp&#34;, torch.exp, None)
-    exp_function._derivative = exp_function
-    return exp_function</code></pre>
-</details>
-<div class="desc"></div>
-</dd>
-<dt id="tensorgrad.functions.Gt0Function"><code class="name flex">
-<span>def <span class="ident">Gt0Function</span></span>(<span>)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def Gt0Function():
-    # This could also be implemented as (sign(x) + 1) / 2
-    return _SimpleFunction(
-        &#34;gt0&#34;,
-        lambda x: torch.where(x.rename(None) &gt; 0, 1.0, 0.0).rename(*x.names),
-        ZeroFunction(),
-    )</code></pre>
-</details>
-<div class="desc"></div>
-</dd>
-<dt id="tensorgrad.functions.LogFunction"><code class="name flex">
-<span>def <span class="ident">LogFunction</span></span>(<span>)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def LogFunction():
-    # If we want to support more complicated simplification rules,
-    # like expanding log(a*b) into log(a) + log(b),
-    # we should define a custom function signature.
-    return _SimpleFunction(&#34;log&#34;, torch.log, PowerFunction(-1))</code></pre>
-</details>
-<div class="desc"></div>
-</dd>
-<dt id="tensorgrad.functions.SignFunction"><code class="name flex">
-<span>def <span class="ident">SignFunction</span></span>(<span>)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def SignFunction():
-    # We keep these FunctionObject functions around, since they are used both
-    # for the function itself (like sign) and in derivatives (like abs)
-    return _SimpleFunction(&#34;sign&#34;, torch.sign, ZeroFunction())</code></pre>
-</details>
-<div class="desc"></div>
-</dd>
 <dt id="tensorgrad.functions.abs"><code class="name flex">
 <span>def <span class="ident">abs</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
@@ -119,7 +54,7 @@ el.replaceWith(d);
 </summary>
 <pre><code class="python">def abs(t: Tensor) -&gt; Tensor:
     return Function(
-        _SimpleFunction(&#34;abs&#34;, torch.abs, SignFunction()),
+        _SimpleFunction(&#34;abs&#34;, torch.abs, _SignFunction()),
         (t,),
         {},
     )</code></pre>
@@ -127,14 +62,14 @@ el.replaceWith(d);
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.cross_entropy"><code class="name flex">
-<span>def <span class="ident">cross_entropy</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>y: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: list[str]) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">cross_entropy</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>y: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def cross_entropy(t: Tensor, y: Tensor, dim: list[str]) -&gt; Tensor:
+<pre><code class="python">def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -&gt; Tensor:
     # We could make a FunctionSignature for cross entropy, if we want
     # the option of not always expanding it.
     dim = parse_dim(t.edges, dim)
@@ -143,21 +78,21 @@ el.replaceWith(d);
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.diag"><code class="name flex">
-<span>def <span class="ident">diag</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>new_edges: list[str])</span>
+<span>def <span class="ident">diag</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>new_edges: list[str]) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def diag(t: Tensor, new_edges: list[str]):
+<pre><code class="python">def diag(t: Tensor, new_edges: list[str]) -&gt; Tensor:
     &#34;&#34;&#34;If `t` is a vector, this creates a diagonal tensor with `t` and creates a diagonal.
     In einsum that means &#34;i-&gt;iii&#34;.
     If `t` is a higher order tensor, with all dims the same size, this extracts the diagonal as a vector.
     In einsum that means &#34;iii-&gt;i&#34;.
     &#34;&#34;&#34;
     # Rename the edges to be distinct from the new edges
-    (t,), _renames = make_distinct(t, used_names=new_edges)
+    (t,), _renames = _make_distinct(t, used_names=new_edges)
 
     if not t.shape:
         # We can&#39;t just return t @ Copy(new_edges), since we don&#39;t know the size of the new edges.
@@ -175,14 +110,14 @@ If <code>t</code> is a higher order tensor, with all dims the same size, this ex
 In einsum that means "iii-&gt;i".</p></div>
 </dd>
 <dt id="tensorgrad.functions.dot"><code class="name flex">
-<span>def <span class="ident">dot</span></span>(<span>t1: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>t2: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: list[str]) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">dot</span></span>(<span>t1: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>t2: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def dot(t1: Tensor, t2: Tensor, dim: list[str]) -&gt; Tensor:
+<pre><code class="python">def dot(t1: Tensor, t2: Tensor, dim: DimType = None) -&gt; Tensor:
     &#34;&#34;&#34;Contract two tensors along the given dimensions, broadcasting over the remaining shared edges.&#34;&#34;&#34;
     dim = parse_dim(t1.edges &amp; t2.edges, dim)
     return sum(t1 * t2, dim)</code></pre>
@@ -198,7 +133,7 @@ In einsum that means "iii-&gt;i".</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def exp(t: Tensor) -&gt; Tensor:
-    return Function(ExpFunction(), [t], {})</code></pre>
+    return Function(_ExpFunction(), [t], {})</code></pre>
 </details>
 <div class="desc"></div>
 </dd>
@@ -216,14 +151,14 @@ In einsum that means "iii-&gt;i".</p></div>
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.graph"><code class="name flex">
-<span>def <span class="ident">graph</span></span>(<span>dot_graph, **vars)</span>
+<span>def <span class="ident">graph</span></span>(<span>dot_graph: str,<br>**vars: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def graph(dot_graph, **vars):
+<pre><code class="python">def graph(dot_graph: str, **vars: Tensor) -&gt; Tensor:
     &#34;&#34;&#34;
     Create a tensor network using a DOT-like graph syntax.
 
@@ -302,7 +237,7 @@ In einsum that means "iii-&gt;i".</p></div>
     # and &#34;A -i- B - C&#34; -&gt; [(&#34;A&#34;, &#34;i&#34;, &#34;i&#34;, &#34;B&#34;), (&#34;B&#34;, &#34;i&#34;, &#34;i&#34;, &#34;C&#34;)]
     # and &#34;*1 - *2&#34; -&gt; (&#34;*1&#34;, None, None, &#34;*2&#34;)
     lines = re.split(r&#34;[\n;]&#34;, dot_graph.strip())
-    edges: list[tuple[str, str, str, str]] = []
+    edges = []
     for line in lines:
         parts = line.split()
         last_var = None
@@ -501,24 +436,24 @@ invalid edge names, or inconsistent hyperedge sizes.</p></div>
 </summary>
 <pre><code class="python">def gt0(t: Tensor) -&gt; Tensor:
     &#34;&#34;&#34;Returns a tensor that&#39;s 1 where t is &gt; 0 else 0 elsewhere&#34;&#34;&#34;
-    return Function(Gt0Function(), (t,), {})</code></pre>
+    return Function(_Gt0Function(), (t,), {})</code></pre>
 </details>
 <div class="desc"><p>Returns a tensor that's 1 where t is &gt; 0 else 0 elsewhere</p></div>
 </dd>
 <dt id="tensorgrad.functions.kronecker"><code class="name flex">
-<span>def <span class="ident">kronecker</span></span>(<span>*tensors)</span>
+<span>def <span class="ident">kronecker</span></span>(<span>*tensors: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def kronecker(*tensors):
+<pre><code class="python">def kronecker(*tensors: Tensor) -&gt; Tensor:
     # Basically just rename everything to be distinct, then contraction
     # Note: This function returns the tensor product, which is different from the
     #       Kronecker product as often described in the literature. To get the
     #       Kronecker product you have to flatten the output tensors.
-    dis_tensors, _renames = make_distinct(*tensors)
+    dis_tensors, _renames = _make_distinct(*tensors)
     return Product(dis_tensors)</code></pre>
 </details>
 <div class="desc"></div>
@@ -532,19 +467,19 @@ invalid edge names, or inconsistent hyperedge sizes.</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def log(t: Tensor) -&gt; Tensor:
-    return Function(LogFunction(), [t], {})</code></pre>
+    return Function(_LogFunction(), [t], {})</code></pre>
 </details>
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.max"><code class="name flex">
-<span>def <span class="ident">max</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | tuple[str] = (),<br>keepdim=False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">max</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None,<br>keepdim: bool = False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def max(t: Tensor, dim: str | tuple[str] = (), keepdim=False) -&gt; Tensor:
+<pre><code class="python">def max(t: Tensor, dim: DimType = None, keepdim: bool = False) -&gt; Tensor:
     &#34;&#34;&#34;
     Return the max along &#39;dim&#39;. If dim=(), it&#39;s the global max (0D).
     The derivative is tie-splitting, handled by gt(...).
@@ -555,7 +490,7 @@ invalid edge names, or inconsistent hyperedge sizes.</p></div>
     if not dim:
         dim = tuple(t.edges)
 
-    fn = Function(MaxFunction(dim), [t], {})
+    fn = Function(_MaxFunction(dim), [t], {})
     if keepdim:
         fn = fn @ Ones(**{e: t.shape[e] for e in dim})
     return fn</code></pre>
@@ -564,14 +499,14 @@ invalid edge names, or inconsistent hyperedge sizes.</p></div>
 The derivative is tie-splitting, handled by gt(&hellip;).</p></div>
 </dd>
 <dt id="tensorgrad.functions.max_grad"><code class="name flex">
-<span>def <span class="ident">max_grad</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | tuple[str] = None) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">max_grad</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def max_grad(t: Tensor, dim: str | tuple[str] = None) -&gt; Tensor:
+<pre><code class="python">def max_grad(t: Tensor, dim: DimType = None) -&gt; Tensor:
     &#34;&#34;&#34;
     Tie-splitting subgradient for max. If multiple elements tie for max,
     each gets 1/k of the gradient.
@@ -597,7 +532,7 @@ The derivative is tie-splitting, handled by gt(&hellip;).</p></div>
         dim = set(t.edges)
 
     # All the edges that are consumed by the function are also produced by the function
-    func = Function(MaxGradFunction(dim), [t], {e: t.shape[e] for e in dim})
+    func = Function(_MaxGradFunction(dim), [t], {e: t.shape[e] for e in dim})
     assert func.edges == t.edges
     return func</code></pre>
 </details>
@@ -640,14 +575,14 @@ i [3 3]
 <div class="desc"><p>Like torch.maximum</p></div>
 </dd>
 <dt id="tensorgrad.functions.mean"><code class="name flex">
-<span>def <span class="ident">mean</span></span>(<span>tensor: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: list[str] | str = None,<br>keepdims=False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">mean</span></span>(<span>tensor: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None,<br>keepdims: bool = False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def mean(tensor: Tensor, dim: list[str] | str = None, keepdims=False) -&gt; Tensor:
+<pre><code class="python">def mean(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -&gt; Tensor:
     dim = parse_dim(tensor.edges, dim, none_is=&#34;all&#34;)
     s = sum(tensor, dim, keepdims)
     normalization = 1
@@ -658,14 +593,14 @@ i [3 3]
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.pairwise_distance"><code class="name flex">
-<span>def <span class="ident">pairwise_distance</span></span>(<span>t1: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>t2: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: list[str])</span>
+<span>def <span class="ident">pairwise_distance</span></span>(<span>t1: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>t2: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def pairwise_distance(t1: Tensor, t2: Tensor, dim: list[str]):
+<pre><code class="python">def pairwise_distance(t1: Tensor, t2: Tensor, dim: DimType = None) -&gt; Tensor:
     # If t1 and t2 have shape (x, i), pairwise_distance(t1, t2)_b is
     # ||t1[b] - t2[b]||_2^2
     dim = parse_dim(t1.edges, dim)
@@ -674,14 +609,14 @@ i [3 3]
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.parse_dim"><code class="name flex">
-<span>def <span class="ident">parse_dim</span></span>(<span>tensor_edges: set[str], dim: set[str] | str = None, none_is='error')</span>
+<span>def <span class="ident">parse_dim</span></span>(<span>tensor_edges: set[str],<br>dim: str | Iterable[str] | None = None,<br>none_is: str = 'error') ‑> set[str]</span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def parse_dim(tensor_edges: set[str], dim: set[str] | str = None, none_is=&#34;error&#34;):
+<pre><code class="python">def parse_dim(tensor_edges: set[str], dim: DimType = None, none_is: str = &#34;error&#34;) -&gt; set[str]:
     if dim is None:
         if none_is == &#34;all&#34;:
             dim = frozenset(tensor_edges)
@@ -698,20 +633,20 @@ i [3 3]
 <div class="desc"></div>
 </dd>
 <dt id="tensorgrad.functions.pow"><code class="name flex">
-<span>def <span class="ident">pow</span></span>(<span>tensor: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>k: int) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">pow</span></span>(<span>tensor: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>k: int | fractions.Fraction) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def pow(tensor: Tensor, k: int) -&gt; Tensor:
+<pre><code class="python">def pow(tensor: Tensor, k: int | Fraction) -&gt; Tensor:
     &#34;&#34;&#34;Elementwise t^k&#34;&#34;&#34;
     if k == 0:
         return Ones(**tensor.shape)
     if k == 1:
         return tensor
-    return Function(PowerFunction(k), [tensor], {})</code></pre>
+    return Function(_PowerFunction(k), [tensor], {})</code></pre>
 </details>
 <div class="desc"><p>Elementwise t^k</p></div>
 </dd>
@@ -725,7 +660,7 @@ i [3 3]
 </summary>
 <pre><code class="python">def relu(t: Tensor) -&gt; Tensor:
     return Function(
-        _SimpleFunction(&#34;relu&#34;, torch.relu, Gt0Function()),
+        _SimpleFunction(&#34;relu&#34;, torch.relu, _Gt0Function()),
         (t,),
         {},
     )</code></pre>
@@ -760,7 +695,7 @@ i [3 3]
     a)  0 where t = 0
     a) -1 where t &lt; 0
     like torch.sign&#34;&#34;&#34;
-    return Function(SignFunction(), (t,), {})</code></pre>
+    return Function(_SignFunction(), (t,), {})</code></pre>
 </details>
 <div class="desc"><p>Returns a tensor that's
 a)
@@ -771,16 +706,16 @@ a) -1 where t &lt; 0
 like torch.sign</p></div>
 </dd>
 <dt id="tensorgrad.functions.softmax"><code class="name flex">
-<span>def <span class="ident">softmax</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: list[str] | str) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">softmax</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def softmax(t: Tensor, dim: list[str] | str) -&gt; Tensor:
+<pre><code class="python">def softmax(t: Tensor, dim: DimType = None) -&gt; Tensor:
     dim = parse_dim(t.edges, dim)
-    return Function(SoftmaxFunction(dim), [t], {e: t.shape[e] for e in dim})</code></pre>
+    return Function(_SoftmaxFunction(dim), [t], {e: t.shape[e] for e in dim})</code></pre>
 </details>
 <div class="desc"></div>
 </dd>
@@ -799,14 +734,14 @@ like torch.sign</p></div>
 <div class="desc"><p>Elementwise sqrt</p></div>
 </dd>
 <dt id="tensorgrad.functions.sum"><code class="name flex">
-<span>def <span class="ident">sum</span></span>(<span>tensor: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: set[str] | str = None,<br>keepdims=False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">sum</span></span>(<span>tensor: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>dim: str | Iterable[str] | None = None,<br>keepdims: bool = False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def sum(tensor: Tensor, dim: set[str] | str = None, keepdims=False) -&gt; Tensor:
+<pre><code class="python">def sum(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -&gt; Tensor:
     &#34;&#34;&#34;Sum the tensor over the given dimensions.&#34;&#34;&#34;
     dim = parse_dim(tensor.edges, dim, none_is=&#34;all&#34;)
     out = Product([tensor] + [Copy(tensor.shape[e], e) for e in dim])
@@ -818,14 +753,14 @@ like torch.sign</p></div>
 <div class="desc"><p>Sum the tensor over the given dimensions.</p></div>
 </dd>
 <dt id="tensorgrad.functions.symmetrize"><code class="name flex">
-<span>def <span class="ident">symmetrize</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>signed=False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
+<span>def <span class="ident">symmetrize</span></span>(<span>t: <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>signed: bool = False) ‑> <a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a></span>
 </code></dt>
 <dd>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def symmetrize(t: Tensor, signed=False) -&gt; Tensor:
+<pre><code class="python">def symmetrize(t: Tensor, signed: bool = False) -&gt; Tensor:
     &#34;&#34;&#34;Sum over all permutations of the edges.&#34;&#34;&#34;
     edges = list(t.edges)
     res = []
@@ -870,9 +805,10 @@ like torch.sign</p></div>
         raise ValueError(&#34;eps must have the same edges as wrt.&#34;)
     total = f
     for i in range(1, n + 1):
-        connection_names = unused_edge_names(wrt.edges, f.edges)
+        connection_names = _unused_edge_names(wrt.edges, f.edges)
         fg = f.grad(wrt, new_names=connection_names)
-        total += fg @ eps.rename(**connection_names) / math.factorial(i)
+        scaled_eps = eps.rename(**connection_names)
+        total = total + (fg @ scaled_eps) * (1.0 / math.factorial(i))
     return total</code></pre>
 </details>
 <div class="desc"><p>Return the nth order Taylor approximation of f at x+eps.</p></div>
@@ -972,10 +908,10 @@ like torch.sign</p></div>
         super().__init__(_symmetries=symmetries, **shape)
         self.input_name, self.kernel_name, self.output_name = e0, e1, e2
 
-    def __repr__(self):
+    def __repr__(self) -&gt; str:
         return f&#34;Convolution({self.input_name}, {self.kernel_name}, {self.output_name})&#34;
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -&gt; &#34;Tensor&#34;:
         kwargs = self._check_rename(kwargs)
         return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
@@ -1102,13 +1038,13 @@ kw = 3</p></div>
         groups[self.output_edge].append(self.output_edge)
         super().__init__(_symmetries=set(map(frozenset, groups.values())), **shape)
 
-    def __repr__(self):
+    def __repr__(self) -&gt; str:
         return f&#34;Flatten({self.input_edges}, {self.output_edge})&#34;
 
-    def __hash__(self):
+    def __hash__(self) -&gt; int:
         return hash((type(self).__name__, len(self.edges)))
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -&gt; &#34;Tensor&#34;:
         kwargs = self._check_rename(kwargs)
         return Flatten(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
@@ -1240,1127 +1176,6 @@ and zero otherwise.</p></div>
 </li>
 </ul>
 </dd>
-<dt id="tensorgrad.functions.MaxFunction"><code class="flex name class">
-<span>class <span class="ident">MaxFunction</span></span>
-<span>(</span><span>dims: set[str])</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class MaxFunction(FunctionSignature):
-    def __init__(self, dims: set[str]):
-        self.name = &#34;max&#34;
-        self.edges = frozenset()
-        self.inputs = (frozenset(dims),)
-
-    def eval(self, x: torch.Tensor) -&gt; torch.Tensor:
-        (dims,) = self.inputs
-        return torch.amax(
-            x.rename(None),
-            dim=[x.names.index(e) for e in dims],
-            keepdim=False,
-        ).rename(*(n for n in x.names if n not in dims))
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -&gt; FunctionSignature:
-        (dims,) = self.inputs
-        # We only get new_edges for the self.inputs edges, not the broadcasted ones.
-        # So our derivative function should handle this broadcasting by itself.
-        assert dims == new_edges.keys(), &#34;New edges should be a dict: old -&gt; new names&#34;
-        return RenameFunction(MaxGradFunction(dims), new_edges)</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="tensorgrad.functions.MaxGradFunction"><code class="flex name class">
-<span>class <span class="ident">MaxGradFunction</span></span>
-<span>(</span><span>dims: set[str])</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class MaxGradFunction(FunctionSignature):
-    def __init__(self, dims: set[str]):
-        self.name = &#34;max-grad&#34;
-        self.inputs = (frozenset(dims),)
-        self.edges = frozenset(dims)
-
-    def derivative(self, i, new_edges=None) -&gt; FunctionSignature:
-        # Zero doesn&#39;t broadcast edges that were given as input,
-        # so we have to include them manually here
-        inverse = {n: o for o, n in new_edges.items()}
-        identity = {o: o for o, e in new_edges.items()}
-        return ZeroFunction(inverse | identity)
-
-    def eval(self, x: torch.Tensor) -&gt; torch.Tensor:
-        (dims,) = self.inputs
-        adim = [x.names.index(e) for e in dims]
-        x, names = x.rename(None), x.names
-        max_vals = x.amax(dim=adim, keepdim=True)
-        mask = (x == max_vals).float()
-        res = mask / mask.sum(dim=adim, keepdim=True).clamp(min=1.0)
-        return res.rename(*names)</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="tensorgrad.functions.PowerFunction"><code class="flex name class">
-<span>class <span class="ident">PowerFunction</span></span>
-<span>(</span><span>k: int)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class PowerFunction(FunctionSignature):
-    def __init__(self, k: int):
-        self.name = f&#34;pow({k=})&#34;
-        self.edges = frozenset()
-        self.inputs = (frozenset(),)
-        self.k = k
-
-    def eval(self, x: torch.Tensor) -&gt; torch.Tensor:
-        if self.k &lt; 0:
-            x = x.to(torch.float)
-        return torch.pow(x, float(self.k))
-
-    def derivative(self, i, new_edges) -&gt; FunctionSignature:
-        assert i == 0 and not new_edges
-        return ScaleFunction(PowerFunction(self.k - 1), self.k)
-
-    def simplify(self, func: Function, args: dict[str, Any]):
-        assert func.signature is self
-        assert len(func.inputs) == 1, &#34;pow should only have one input&#34;
-        (inner,) = func.inputs
-
-        if self.k == 0:
-            return Ones(**func.shape)
-        if self.k == 1:
-            return (inner).simplify(args)
-
-        kwargs = dict(orig_out=func.orig_out)
-
-        # The pow function is multiplicative, so we can pull components out of a product apart.
-        if isinstance(inner, Product):
-            new_comps = []
-            for comp in inner.components():
-                new_comps.append(Function(self, (comp,), func.shape_out, **kwargs))
-            if len(new_comps) &gt; 1:
-                return (Product(new_comps)).simplify(args)
-
-        # We can pull out the weight of a sum if it&#39;s just a single tensor
-        if isinstance(inner, Sum) and len(inner.tensors) == 1:
-            (w,) = inner.weights
-            (t,) = inner.tensors
-            return Function(self, (t,), func.shape_out, **kwargs) * (w**self.k)
-
-        # Base cases
-        if (
-            # Pow of 1 is just 1.
-            isinstance(inner, Copy)
-            # Copy of order 0 can have values other than 1
-            and inner.order &gt; 0
-            # Pow of 0 is just 0
-            or isinstance(inner, Zero)
-        ):
-            return inner
-
-        # Combine nested pows
-        if isinstance(inner, Function) and isinstance(inner.signature, PowerFunction):
-            return Function(
-                PowerFunction(k=inner.signature.k * self.k),
-                inner.inputs,
-                func.shape_out,
-                **kwargs,
-            )
-
-        return func
-
-    @classmethod
-    def simplify_outer(cls, tensors: list[Tensor], args: dict[str, Any] = None) -&gt; list[Tensor]:
-        &#34;&#34;&#34;Simplify a product by combining pow functions.&#34;&#34;&#34;
-        # This is not a general FunctionSignature method, but a special case for pow.
-        original_edges = Product(tensors).edges
-
-        # New plan:
-        #  - First try to combine existing pow functions.
-        #  - Then try to do cancelations with non-pow subgraphs
-        #  - Finally we could try to recreate some pow functions from the remaining subgraphs,
-        #    but it&#39;s not clear that this is actually useful.
-
-        tensors = cls._combine_powers(tensors)
-        assert Product(tensors).edges == original_edges
-
-        if args[&#34;factor_components&#34;]:
-            tensors = cls._combine_components(tensors)
-            assert Product(tensors).edges == original_edges
-
-        # We have to merge products here because we might otherwise have undone part of the simplification
-        tensors = Product.merge([Product([t]) if not isinstance(t, Product) else t for t in tensors]).tensors
-
-        assert Product(tensors).edges == original_edges
-        return tensors
-
-    @classmethod
-    def _combine_powers(cls, tensors: list[Tensor]) -&gt; list[Tensor]:
-        # Find an existing power, like pow(X, k=2), and merge other powers of X,
-        # or instances of X, into it.
-        s = &#34;,\n    &#34;.join(map(repr, tensors))
-        seen = set()
-        while True:
-            # Find the next power function we haven&#39;t seen yet
-            try:
-                i, t = next(
-                    (i, t)
-                    for i, t in enumerate(tensors)
-                    if isinstance(t, Function) and isinstance(t.signature, PowerFunction) and t not in seen
-                )
-            except StopIteration:
-                break
-            seen.add(t)
-            if t.signature.k &gt; 5:
-                break
-
-            power = t.signature.k
-            (inner,) = t.inputs
-
-            hyperedges = {
-                e: min(c.edges)
-                for c in tensors
-                if isinstance(c, Copy) and c.edges &amp; inner.edges
-                for e in c.edges
-            }
-            partition = defaultdict(list)
-
-            # We can&#39;t just call t.rename(**hyperedges) here, since some tensors might be adjacent to the
-            # same hyperedge multiple times. Instead we give MatchEdgesKey the names, and it will perform
-            # the isomorphism check correctly.
-            partition[MatchEdgesKey(inner, **hyperedges)].append((power, inner))
-
-            # We remove the tensor, as well as all Copys that it&#39;s connected to,
-            # which makes the rest of the graph fall apart.
-            others = tensors[:i] + tensors[i + 1 :]
-            copys = [t for t in others if isinstance(t, Copy) and t.edges &amp; inner.edges]
-            others = [t for t in others if not (isinstance(t, Copy) and t.edges &amp; inner.edges)]
-            for comp in Product(others).components():
-                power = 1
-                if len(comp.tensors) == 1:
-                    comp = comp.tensors[0]
-                    if isinstance(comp, Function) and isinstance(comp.signature, PowerFunction):
-                        power = comp.signature.k
-                        (comp,) = comp.inputs
-                partition[MatchEdgesKey(comp, **hyperedges)].append((power, comp))
-
-            # Now we have a partition of tensors that share the same edges, and we can combine them.
-            # Or in some cases they cancel each other.
-            tensors = copys
-            for ts in partition.values():
-                k = _sum(k for k, t in ts)
-                (_, t0) = ts[0]  # All the tensors should be the same t
-                tensors.append(pow(t0, k))
-                # The remaining tensors have been reduced to ones. This prevents leaving unattached edges
-                # on the copy tensors.
-                for _, t in ts[1:]:
-                    # Take care to not add a lot of empty Ones/Products, as it could
-                    # make our method loop forever as it collects powers of nothing.
-                    if t.shape:
-                        tensors.append(Ones(**t.shape))
-        return tensors
-
-    @classmethod
-    def _combine_components(cls, tensors: list[Tensor]) -&gt; list[Tensor]:
-        # Look for tensors that share the same edges, and combine them.
-        partition = defaultdict(int)
-        for p in Product(tensors).components():
-            power = 1
-            if len(p.tensors) == 1:
-                (t,) = p.tensors
-                if isinstance(t, Function) and isinstance(t.signature, PowerFunction):
-                    power = t.signature.k
-                    (t,) = t.inputs
-            else:
-                t = p
-            partition[MatchEdgesKey(t)] += power
-
-        tensors = []
-        for key, w in partition.items():
-            t = key.value
-            tensors.append(pow(t, w))
-        return tensors</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Static methods</h3>
-<dl>
-<dt id="tensorgrad.functions.PowerFunction.simplify_outer"><code class="name flex">
-<span>def <span class="ident">simplify_outer</span></span>(<span>tensors: list[<a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>],<br>args: dict[str, typing.Any] = None) ‑> list[<a title="tensorgrad.tensor.Tensor" href="tensor.html#tensorgrad.tensor.Tensor">Tensor</a>]</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Simplify a product by combining pow functions.</p></div>
-</dd>
-</dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="tensorgrad.functions.RenameFunction"><code class="flex name class">
-<span>class <span class="ident">RenameFunction</span></span>
-<span>(</span><span>inner: <a title="tensorgrad.tensor.Function" href="tensor.html#tensorgrad.tensor.Function">Function</a>,<br>renames: dict[str, str])</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class RenameFunction(FunctionSignature):
-    def __init__(self, inner: Function, renames: dict[str, str]):
-        # Note: The name is important for equality checking, since two functions
-        # with the same name, inputs and edges are considered equal.
-        self.name = f&#34;rename({inner.name})&#34;
-        if inner.edges != renames.keys():
-            raise ValueError(&#34;Inner function&#39;s edges must match the keys of renames&#34;)
-        self.inputs = (frozenset(renames.keys()),)
-        self.edges = frozenset(renames.values())
-        self.renames = renames
-        self.inner = inner
-
-    def eval(self, x: torch.Tensor) -&gt; torch.Tensor:
-        return self.inner.eval(x).rename(**self.renames)
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -&gt; FunctionSignature:
-        return RenameFunction(self.inner.derivative(i, new_edges), self.renames)
-
-    def simplify(self, f: Function, args: dict[str, Any]):
-        assert f.signature is self
-        # Since the Function object also keeps track of renaming, we have a chain:
-        # inner -&gt; rename -&gt; inverse(orig_out) -&gt; shape_out
-        # We want to merge our rename map with the orig out, so we need:
-        # inverse(rename . inverse(orig_out)) = orig_out . inverse(rename)
-        # Example:
-        #   Variable(i,j)
-        #   self.shape_out: {j___0: j, i___0: i}
-        #   renames: {j: j__, i: i__}
-        #   orig_out: {i___0: i__, j___0: j__}
-        #   new_orig_out = {i___0: i, j___0: j}
-        # Note:
-        #   You&#39;d think we could just commute rename and orig_out and rename
-        #   the inputs, as [input.rename(**self.renames)]. However, this breaks
-        #   the expectation of self.inner.inputs on the input names.
-        inverse_renames = {v: k for k, v in self.renames.items()}
-        return Function(
-            self.inner,
-            f.inputs,
-            f.shape_out,
-            {e: inverse_renames[o] for e, o in f.orig_out.items()},
-        ).simplify(args)</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="tensorgrad.functions.ScaleFunction"><code class="flex name class">
-<span>class <span class="ident">ScaleFunction</span></span>
-<span>(</span><span>inner: <a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a>,<br>alpha: numbers.Number)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class ScaleFunction(FunctionSignature):
-    def __init__(self, inner: FunctionSignature, alpha: Number):
-        # Represents alpha * inner(x, ...)
-        # This mostly exists to help represent the PowerFunction derivative
-        self.name = f&#34;{alpha} * {inner.name}&#34;
-        self.edges = inner.edges
-        self.inputs = inner.inputs
-        self.inner = inner
-        self.alpha = alpha
-
-    def eval(self, *xs: torch.Tensor) -&gt; torch.Tensor:
-        return self.alpha * self.inner.eval(*xs)
-
-    def derivative(self, i, new_edges=None):
-        return ScaleFunction(self.inner.derivative(i, new_edges), self.alpha)
-
-    def simplify(self, f: Function, args: dict[str, Any]):
-        assert f.signature is self
-        return self.alpha * Function(self.inner, f.inputs, f.shape_out, f.orig_out).simplify(args)</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="tensorgrad.functions.SoftmaxFunction"><code class="flex name class">
-<span>class <span class="ident">SoftmaxFunction</span></span>
-<span>(</span><span>dims: set[str])</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class SoftmaxFunction(FunctionSignature):
-    # We don&#39;t really need this function signature, as we could just use the basic
-    # functions of exp, sum and pow(-1) to implement it. However it is useful as a
-    # proof of concept, and allows us to represent softmax &#34;unexpanded&#34;.
-
-    def __init__(self, dims: set[str]):
-        super().__init__(&#34;softmax&#34;, frozenset(dims), (frozenset(dims),))
-
-    def derivative(self, i, new_edges=None):
-        raise NotImplementedError(&#34;Simplify and then differentiate&#34;)
-
-    def eval(self, x):
-        (dims,) = self.inputs
-        sizes = [x.size(d) for d in dims]
-        names = [d for d in x.names if d not in dims]
-        other_sizes = [x.size(n) for n in names]
-        # Softmax doesn&#39;t support named dimensions, so we have to rename them to None.
-        # We move the affected dimensions to the front, then flatten them.
-        y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
-        return y.softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
-
-    def simplify(self, f: Function, args: dict[str, Any]):
-        if args[&#34;expand_functions&#34;]:
-            (dims,) = self.inputs
-            (inner,) = f.inputs
-            assert dims.issubset(inner.edges)
-            e = exp(inner)
-            res = e / sum(e, dims, keepdims=True)
-            # Since Function includes an implicit rename, we need to apply that
-            # when expanding the Function
-            return res.rename(**{o: e for e, o in f.orig_out.items()})
-        return super().simplify(f, args)</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="tensorgrad.functions.ZeroFunction"><code class="flex name class">
-<span>class <span class="ident">ZeroFunction</span></span>
-<span>(</span><span>new_edges: dict[str, str] = None)</span>
-</code></dt>
-<dd>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class ZeroFunction(FunctionSignature):
-    def __init__(self, new_edges: dict[str, str] = None):
-        &#34;&#34;&#34;
-        Takes an input with shape (i, j, ...) and outputs a zero tensor with shape
-        {e: input_shape[o] for e, o in new_edges.items()}.
-        If new_edges is None, the function is just element-wise.
-        &#34;&#34;&#34;
-        self.name = &#34;named-zero&#34;
-        self.new_edges = new_edges if new_edges else {}
-        self.inputs = (frozenset(self.new_edges.values()),)
-        self.edges = frozenset(self.new_edges.keys())
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
-        # Derivative gets new_edges : {old_name : new_name}
-        inverse_new_edges = {v: k for k, v in new_edges.items()}
-        return ZeroFunction(self.new_edges | inverse_new_edges)
-
-    def eval(self, x: torch.Tensor) -&gt; torch.Tensor:
-        # Like any function, we have to support broadcasted inputs, so we detect
-        # which names are in x, which are not consumed in self.inputs
-        broadcasted = [e for e in x.names if e not in self.inputs[0]]
-        return torch.zeros(
-            size=[x.size(o) for o in broadcasted + list(self.new_edges.values())],
-            names=broadcasted + list(self.new_edges.keys()),
-        )
-
-    def simplify(self, t: Function, args: dict[str, Any]):
-        # Instead of trying to calculate the shape ourselves, which is complicated
-        # because of broadcasting, and that the function may have been renamed,
-        # we can just copy the function&#39;s shape.
-        return Zero(**t.shape)</code></pre>
-</details>
-<div class="desc"><p>An abstract base class representing a function that takes one or more tensors as input
-and produces a new tensor as output.</p>
-<p>This class is designed to capture the symbolic structure of a tensor operation by
-listing its output edges (<code>edges</code>) and the input edges (<code>inputs</code>) each of its input
-tensors must provide. Subclasses are required to implement the <code>eval</code> and <code>derivative</code>
-methods, while <code>simplify</code> has a default no-op implementation that may be overridden.</p>
-<h2 id="parameters">Parameters</h2>
-<dl>
-<dt><strong><code>name</code></strong> :&ensp;<code>str</code></dt>
-<dd>A descriptive name for the function (e.g., "matmul", "unfold", "ce", "attention").</dd>
-<dt><strong><code>edges</code></strong> :&ensp;<code>Set[str]</code></dt>
-<dd>The output edges of this function. These are string identifiers that symbolically
-represent the dimensions of the output tensor.</dd>
-<dt><strong><code>inputs</code></strong> :&ensp;<code>Tuple[Set[str], &hellip;]</code></dt>
-<dd>A tuple where each element is a set of edges required from one input tensor.
-For example, if the first input tensor must share dimension edges {"b", "i"} and
-the second input tensor must share dimension edges {"b", "j"}, then
-<code>inputs = ({"b", "i"}, {"b", "j"})</code>.</dd>
-</dl>
-<h2 id="examples">Examples</h2>
-<p>1) <strong>Matrix multiplication</strong>:
-Suppose <code>x</code> has shape (b, i, j) and <code>y</code> has shape (b, j, k). We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = MatmulSignature(
-      name="matmul",
-      edges={"i", "k"},
-      inputs=({"i", "j"}, {"j", "k"})
-  )
-</code></pre>
-<p>Here, the function consumes edges <code>i</code> and <code>j</code> from <code>x</code> and edges <code>j</code> and <code>k</code> from <code>y</code>.
-The edge <code>b</code> is shared between the two inputs and broadcasted. The output tensor
-eventually has shape (b, i, k).</p>
-<p>2) <strong>Unfold</strong>:
-Suppose we have a tensor <code>x</code> with shape (b, c, w, h) and we want to produce a series
-of patches. We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = UnfoldSignature(
-      name="unfold",
-      edges={"patch", "c_out", "w_out", "h_out"},
-      inputs=({"c_in", "w_in", "h_in"},)
-  )
-</code></pre>
-<p>This function consumes edges <code>c, w, h</code> from <code>x</code> and introduces a new edge
-named <code>patch</code> of size (w_in - w_out + 1)*(h_in - h_out + 1).</p>
-<p>3) <strong>Cross-entropy</strong>:
-This is an example of a function that takes two inputs, for example logits and
-probabilities. Suppose:
-- <code>x</code> has shape (b, logits)
-- <code>y</code> has shape (b, probs)</p>
-<p>We might define:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = CrossEntropySignature(
-      name="ce",
-      edges={"ce"},
-      inputs=({"logits"}, {"probs"})
-  )
-</code></pre>
-<p>Both inputs share the batch edge <code>b</code>. The new edge <code>ce</code> could represent the
-cross-entropy output dimension (often scalar per example, so shape (b, ce)).</p>
-<p>4) <strong>Multi-query Dot Product Attention</strong>:
-Suppose we have tensors:
-- <code>q</code> with shape (b, n_q, d)
-- <code>k</code> with shape (b, seq, d)
-- <code>v</code> with shape (b, seq, d_out)</p>
-<p>Conceptually, to compute multi-query attention:</p>
-<ul>
-<li>We form (b, n_q, seq) via a dot product of <code>q</code> and <code>k</code>.</li>
-<li>We apply a softmax to get (b, n_q, prob).</li>
-<li>We multiply by <code>v</code> to get (b, n_q, d_out).</li>
-</ul>
-<p>A possible signature might be:</p>
-<p>.. code-block:: python</p>
-<pre><code>  f = AttentionSignature(
-      name="attention",
-      edges={"n_q", "d_out"},
-      inputs=(
-          {"n_q", "d"},
-          {"seq", "d"},
-          {"seq", "d_out"},
-      )
-  )
-</code></pre>
-<p>The edge <code>b</code> is shared among all inputs (broadcast). The final output
-has shape (b, n_q, d_out).</p>
-<p>Takes an input with shape (i, j, &hellip;) and outputs a zero tensor with shape
-{e: input_shape[o] for e, o in new_edges.items()}.
-If new_edges is None, the function is just element-wise.</p></div>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></li>
-<li>abc.ABC</li>
-</ul>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="tensorgrad.tensor.FunctionSignature" href="tensor.html#tensorgrad.tensor.FunctionSignature">FunctionSignature</a></b></code>:
-<ul class="hlist">
-<li><code><a title="tensorgrad.tensor.FunctionSignature.derivative" href="tensor.html#tensorgrad.tensor.FunctionSignature.derivative">derivative</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.eval" href="tensor.html#tensorgrad.tensor.FunctionSignature.eval">eval</a></code></li>
-<li><code><a title="tensorgrad.tensor.FunctionSignature.simplify" href="tensor.html#tensorgrad.tensor.FunctionSignature.simplify">simplify</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
 </dl>
 </section>
 </article>
@@ -2376,10 +1191,6 @@ If new_edges is None, the function is just element-wise.</p></div>
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="two-column">
-<li><code><a title="tensorgrad.functions.ExpFunction" href="#tensorgrad.functions.ExpFunction">ExpFunction</a></code></li>
-<li><code><a title="tensorgrad.functions.Gt0Function" href="#tensorgrad.functions.Gt0Function">Gt0Function</a></code></li>
-<li><code><a title="tensorgrad.functions.LogFunction" href="#tensorgrad.functions.LogFunction">LogFunction</a></code></li>
-<li><code><a title="tensorgrad.functions.SignFunction" href="#tensorgrad.functions.SignFunction">SignFunction</a></code></li>
 <li><code><a title="tensorgrad.functions.abs" href="#tensorgrad.functions.abs">abs</a></code></li>
 <li><code><a title="tensorgrad.functions.cross_entropy" href="#tensorgrad.functions.cross_entropy">cross_entropy</a></code></li>
 <li><code><a title="tensorgrad.functions.diag" href="#tensorgrad.functions.diag">diag</a></code></li>
@@ -2420,30 +1231,6 @@ If new_edges is None, the function is just element-wise.</p></div>
 <ul class="">
 <li><code><a title="tensorgrad.functions.Flatten.evaluate" href="#tensorgrad.functions.Flatten.evaluate">evaluate</a></code></li>
 </ul>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.MaxFunction" href="#tensorgrad.functions.MaxFunction">MaxFunction</a></code></h4>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.MaxGradFunction" href="#tensorgrad.functions.MaxGradFunction">MaxGradFunction</a></code></h4>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.PowerFunction" href="#tensorgrad.functions.PowerFunction">PowerFunction</a></code></h4>
-<ul class="">
-<li><code><a title="tensorgrad.functions.PowerFunction.simplify_outer" href="#tensorgrad.functions.PowerFunction.simplify_outer">simplify_outer</a></code></li>
-</ul>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.RenameFunction" href="#tensorgrad.functions.RenameFunction">RenameFunction</a></code></h4>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.ScaleFunction" href="#tensorgrad.functions.ScaleFunction">ScaleFunction</a></code></h4>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.SoftmaxFunction" href="#tensorgrad.functions.SoftmaxFunction">SoftmaxFunction</a></code></h4>
-</li>
-<li>
-<h4><code><a title="tensorgrad.functions.ZeroFunction" href="#tensorgrad.functions.ZeroFunction">ZeroFunction</a></code></h4>
 </li>
 </ul>
 </li>
