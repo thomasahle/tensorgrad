@@ -2,7 +2,7 @@
 A tensor & deep learning framework. PyTorch meets SymPy.
 
 Tensor diagrams let you manipulate high dimensional tensors are graphs in a way that makes derivatives and complex products easy to understand.
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="70%">
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="100%">
 The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know.
 
 # Example of Tensorgrad
