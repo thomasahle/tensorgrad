@@ -656,7 +656,7 @@ class _SimpleFunction(FunctionSignature):
     def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
         return self._eval_fn(input_tensors[0])
 
-    def derivative(self, i, new_edges=None):
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         assert i == 0 and not new_edges, "Simple functions are element-wise"
         return self._derivative
 
