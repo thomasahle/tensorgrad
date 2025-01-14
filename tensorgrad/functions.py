@@ -3,7 +3,7 @@ import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
@@ -34,7 +34,7 @@ DimType = None | str | Iterable[str]
 # https://pytorch.org/docs/stable/name_inference.html
 
 
-def taylor(f: Tensor, wrt: Variable, eps: Tensor, n: int) -> Tensor:
+def taylor(f: "Tensor", wrt: "Variable", eps: "Tensor", n: int) -> "Tensor":
     """Return the nth order Taylor approximation of f at x+eps."""
     if eps.edges != wrt.edges:
         raise ValueError("eps must have the same edges as wrt.")
@@ -645,12 +645,16 @@ def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -> Tensor:
 
 
 class _SimpleFunction(FunctionSignature):
-    def __init__(self, name: str, eval: callable, derivative: FunctionSignature):
+    def __init__(self, name: str, eval_fn: Callable[[torch.Tensor], torch.Tensor], 
+                 derivative: "FunctionSignature"):
         self.name = name
-        self.inputs = (frozenset(),)
-        self.edges = frozenset()
-        self.eval = eval
+        self.inputs: Tuple[Set[str], ...] = (frozenset(),)
+        self.edges: Set[str] = frozenset()
+        self._eval_fn = eval_fn
         self._derivative = derivative
+
+    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
+        return self._eval_fn(input_tensors[0])
 
     def derivative(self, i, new_edges=None):
         assert i == 0 and not new_edges, "Simple functions are element-wise"
@@ -792,10 +796,10 @@ def abs(t: Tensor) -> Tensor:
 
 
 class _MaxGradFunction(FunctionSignature):
-    def __init__(self, dims: set[str]):
+    def __init__(self, dims: Set[str]):
         self.name = "max-grad"
-        self.inputs = (frozenset(dims),)
-        self.edges = frozenset(dims)
+        self.inputs: Tuple[Set[str], ...] = (frozenset(dims),)
+        self.edges: Set[str] = frozenset(dims)
 
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         # Zero doesn't broadcast edges that were given as input,
@@ -953,7 +957,7 @@ class Convolution(Constant):
     def __repr__(self) -> str:
         return f"Convolution({self.input_name}, {self.kernel_name}, {self.output_name})"
 
-    def rename(self, kwargs: str) -> Tensor:
+    def rename(self, **kwargs: str) -> "Tensor":
         kwargs = self._check_rename(kwargs)
         return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
@@ -1004,7 +1008,7 @@ class Flatten(Constant):
     def __hash__(self):
         return hash((type(self).__name__, len(self.edges)))
 
-    def rename(self, kwargs: dict[str, str]):
+    def rename(self, **kwargs: str) -> "Tensor":
         kwargs = self._check_rename(kwargs)
         return Flatten(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
