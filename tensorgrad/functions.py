@@ -10,7 +10,7 @@ from tensorgrad.tensor import (
     Constant,
     Function,
     FunctionSignature,
-    MatchEdgesKey,
+    _MatchEdgesKey,
     Ones,
     Sum,
     Tensor,
@@ -18,8 +18,8 @@ from tensorgrad.tensor import (
     Copy,
     Variable,
     Zero,
-    make_distinct,
-    unused_edge_names,
+    _make_distinct,
+    _unused_edge_names,
 )
 from fractions import Fraction
 
@@ -40,7 +40,7 @@ def taylor(f: Tensor, wrt: Variable, eps: Tensor, n: int) -> Tensor:
         raise ValueError("eps must have the same edges as wrt.")
     total = f
     for i in range(1, n + 1):
-        connection_names = unused_edge_names(wrt.edges, f.edges)
+        connection_names = _unused_edge_names(wrt.edges, f.edges)
         fg = f.grad(wrt, new_names=connection_names)
         scaled_eps = eps.rename(**connection_names)
         total = total + (fg @ scaled_eps) * (1.0 / math.factorial(i))
@@ -276,7 +276,7 @@ def kronecker(*tensors: Tensor) -> Tensor:
     # Note: This function returns the tensor product, which is different from the
     #       Kronecker product as often described in the literature. To get the
     #       Kronecker product you have to flatten the output tensors.
-    dis_tensors, _renames = make_distinct(*tensors)
+    dis_tensors, _renames = _make_distinct(*tensors)
     return Product(dis_tensors)
 
 
@@ -287,7 +287,7 @@ def diag(t: Tensor, new_edges: list[str]) -> Tensor:
     In einsum that means "iii->i".
     """
     # Rename the edges to be distinct from the new edges
-    (t,), _renames = make_distinct(t, used_names=new_edges)
+    (t,), _renames = _make_distinct(t, used_names=new_edges)
 
     if not t.shape:
         # We can't just return t @ Copy(new_edges), since we don't know the size of the new edges.
@@ -490,7 +490,7 @@ class _PowerFunction(FunctionSignature):
             # We can't just call t.rename(**hyperedges) here, since some tensors might be adjacent to the
             # same hyperedge multiple times. Instead we give MatchEdgesKey the names, and it will perform
             # the isomorphism check correctly.
-            partition[MatchEdgesKey(inner, **hyperedges)].append((power, inner))
+            partition[_MatchEdgesKey(inner, **hyperedges)].append((power, inner))
 
             # We remove the tensor, as well as all Copys that it's connected to,
             # which makes the rest of the graph fall apart.
@@ -504,7 +504,7 @@ class _PowerFunction(FunctionSignature):
                     if isinstance(comp, Function) and isinstance(comp.signature, _PowerFunction):
                         power = comp.signature.k
                         (comp,) = comp.inputs
-                partition[MatchEdgesKey(comp, **hyperedges)].append((power, comp))
+                partition[_MatchEdgesKey(comp, **hyperedges)].append((power, comp))
 
             # Now we have a partition of tensors that share the same edges, and we can combine them.
             # Or in some cases they cancel each other.
@@ -535,7 +535,7 @@ class _PowerFunction(FunctionSignature):
                     (t,) = t.inputs
             else:
                 t = p
-            partition[MatchEdgesKey(t)] += power
+            partition[_MatchEdgesKey(t)] += power
 
         tensors = []
         for key, w in partition.items():

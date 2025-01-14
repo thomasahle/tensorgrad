@@ -195,7 +195,7 @@ class Tensor(ABC):
         # Element-wise (Hadamard) product is easy to implement using Copy tensors
         # These are the edges we multiply over
         shared_edges = self.edges & other.edges
-        (t0, t1), (rename0, rename1) = make_distinct(self, other, used_names=shared_edges)
+        (t0, t1), (rename0, rename1) = _make_distinct(self, other, used_names=shared_edges)
         return Product([t0, t1] + [Copy(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
 
     def __rtruediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
@@ -354,7 +354,7 @@ class Tensor(ABC):
             return new_names
         # Make new names that are _based_ on x.orig and _avoid_ self.edges
         # This is important, since different instantiations of x might be using different names.
-        return unused_edge_names(x.orig.values(), self.edges, suffix="_")
+        return _unused_edge_names(x.orig.values(), self.edges, suffix="_")
         # Why not base the new_names on x.edges? They are the publicly known ones after all...
         # return unused_edge_names(x.edges, self.edges, suffix="_")
 
@@ -653,7 +653,7 @@ class Copy(Constant):
     @classmethod
     def _simplify_step(cls, tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
         """Performs one step of simplification. Returns a new list if changed, or the original if not."""
-        for e, ts in group_edges(tensors).items():
+        for e, ts in _group_edges(tensors).items():
             if len(ts) == 1:
                 continue
             t1, t2 = ts
@@ -1019,7 +1019,7 @@ class Function(Tensor):
             # Take the derivative of the outer function
             # We need "connection" edges for each edge in input_edges. Mostly we could just use the same name
             # but they need to avoid clashing with "new_names" and the output edges of the tensor.
-            connection_names = unused_edge_names(input_edges, self.edges | new_edges, suffix="_")
+            connection_names = _unused_edge_names(input_edges, self.edges | new_edges, suffix="_")
             connection_shape = {connection_names[e]: t.shape[e] for e in input_edges}
             # Just like simple calculus, we need the derivative of the outside times the derivative of the inside
             outside = Function(
@@ -1069,7 +1069,7 @@ class Function(Tensor):
         for i, (t, input_edges) in enumerate(zip(self.inputs, self.signature.inputs)):
             # Compute graph from input tensor, and ensure it uses distinct node numbers
             # Tag the inputs with {i} since order matters for function inputs.
-            G, t_edges = add_structural_graph(G, t, root_edge_label=f"{i}")
+            G, t_edges = _add_structural_graph(G, t, root_edge_label=f"{i}")
             # Connect tensor to function. We don't need to label here, since
             # the input tensor already has labeled its own edges as much as it needs to.
             for e in input_edges:
@@ -1161,12 +1161,12 @@ class Derivative(Tensor):
         G.add_node(0, name="Derivative", tensor=self)
         edges = {}
         # We add a node for the "wrt" tensor
-        G, x_edges = add_structural_graph(G, self.x, root_edge_label="self.x")
+        G, x_edges = _add_structural_graph(G, self.x, root_edge_label="self.x")
         # This might be controversial, but we'll have new_edges point to the respective edges in self.x
         x_old_to_new = {oe: e for e, oe in self.x.orig.items()}
         edges |= {e: x_edges[x_old_to_new[oe]] for oe, e in self.new_names.items()}
         # Then we add the differentiated tensor
-        G, t_edges = add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
+        G, t_edges = _add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
         edges |= t_edges
         assert edges.keys() == self.edges
         return G, edges
@@ -1198,7 +1198,7 @@ class Product(Tensor):
         """
         self.tensors = list(tensors)
         self._shape = {}
-        for edge, ts in group_edges(self.tensors).items():
+        for edge, ts in _group_edges(self.tensors).items():
             if len(ts) == 1:
                 self._shape[edge] = ts[0].shape[edge]
             elif len(ts) == 2:
@@ -1218,7 +1218,7 @@ class Product(Tensor):
         contractions = {e for t in self.tensors for e in t.edges} - self.edges
         # Note the `unused_edge_names` function avoids introducing new clashes
         # between the edges being renamed.
-        rename = unused_edge_names(contractions, new_names)
+        rename = _unused_edge_names(contractions, new_names)
         # It's safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
         # contain keys that are in self.edges.
         rename |= kwargs
@@ -1235,7 +1235,7 @@ class Product(Tensor):
         for p in products:
             # Maybe this could also be expressed in terms of avoid_internal_edges
             inner_edges = {e for t in p.tensors for e in t.edges if e not in p.edges}
-            rename = unused_edge_names(inner_edges, used_edges)
+            rename = _unused_edge_names(inner_edges, used_edges)
             for t in p.tensors:
                 res.append(t.rename(**rename))
             used_edges.update(rename.values())  # Later renames should not clash with this one
@@ -1249,7 +1249,7 @@ class Product(Tensor):
         # none of the other tensors in the product have edges that clash with these new edges.
         inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
         new_edges = set(new_names.values()) | self.edges
-        rename = unused_edge_names(inner_names, new_edges)
+        rename = _unused_edge_names(inner_names, new_edges)
         new_prod = Product([t.rename(**rename) for t in self.tensors])
         assert new_prod == self and new_prod.shape == self.shape, "Renaming should not change the product"
         # Note: We don't have to update they keys of new_names, sinc ethey refer to variable orig_names, which never change
@@ -1390,7 +1390,7 @@ class Product(Tensor):
         edges = {}
         inner_edges = defaultdict(list)
         for t in self.tensors:
-            G, t_edges = add_structural_graph(G, t)
+            G, t_edges = _add_structural_graph(G, t)
             for e, node in t_edges.items():
                 inner_edges[e].append(node)
         for e, nodes in inner_edges.items():
@@ -1430,7 +1430,7 @@ class Sum(Tensor):
 
         # Broadcasting means we always upgrade to the super set of edges
         self._shape = {}
-        for e, ts in group_edges(tensors).items():
+        for e, ts in _group_edges(tensors).items():
             s = ts[0].shape[e]
             if not all(t.shape[e] == s for t in ts):
                 raise ValueError(f"Edge {e} had different sizes in tensors: {ts}")
@@ -1466,9 +1466,9 @@ class Sum(Tensor):
         for w, t in zip(self.weights, terms):
             if args["associative_sums"] and isinstance(t, Sum):
                 for w1, t1 in zip(t.weights, t.tensors):
-                    term_counter[MatchEdgesKey(t1)] += w * w1
+                    term_counter[_MatchEdgesKey(t1)] += w * w1
             else:
-                term_counter[MatchEdgesKey(t)] += w
+                term_counter[_MatchEdgesKey(t)] += w
 
         if args["sum_combine_terms"]:
             # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
@@ -1512,7 +1512,7 @@ class Sum(Tensor):
         for t, w in zip(self.tensors, self.weights):
             # The weights are a little akward. There a lot of options for how to handle them.
             # E.g. the idea of just using a weighted Copy([]) somehow. But this works.
-            G, t_edges = add_structural_graph(G, t, root_edge_label=f"Weight {w}")
+            G, t_edges = _add_structural_graph(G, t, root_edge_label=f"Weight {w}")
             # Connect tensor edges to the plus nodes
             for e, node in t_edges.items():
                 G.add_edge(node, edges[e])
@@ -1534,7 +1534,7 @@ class Sum(Tensor):
 ################################################################################
 
 
-class MatchEdgesKey:
+class _MatchEdgesKey:
     """Normally Tensors use isomorphism as their test for equality, but they don't include
     the edge names in the comparison. This class is used to compare tensors based on their
     edge names. It is used in the Sum tensor to combine tensors with the same edge names."""
@@ -1545,7 +1545,7 @@ class MatchEdgesKey:
         self.edge_names = edge_names
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, MatchEdgesKey):
+        if isinstance(other, _MatchEdgesKey):
             return self.value.is_isomorphic(other.value, edge_names=self.edge_names, match_edges=True)
         return False
 
@@ -1553,7 +1553,7 @@ class MatchEdgesKey:
         return self.hash
 
 
-def group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
+def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
     """Group tensors by their edge names."""
     groups = defaultdict(list)
     for t in tensors:
@@ -1562,7 +1562,7 @@ def group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
     return groups
 
 
-def add_structural_graph(
+def _add_structural_graph(
     G: nx.MultiDiGraph, tensor: Tensor, root_edge_label: bool = None
 ) -> tuple[nx.MultiDiGraph, dict[str, int]]:
     """Computes the structural graph of tensor, and unions it with G."""
@@ -1588,7 +1588,7 @@ def add_structural_graph(
     return G, x_edges
 
 
-def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = "") -> dict[str, str]:
+def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = "") -> dict[str, str]:
     """Given a list of edges, return a dict[str, str] that renames the original names into
     new fresh names, not in either edges nor used_names.
     Also append suffix to the new names.
@@ -1604,7 +1604,7 @@ def unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: s
     return rename
 
 
-def make_distinct(*tensors: list["Tensor"], used_names: Iterable[str] = None) -> list["Tensor"]:
+def _make_distinct(*tensors: list["Tensor"], used_names: Iterable[str] = None) -> list["Tensor"]:
     """Makes sure all tensors have distinct edges.
     Optionally takes used_names, an extra set of names to avoid.
     suffix is an optional string to append to the new names.
@@ -1621,7 +1621,7 @@ def make_distinct(*tensors: list["Tensor"], used_names: Iterable[str] = None) ->
     res, renames = [], []
     for i, t in enumerate(tensors):
         edges = t.edges - unique_names
-        rename = unused_edge_names(edges, used_names, suffix=f"_{i}")
+        rename = _unused_edge_names(edges, used_names, suffix=f"_{i}")
         # Make sure all t.edges are present in rename
         rename.update({e: e for e in unique_names})
         used_names.update(rename.values())
