@@ -41,5 +41,5 @@ def test_a_not_function_of_x_matrix():
     x = Variable("x", j)
     ts = rand_values([A, x], {i: 3, j: 2})
     res = (A @ x).grad(x).simplify().evaluate({A: ts[A], x: ts[x]})
-    expected = jacobian(lambda x: (ts[A].rename(None) @ x), ts[x].rename(None)).rename("i", "j_")
+    expected = jacobian(lambda x: (ts[A].rename(None) @ x), ts[x].rename(None)).rename("i", "j")
     assert_close(res, expected)

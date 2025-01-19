@@ -5,7 +5,7 @@ from sympy import symbols
 
 # Use your real code imports
 from tensorgrad.tensor import Copy, Variable, Product, Sum, Derivative
-from tensorgrad.functions import Convolution, Flatten
+from tensorgrad.functions import Convolution, Reshape
 from tensorgrad.extras import Expectation
 
 # from your serializer code
@@ -151,7 +151,7 @@ def test_sum_of_products_and_flatten():
 
     # Provide 3 edges as strings if your code demands strings:
     conv = Convolution(i_in=i, k_in=j, i_out=k)
-    flat = Flatten(f_in=i, f_out=k)
+    flat = Reshape(f_in=i, f_out=k)
 
     # Product / sum
     p1 = Product([x, conv])
@@ -159,11 +159,11 @@ def test_sum_of_products_and_flatten():
     expr = Sum([p1, p2], weights=[1, 1])
     out = to_tikz(expr)
 
-    # Check for x, z, and maybe 'conv', 'flatten' if your code has such strings
+    # Check for x, z, and maybe 'conv', 'reshape' if your code has such strings
     assert "x" in out
     assert "z" in out
     assert "ast" in out or "conv" in out, "Might see a node labeled '*', or 'conv'"
-    assert "flatten" in out
+    assert "reshape" in out
 
 
 def test_expectation():

@@ -1,5 +1,5 @@
 from collections import Counter, defaultdict
-from tensorgrad.functions import Convolution, Flatten
+from tensorgrad.functions import Convolution, Reshape
 from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
 from tensorgrad.extras import Expectation
 import random
@@ -32,7 +32,7 @@ prefix = """\
     identity/.style={circle, draw=black, fill=black, inner sep=0pt, minimum size=4pt},
     zero/.style={rectangle, draw=black, fill=white, inner sep=2pt},
     conv/.style={rectangle, draw=black, fill=white, inner sep=2pt},
-    flatten/.style={rectangle, draw=black, fill=white, inner sep=2pt},
+    reshape/.style={rectangle, draw=black, fill=white, inner sep=2pt},
     function/.style={circle, draw=black, fill=white, inner sep=2pt},
     var/.style={circle, draw=purple!50!black, very thick, fill=purple!20, inner sep=3pt},
     degree0/.style={circle, draw=orange!50!black, very thick, fill=orange!20, inner sep=3pt},
@@ -137,8 +137,8 @@ class TikzGraph:
             self.lines.append(f"  {node_id}[zero,as=0,{nudge}];")
         elif node_type == "conv":
             self.lines.append(f"  {node_id}[conv,as=$\\ast$,{nudge}];")
-        elif node_type == "flatten":
-            self.lines.append(f"  {node_id}[flatten,as=flatten,{nudge}];")
+        elif node_type == "reshape":
+            self.lines.append(f"  {node_id}[reshape,as=reshape,{nudge}];")
         elif node_type == "function":
             label = label.replace("_", "\\_")
             label = label.replace("k=", "")
@@ -306,8 +306,8 @@ def _to_tikz(tensor, graph, depth=0):
         graph.add_node(node_id := str(id(tensor)), "conv", degree=len(tensor.edges))
         return {e: node_id for e in tensor.edges}
 
-    if isinstance(tensor, Flatten):
-        graph.add_node(node_id := str(id(tensor)), "flatten", degree=len(tensor.edges))
+    if isinstance(tensor, Reshape):
+        graph.add_node(node_id := str(id(tensor)), "reshape", degree=len(tensor.edges))
         return {e: node_id for e in tensor.edges}
 
     if isinstance(tensor, Function):

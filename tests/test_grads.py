@@ -13,7 +13,7 @@ def test_simple_grad():
     A = Variable("A", x_sym, y_sym)
     ts = rand_values([x, A], {x_sym: 2, y_sym: 3})
     res = (A @ x).grad(x).simplify()
-    assert_close(res.evaluate(ts), ts[A].rename("x_", "y"))
+    assert_close(res.evaluate(ts), ts[A].rename("x", "y"))
 
 
 def test_simple_hessian():
@@ -27,13 +27,13 @@ def test_simple_hessian():
     quad = x @ A @ x.rename(x="y")
     res = quad.grad(x).grad(x).simplify()
     assert res == F.symmetrize(A).simplify()
-    ApAt = (ts[A].rename(None) + ts[A].rename(None).T).rename("x_", "x__")
+    ApAt = (ts[A].rename(None) + ts[A].rename(None).T).rename("x", "x_")
     assert_close(res.evaluate(ts), ApAt)
 
     # Test x^T A^T A x
     quad2 = x @ A @ A @ x
     res2 = quad2.grad(x).grad(x).simplify()
-    assert res2.symmetries == {frozenset({"x_", "x__"})}
+    assert res2.symmetries == {frozenset({"x", "x_"})}
     tA = ts[A].rename(None)
     torch.testing.assert_close(res2.evaluate(ts).rename(None), 2 * tA @ tA.T)
 
@@ -45,7 +45,7 @@ def test_simple_hessian():
     frob = F.frobenius2(A @ x - y)
     hess = frob.grad(x).grad(x).simplify().evaluate(ts)
     tH = 2 * ts[A].rename(None) @ ts[A].rename(None).T
-    assert_close(hess, tH.rename("x_", "x__"))
+    assert_close(hess, tH.rename("x", "x_"))
 
 
 def test_derivative_of_hadamard_product():
@@ -75,8 +75,8 @@ def test_f_0_1():
     x = Variable("x", i)
     f = function("f", {}, (x, "i"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"i_"}
-    assert expr == function("D_0f", {"i__": i}, (x, "i")).rename(i__="i_")
+    assert expr.edges == {"i"}
+    assert expr == function("D_0f", {"i_": i}, (x, "i")).rename(i_="i")
 
 
 def test_f_0_2():
@@ -85,9 +85,9 @@ def test_f_0_2():
     x = Variable("x", b, i)
     f = function("f", {}, (x, "i"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"b", "b_", "i_"}
+    assert expr.edges == {"b", "b_", "i"}
     x_renamed = x.rename(b="b__")
-    expected = function("D_0f", {"i__": i}, (x_renamed, "i")).rename(i__="i_") @ Copy(b, "b, b_, b__")
+    expected = function("D_0f", {"i_": i}, (x_renamed, "i")).rename(i_="i") @ Copy(b, "b, b_, b__")
     assert expr == expected
 
 
@@ -108,8 +108,8 @@ def test_f_1_1():
     f = function("f", {"y": y}, (x, "i"))  # (x-i-f)-y-
     assert f.edges == {"y"}
     expr = f.grad(x).simplify()
-    assert expr.edges == {"y", "i_"}
-    expected = function("D_0f", {"y": y, "i_": i}, (x, "i"))
+    assert expr.edges == {"y", "i"}
+    expected = function("D_0f", {"y": y, "i": i}, (x, "i"))
     expected.orig_out = expr.orig_out
     assert expr == expected
 
@@ -121,8 +121,8 @@ def test_fxy_1_1_1():
     y = Variable("y", i)
     f = function("f", {"z": z}, (x, "i"), (y, "i"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"z", "i_"}
-    expected = function("D_0f", {"z": z, "i_": i}, (x, "i"), (y, "i"))
+    assert expr.edges == {"z", "i"}
+    expected = function("D_0f", {"z": z, "i": i}, (x, "i"), (y, "i"))
     expected.orig_out = expr.orig_out
     assert expr == expected
 
@@ -133,9 +133,9 @@ def test_fxx_1_1_1():
     x = Variable("x", i)
     f = function("f", {"z": z}, (x, "i"), (x, "i"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"z", "i_"}
-    t1 = function("D_0f", {"z": z, "i__": i}, (x, "i"), (x, "i")).rename(i__="i_")
-    t2 = function("D_1f", {"z": z, "i__": i}, (x, "i"), (x, "i")).rename(i__="i_")
+    assert expr.edges == {"z", "i"}
+    t1 = function("D_0f", {"z": z, "i_": i}, (x, "i"), (x, "i")).rename(i_="i")
+    t2 = function("D_1f", {"z": z, "i_": i}, (x, "i"), (x, "i")).rename(i_="i")
     expected = t1 + t2
     assert expr == expected
 
@@ -147,13 +147,13 @@ def test_f_2_2_multi_input():
     y = Variable("y", k, l)
     f = function("f", {"a": a, "b": b}, (x, "i"), (y, "k"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"a", "b", "l", "j", "j_", "i_"}
+    assert expr.edges == {"a", "b", "l", "j", "j_", "i"}
     expected = function(
         "D_0f",
-        {"a": a, "b": b, "i__": i},
+        {"a": a, "b": b, "i_": i},
         (x, "i"),
         (y, "k"),
-    ).rename(j="j_0", i__="i_") @ Copy(j, "j, j_, j_0")
+    ).rename(j="j_0", i_="i") @ Copy(j, "j, j_, j_0")
     assert expr == expected
 
 
@@ -164,11 +164,11 @@ def test_f_1_1_nested():
     g = function("g", {"j": j}, (x, "i"))
     f = function("f", {"k": k}, (g, "j"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"k", "i_"}
+    assert expr.edges == {"k", "i"}
     expected = Product(
         [
             function("D_0f", {"k": k, "j_": j}, (g, "j")),
-            function("D_0g", {"j": j, "i__": i}, (x, "i")).rename(j="j_", i__="i_"),
+            function("D_0g", {"j": j, "i_": i}, (x, "i")).rename(j="j_", i_="i"),
         ]
     )
     assert expr.edges == expected.edges
@@ -182,7 +182,7 @@ def test_f_2_1_nested():
     g = function("g", {"j": j, "k": k}, (x, "i"))
     f = function("f", {"l": l}, (g, "j", "k"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"l", "i_"}
+    assert expr.edges == {"l", "i"}
     expected = Product(
         [
             function(
@@ -192,9 +192,9 @@ def test_f_2_1_nested():
             ),
             function(
                 "D_0g",
-                {"j": j, "k": k, "i__": i},
+                {"j": j, "k": k, "i_": i},
                 (x, "i"),
-            ).rename(j="j_", k="k_", i__="i_"),
+            ).rename(j="j_", k="k_", i_="i"),
         ]
     )
     assert expr == expected
@@ -207,7 +207,7 @@ def test_f_1_2_nested():
     g = function("g", {"k": k}, (x, "i", "j"))
     f = function("f", {"l": l, "m": m}, (g, "k"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"l", "m", "i_", "j_"}
+    assert expr.edges == {"l", "m", "i", "j"}
     expected = Product(
         [
             function(
@@ -217,9 +217,9 @@ def test_f_1_2_nested():
             ),
             function(
                 "D_0g",
-                {"k": k, "i__": i, "j__": j},
+                {"k": k, "i_": i, "j_": j},
                 (x, "i", "j"),
-            ).rename(k="k_", i__="i_", j__="j_"),
+            ).rename(k="k_", i_="i", j_="j"),
         ]
     )
     assert expr == expected
@@ -232,15 +232,15 @@ def test_f_2_2_nested():
     g = function("g", {"k": k, "l": l}, (x, "i", "j"))
     f = function("f", {"m": m, "n": n}, (g, "k", "l"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"m", "n", "i_", "j_"}
+    assert expr.edges == {"m", "n", "i", "j"}
     expected = Product(
         [
             function("D_0f", {"m": m, "n": n, "k_": k, "l_": l}, (g, "k", "l")),
             function(
                 "D_0g",
-                {"k": k, "l": l, "i__": i, "j__": j},
+                {"k": k, "l": l, "i_": i, "j_": j},
                 (x, "i", "j"),
-            ).rename(k="k_", l="l_", i__="i_", j__="j_"),
+            ).rename(k="k_", l="l_", i_="i", j_="j"),
         ]
     )
     assert expr == expected
@@ -254,7 +254,7 @@ def test_f_2_2_double_nested():
     g = function("g", {"m": m, "n": n}, (h, "k", "l"))
     f = function("f", {"o": o, "p": p}, (g, "m", "n"))
     expr = f.grad(x).simplify()
-    assert expr.edges == {"o", "p", "i_", "j_"}
+    assert expr.edges == {"o", "p", "i", "j"}
 
     expected = Product(
         [
@@ -270,9 +270,9 @@ def test_f_2_2_double_nested():
             ).rename(k_="k", l_="l"),
             function(
                 "D_0h",
-                {"k": k, "l": l, "i__": i, "j__": j},
+                {"k": k, "l": l, "i_": i, "j_": j},
                 (x, "i", "j"),
-            ).rename(i__="i_", j__="j_"),
+            ).rename(i_="i", j_="j"),
         ]
     )
     assert expr == expected

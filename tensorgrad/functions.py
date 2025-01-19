@@ -1,9 +1,9 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 import itertools
 import math
 from numbers import Number
 import re
-from typing import Any, Callable, Iterable, Iterator, Union
+from typing import Any, Callable, Iterable, Iterator, Sequence, Union
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
@@ -51,7 +51,7 @@ def frobenius2(t: Tensor) -> Tensor:
     return Product([t, t])
 
 
-def _is_even_permutation(permutation: tuple[int]) -> bool:
+def _is_even_permutation(permutation: Sequence[Any]) -> bool:
     """
     Checks if given permutation is even.
     >>> is_even_permutation(range(10))
@@ -75,8 +75,8 @@ def _is_even_permutation(permutation: tuple[int]) -> bool:
 def symmetrize(t: Tensor, signed: bool = False) -> Tensor:
     """Sum over all permutations of the edges."""
     edges = list(t.edges)
-    res = []
-    weights = []
+    res: list[Tensor] = []
+    weights: list[Number] = []
     for perm in itertools.permutations(edges):
         res.append(t.rename(**dict(zip(edges, perm))))
         if signed:
@@ -460,7 +460,6 @@ class _PowerFunction(FunctionSignature):
     def _combine_powers(cls, tensors: list[Tensor]) -> list[Tensor]:
         # Find an existing power, like pow(X, k=2), and merge other powers of X,
         # or instances of X, into it.
-        s = ",\n    ".join(map(repr, tensors))
         seen = set()
         while True:
             # Find the next power function we haven't seen yet
@@ -558,6 +557,104 @@ def sqrt(tensor: Tensor) -> Tensor:
     return pow(tensor, Fraction(1, 2))
 
 
+class _MatrixInverseFunction(FunctionSignature):
+    def __init__(self, edges) -> None:
+        if len(edges) != 2:
+            raise ValueError(f"Called Matrix Inverse takes exactly 2 edges. Got {edges=}.")
+        super().__init__("inv", frozenset(edges), (frozenset(edges),))
+
+    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
+        (x,) = input_tensors
+        if not self.edges.issubset(x.names):
+            raise ValueError(f"Input {x.names} didn't have all edges {self.edges}")
+        d1, d2 = self.edges
+        # torch.inverse assumes matrix dimensions are at the end
+        z = x.align_to(..., d1, d2)
+        z1 = x.align_to(..., d2, d1)
+        # TODO: I think I want to swap d1 and d2 here, so it's the edges with
+        # the same name that cancel, and not the opposite name.
+        y = torch.inverse(z.rename(None)).rename(*z1.names).align_to(*self.edges)
+        assert y.names == tuple(self.edges)
+        return y
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        assert i == 0
+        # Derivative gets new_edges : {old_name : new_name}
+        return _MatrixInverseDerivative(self.edges, new_edges)
+
+    def simplify(self, func: Function, args: dict[str, Any]) -> Tensor:
+        assert func.signature is self
+        (inner,) = func.inputs
+        # Two inverses over the same edges can be cancelled
+        if (
+            isinstance(inner, Function)
+            and isinstance(inner.signature, _MatrixInverseFunction)
+            and inner.signature.edges == self.edges
+        ):
+            (inner_inner,) = inner.inputs
+            return inner_inner
+        return func
+
+    @classmethod
+    def simplify_outer(cls, tensors: list[Tensor], args: dict[str, Any] = None) -> list[Tensor]:
+        """Simplify a product by combining pow functions."""
+        # TODO: This is not a general FunctionSignature method, but a special case for pow.
+        # Maybe we can make it more general, e.g. using FunctionSignature.instances to get
+        # all subclasses that may be relevant.
+        # 1) We'd like to apply the rule X @ inv(X) = I.
+        # 2) We might also apply inv(X Y) = inv(Y) inv(X).
+        return tensors
+
+
+class _MatrixInverseDerivative(FunctionSignature):
+    def __init__(self, edges: set[str], new_edges: dict[str, str]) -> None:
+        # Derivative gets new_edges : {old_name : new_name}
+        super().__init__("inv_grad", edges | set(new_edges.values()), (edges,))
+        self.new_edges = new_edges.copy()
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        raise NotImplementedError("Please expand with simplify() first")
+
+    def simplify(self, t: Function, args: dict[str, Any]):
+        (edges,) = self.inputs
+        (inner,) = t.inputs
+        # Inverse: -inv(A)^T dA inv(A)
+        if args["expand_functions"]:
+            inv = inverse(inner, edges)
+            #    -i- A^{-1} -j-j'-
+            # -i'-i- A^{-1} -j-
+            (o1, e1), (o2, e2) = self.new_edges.items()
+            res = -inv.rename(**{o1: e1}) * inv.rename(**{o2: e2})
+            # Since we are removing the Function object, we have to apply its rename
+            res = res.rename(**{o: e for e, o in t.orig_out.items()})
+            assert res.edges == t.edges
+            return res.simplify(args)
+        return t
+
+
+def inverse(tensor: Tensor, dims: set[str] = None) -> Tensor:
+    """Matrix inverse over two target edges. Broadcasts over the rest.
+    Mirrors torch.inverse / torch.linalg.inv.
+
+    In principle we could generalize the inverse to take a number of input
+    edges, and the output would be a tensor with the same edges as the
+    original, but if you contract it with the original over the selected
+    edges, they cancel, and you get a tensor product over identitiy matrices
+    over the remaining edges.
+
+    If dims is None, we assume the input tensor is a matrix.
+    """
+    if dims is None:
+        dims = tensor.edges
+    if len(dims) != 2:
+        raise ValueError(f"Called Matrix Inverse with {dims=}")
+    out_shape = {name: size for name, size in tensor.shape.items() if name in dims}
+    s1, s2 = out_shape.values()
+    if s1 != s2:
+        raise ValueError(f"Inverted dimensions must have same size. Got {s1, s2}")
+    return Function(_MatrixInverseFunction(dims), [tensor], out_shape)
+
+
 def _ExpFunction() -> FunctionSignature:
     # Small hack to handle recursive initialization
     exp_function = _SimpleFunction("exp", torch.exp, None)
@@ -638,30 +735,11 @@ def pairwise_distance(t1: Tensor, t2: Tensor, dim: DimType = None) -> Tensor:
     return sum(pow(t1 - t2, 2), dim)
 
 
-def cross_entropy(t: Tensor, y: Tensor, dim: DimType = None) -> Tensor:
+def cross_entropy(logits: Tensor, targets: Tensor, dim: DimType = None) -> Tensor:
     # We could make a FunctionSignature for cross entropy, if we want
     # the option of not always expanding it.
-    dim = parse_dim(t.edges, dim)
-    return -sum(y * log(softmax(t, dim)), dim)
-
-
-class _SimpleFunction(FunctionSignature):
-    def __init__(
-        self,
-        name: str,
-        eval_fn: Callable[[torch.Tensor], torch.Tensor],
-        derivative: Union["FunctionSignature", None],
-    ) -> None:
-        super().__init__(name, frozenset(), (frozenset(),))
-        self._eval_fn = eval_fn
-        self._derivative = derivative
-
-    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
-        return self._eval_fn(input_tensors[0])
-
-    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
-        assert i == 0 and not new_edges, "Simple functions are element-wise"
-        return self._derivative
+    dim = parse_dim(logits.edges, dim)
+    return -sum(targets * log(softmax(logits, dim)), dim)
 
 
 class _RenameFunction(FunctionSignature):
@@ -740,6 +818,27 @@ class _ZeroFunction(FunctionSignature):
         return Zero(**t.shape)
 
 
+class _SimpleFunction(FunctionSignature):
+    def __init__(
+        self,
+        name: str,
+        eval_fn: Callable[[torch.Tensor], torch.Tensor],
+        derivative: Union["FunctionSignature", None],
+    ) -> None:
+        super().__init__(name, frozenset(), (frozenset(),))
+        self._eval_fn = eval_fn
+        self._derivative = derivative
+
+    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
+        return self._eval_fn(input_tensors[0])
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        assert i == 0 and not new_edges, "Simple functions are element-wise"
+        if self._derivative is None:
+            raise NotImplementedError(f"Derivative not implemented for {self.name}")
+        return self._derivative
+
+
 def _SignFunction() -> FunctionSignature:
     # We keep these FunctionObject functions around, since they are used both
     # for the function itself (like sign) and in derivatives (like abs)
@@ -783,19 +882,31 @@ def maximum(x: Tensor, y: Tensor) -> Tensor:
 
 
 def relu(t: Tensor) -> Tensor:
-    return Function(
-        _SimpleFunction("relu", torch.relu, _Gt0Function()),
-        (t,),
-        {},
-    )
+    return Function(_SimpleFunction("relu", torch.relu, _Gt0Function()), (t,), {})
 
 
 def abs(t: Tensor) -> Tensor:
-    return Function(
-        _SimpleFunction("abs", torch.abs, _SignFunction()),
-        (t,),
-        {},
-    )
+    return Function(_SimpleFunction("abs", torch.abs, _SignFunction()), (t,), {})
+
+
+def argmax(t: Tensor, dim: str) -> Tensor:
+    return Function(_ArgMaxFunction(dim), (t,), {})
+
+
+class _ArgMaxFunction(FunctionSignature):
+    def __init__(self, dim: str) -> None:
+        super().__init__("argmax", frozenset(), (frozenset([dim]),))
+        self.dim = dim
+
+    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
+        (t,) = input_tensors
+        i = t.names.index(self.dim)
+        names = list(t.names)
+        names.pop(i)
+        return torch.argmax(t.rename(None), dim=i).rename(*names)
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        raise NotImplementedError(f"Derivative not implemented for {self.name}")
 
 
 class _MaxGradFunction(FunctionSignature):
@@ -960,30 +1071,31 @@ class Convolution(Constant):
     def __repr__(self) -> str:
         return f"Convolution({self.input_name}, {self.kernel_name}, {self.output_name})"
 
+    def __hash__(self) -> int:
+        return hash((type(self).__name__,) + tuple(self.shape.items()))
+
     def rename(self, **kwargs: str) -> "Tensor":
         kwargs = self._check_rename(kwargs)
         return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
-    def evaluate(
-        self,
-        values: dict["Variable", torch.Tensor],
-        dims: dict[Symbol, int] | None = None,
-    ) -> torch.Tensor:
+    def _inner_evaluate(self, values: dict[Tensor, torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         if not self.edges:
             return torch.tensor(1.0)
-        w_in = dims[self.shape[self.input_name]]
-        k_size = dims[self.shape[self.kernel_name]]
+        w_in = dims.get(self.shape[self.input_name])
+        k_size = dims.get(self.shape[self.kernel_name])
+        w_out = dims.get(self.shape[self.output_name])
 
-        # TODO: Right now we assume w_in and k_size are given, and compute the output size
-        # manually. However, we could use any of the two to compute the third.
-        w_out = w_in - k_size + 1
-
-        # Check consistency
-        if (w_out_given := dims.get(self.shape[self.output_name])) is not None:
-            assert w_out == w_out_given, (
-                f"Convolution expects its output dim to be win - kw + 1, "
-                f"but got {w_in} - {k_size} + 1 = {w_out} vs. {w_out_given}."
-            )
+        # We only need 2/3 of the input sizes to be given
+        if Counter([w_in, k_size, w_out])[None] >= 2:
+            raise ValueError(f"Convolution expects >= 2 of {self.shape.keys()} to be given")
+        if w_in is None:
+            w_in = w_out + k_size - 1
+        elif k_size is None:
+            k_size = w_in - w_out + 1
+        elif w_out is None:
+            w_out = w_in - k_size + 1
+        elif w_out != w_in - k_size + 1:
+            raise ValueError(f"{w_out=} != {w_in=} - {k_size=} + 1")
 
         # Make a tensor T, such that T[i,j,k] = 1 iff i=j+k
         res = torch.zeros(w_in, k_size, w_out)
@@ -993,61 +1105,30 @@ class Convolution(Constant):
         return res.rename(self.input_name, self.kernel_name, self.output_name)
 
 
-class Flatten(Constant):
-    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, **shape1: Symbol):
-        shape = self._check_shape(shape0, shape1)
-        *self.input_edges, self.output_edge = shape.keys()
-        assert len(shape) >= 2, "Flatten must have at least 2 edges"
-        # We have symmetry between all input edges, as long as they are all the same size
-        groups = defaultdict(list)
-        for e in self.input_edges:
-            groups[shape[e]].append(e)
-        groups[self.output_edge].append(self.output_edge)
-        super().__init__(_symmetries=set(map(frozenset, groups.values())), **shape)
+class Reshape(Constant):
+    """Just the identity matrices, but with a different shape."""
+
+    # Mostly Reshape doesn't have any symmetries, except if the input equals the output,
+    # in which case it can be flipped (and just ignored completely.)
+    # Generally it's recommended to never reshape anything, and just keep plenty of edges around.
 
     def __repr__(self) -> str:
-        return f"Flatten({self.input_edges}, {self.output_edge})"
+        return f"Reshape({self.shape})"
 
     def __hash__(self) -> int:
-        return hash((type(self).__name__, len(self.edges)))
+        return hash((type(self).__name__,) + tuple(self.shape.items()))
 
     def rename(self, **kwargs: str) -> "Tensor":
         kwargs = self._check_rename(kwargs)
-        return Flatten(**{kwargs.get(k, k): v for k, v in self.shape.items()})
+        return Reshape(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
-    def evaluate(
-        self,
-        values: dict["Variable", torch.Tensor],
-        dims: dict[Symbol, int] | None = None,
-    ) -> torch.Tensor:
-        """
-        Produces a tensor of shape [*input_dims, output_dim] where
-        output_dim = product of all input_dims.
-
-        For each multi-index (i1, i2, ..., iN),
-        we set res[i1, i2, ..., iN, flatten(i1, i2, ..., iN)] = 1
-        and zero otherwise.
-        """
-        # Collect the sizes of the edges
-        input_dims = [dims[self.shape[e]] for e in self.input_edges]
-        output_dim = dims.get(self.shape[self.output_edge])
-
-        # Check consistency: output_dim should be the product of input_dims
-        prod_in = 1
-        for d in input_dims:
-            prod_in *= d
-
-        if output_dim is not None:
-            assert prod_in == output_dim, (
-                f"Flatten expects its output dim == product of input dims, "
-                f"but got product({input_dims}) = {prod_in} vs. {output_dim}."
-            )
-        else:
-            output_dim = prod_in
-
-        # Build an identity matrix and reshape it so that row indices
-        # become the multi-index (i1, i2, ..., iN),
-        # and the column index becomes the flattened coordinate.
-        eye = torch.eye(output_dim)  # shape = [output_dim, output_dim]
-        res = eye.reshape(*input_dims, output_dim)  # shape = [*input_dims, output_dim]
-        return res.rename(*self.input_edges, self.output_edge)
+    def _inner_evaluate(self, values: dict[Tensor, torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        if not set(self.shape.values()).issubset(dims.keys()):
+            diff = self.shape.values() - dims.keys()
+            raise ValueError(f"Dims {diff} not supplied to Reshape")
+        sizes = [dims[s] for s in self.shape.values()]
+        full = math.prod(sizes)
+        half = int(math.sqrt(full))
+        if half**2 != full:
+            raise ValueError(f"{sizes=} must multiply to a square number")
+        return torch.eye(half).reshape(*sizes).rename(*self.edges)

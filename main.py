@@ -3,10 +3,12 @@ from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
 from tensorgrad.serializers.to_tikz import to_tikz
-from tensorgrad.serializers.to_pytorch import to_pytorch
+# from tensorgrad.serializers.to_pytorch import to_pytorch
 from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
 from tensorgrad.imgtools import save_steps, save_as_image
 from sympy import symbols
+import torch
+import tqdm
 
 
 def main():
@@ -121,75 +123,30 @@ def main5():
     print(len(expr.tensors))
     # save_as_image(expr, 'm3.png')
 
-
 def main6():
-    K = 2
-    i = symbols("i")
-    eps = symbols("e")
-    u = Variable(f"u", i)
-    X = Copy(i, "i", "j") - u @ u.rename(i="j") * Copy(eps)
-    M = Variable("M", i, j=i)
-    XM = F.graph("X -j-i- M", X=X, M=M)
-    XMk = Copy(i, "i", "j")
-    for k in range(K):
-        XMk = F.graph("XMk -j-i- XM", XMk=XMk, XM=XM)
-    trXMkXMkt = XMk @ XMk
-    expr = Expectation(trXMkXMkt, u)
-    # expr = Expectation(XMk, u) @ Copy(i, "i", "j")
-    expr = expr.full_simplify()
-    expr = expr.simplify({"extract_constants_from_expectation": True})
-    print(expr)
-    save_steps(expr)
+    i, j, k = symbols("i j k")
+    Y = Variable("Y", i, k)
+    A = Variable("A", i, j)
+    X = Variable("X", j, k)
+    expr = F.frobenius2(Y - A @ X) / 2
+    hess = Derivative(Derivative(expr, X), X)
+    hess = hess.full_simplify()
+    print(hess)
+    save_steps(hess)
+
+
 
 
 def main7():
-    i, j = symbols("i j")
-    X = Variable("x", i, j)
-    expr = Derivative(F.max(X, "i"), X)
-    print(expr)
-    save_steps(expr)
+    i = symbols("i")
+    A = Variable("A", i, j=i)
+    b = Variable("b", i)
+    expr = F.inverse(A) @ b
+    hess = expr.grad(A).grad(A)
+    print(hess)
+    save_steps(hess)
 
-
-def main8():
-    i, j = symbols("i j")
-    X = Variable("X", i, j)
-
-    # Test gradients using autograd
-    res_max = F.max(X, ("i", "j"), keepdim=True)
-    res = F.sum(res_max).grad(X)
-
-    save_steps(res_max)
-
-
-def main10():
-    N, C = symbols("N C")
-    x = Variable("logits", N=N, C=C)
-    y = Variable("target", N=N, C=C)
-
-    expr = x
-    expr = F.sum(expr).grad(x)  # .grad(x)
-    print(expr)
-
-    save_steps(expr)
-
-
-def main11():
-    N, C = symbols("N C")
-    x = Variable("logits", N=N, C=C)
-    expr = Product(
-        [
-            # x,
-            Copy(N, "N"),
-            Copy(N, "N"),
-            Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}),
-            # Zero({'C': C, 'N_': N, 'C_': C})
-        ]
-    )
-    print(Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}).simplify())
-    print(Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}).shape)
-    print(Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}).simplify().shape)
-    print(to_tikz(expr))
 
 
 if __name__ == "__main__":
-    main11()
+    main7()

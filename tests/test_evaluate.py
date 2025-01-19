@@ -15,6 +15,7 @@ from tensorgrad.tensor import (
 )
 import tensorgrad.functions as F
 from tensorgrad.testutils import assert_close, random_tensor_expr, rand_values
+import torch.nn.functional as tF
 
 
 def test_copy():
@@ -121,7 +122,7 @@ def test_derivative_of_product():
     t_c = torch.randn(4, 5, names=("k", "l"))
 
     result = derivative_expr.simplify().evaluate({a: t_a, b: t_b, c: t_c})
-    expected = torch.einsum("ij,kl->ijkl", t_a.rename(None), t_c.rename(None)).rename("i", "j_", "k_", "l")
+    expected = torch.einsum("ij,kl->ijkl", t_a.rename(None), t_c.rename(None)).rename("i", "j", "k", "l")
     assert_close(result, expected)
 
 
@@ -307,3 +308,51 @@ def test_unfold():
     )
 
     assert_close(res, expected)
+
+
+def test_nn():
+    batch, dim1, dim2, out = symbols("batch dim1 dim2 out")
+    data = Variable("data", batch, dim1)
+    targets = Variable("targets", batch, out)
+    shapes = {
+        batch: 3,
+        dim1: 4,
+        dim2: 5,
+        out: 10,
+    }
+    layer1 = Variable("lin", dim1, dim2)
+    layer2 = Variable("lin", dim2, out)
+
+    # Random initialization
+    parameters = rand_values([data, targets, layer1, layer2], shapes)
+
+    # Make model
+    x = data
+    x = F.relu(x @ layer1)
+    x = x @ layer2
+    y = F.mean(F.cross_entropy(x, targets, dim="out"), dim="batch")
+
+    # Symbolic backprop
+    grad_layer1 = y.grad(layer1).full_simplify()
+    grad_layer2 = y.grad(layer2).full_simplify()
+
+    # Numerical evaluation
+    tx = parameters[data]
+    tx = torch.relu(tx @ parameters[layer1])
+    tx = tx @ parameters[layer2]
+    tloss = tF.cross_entropy(tx, parameters[targets].rename(None))
+
+    # Copy parameters to avoid caching, evaluate initial loss
+    params0 = {t: v.clone() for t, v in parameters.items()}
+    loss0 = y.evaluate(params0, shapes)
+    assert_close(tloss, loss0)
+
+    # Gradient descent
+    parameters[layer1] -= 1e-1 * grad_layer1.evaluate(params0, shapes).align_to("dim1", "dim2")
+    parameters[layer2] -= 1e-1 * grad_layer2.evaluate(params0, shapes).align_to("dim2", "out")
+
+    # Copy parameters to avoid caching, evaluate new loss
+    params1 = {t: v.clone() for t, v in parameters.items()}
+    loss1 = y.evaluate(params1, shapes)
+
+    assert loss1 < loss0, "Loss should decrease after one step of gradient descent"

@@ -21,7 +21,7 @@ class Tensor(ABC):
     def shape(self) -> dict[str, Symbol]:
         if not hasattr(self, "_shape"):
             raise NotImplementedError
-        return self._shape
+        return self._shape.copy()
 
     @property
     def order(self) -> int:
@@ -299,8 +299,7 @@ class Tensor(ABC):
             # Find the isomorphic representative that we matched
             other, tensor = next((v, t) for v, t in values.items() if v.is_isomorphic(self))
             mapping = next(other.isomorphisms(self), None)
-            # The fix is just this "..." before *self.edges
-            res = tensor.rename(**mapping).align_to(..., *self.edges)
+            res = tensor.rename(**mapping).align_to(*self.edges)
 
             if __debug__:
                 expected = self._inner_evaluate(values, dims)
@@ -311,6 +310,9 @@ class Tensor(ABC):
             return res
 
         res = self._inner_evaluate(values, dims)
+        if torch.isnan(res.rename(None)).any():
+            print(res)
+        assert not torch.isnan(res.rename(None)).any(), f"Got NaN in result in {self}"
         # We guarantee that inner_evaluate returns the edges in the same order as self.edges
         assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
         values[self] = res
@@ -354,9 +356,9 @@ class Tensor(ABC):
             return new_names
         # Make new names that are _based_ on x.orig and _avoid_ self.edges
         # This is important, since different instantiations of x might be using different names.
-        return _unused_edge_names(x.orig.values(), self.edges, suffix="_")
+        # return _unused_edge_names(x.orig.values(), self.edges, suffix="_")
         # Why not base the new_names on x.edges? They are the publicly known ones after all...
-        # return unused_edge_names(x.edges, self.edges, suffix="_")
+        return _unused_edge_names(x.edges, self.edges)
 
     @staticmethod
     def _check_simplify(args: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -545,7 +547,7 @@ class Variable(Tensor):
 
 
 class Constant(Tensor, ABC):
-    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, **shape1: Symbol):
+    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] | None = None, **shape1: Symbol):
         """
         A constant tensor with the given edges.
 
@@ -1093,13 +1095,11 @@ class Function(Tensor):
     def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         xvals = [t.evaluate(values, dims) for t in self.inputs]
         res = self.signature.eval(*xvals)
-        # This is weird, I rename back from new names to old
-        # but then I assume the names match self. That's backwards, no?
-        # Should I use inverse orig out here?
+        # Rename the output to the new out-names of the function,
+        # Then align the edges, in case we've transposed them.
         rename = {o: e for e, o in self.orig_out.items()}
-        # res = res.rename(*(self.orig_out.get(e, e) for e in res.names))
         res = res.rename(*(rename.get(e, e) for e in res.names))
-        res = res.align_to(*self.edges)  # self.signature might use a different order
+        res = res.align_to(*self.edges)
         return res
 
     def depends_on(self, x: "Variable") -> bool:
@@ -1281,12 +1281,31 @@ class Product(Tensor):
         # e.g.  einsum('i,i', b, b)  =  einsum(b, [0], b, [0])
         # and   einsum('ij,jk->ik', b, c)  =  einsum(b, [0, 1], c, [1, 2], [0, 2])
         edge_numbers = {e: i for i, e in enumerate({e for t in self.tensors for e in t.edges})}
-        # TODO: We can make this more efficient by removing Copy tensors.
+
+        # TODO: Merging copies is currently broken, because einsum doesn't allow us
+        # to use the same index twice in the output.
+        merge_copies = False
+        # We can't remove copies, if that's all we have
+        if all(isinstance(t, Copy) for t in self.tensors):
+            merge_copies = False
+        # We can't merge when there are repeated edges in the output, due to einsum
+        # limmitations
+        if len(set(edge_numbers[e] for e in self.edges)) != len(self.edges):
+            merge_copies = False
+
+        # We can make this more efficient by removing Copy tensors.
+        if merge_copies:
+            for t in self.tensors:
+                if isinstance(t, Copy):
+                    i0 = len(edge_numbers)
+                    for i, e in enumerate(t.edges):
+                        edge_numbers[e] = i0
         parts = []
         for t in self.tensors:
-            torch_tensor = t.evaluate(values, dims)
-            parts.append(torch_tensor.rename(None))
-            parts.append([edge_numbers[e] for e in torch_tensor.names])
+            if not merge_copies or not isinstance(t, Copy):
+                torch_tensor = t.evaluate(values, dims)
+                parts.append(torch_tensor.rename(None))
+                parts.append([edge_numbers[e] for e in torch_tensor.names])
         parts.append([edge_numbers[e] for e in self.edges])
         out = torch.einsum(*parts).rename(*self.edges)
         assert out.names == tuple(self.edges)

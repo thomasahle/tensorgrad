@@ -165,3 +165,8 @@ cython_debug/
 .vscode/settings.json
 iso.py
 .aider*
+
+#
+.DS_Store
+combined_image.png
+data/

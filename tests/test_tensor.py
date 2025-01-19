@@ -169,7 +169,7 @@ def test_gradient_variable_self():
 
     # Complex operation gradient should correctly handle the combination of operations
     z = (x_var + y_var) @ x_var - y_var
-    assert set(z.grad(x_var).edges) == {"x_", "y"}
+    assert set(z.grad(x_var).edges) == {"x", "y"}
 
 
 def test_square_ip():
@@ -187,7 +187,7 @@ def test_square_xAAx():
     Ax = A @ x_var
     xAAx = Ax @ Ax
     assert xAAx.edges == set()
-    assert xAAx.grad(x_var).edges == {"x_"}
+    assert xAAx.grad(x_var).edges == {"x"}
 
 
 def test_hessian():
@@ -197,7 +197,7 @@ def test_hessian():
     A = Variable("A", x, y)
     F = frobenius2(A @ x_var - y_var)
     hess = F.grad(x_var).grad(x_var)
-    assert set(hess.edges) == {"x_", "x__"}
+    assert set(hess.edges) == {"x", "x_"}
 
 
 def test_square_grad():
@@ -214,7 +214,7 @@ def test_quadratic_grad():
     A = Variable("A", j, i)
     y = frobenius2(A @ x)
     assert y.edges == set()
-    assert y.grad(x).edges == {"i_"}
+    assert y.grad(x).edges == {"i"}
 
 
 def test_equality():
@@ -248,7 +248,7 @@ def test_two_func_grad():
     x_var = Variable("x", x)
     v = function("v", {"y": y}, (x_var, "x"))
     f = function("f", {}, (v, "y"))
-    assert f.grad(x_var).edges == {"x_"}
+    assert f.grad(x_var).edges == {"x"}
 
 
 def test_matrix_grad():
@@ -288,8 +288,8 @@ def test_broadcasting2():
     y_var = Variable("y", y)
     z = frobenius2(x_var + y_var)
     assert z.edges == set()
-    assert z.grad(x_var).edges == {"x_"}
-    assert z.grad(x_var).simplify().edges == {"x_"}
+    assert z.grad(x_var).edges == {"x"}
+    assert z.grad(x_var).simplify().edges == {"x"}
     actual = z.grad(x_var)
     expected = 2 * ((x_var.rename(x="x_") + y_var) @ Copy(y, "y"))
     assert actual.simplify() == expected.simplify()
@@ -308,7 +308,7 @@ def test_pseudo_linear_gradient():
     x = Variable("x", i)
     A = function("A", {"i": i, "j": j}, (x, "i"))
     expr = (A @ x).grad(x).simplify()
-    assert expr.edges == {"j", "i_"}
+    assert expr.edges == {"j", "i"}
     D_0A = function("D_0A", {"i": i, "j": j, "i__": i}, (x, "i")).rename(i__="i_")
     expected = (D_0A @ x + A.rename(i="i_")).simplify()
     assert expr == expected
