@@ -5,6 +5,7 @@ from tensorgrad.extras import Expectation
 import random
 import re
 from dataclasses import dataclass
+from functools import singledispatch
 
 # Requirements:
 # !sudo apt-get install texlive-luatex
@@ -62,6 +63,60 @@ prefix = """\
 """
 
 
+def to_tikz(tensor):
+    """
+    Main entry point: produce the LaTeX (TikZ) code for 'tensor'.
+    """
+    tikz_code = [prefix + f"\\graph [{layout(depth=0)}] {{"]
+    graph = TikzGraph()
+    free_edges = _to_tikz(tensor, graph, depth=1)
+    # print("final free edges", free_edges)
+    if not isinstance(tensor, Sum):
+        # Sum handles free edges itself
+        handle_free_edges(free_edges, graph)
+
+    tikz_code.append(graph.to_tikz())
+    tikz_code.append("};")
+    tikz_code.append("\\end{document}")
+    return "\n".join(tikz_code)
+
+
+def handle_free_edges(free_edges, graph):
+    for e, node_id in free_edges.items():
+        if isinstance(node_id, dict):
+            new_node_id = node_id["node_id"] + "_" + e
+        else:
+            new_node_id = node_id + "_" + e
+        graph.add_node(new_node_id, "invisible")
+        graph.add_edge(node_id, new_node_id, label=e)
+
+
+tree_layout = """\
+    tree layout,
+    components go down left aligned,
+    fresh nodes,
+    sibling sep=1em,
+    node sep=1em,
+    nodes behind edges,
+"""
+
+spring_layout = """\
+    spring layout,
+    %spring electrical layout,
+    %spring electrical layout',
+    %spring electrical Walshaw 2000 layout,
+    fresh nodes,
+    %sibling sep=3em,
+    nodes behind edges,
+"""
+
+
+def layout(depth):
+    if depth % 2 == 0:
+        return tree_layout
+    return tree_layout.replace("down left aligned", "right top aligned")
+
+
 def format_label(label):
     pairs = []
     while m := re.search(r"(\d+)(_*)$", label):
@@ -85,6 +140,16 @@ def format_label(label):
     return label, style
 
 
+def format_weight(w, i):
+    if w == 1:
+        return "+" if i > 0 else ""
+    if w == -1:
+        return "-"
+    if w > 0:
+        return f"+{w}" if i > 0 else f"{w}"
+    return str(w)
+
+
 @dataclass
 class Node:
     label: str
@@ -101,20 +166,18 @@ class Edge:
     style: str
 
 
-# Global name dict, to avoid bad characters in Tikz names
-name_dict: dict[str, str] = defaultdict(lambda: str(len(name_dict)))
-
-
 class TikzGraph:
     def __init__(self):
         self.lines = []
         self.node_ids = set()
+        # to avoid bad characters in Tikz names
+        self.name_dict: dict[str, str] = defaultdict(lambda: str(len(self.name_dict)))
 
     def add_node(self, node_id, node_type, label=None, extra=None, degree=None):
         # print(f"adding node {node_id} of type {node_type} with label {label}")
         if isinstance(node_id, dict):
             node_id = node_id["node_id"]
-        node_id = name_dict[node_id]
+        node_id = self.name_dict[node_id]
         assert node_id not in self.node_ids, f"Node {node_id} already exists."
         self.node_ids.add(node_id)
         if label is not None:
@@ -167,8 +230,8 @@ class TikzGraph:
             style = id2.get("style", "")
             end_text = id2.get("text", "")
             id2 = id2["node_id"]
-        id1 = name_dict[id1]
-        id2 = name_dict[id2]
+        id1 = self.name_dict[id1]
+        id2 = self.name_dict[id2]
         if isinstance(label, str):
             label, _style = format_label(label)
         assert id1 in self.node_ids, f"Node {id1} does not exist in {self.node_ids}"
@@ -211,7 +274,7 @@ class TikzGraph:
         """
         style or layout might be empty. Ensure we don't produce 'None'.
         """
-        cluster_id = name_dict[cluster_id]
+        cluster_id = self.name_dict[cluster_id]
         style = style or ""  # never let it be None
         layout = layout or ""
         self.lines.append(f"{cluster_id}[{style}] // [{layout}] {{")
@@ -224,199 +287,159 @@ class TikzGraph:
         return "\n".join(self.lines)
 
 
-tree_layout = """\
-    tree layout,
-    components go down left aligned,
-    fresh nodes,
-    sibling sep=1em,
-    node sep=1em,
-    nodes behind edges,
-"""
-
-spring_layout = """\
-    spring layout,
-    %spring electrical layout,
-    %spring electrical layout',
-    %spring electrical Walshaw 2000 layout,
-    fresh nodes,
-    %sibling sep=3em,
-    nodes behind edges,
-"""
+################################################################################
+# Conversion functions
+################################################################################
 
 
-def layout(depth):
-    if depth % 2 == 0:
-        return tree_layout
-    return tree_layout.replace("down left aligned", "right top aligned")
-
-
-def to_tikz(tensor):
-    """
-    Main entry point: produce the LaTeX (TikZ) code for 'tensor'.
-    """
-    tikz_code = [prefix + f"\\graph [{layout(depth=0)}] {{"]
-    graph = TikzGraph()
-    free_edges = _to_tikz(tensor, graph, depth=1)
-    # print("final free edges", free_edges)
-    if not isinstance(tensor, Sum):
-        # Sum handles free edges itself
-        handle_free_edges(free_edges, graph)
-
-    tikz_code.append(graph.to_tikz())
-    tikz_code.append("};")
-    tikz_code.append("\\end{document}")
-    return "\n".join(tikz_code)
-
-
-def count_components(con: Product):
-    # Counts the individual components of a contraction,
-    # that is, subgraphs that are not connected by an edge
-    return len(con.components())
-
-
-def handle_free_edges(free_edges, graph):
-    # print("handling free edges", free_edges)
-    for e, node_id in free_edges.items():
-        if isinstance(node_id, dict):
-            new_node_id = node_id["node_id"] + "_" + e
-        else:
-            new_node_id = node_id + "_" + e
-        graph.add_node(new_node_id, "invisible")
-        graph.add_edge(node_id, new_node_id, label=e)
-
-
+@singledispatch
 def _to_tikz(tensor, graph, depth=0):
-    # We don't want the node_id to be tied to id(tensor), since, we often want
-    # multiple tikz nodes for the same variable
-    node_id = str(random.randrange(2**64))
-
-    if isinstance(tensor, Copy):
-        graph.add_node(node_id, "identity", label=str(tensor._size))
-        return {e: node_id for e in tensor.edges}
-
-    if isinstance(tensor, Variable):
-        graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
-        return {e: {"node_id": node_id, "text": e} for e in tensor.edges}
-
-    if isinstance(tensor, Rename):
-        edges = _to_tikz(tensor.tensor, graph, depth + 1)
-        return {tensor.mapping.get(e, e): d for e, d in edges.items()}
-
-    if isinstance(tensor, Zero):
-        graph.add_node(node_id := str(id(tensor)), "zero", degree=len(tensor.edges))
-        return {e: node_id for e in tensor.edges}
-
-    if isinstance(tensor, Convolution):
-        graph.add_node(node_id := str(id(tensor)), "conv", degree=len(tensor.edges))
-        return {e: node_id for e in tensor.edges}
-
-    if isinstance(tensor, Reshape):
-        graph.add_node(node_id := str(id(tensor)), "reshape", degree=len(tensor.edges))
-        return {e: node_id for e in tensor.edges}
-
-    if isinstance(tensor, Function):
-        cluster_id = f"cluster+{node_id}"
-        subgraph = TikzGraph()
-
-        subgraph.add_node(node_id, "function", label=tensor.signature.name, degree=len(tensor.edges_out))
-
-        free_edges = {}
-        for t, es in zip(tensor.inputs, tensor.signature.inputs):
-            edges = _to_tikz(t, subgraph, depth + 1)
-            for e in es:
-                sub_id = edges.pop(e)
-                subgraph.add_edge(sub_id, node_id, label=e, directed=True)
-            # Add remaining edges to free edges.
-            # Note: The Function should have made sure there is no edge overlap here
-            assert not (edges.keys() & free_edges.keys())
-            free_edges |= edges
-
-        graph.add_subgraph(subgraph, "function+subgraph", layout(depth), cluster_id)
-
-        # We propagate the free edges to the parent to handle
-        return {e: node_id for e in tensor.edges_out} | free_edges
-
-    if isinstance(tensor, Derivative):
-        cluster_id = f"cluster+{node_id}"
-        subgraph = TikzGraph()
-        edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
-        # Add new free edges with Circle- arrow-start, similar to Penrose
-        for e in tensor.new_names.values():
-            edges[e] = {"node_id": cluster_id, "style": "Circle-"}
-        graph.add_subgraph(subgraph, "derivative+subgraph", layout(depth), cluster_id)
-        return edges
-
-    if isinstance(tensor, Expectation):
-        cluster_id = f"cluster+{node_id}"
-        subgraph = TikzGraph()
-        edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
-        graph.add_subgraph(subgraph, "expectation+subgraph", layout(depth), cluster_id)
-        return edges
-
-    if isinstance(tensor, Product):
-        if len(tensor.tensors) == 0:
-            graph.add_node(node_id, "identity")
-            return {}
-
-        sub_ids = defaultdict(list)  # edge -> [sub_id1, sub_id2]
-        for t in tensor.tensors:
-            for e, sub_id in _to_tikz(t, graph, depth + 1).items():
-                sub_ids[e].append(sub_id)
-
-        # Handle contractions (edges with multiple sub_ids)
-        cnt = Counter()
-        for e, ts in sub_ids.items():
-            assert len(ts) <= 2, f"Too many ({len(ts)}) tensors with edge {e}"
-            if len(ts) == 2:
-                key = tuple(sorted(eid["node_id"] if isinstance(eid, dict) else eid for eid in ts))
-                cnt[key] += 1
-                sub_id1, sub_id2 = ts
-                graph.add_edge(sub_id1, sub_id2, label=e, multiplicity=cnt[key])
-
-        free = {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
-        return free
-
-    if isinstance(tensor, Sum):
-        cluster_id = f"cluster+{node_id}"
-        subgraph = TikzGraph()
-        free_edges = {}
-        for i, (w, t) in enumerate(zip(tensor.weights, tensor.tensors)):
-            subsubgraph = TikzGraph()
-            sub_id = f"{cluster_id}+{i}"
-            subgraph_edges = _to_tikz(t, subsubgraph, depth + 1)
-            handle_free_edges(subgraph_edges, subsubgraph)
-            free_edges |= subgraph_edges
-            if isinstance(t, Product) and count_components(t) > 1:
-                style = ""
-            else:
-                style = "draw=none"
-            style = "draw=none"
-            if prefix := format_weight(w, i):
-                label_subgraph = TikzGraph()
-                label_subgraph_id = f"{sub_id}+labelsubgraph"
-                label_subgraph.add_node(f"{label_subgraph_id}+label", "label", extra=prefix)
-                label_subgraph.add_subgraph(subsubgraph, f"inner sep=0, {style}", layout(depth + 1), sub_id)
-                subgraph.add_subgraph(
-                    label_subgraph,
-                    "inner sep=0, draw=none",
-                    "tree layout",
-                    label_subgraph_id,
-                )
-            else:
-                subgraph.add_subgraph(subsubgraph, style, layout(depth + 1), sub_id)
-
-        style = "draw=none" if depth == 1 else ""
-        graph.add_subgraph(subgraph, f"inner sep=1em, {style}", layout(depth), cluster_id)
-        return {e: cluster_id for e in free_edges.keys()}
-
+    """Base implementation for converting tensor to TikZ."""
     raise RuntimeError(f"Unknown tensor type: {type(tensor)}")
 
 
-def format_weight(w, i):
-    if w == 1:
-        return "+" if i > 0 else ""
-    if w == -1:
-        return "-"
-    if w > 0:
-        return f"+{w}" if i > 0 else f"{w}"
-    return str(w)
+@_to_tikz.register
+def _(tensor: Copy, graph, depth=0):
+    node_id = str(random.randrange(2**64))
+    graph.add_node(node_id, "identity", label=str(tensor._size))
+    return {e: node_id for e in tensor.edges}
+
+
+@_to_tikz.register
+def _(tensor: Variable, graph, depth=0):
+    node_id = str(random.randrange(2**64))
+    graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
+    return {e: {"node_id": node_id, "text": e} for e in tensor.edges}
+
+
+@_to_tikz.register
+def _(tensor: Rename, graph, depth=0):
+    edges = _to_tikz(tensor.tensor, graph, depth + 1)
+    return {tensor.mapping.get(e, e): d for e, d in edges.items()}
+
+
+@_to_tikz.register
+def _(tensor: Zero, graph, depth=0):
+    node_id = str(id(tensor))
+    graph.add_node(node_id, "zero", degree=len(tensor.edges))
+    return {e: node_id for e in tensor.edges}
+
+
+@_to_tikz.register
+def _(tensor: Convolution, graph, depth=0):
+    node_id = str(id(tensor))
+    graph.add_node(node_id, "conv", degree=len(tensor.edges))
+    return {e: node_id for e in tensor.edges}
+
+
+@_to_tikz.register
+def _(tensor: Reshape, graph, depth=0):
+    node_id = str(id(tensor))
+    graph.add_node(node_id, "reshape", degree=len(tensor.edges))
+    return {e: node_id for e in tensor.edges}
+
+
+@_to_tikz.register
+def _(tensor: Function, graph, depth=0):
+    node_id = str(random.randrange(2**64))
+    cluster_id = f"cluster+{node_id}"
+    subgraph = TikzGraph()
+
+    subgraph.add_node(node_id, "function", label=tensor.signature.name, degree=len(tensor.edges_out))
+
+    free_edges = {}
+    for t, es in zip(tensor.inputs, tensor.signature.inputs):
+        edges = _to_tikz(t, subgraph, depth + 1)
+        for e in es:
+            sub_id = edges.pop(e)
+            subgraph.add_edge(sub_id, node_id, label=e, directed=True)
+        # Add remaining edges to free edges
+        assert not (edges.keys() & free_edges.keys())
+        free_edges |= edges
+
+    graph.add_subgraph(subgraph, "function+subgraph", layout(depth), cluster_id)
+    return {e: node_id for e in tensor.edges_out} | free_edges
+
+
+@_to_tikz.register
+def _(tensor: Derivative, graph, depth=0):
+    node_id = str(random.randrange(2**64))
+    cluster_id = f"cluster+{node_id}"
+    subgraph = TikzGraph()
+    edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
+    # Add new free edges with Circle- arrow-start
+    for e in tensor.new_names.values():
+        edges[e] = {"node_id": cluster_id, "style": "Circle-"}
+    graph.add_subgraph(subgraph, "derivative+subgraph", layout(depth), cluster_id)
+    return edges
+
+
+@_to_tikz.register
+def _(tensor: Expectation, graph, depth=0):
+    node_id = str(random.randrange(2**64))
+    cluster_id = f"cluster+{node_id}"
+    subgraph = TikzGraph()
+    edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
+    graph.add_subgraph(subgraph, "expectation+subgraph", layout(depth), cluster_id)
+    return edges
+
+
+@_to_tikz.register
+def _(tensor: Product, graph, depth=0):
+    if len(tensor.tensors) == 0:
+        node_id = str(random.randrange(2**64))
+        graph.add_node(node_id, "identity")
+        return {}
+
+    sub_ids = defaultdict(list)  # edge -> [sub_id1, sub_id2]
+    for t in tensor.tensors:
+        for e, sub_id in _to_tikz(t, graph, depth + 1).items():
+            sub_ids[e].append(sub_id)
+
+    # Handle contractions (edges with multiple sub_ids)
+    cnt = Counter()
+    for e, ts in sub_ids.items():
+        assert len(ts) <= 2, f"Too many ({len(ts)}) tensors with edge {e}"
+        if len(ts) == 2:
+            key = tuple(sorted(eid["node_id"] if isinstance(eid, dict) else eid for eid in ts))
+            cnt[key] += 1
+            sub_id1, sub_id2 = ts
+            graph.add_edge(sub_id1, sub_id2, label=e, multiplicity=cnt[key])
+
+    free = {e: ids[0] for e, ids in sub_ids.items() if len(ids) == 1}
+    return free
+
+
+@_to_tikz.register
+def _(tensor: Sum, graph, depth=0):
+    node_id = str(random.randrange(2**64))
+    cluster_id = f"cluster+{node_id}"
+    subgraph = TikzGraph()
+    free_edges = {}
+
+    for i, (w, t) in enumerate(zip(tensor.weights, tensor.tensors)):
+        subsubgraph = TikzGraph()
+        sub_id = f"{cluster_id}+{i}"
+        subgraph_edges = _to_tikz(t, subsubgraph, depth + 1)
+        handle_free_edges(subgraph_edges, subsubgraph)
+        free_edges |= subgraph_edges
+
+        style = "draw=none" if not isinstance(t, Product) or len(t.components()) <= 1 else ""
+
+        if prefix := format_weight(w, i):
+            label_subgraph = TikzGraph()
+            label_subgraph_id = f"{sub_id}+labelsubgraph"
+            label_subgraph.add_node(f"{label_subgraph_id}+label", "label", extra=prefix)
+            label_subgraph.add_subgraph(subsubgraph, f"inner sep=0, {style}", layout(depth + 1), sub_id)
+            subgraph.add_subgraph(
+                label_subgraph,
+                "inner sep=0, draw=none",
+                "tree layout",
+                label_subgraph_id,
+            )
+        else:
+            subgraph.add_subgraph(subsubgraph, style, layout(depth + 1), sub_id)
+
+    style = "draw=none" if depth == 1 else ""
+    graph.add_subgraph(subgraph, f"inner sep=1em, {style}", layout(depth), cluster_id)
+    return {e: cluster_id for e in free_edges.keys()}
