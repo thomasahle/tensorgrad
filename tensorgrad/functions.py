@@ -16,7 +16,7 @@ from tensorgrad.tensor import (
     Sum,
     Tensor,
     Product,
-    Copy,
+    Delta,
     Variable,
     Zero,
     _make_distinct,
@@ -115,7 +115,7 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
     - Tensors are represented by their names (e.g., 'A', 'B', 'X').
     - Edge connections are represented by hyphens: '-'. For example, 'A -i- B' connects edge 'i' of A to edge 'i' of B.
     - You can connect edges with different names. For example, 'A -i-j- B' connects edge 'i' of A to edge 'j' of B.
-    - Copy tensors are created automatically when a name starting with '*', like '*3' is used.
+    - Delta tensors are created automatically when a name starting with '*', like '*3' is used.
     - Lines can be separated by newlines or semicolons.
     - Edges not mentioned in the graph are broadcasted.
 
@@ -267,7 +267,7 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
             raise ValueError(f"Hyperedge {he} has no size")
         if len(edges) != len(set(edges)):
             raise ValueError("Hyperedges must be disjoint")
-        copies.append(Copy(size, *edges))
+        copies.append(Delta(size, *edges))
 
     return Product(copies + list(vars.values()))
 
@@ -291,14 +291,14 @@ def diag(t: Tensor, new_edges: list[str]) -> Tensor:
     (t,), _renames = _make_distinct(t, used_names=new_edges)
 
     if not t.shape:
-        # We can't just return t @ Copy(new_edges), since we don't know the size of the new edges.
+        # We can't just return t @ Delta(new_edges), since we don't know the size of the new edges.
         raise ValueError("Cannot take the diagonal of a scalar.")
 
     edges, sizes = zip(*t.shape.items())
     if len(set(sizes)) != 1:
         raise ValueError("All dimensions must be the same size for the diagonal.")
 
-    return t @ Copy(sizes[0], *edges, *new_edges)
+    return t @ Delta(sizes[0], *edges, *new_edges)
 
 
 def trace(tensor: Tensor) -> Tensor:
@@ -325,7 +325,7 @@ def parse_dim(tensor_edges: set[str], dim: DimType = None, none_is: str = "error
 def sum(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     """Sum the tensor over the given dimensions."""
     dim = parse_dim(tensor.edges, dim, none_is="all")
-    out = Product([tensor] + [Copy(tensor.shape[e], e) for e in dim])
+    out = Product([tensor] + [Delta(tensor.shape[e], e) for e in dim])
     # Optionally broadcast back to orignal shape
     if keepdims:
         return out @ Ones(**{e: tensor.shape[e] for e in dim})
@@ -337,7 +337,7 @@ def mean(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     s = sum(tensor, dim, keepdims)
     normalization = 1
     for e in dim:
-        normalization @= Copy(tensor.shape[e])
+        normalization @= Delta(tensor.shape[e])
     return s / normalization
 
 
@@ -411,8 +411,8 @@ class _PowerFunction(FunctionSignature):
         # Base cases
         if (
             # Pow of 1 is just 1.
-            isinstance(inner, Copy)
-            # Copy of order 0 can have values other than 1
+            isinstance(inner, Delta)
+            # Delta of order 0 can have values other than 1
             and inner.order > 0
             # Pow of 0 is just 0
             or isinstance(inner, Zero)
@@ -475,7 +475,7 @@ class _PowerFunction(FunctionSignature):
             hyperedges = {
                 e: min(c.edges)
                 for c in tensors
-                if isinstance(c, Copy) and c.edges & inner.edges
+                if isinstance(c, Delta) and c.edges & inner.edges
                 for e in c.edges
             }
             partition = defaultdict(list)
@@ -485,11 +485,11 @@ class _PowerFunction(FunctionSignature):
             # the isomorphism check correctly.
             partition[_MatchEdgesKey(inner, **hyperedges)].append((power, inner))
 
-            # We remove the tensor, as well as all Copys that it's connected to,
+            # We remove the tensor, as well as all Delta that it's connected to,
             # which makes the rest of the graph fall apart.
             others = tensors[:i] + tensors[i + 1 :]
-            copys = [t for t in others if isinstance(t, Copy) and t.edges & inner.edges]
-            others = [t for t in others if not (isinstance(t, Copy) and t.edges & inner.edges)]
+            copys = [t for t in others if isinstance(t, Delta) and t.edges & inner.edges]
+            others = [t for t in others if not (isinstance(t, Delta) and t.edges & inner.edges)]
             for comp in Product(others).components():
                 power = 1
                 if len(comp.tensors) == 1:

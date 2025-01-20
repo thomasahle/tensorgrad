@@ -194,11 +194,11 @@ class Tensor(ABC):
             if other == 1:
                 return self
             return Sum([self], [other])
-        # Element-wise (Hadamard) product is easy to implement using Copy tensors
+        # Element-wise (Hadamard) product is easy to implement using Delta tensors
         # These are the edges we multiply over
         shared_edges = self.edges & other.edges
         (t0, t1), (rename0, rename1) = _make_distinct(self, other, used_names=shared_edges)
-        return Product([t0, t1] + [Copy(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
+        return Product([t0, t1] + [Delta(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
 
     def __rtruediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         # Handle other / self
@@ -447,7 +447,7 @@ class Variable(Tensor):
         if x == self:
             # TODO: If X has symmetries, the derivative can actually be more complex than this.
             # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
-            return Product(Copy(s, e, new_names[e]) for e, s in self.shape.items())
+            return Product(Delta(s, e, new_names[e]) for e, s in self.shape.items())
         # Note: We don't need to tell Zero the symmetries, since it's automatically
         # symmetric in all dimensions that have compatible sizes.
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
@@ -648,13 +648,13 @@ class Constant(Tensor, ABC):
         return False
 
 
-class Copy(Constant):
-    """The "Copy" tensor is defined by C_{i,j,k} = 1 if i == j == k, else 0
+class Delta(Constant):
+    """The "Delta" tensor is defined by C_{i,j,k} = 1 if i == j == k, else 0
     Or alternatively as Δₙ = ∑ₓ (eₓ)⊗ⁿ, where are e_i are basis vectors
     For order 2, this is the identity matrix.
         Note: For higher order, the identity tensor is the product of n identity matrices,
-        (order 2 Copy's), not the order-n Copy tensor.
-    For order 0, the Copy tensor is defined as |n|, where n is the size/dimension of the tensor.
+        (order 2 Delta's), not the order-n Delta tensor.
+    For order 0, the Delta tensor is defined as |n|, where n is the size/dimension of the tensor.
     """
 
     def __init__(self, size: Symbol, *edges: str):
@@ -669,8 +669,8 @@ class Copy(Constant):
 
     def __repr__(self) -> str:
         if not self.edges:
-            return f"Copy({self.size})"
-        return f"Copy({self.size}, \"{', '.join(self.edges)}\")"
+            return f"Delta({self.size})"
+        return f"Delta({self.size}, \"{', '.join(self.edges)}\")"
 
     def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         size = dims[self.size]
@@ -682,7 +682,7 @@ class Copy(Constant):
         return copy.rename(*self.edges)
 
     def rename(self, **kwargs: str) -> Tensor:
-        return Copy(self.size, *[kwargs.get(e, e) for e in self.edges])
+        return Delta(self.size, *[kwargs.get(e, e) for e in self.edges])
 
     @classmethod
     def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
@@ -701,7 +701,7 @@ class Copy(Constant):
         return G, {e: size_node for e in self.edges}
 
     ################################################################################
-    # There are many simplify rules for Copy. We split them into separate methods for clarity.
+    # There are many simplify rules for Delta. We split them into separate methods for clarity.
 
     @classmethod
     def _simplify_step(cls, tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
@@ -724,42 +724,42 @@ class Copy(Constant):
 
     @staticmethod
     def _merge_copy_tensors(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
-        if not (isinstance(t1, Copy) and isinstance(t2, Copy)):
+        if not (isinstance(t1, Delta) and isinstance(t2, Delta)):
             return None
 
         # We can't merge order 0 copy tensors, since we now give them a value equal to their size.
-        # In principle we could create a new Copy(size1 * size2, []) tensor, but then we start having
+        # In principle we could create a new Delta(size1 * size2, []) tensor, but then we start having
         # arbitrary expressions as sizes, which I'm not sure we want yet.
         # Also, merging an order 0 with and order > 0 was never going to work, unless the size of the
-        # order 0 Copy was 1, which it probably never is.
+        # order 0 Delta was 1, which it probably never is.
         # In either case, this method should only be called if the tensors share an edge, which they
         # can't if one of them has order 0.
-        assert t1.order != 0 and t2.order != 0, "Can't merge order 0 Copy tensors"
+        assert t1.order != 0 and t2.order != 0, "Can't merge order 0 Delta tensors"
 
         # Since the tensors are connected, we can assume they have the same size
-        assert t1.size == t2.size, "Contracted Copy tensors must have same size"
+        assert t1.size == t2.size, "Contracted Delta tensors must have same size"
         size = t1.size
 
         # We don't just remove e, but remove all shared edges
         # The amazing thing is that even in the case where all edges disappear, we
-        # still get to keep information on the "size" of the Copy tensor.
-        return [Copy(size, *(t1.edges ^ t2.edges))]
+        # still get to keep information on the "size" of the Delta tensor.
+        return [Delta(size, *(t1.edges ^ t2.edges))]
 
     @staticmethod
     def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
-        # If both are Copy's, we use the previous method
-        if isinstance(t1, Copy) and isinstance(t2, Copy):
+        # If both are Delta's, we use the previous method
+        if isinstance(t1, Delta) and isinstance(t2, Delta):
             return None
 
         # Make t1 the identity matrix
-        if isinstance(t2, Copy) and t2.order == 2:
+        if isinstance(t2, Delta) and t2.order == 2:
             t1, t2 = t2, t1
 
-        if isinstance(t1, Copy) and t1.order == 2:
+        if isinstance(t1, Delta) and t1.order == 2:
             # Find the edge of t1 that's not e
             other_edge = next(iter(set(t1.edges) - {e}))
             # Don't create self loops. We never connect a tensor to itself.
-            # Unless it's another Copy, in which case we already handled it above.
+            # Unless it's another Delta, in which case we already handled it above.
             if other_edge not in t2.edges:
                 return [t2.rename(**{e: other_edge})]
         return None
@@ -774,9 +774,9 @@ class Zero(Constant):
 
 def Ones(*shape0: Symbol, **shape1: Symbol) -> Tensor:
     """Matrix such that O_{i,j,k} = 1 for all i, j, k"""
-    # Implemented in practice by a simple outer product of Copy's
+    # Implemented in practice by a simple outer product of Delta's
     shape = Tensor._check_shape(shape0, shape1)
-    return Product([Copy(s, e) for e, s in shape.items()])
+    return Product([Delta(s, e) for e, s in shape.items()])
 
 
 ################################################################################
@@ -1019,7 +1019,7 @@ class Function(Tensor):
                 new_prod = []
                 for u in t.tensors:
                     if (
-                        isinstance(u, Copy)
+                        isinstance(u, Delta)
                         and u.order == 1
                         and list(u.edges)[0] in t.edges
                         and list(u.edges)[0] not in es
@@ -1314,23 +1314,23 @@ class Product(Tensor):
         # to use the same index twice in the output.
         merge_copies = False
         # We can't remove copies, if that's all we have
-        if all(isinstance(t, Copy) for t in self.tensors):
+        if all(isinstance(t, Delta) for t in self.tensors):
             merge_copies = False
         # We can't merge when there are repeated edges in the output, due to einsum
         # limmitations
         if len(set(edge_numbers[e] for e in self.edges)) != len(self.edges):
             merge_copies = False
 
-        # We can make this more efficient by removing Copy tensors.
+        # We can make this more efficient by removing Delta tensors.
         if merge_copies:
             for t in self.tensors:
-                if isinstance(t, Copy):
+                if isinstance(t, Delta):
                     i0 = len(edge_numbers)
                     for i, e in enumerate(t.edges):
                         edge_numbers[e] = i0
         parts = []
         for t in self.tensors:
-            if not merge_copies or not isinstance(t, Copy):
+            if not merge_copies or not isinstance(t, Delta):
                 torch_tensor = t.evaluate(values, dims)
                 parts.append(torch_tensor.rename(None))
                 parts.append([edge_numbers[e] for e in torch_tensor.names])
@@ -1373,9 +1373,9 @@ class Product(Tensor):
             if cnt:
                 assert cnt.most_common()[0][1] <= 2, msg
 
-        # Simplify Copy Tensors
+        # Simplify Delta Tensors
         verify_edges(tensors)
-        tensors = Copy.simplify_outer(tensors)
+        tensors = Delta.simplify_outer(tensors)
         verify_edges(tensors)
 
         # Combine / Cancel Product Functions
@@ -1559,7 +1559,7 @@ class Sum(Tensor):
             edges[e] = i + 1
         for t, w in zip(self.tensors, self.weights):
             # The weights are a little akward. There a lot of options for how to handle them.
-            # E.g. the idea of just using a weighted Copy([]) somehow. But this works.
+            # E.g. the idea of just using a weighted Delta([]) somehow. But this works.
             G, t_edges = _add_structural_graph(G, t, root_edge_label=f"Weight {w}")
             # Connect tensor edges to the plus nodes
             for e, node in t_edges.items():
@@ -1638,7 +1638,7 @@ def _make_distinct(*tensors: list["Tensor"], used_names: Iterable[str] = None) -
     Optionally takes used_names, an extra set of names to avoid.
     suffix is an optional string to append to the new names.
     """
-    # Copy the set, so we don't modify the input
+    # Delta the set, so we don't modify the input
     used_names = set() if used_names is None else set(used_names)
     # No reason to rename the names that are unique
     cnt = Counter(e for t in tensors for e in t.edges)

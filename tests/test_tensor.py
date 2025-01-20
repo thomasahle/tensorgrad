@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 from tensorgrad.functions import frobenius2
-from tensorgrad.tensor import Variable, Function, Copy, Zero, Product, Sum, Ones, function
+from tensorgrad.tensor import Variable, Function, Delta, Zero, Product, Sum, Ones, function
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -40,7 +40,7 @@ def test_lstsq():
 
 def test_identity():
     i, j = symbols("i j")
-    e = Copy(i, "a", "b")
+    e = Delta(i, "a", "b")
     assert e.edges == {"a", "b"}
     x = Variable("x", j)
     assert e.grad(x, {"j": "j_"}) == Zero(a=i, b=i, j_=j)
@@ -59,7 +59,7 @@ def test_variable_grad():
     i, j, k = symbols("i j k")
     x = Variable("x", i, j)
     y = Variable("y", k)
-    expected = Product([Copy(i, "i, i_"), Copy(j, "j, j_")])
+    expected = Product([Delta(i, "i, i_"), Delta(j, "j, j_")])
     assert x.grad(x, {"i": "i_", "j": "j_"}).simplify() == expected
     assert x.grad(y, {"k": "k_"}).simplify() == Zero(i, j, k_=k)
 
@@ -70,8 +70,8 @@ def test_contraction():
     y = Variable("y", j, k)
     c = Product([x, y])
     assert c.edges == {"i", "k"}
-    assert c.grad(x, {"i": "i_", "j": "j_"}).simplify() == Copy(i, "i, i_") @ y.rename(j="j_")
-    assert c.grad(y, {"j": "j_", "k": "k_"}).simplify() == x.rename(j="j_") @ Copy(k, "k, k_")
+    assert c.grad(x, {"i": "i_", "j": "j_"}).simplify() == Delta(i, "i, i_") @ y.rename(j="j_")
+    assert c.grad(y, {"j": "j_", "k": "k_"}).simplify() == x.rename(j="j_") @ Delta(k, "k, k_")
 
 
 def test_linear_combination():
@@ -80,8 +80,8 @@ def test_linear_combination():
     y = Variable("y", i)
     lc = Sum([x, y], [2, -3])
     assert lc.edges == {"i"}
-    assert lc.grad(x, {"i": "i_"}).simplify() == Sum([Copy(i, "i, i_")], [2])
-    assert lc.grad(y, {"i": "i_"}).simplify() == Sum([Copy(i, "i, i_")], [-3])
+    assert lc.grad(x, {"i": "i_"}).simplify() == Sum([Delta(i, "i, i_")], [2])
+    assert lc.grad(y, {"i": "i_"}).simplify() == Sum([Delta(i, "i, i_")], [-3])
 
 
 def test_simplify():
@@ -108,10 +108,10 @@ def test_simplify():
     c2 = Product([x, zero])
     assert c2.simplify() == Zero()
 
-    c3 = x @ Copy(i, "i, j")
+    c3 = x @ Delta(i, "i, j")
     assert c3.simplify() == x.rename(i="j")
 
-    c4 = (x @ Copy(i, "i, j")) @ y
+    c4 = (x @ Delta(i, "i, j")) @ y
     assert c4.simplify() == Product([x.rename(i="j"), y])
 
 
@@ -159,7 +159,7 @@ def test_gradient_variable_self():
 
     # Gradient through an identity tensor should return Zero when the variable does not match
     x_var = Variable("x", x)
-    I = Copy(x, "x, x_")
+    I = Delta(x, "x, x_")
     result = I.grad(x_var)
     assert isinstance(result, Zero)
 
@@ -254,7 +254,7 @@ def test_two_func_grad():
 def test_matrix_grad():
     i, j = symbols("i j")
     X = Variable("X", i, j)
-    assert X.grad(X) == Copy(i, "i, i_") @ Copy(j, "j, j_")
+    assert X.grad(X) == Delta(i, "i, i_") @ Delta(j, "j, j_")
 
 
 def test_broadcasting():
@@ -271,7 +271,7 @@ def test_simplify_ones():
     x_var = Variable("x", x)
     broadcasted = Product([Product([x_var, Ones(y)]), Ones()])
     assert broadcasted.edges == {"x", "y"}
-    assert broadcasted.simplify() == Product([x_var, Copy(y, "y")])
+    assert broadcasted.simplify() == Product([x_var, Delta(y, "y")])
 
 
 def test_simplify_ones_deeper():
@@ -279,7 +279,7 @@ def test_simplify_ones_deeper():
     x_var = Variable("x", x)
     broadcasted = Product([Product([Product([x_var, Ones(y)]), Ones()]), Ones()])
     assert broadcasted.edges == {"x", "y"}
-    assert broadcasted.simplify() == Product([x_var, Copy(y, "y")])
+    assert broadcasted.simplify() == Product([x_var, Delta(y, "y")])
 
 
 def test_broadcasting2():
@@ -291,7 +291,7 @@ def test_broadcasting2():
     assert z.grad(x_var).edges == {"x"}
     assert z.grad(x_var).simplify().edges == {"x"}
     actual = z.grad(x_var)
-    expected = 2 * ((x_var.rename(x="x_") + y_var) @ Copy(y, "y"))
+    expected = 2 * ((x_var.rename(x="x_") + y_var) @ Delta(y, "y"))
     assert actual.simplify() == expected.simplify()
 
 
@@ -336,13 +336,13 @@ def test_hash():
 def test_equal():
     x, y = symbols("x y")
     v = Variable("x", x)
-    cp = Copy(y, "y")
+    cp = Delta(y, "y")
     assert (cp @ v).is_isomorphic(v @ cp)
 
     s = Sum(
         [
-            Product([Variable("x", x), Copy(y, "y")]),
-            Product([Variable("y", y), Copy(x, "x_")]),
+            Product([Variable("x", x), Delta(y, "y")]),
+            Product([Variable("y", y), Delta(x, "x_")]),
         ]
     )
     assert (cp @ s).is_isomorphic(s @ cp)

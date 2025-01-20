@@ -10,7 +10,7 @@ from tensorgrad.tensor import (
     Variable,
     _add_structural_graph,
     _unused_edge_names,
-    Copy,
+    Delta,
     Zero,
     Function,
 )
@@ -57,7 +57,7 @@ class Expectation(Tensor):
         if covar is None:
             if covar_names is None:
                 covar_names = _unused_edge_names(wrt.edges, wrt.edges)
-            covar = Product([Copy(wrt.shape[e], e, e2) for e, e2 in covar_names.items()])
+            covar = Product([Delta(wrt.shape[e], e, e2) for e, e2 in covar_names.items()])
         elif covar_names is None:
             raise ValueError("If covar is not given, covar_names must be given.")
         if covar.shape != wrt.shape | {covar_names[k]: s for k, s in wrt.shape.items()}:

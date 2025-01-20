@@ -1,24 +1,24 @@
 import pytest
 from sympy import symbols
-from tensorgrad.tensor import Copy, Product, Sum, Variable
+from tensorgrad.tensor import Delta, Product, Sum, Variable
 
 
 def test_copy_loop():
     i = symbols("i")
-    expr = Copy(i, "i, j") @ Copy(i, "i, j")
-    assert expr.simplify() == Copy(i)
+    expr = Delta(i, "i, j") @ Delta(i, "i, j")
+    assert expr.simplify() == Delta(i)
 
 
 def test_copy_double():
     p = symbols("p")
-    expr = Copy(p, "p0, p2, p0_") @ Copy(p, "p0, p0_")
-    assert expr.simplify() == Copy(p, "p2")
+    expr = Delta(p, "p0, p2, p0_") @ Delta(p, "p0, p0_")
+    assert expr.simplify() == Delta(p, "p2")
 
 
 def test_copy_trace():
     p = symbols("p")
-    expr = Copy(p, "p, p1") @ Copy(p, "p, p1")
-    expected = Copy(p, "p") @ Copy(p, "p")
+    expr = Delta(p, "p, p1") @ Delta(p, "p, p1")
+    expected = Delta(p, "p") @ Delta(p, "p")
     assert expr.simplify() == expected.simplify()
 
 
@@ -56,4 +56,4 @@ def test_expand():
     expr = X @ (a + b)
     expr = expr.simplify({"expand": True})
     assert isinstance(expr, Sum)
-    assert expr == Sum([Product([Copy(j, "j"), X, a]), Product([Copy(i, "i"), X, b])])
+    assert expr == Sum([Product([Delta(j, "j"), X, a]), Product([Delta(i, "i"), X, b])])

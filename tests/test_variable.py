@@ -1,7 +1,7 @@
 import pytest
 import networkx as nx
 from sympy import symbols
-from tensorgrad import Variable, Copy, Product, Zero
+from tensorgrad import Variable, Delta, Product, Zero
 
 
 def test_variable_initialization():
@@ -32,7 +32,7 @@ def test_variable_grad():
     grad_v = v.grad(v, {"i": "di", "j": "dj"})
     assert isinstance(grad_v, Product)
     assert len(grad_v.tensors) == 2
-    assert all(isinstance(t, Copy) for t in grad_v.tensors)
+    assert all(isinstance(t, Delta) for t in grad_v.tensors)
     assert grad_v.tensors[0].edges == {"i", "di"}
     assert grad_v.tensors[1].edges == {"j", "dj"}
 

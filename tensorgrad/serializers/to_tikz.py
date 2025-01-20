@@ -5,7 +5,7 @@ import random
 import re
 
 from tensorgrad.functions import Convolution, Reshape
-from tensorgrad.tensor import Derivative, Product, Rename, Zero, Copy, Variable, Sum, Function
+from tensorgrad.tensor import Derivative, Product, Rename, Zero, Delta, Variable, Sum, Function
 from tensorgrad.extras import Expectation
 
 
@@ -332,7 +332,7 @@ def _to_tikz(tensor, graph: TikzGraph, depth=0):
 
 
 @_to_tikz.register
-def _(tensor: Copy, graph: TikzGraph, depth=0):
+def _(tensor: Delta, graph: TikzGraph, depth=0):
     # Make one node
     node_ref = NodeRef(name=graph.namer.fresh_name("copy"))
     graph.add_node(node_ref, "identity", label=str(tensor._size))

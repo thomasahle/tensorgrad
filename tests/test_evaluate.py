@@ -3,7 +3,7 @@ import pytest
 from sympy import symbols
 import torch
 from tensorgrad.tensor import (
-    Copy,
+    Delta,
     Derivative,
     FunctionSignature,
     Function,
@@ -20,7 +20,7 @@ import torch.nn.functional as tF
 
 def test_copy():
     i = symbols("i")
-    copy_tensor = Copy(i, "i, j")
+    copy_tensor = Delta(i, "i, j")
     result = copy_tensor.evaluate({}, dims={i: 3})
     expected = torch.eye(3).rename("i", "j")
     assert_close(result, expected)
@@ -244,7 +244,7 @@ def test_rand0():
     y = Variable("y", a, b, c=b)
     expr = Sum(
         [
-            Product([Copy(a, "a"), Copy(b, "b, c")]),
+            Product([Delta(a, "a"), Delta(b, "b, c")]),
             Sum([x, y]),
         ],
     )

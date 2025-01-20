@@ -1,6 +1,6 @@
 from sympy import symbols
 from tensorgrad import Variable
-from tensorgrad.tensor import Copy, Product, Sum
+from tensorgrad.tensor import Delta, Product, Sum
 import tensorgrad.functions as F
 
 
@@ -113,7 +113,7 @@ def test_symmetry():
     assert expr.edges == {"i", "j"}
     assert expr.symmetries == {frozenset({"i", "j"})}
 
-    expr = x @ Copy(i, "i, j, k")
+    expr = x @ Delta(i, "i, j, k")
     assert expr.edges == {"j", "k"}
     assert expr.symmetries == {frozenset({"j", "k"})}
 
@@ -129,7 +129,7 @@ def test_example_from_softmax_hessian():
     #    |   ⅄   vs  |   ⅄
     #    i  j k      j  i k
     #
-    graph = A @ B @ Copy(i, "l, j, k")
+    graph = A @ B @ Delta(i, "l, j, k")
     graph2 = graph.rename(i="j", j="i")
     assert graph == graph2
 
@@ -163,7 +163,7 @@ def test_symmetries():
     #    A   B
     #    |   ⅄
     #    i  j k
-    graph = A @ B @ Copy(i, "l, j, k")
+    graph = A @ B @ Delta(i, "l, j, k")
     assert graph.symmetries == {frozenset("i"), frozenset("jk")}
 
     #    A   B      A   B
@@ -193,7 +193,7 @@ def test_symmetries_simplify_sum():
     #    i  j k
     A = Variable("A", i)
     B = Variable("B", l=i)
-    graph1 = A @ B @ Copy(i, "l, j, k")
+    graph1 = A @ B @ Delta(i, "l, j, k")
 
     #    A   B
     #    |   ⅄
@@ -319,11 +319,11 @@ def test_isomorphic_with_rename():
 
 def test_different_variables():
     i = symbols("i")
-    e1 = Product([Variable("a", i), Copy(i, "j, j1")])
-    e2 = Product([Variable("b", i), Copy(i, "j, j1")])
+    e1 = Product([Variable("a", i), Delta(i, "j, j1")])
+    e2 = Product([Variable("b", i), Delta(i, "j, j1")])
     assert e1 != e2
-    e1 = Product([Variable("a", i), Copy(i, "i, j, j1")])
-    e2 = Product([Variable("b", i), Copy(i, "i, j, j1")])
+    e1 = Product([Variable("a", i), Delta(i, "i, j, j1")])
+    e2 = Product([Variable("b", i), Delta(i, "i, j, j1")])
     assert e1 != e2
     a = Variable("a", i, j=i)
     b = Variable("b", i, j=i)
@@ -336,11 +336,11 @@ def test_broadcasted():
     x_, y_ = symbols("x_ y_")
     e1 = Product(
         [
-            Copy(y_),
+            Delta(y_),
             Sum(
                 [
-                    Product([Variable("x", x_), Copy(y_)]),
-                    Product([Variable("y", y_), Copy(x_)]),
+                    Product([Variable("x", x_), Delta(y_)]),
+                    Product([Variable("y", y_), Delta(x_)]),
                 ],
                 (1, 1),
             ),
@@ -350,12 +350,12 @@ def test_broadcasted():
         [
             Sum(
                 [
-                    Product([Variable("x", x_), Copy(y_)]),
-                    Product([Variable("y", y_), Copy(x_)]),
+                    Product([Variable("x", x_), Delta(y_)]),
+                    Product([Variable("y", y_), Delta(x_)]),
                 ],
                 (1, 1),
             ),
-            Copy(y_),
+            Delta(y_),
         ]
     )
     assert e1 == e2
@@ -366,7 +366,7 @@ def test_transpose_grad():
     x = Variable("X", i, j)
     xt = x.rename(j="i", i="j")
     res = xt.grad(x, {"i": "a", "j": "b"}).simplify()
-    expected = Copy(j, "j, a") @ Copy(i, "i, b")
+    expected = Delta(j, "j, a") @ Delta(i, "i, b")
     assert expected.symmetries == {frozenset({"a", "j"}), frozenset({"b", "i"})}
     assert not res.is_isomorphic(expected, match_edges=True)
     assert res.is_isomorphic(expected, match_edges=False)
@@ -416,19 +416,19 @@ def _test_links():
 def test_copy():
     # Copy tensors mostly combine, but order 0 copy tensors don't.
     p = symbols("p")
-    assert Copy(p, "p") != Copy(p)
-    twop = Copy(p, "p") @ Copy(p, "p")
-    onep = Copy(p) @ Copy(p)
+    assert Delta(p, "p") != Delta(p)
+    twop = Delta(p, "p") @ Delta(p, "p")
+    onep = Delta(p) @ Delta(p)
     assert twop != onep
     assert twop.simplify() != onep.simplify()
 
 
 def test_copy3():
     a, b, c = symbols("a b c")
-    prod = Product([Copy(a, "a"), Copy(b, "b"), Copy(c, "c")])
+    prod = Product([Delta(a, "a"), Delta(b, "b"), Delta(c, "c")])
     assert prod.symmetries == {frozenset({"a"}), frozenset({"b"}), frozenset({"c"})}
 
 
 def test_copy0():
     i, j = symbols("i j")
-    assert Copy(i) != Copy(j)
+    assert Delta(i) != Delta(j)

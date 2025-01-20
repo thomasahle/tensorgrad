@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 
-from tensorgrad.tensor import Copy, Variable
+from tensorgrad.tensor import Delta, Variable
 import tensorgrad.functions as F
 
 
@@ -101,7 +101,7 @@ def test_copy():
     i = symbols("i")
     X = Variable("X", i)
     Y = Variable("Y", i)
-    expected = (X * Y).rename(i="i0") @ Copy(i, "i0", "i", "j")
+    expected = (X * Y).rename(i="i0") @ Delta(i, "i0", "i", "j")
     assert (
         expected.simplify()
         == F.graph(

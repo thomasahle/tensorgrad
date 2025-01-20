@@ -1,39 +1,39 @@
 from sympy import symbols
 import tensorgrad.functions as F
-from tensorgrad import Copy
+from tensorgrad import Delta
 
 
 def test_combine_powers():
     i = symbols("i")
     out = F._PowerFunction._combine_powers(
         [
-            F.pow(Copy(i), k=2),
-            Copy(i),
+            F.pow(Delta(i), k=2),
+            Delta(i),
         ]
     )
-    assert F.pow(Copy(i), k=3) in out
+    assert F.pow(Delta(i), k=3) in out
 
     out = F._PowerFunction._combine_powers(
         [
-            F.pow(Copy(i), k=2),
-            F.pow(Copy(i), k=2),
+            F.pow(Delta(i), k=2),
+            F.pow(Delta(i), k=2),
         ]
     )
-    assert F.pow(Copy(i), k=4) in out
+    assert F.pow(Delta(i), k=4) in out
 
     out = F._PowerFunction._combine_powers(
         [
-            F.pow(Copy(i), k=5),
-            F.pow(Copy(i), k=-2),
+            F.pow(Delta(i), k=5),
+            F.pow(Delta(i), k=-2),
         ]
     )
-    assert F.pow(Copy(i), k=3) in out
+    assert F.pow(Delta(i), k=3) in out
 
     out = F._PowerFunction._combine_powers(
         [
-            F.pow(Copy(i), k=5),
-            F.pow(Copy(i), k=-2),
-            Copy(i),
+            F.pow(Delta(i), k=5),
+            F.pow(Delta(i), k=-2),
+            Delta(i),
         ]
     )
-    assert F.pow(Copy(i), k=4) in out
+    assert F.pow(Delta(i), k=4) in out

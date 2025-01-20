@@ -7,7 +7,7 @@ import torch
 
 from tensorgrad import Variable
 from tensorgrad.testutils import rand_values
-from tensorgrad.serializers.to_pytorch2 import compile_to_callable
+from tensorgrad.serializers.to_pytorch import compile_to_callable
 import tensorgrad.functions as F
 
 

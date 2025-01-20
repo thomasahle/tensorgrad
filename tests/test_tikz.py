@@ -4,7 +4,7 @@ import re
 
 from sympy import symbols
 
-from tensorgrad.tensor import Copy, Variable, Product, Sum, Derivative, function
+from tensorgrad.tensor import Delta, Variable, Product, Sum, Derivative, function
 from tensorgrad.functions import Convolution, Reshape
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
@@ -333,9 +333,9 @@ def test_derivative_name_overlap():
     x = Variable("x", N, C)
     expr = Product(
         [
-            Copy(N, "N"),
-            Copy(N, "N"),
-            Derivative(Copy(C, "C"), x, {"N": "N_", "C": "C_"}),
+            Delta(N, "N"),
+            Delta(N, "N"),
+            Derivative(Delta(C, "C"), x, {"N": "N_", "C": "C_"}),
         ]
     )
     assert "derivative+subgraph" in to_tikz(expr)

@@ -7,7 +7,7 @@ import torch.nn.functional as tF
 from sympy import symbols
 from tensorgrad import Variable
 import tensorgrad.functions as F
-from tensorgrad.tensor import Copy
+from tensorgrad.tensor import Delta
 from tensorgrad.testutils import rand_values, assert_close
 
 
@@ -312,7 +312,7 @@ def test_pow_cancel_1():
     T = Variable("T", i, j)
     ST = S @ T
     expr = ST * F.pow(ST, -1)
-    assert expr.full_simplify() == Copy(j, "j")
+    assert expr.full_simplify() == Delta(j, "j")
 
 
 def test_pow_cancel_1b():

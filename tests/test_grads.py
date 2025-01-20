@@ -2,7 +2,7 @@ import torch
 from sympy import symbols
 from tensorgrad import Variable
 import tensorgrad.functions as F
-from tensorgrad.tensor import Copy, Product, function
+from tensorgrad.tensor import Delta, Product, function
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -87,7 +87,7 @@ def test_f_0_2():
     expr = f.grad(x).simplify()
     assert expr.edges == {"b", "b_", "i"}
     x_renamed = x.rename(b="b__")
-    expected = function("D_0f", {"i_": i}, (x_renamed, "i")).rename(i_="i") @ Copy(b, "b, b_, b__")
+    expected = function("D_0f", {"i_": i}, (x_renamed, "i")).rename(i_="i") @ Delta(b, "b, b_, b__")
     assert expr == expected
 
 
@@ -151,7 +151,7 @@ def test_f_2_2_multi_input():
         {"a": a, "b": b, "i_": i},
         (x, "i"),
         (y, "k"),
-    ).rename(j="j_0", i_="i") @ Copy(j, "j, j_, j_0")
+    ).rename(j="j_0", i_="i") @ Delta(j, "j, j_, j_0")
     assert expr == expected
 
 

@@ -1,16 +1,15 @@
 from pdf2image import convert_from_path
 
-import os, subprocess
+import os
+import subprocess
 from PIL import Image, ImageDraw
 
 from tensorgrad.serializers.to_tikz import to_tikz
-from tensorgrad.serializers.to_d3 import to_d3
 
 from tensorgrad import Derivative
 from tensorgrad.extras import Expectation
 
 import networkx as nx
-import numpy as np
 
 
 def compile_latex(latex_code, suffix=""):
@@ -93,8 +92,7 @@ def save_as_image(expr, path):
 
 def save_steps_old(expr, min_steps=None):
     images = []
-    latex_code = to_tikz(expr)
-    images.append(compile_latex(expr, suffix=f"0"))
+    images.append(compile_latex(expr, suffix="0"))
     old = expr
     while True:
         new = expr.simplify({"grad_steps": len(images)})
@@ -110,7 +108,7 @@ def save_steps_old(expr, min_steps=None):
 
 def save_steps(expr, slow_grad=False):
     images = []
-    images.append(compile_latex(to_tikz(expr), suffix=f"0"))
+    images.append(compile_latex(to_tikz(expr), suffix="0"))
 
     # TODO: This is still not good enough, since there may be a double derivative somewhere inside the tensor.
     cnt_derivatives = 0

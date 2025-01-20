@@ -5,7 +5,7 @@ from einops import einsum
 from tensorgrad import Variable
 from tensorgrad import functions as F
 from tensorgrad.extras.expectation import Expectation
-from tensorgrad import Copy, Product, Zero
+from tensorgrad import Delta, Product, Zero
 from tensorgrad.tensor import Sum, Tensor
 from tensorgrad.testutils import assert_close, rand_values
 
@@ -63,7 +63,7 @@ def test_quadratic():
     ts[A] = ts[A] ** 2  # Make it more distinguishable
 
     mu = Zero(i, j)
-    covar = Copy(i, "i, i_") @ Copy(j, "j, j_")
+    covar = Delta(i, "i, i_") @ Delta(j, "j, j_")
 
     expr = X.rename(i="i0", j="j") @ A @ X.rename(j="j1", i="i")
     assert expr.edges == {"i0", "i"}
@@ -138,7 +138,7 @@ def test_quartic2():
     M = Variable("M", i, j)
     Sh = Variable("Sh", j, r=j)
     S = (Sh.rename(j="j0") @ Sh).rename(j0="j", j="l")  # S = Sh @ Sh.T
-    covar = Copy(i, "i, k") @ S
+    covar = Delta(i, "i, k") @ S
 
     assert covar.edges == {"i", "k", "j", "l"}
     expr = Expectation(expr, X, M, covar, {"i": "k", "j": "l"}).full_simplify()
@@ -177,9 +177,9 @@ def test_x():
     #        = S_{p2} S_{p2}
     #        = S_{p2}^2
     # E[out]_p2 = E[out_p2] = E[S_{p2}^2] = 1
-    expr = Product([S, S1, Copy(p0, "p0, p1, p2")])
+    expr = Product([S, S1, Delta(p0, "p0, p1, p2")])
     expr = Expectation(expr, S)
-    assert expr.simplify() == Copy(p0, "p2")
+    assert expr.simplify() == Delta(p0, "p2")
 
 
 def test_triple_S():
@@ -202,15 +202,15 @@ def test_triple_S():
     SA = S.rename(p="p1")
     SB = S.rename(p="p2", i="m", j="n")
     W = S.rename(p="p3", i="r", j="s")
-    expr = Product([SA, SB, W, Copy(i, "p1, p2, p3")])
-    expr = Expectation(expr, S, Copy(i, "i, j, p"))
+    expr = Product([SA, SB, W, Delta(i, "p1, p2, p3")])
+    expr = Expectation(expr, S, Delta(i, "i, j, p"))
     expr = expr.full_simplify()
     expected = Sum(
         [
-            Copy(i, "i, j, m, n, r, s"),
-            Product([Copy(i, "j, i"), Copy(i, "r, m"), Copy(i, "s, n")]),
-            Product([Copy(i, "r, s"), Copy(i, "n, j"), Copy(i, "m, i")]),
-            Product([Copy(i, "m, n"), Copy(i, "s, j"), Copy(i, "r, i")]),
+            Delta(i, "i, j, m, n, r, s"),
+            Product([Delta(i, "j, i"), Delta(i, "r, m"), Delta(i, "s, n")]),
+            Product([Delta(i, "r, s"), Delta(i, "n, j"), Delta(i, "m, i")]),
+            Product([Delta(i, "m, n"), Delta(i, "s, j"), Delta(i, "r, i")]),
         ],
     )
     assert expr == expected
@@ -233,18 +233,18 @@ def test_strassen():
             ST.rename(p="p1"),
             TU.rename(p="p2"),
             US.rename(p="p3"),
-            Copy(p, "p1, p2, p3"),
+            Delta(p, "p1, p2, p3"),
         ]
     )
     expr = Expectation(Expectation(Expectation(expr, S), T), U)
     expr = expr.full_simplify()
     assert expr == Product(
         [
-            Copy(i, "i, j"),
-            Copy(k, "k, l"),
-            Copy(m, "m, n"),
+            Delta(i, "i, j"),
+            Delta(k, "k, l"),
+            Delta(m, "m, n"),
             # The product is scaled by a factor |p| which we "implement" using an empty copy tensor
-            Copy(p),
+            Delta(p),
         ]
     )
 
@@ -256,6 +256,6 @@ def test_outer_product():
         Expectation(Product([u.rename(i=f"i{i}") for i in range(k)]), u).full_simplify() for k in range(1, 5)
     ]
     assert prods[0] == Zero(i0=i)
-    assert prods[1] == Copy(i, "i0, i1")
+    assert prods[1] == Delta(i, "i0, i1")
     assert prods[2] == Zero(i0=i, i1=i, i2=i)
-    assert prods[3] == (F.symmetrize(Copy(i, "i0, i1") @ Copy(i, "i2, i3")) / 8).full_simplify()
+    assert prods[3] == (F.symmetrize(Delta(i, "i0, i1") @ Delta(i, "i2, i3")) / 8).full_simplify()

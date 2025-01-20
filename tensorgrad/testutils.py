@@ -4,7 +4,7 @@ import torch
 from typing import Iterable, Tuple, Dict
 import random
 import string
-from tensorgrad import Copy, Ones, Tensor, Zero, Variable
+from tensorgrad import Delta, Ones, Tensor, Zero, Variable
 import networkx as nx
 
 
@@ -52,10 +52,10 @@ def generate_random_tensor_expression(
                 return var, tensor
             else:
                 tensor_class, torch_func = random.choice(
-                    [(Zero, torch.zeros), (Ones, torch.ones), (Copy, generate_copy)]
+                    [(Zero, torch.zeros), (Ones, torch.ones), (Delta, generate_copy)]
                 )
                 edges = random.choice([["a"], ["a", "b"], ["a", "b", "c"]])
-                if tensor_class == Copy:
+                if tensor_class == Delta:
                     dim = random.choice([2, 3])
                     return tensor_class(edges), torch_func(dim, edges)
                 else:
@@ -229,7 +229,7 @@ def random_tensor_expr2(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, d
         # generate 2 random combos for each symbol
         local_combos = random.sample(possible_combinations, k=2)
         for combo in local_combos:
-            cpy = Copy(s0, *map(str, combo))
+            cpy = Delta(s0, *map(str, combo))
             copy_torch = generate_copy(sizes[s0], list(map(str, combo)))
             copys_pool.append((cpy, copy_torch))
 

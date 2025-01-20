@@ -5,7 +5,7 @@ from .tensor import (
     Product,
     Sum,
     Variable,
-    Copy,
+    Delta,
     Ones,
     Derivative,
     _make_distinct,
