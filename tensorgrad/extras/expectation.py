@@ -4,6 +4,7 @@ from tensorgrad.tensor import (
     Constant,
     Derivative,
     Product,
+    Rename,
     Sum,
     Tensor,
     Variable,
@@ -169,18 +170,28 @@ class Expectation(Tensor):
 
         if args["grad_steps"] == 0:
             # We just steal the grad_steps name for now
+            # TODO: Is this res variable even used? Is this code working right now?
             res = Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
         else:
             args["grad_steps"] -= 1
 
         if isinstance(inner, Sum):
             return Sum(
-                [Expectation(t, self.wrt, self.mu, self.covar, self.covar_names) for t in inner.tensors],
+                [
+                    Expectation(t, self.wrt, self.mu, self.covar, self.covar_names).simplify(args)
+                    for t in inner.tensors
+                ],
                 inner.weights,
             )
 
         if isinstance(inner, Constant):
             return inner.simplify(args=args)
+
+        if isinstance(inner, Rename):
+            return Rename(
+                Expectation(inner.tensor, self.wrt, self.mu, self.covar, self.covar_names).simplify(args),
+                inner.mapping,
+            )
 
         if isinstance(inner, Variable):
             assert inner == self.wrt, "A variable can only depend on wrt if they are the same"
@@ -215,10 +226,7 @@ class Expectation(Tensor):
                 covar = self.covar.rename(**(out_rename | iso_rename))
                 expected = x.shape | {out_rename[self.covar_names[k]]: s for k, s in self.wrt.shape.items()}
                 assert covar.shape == expected, f"{covar.shape=} != {expected=}"
-
-                # With derivatives, we have to use the original names of the variables
-                # new_edges = {x.orig[iso_rename[k]]: out_rename[v] for k, v in self.covar_names.items()}
-                new_edges = {self.wrt.orig[k]: out_rename[v] for k, v in self.covar_names.items()}
+                new_edges = {k: out_rename[v] for k, v in self.covar_names.items()}
 
                 # We use the covar_names as the new_names for the derivative. Note that these will eventually
                 # be consumed by the multiplication with @ covar.

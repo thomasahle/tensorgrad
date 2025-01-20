@@ -273,26 +273,16 @@ class Tensor(ABC):
         if dims is None:
             dims = {}
 
-        # Check dimension consistency for all variables pinned in `values`
+        # Load sizes of variables into the dimensions dictionary and check consistency
         for v, t in values.items():
             if not isinstance(v, Variable):
                 continue
-            old_to_new = {o: e for e, o in v.orig.items()}
-
-            # For each name 'o' in the actual PyTorch tensor 't',
-            # we see if 'o' is a known edge in `v.orig`.
-            for o, ts in zip(t.names, t.shape):
-                # If 'o' is not an original edge, skip.
-                # This handles e.g. 'samples' dimension which is external.
-                if o not in old_to_new:
-                    continue
-
-                # Otherwise check consistency
-                vs = v.shape[old_to_new[o]]  # symbolic dimension
+            for e, ts in zip(t.names, t.shape):
+                vs = v.shape[e]  # symbolic dimension
                 if vs not in dims:
                     dims[vs] = ts
                 elif dims[vs] != ts:
-                    raise ValueError(f"Conflicting size for dim {o}")
+                    raise ValueError(f"Conflicting size for dim {e}")
 
         # See if we have already evaluated a tensor isomorphic to this one
         if self in values:
@@ -348,16 +338,15 @@ class Tensor(ABC):
         If new_names is already given, we just check to make sure they are not already present in the tensor.
         """
         if new_names is not None:
-            if set(x.orig.values()) != set(new_names.keys()):
-                raise ValueError(f"The {new_names.keys()=} must match {x.orig.values()=}")
+            # if set(x.orig.values()) != set(new_names.keys()):
+            #     raise ValueError(f"The {new_names.keys()=} must match {x.orig.values()=}")
+            if x.edges != new_names.keys():
+                raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
             # Check that the new names don't clash with self.edges
             if used := self.edges & new_names.values():
                 raise ValueError(f"{used} are already present in {self.edges=}")
             return new_names
         # Make new names that are _based_ on x.orig and _avoid_ self.edges
-        # This is important, since different instantiations of x might be using different names.
-        # return _unused_edge_names(x.orig.values(), self.edges, suffix="_")
-        # Why not base the new_names on x.edges? They are the publicly known ones after all...
         return _unused_edge_names(x.edges, self.edges)
 
     @staticmethod
@@ -433,7 +422,6 @@ class Variable(Tensor):
         name: str,
         *shape0: Symbol,
         _symmetries: None | str | set[frozenset[str]] = None,
-        _orig: None | dict[str, str] = None,
         **shape1: Symbol,
     ):
         """
@@ -442,35 +430,21 @@ class Variable(Tensor):
         Args:
             name: The name of this variable.
             shape: Dict from edge name to size (Sympy symbol). Can also be a string or list of str.
-            orig: Dict from new name to original name. If not provided, the names in `edges` are used directly.
             symmetries: Sets of edges (original names) that should be considered equivalent.
         """
         self.name = name
         self._shape = self._check_shape(shape0, shape1)
-
         self._symmetries = self._check_symmetries(self._shape, _symmetries)
 
-        # The original edges are saved so evaluation can happen with the original
-        # edge names given to the variable, without caring about what renaming we
-        # might have done in the meantime.
-        self.orig = _orig if _orig is not None else {e: e for e in self.edges}
-        assert self.orig.keys() == self.edges, f"Missing original name for {self.edges=} {self.orig=}"
-
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
-        return Variable(self.name, **self.shape, _symmetries=symmetries, _orig=self.orig)
+        return Variable(self.name, **self.shape, _symmetries=symmetries)
 
     def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> Tensor:
         new_names = self._check_grad(x, new_names)
         if x == self:
-            orig_shape = {self.orig[e]: s for e, s in self.shape.items()}
-            other_shape = {x.orig[e]: s for e, s in x.shape.items()}
-            assert orig_shape == other_shape
             # TODO: If X has symmetries, the derivative can actually be more complex than this.
             # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
-            # Note that new_names are based on _the original names_ of x, not the current names.
-            return Product(Copy(s, e, new_names[self.orig[e]]) for e, s in self.shape.items())
-            # iso_rename = next(self.isomorphisms(x))
-            # return Product(Copy(s, iso_rename[e], new_names[e]) for e, s in self.shape.items())
+            return Product(Copy(s, e, new_names[e]) for e, s in self.shape.items())
         # Note: We don't need to tell Zero the symmetries, since it's automatically
         # symmetric in all dimensions that have compatible sizes.
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
@@ -481,14 +455,11 @@ class Variable(Tensor):
         if self._symmetries != {frozenset({e}) for e in self.edges}:
             groups = ", ".join(sorted(" ".join(sorted(group)) for group in self._symmetries))
             symmetries = f'.with_symmetries("{groups}")'
-        if any(k != v for k, v in self.orig.items()):
-            args.append(f"orig={self.orig}")
         return f"Variable({', '.join(args)}){symmetries}"
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
-        name = f"{self.name}({', '.join(sorted(self.orig.values()))})"
-        G.add_node(0, name=("Variable", name), tensor=self)
+        G.add_node(0, name=("Variable", self.name), tensor=self)
         edges = {}
         # Symmetries are more fine-grained than shapes, since two dims can have
         # the same size, but not be symmetric. E.g. an assymetric square matrix.
@@ -507,7 +478,9 @@ class Variable(Tensor):
                 e, *_ = orbit
                 if self.shape[e] != size:
                     continue
-                orbit_name = " ".join(sorted(self.orig[e] for e in orbit))
+                # Orbits are named after the variable edges. This ensures that variables are only
+                # isomoprhic with other variables with the same edge names.
+                orbit_name = " ".join(sorted(orbit))
                 G.add_node(orbit_node := G.number_of_nodes(), name=("Orbit Node", orbit_name))
                 G.add_edge(size_node, orbit_node)
                 # All the free edges point to an orbit node
@@ -521,12 +494,7 @@ class Variable(Tensor):
 
     def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
-        return Variable(
-            self.name,
-            **{kwargs.get(e, e): s for e, s in self.shape.items()},
-            _symmetries={frozenset({kwargs.get(e, e) for e in group}) for group in self._symmetries},
-            _orig={kwargs.get(e, e): o for e, o in self.orig.items()},
-        )
+        return Rename(self, kwargs)
 
     def depends_on(self, x: "Variable") -> bool:
         return x == self
@@ -535,15 +503,90 @@ class Variable(Tensor):
         tensor = values.get(self)
         if tensor is None:
             raise ValueError(f"Missing value for {self}, got {values}")
-        # The given named tensor will use original names. We rename the new names
-        assert set(tensor.names) == set(self.orig.values()), f"{tensor.names=} != {set(self.orig.values())}"
-        old_to_new = {o: e for e, o in self.orig.items()}
-        return tensor.rename(*[old_to_new[e] for e in tensor.names])
+        assert tensor.names == tuple(self.edges)
+        return tensor
 
 
 ################################################################################
 # Constants
 ################################################################################
+
+
+class Rename(Tensor):
+    def __init__(self, inner: Tensor, rename: dict[str, str]):
+        """Rename: old -> new name"""
+        self.name = "Rename"
+        self.tensor = inner
+        self.mapping = rename
+        self._shape = {rename.get(e, e): s for e, s in inner.shape.items()}
+
+    def __repr__(self) -> str:
+        argstring = ", ".join(f'{k}="{v}"' for k, v in self.mapping.items())
+        return f"{self.tensor}.rename({argstring})"
+
+    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
+        res = self.tensor.evaluate(values, dims)
+        if self.mapping:
+            # If mapping is empty, the rename would fail
+            res = res.rename(**self.mapping)
+        assert res.names == tuple(self.edges)
+        return res
+
+    def depends_on(self, x: "Variable") -> bool:
+        return self.tensor.depends_on(x)
+
+    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> Tensor:
+        new_names = self._check_grad(x, new_names)  # ~_unused_edge_names(x.edges, self.edges)
+        # If the new names are used in inner, we need to rename them, and then add the
+        # new names to our own rename dict.
+        middle = _unused_edge_names(new_names.values(), self.edges | self.tensor.edges)
+        middle_names = {o: middle[n] for o, n in new_names.items()}
+        middle_to_new = {middle[n]: n for o, n in new_names.items()}
+        res = Rename(self.tensor.grad(x, middle_names), middle_to_new | self.mapping)
+        assert res.shape == self.shape | {n: x.shape[o] for o, n in new_names.items()}
+        return res
+
+    @classmethod
+    def merge_renames(cls, *renames: dict[str, str]) -> dict[str, str]:
+        merged = {}
+        for rename in renames:
+            used = merged.keys() | merged.values()
+            # Apply the rename to the existing chains
+            for o, n in merged.items():
+                merged[o] = rename.get(n, n)
+            # Add new renames
+            for o, n in rename.items():
+                if o not in used:
+                    merged[o] = n
+        return merged
+
+    def simplify(self, args: dict[str, Any] = None) -> Tensor:
+        inner = self.tensor.simplify(args)
+        if isinstance(inner, Rename):
+            merged = self.merge_renames(inner.mapping, self.mapping)
+            res = inner.tensor.rename(**merged)
+        else:
+            res = inner.rename(**self.mapping)
+        assert res.shape == self.shape
+        return res
+
+    def rename(self, **kwargs: str) -> Tensor:
+        kwargs = self._check_rename(kwargs)
+        res = Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
+        assert res.shape == {kwargs.get(e, e): s for e, s in self.shape.items()}
+        return res
+
+    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
+        # Rename is the only tensor that doesn't actually create its own node in the graph
+        # This allows Variable(i, j=i).with_symmetries("i j") to be isomorphic to
+        # Rename(Variable(j, i=j).with_symmetries("i j"), {"i": "j", "j": "i"})
+        G, t_edges = self.tensor.structural_graph()
+        edges = {}
+        for o, node in t_edges.items():
+            e = self.mapping.get(o, o)
+            edges[e] = node
+        assert edges.keys() == self.edges
+        return G, edges
 
 
 class Constant(Tensor, ABC):
@@ -1121,7 +1164,8 @@ class Derivative(Tensor):
         # _check_grad makes sure the new_names are not already present in self.edges.
         # But we haven't set self.edges yet, so we call it on tensor instead of self.
         self.new_names = tensor._check_grad(x, new_names)
-        self._shape = tensor.shape | {self.new_names[o]: x.shape[e] for e, o in x.orig.items()}
+        # self._shape = tensor.shape | {self.new_names[o]: x.shape[e] for e, o in x.orig.items()}
+        self._shape = tensor.shape | {self.new_names[e]: x.shape[e] for e in x.edges}
 
     def simplify(self, args: dict[str, Any] = None) -> Tensor:
         args = self._check_simplify(args)
@@ -1154,7 +1198,7 @@ class Derivative(Tensor):
             self.x,
             {o: kwargs.get(e, e) for o, e in self.new_names.items()},
         )
-        assert res.edges == {kwargs.get(e, e) for e in self.edges}
+        assert res.shape == {kwargs.get(e, e): s for e, s in self.shape.items()}
         return res
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
@@ -1162,10 +1206,9 @@ class Derivative(Tensor):
         G.add_node(0, name="Derivative", tensor=self)
         edges = {}
         # We add a node for the "wrt" tensor
+        # and connect new_edges to point to the respective edges in self.x
         G, x_edges = _add_structural_graph(G, self.x, root_edge_label="self.x")
-        # This might be controversial, but we'll have new_edges point to the respective edges in self.x
-        x_old_to_new = {oe: e for e, oe in self.x.orig.items()}
-        edges |= {e: x_edges[x_old_to_new[oe]] for oe, e in self.new_names.items()}
+        edges |= {e: x_edges[oe] for oe, e in self.new_names.items()}
         # Then we add the differentiated tensor
         G, t_edges = _add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
         edges |= t_edges

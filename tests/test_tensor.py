@@ -221,7 +221,7 @@ def test_equality():
     i, j = symbols("i j")
     p1 = Product(
         [
-            Variable("A", j, _orig={"i_": "i", "j": "j"}, i_=i),
+            Variable("A", j, i_=i),
             Variable("A", j, i),
             Variable("x", i),
         ]
@@ -230,7 +230,7 @@ def test_equality():
         [
             Variable("A", j, i),
             Variable("x", i),
-            Variable("A", j, _orig={"i_": "i", "j": "j"}, i_=i),
+            Variable("A", j, i_=i),
         ]
     )
     assert p1 == p2
@@ -336,17 +336,16 @@ def test_hash():
 def test_equal():
     x, y = symbols("x y")
     v = Variable("x", x)
-    assert Product([Copy(y, "y"), v]).is_isomorphic(Product([v, Copy(y, "y")]))
+    cp = Copy(y, "y")
+    assert (cp @ v).is_isomorphic(v @ cp)
 
     s = Sum(
         [
-            Product([Variable("x", x, _orig={"x": "x_"}), Copy(y, "y")]),
+            Product([Variable("x", x), Copy(y, "y")]),
             Product([Variable("y", y), Copy(x, "x_")]),
-        ],
-        (1, 1),
+        ]
     )
-
-    assert Product([Copy(y, "y"), s]).is_isomorphic(Product([s, Copy(y, "y")]))
+    assert (cp @ s).is_isomorphic(s @ cp)
 
 
 def test_transpose():

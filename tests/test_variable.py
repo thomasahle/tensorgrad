@@ -23,7 +23,6 @@ def test_variable_rename():
     v = Variable("x", i=i, j=i, k=k).with_symmetries("i j, k")
     v_renamed = v.rename(i="a")
     assert v_renamed.edges == {"a", "j", "k"}
-    assert v_renamed.orig == {"a": "i", "j": "j", "k": "k"}
     assert v_renamed.symmetries == {frozenset({"a", "j"}), frozenset({"k"})}
 
 

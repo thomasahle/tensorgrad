@@ -1,6 +1,6 @@
 [project]
 name = "tensorg"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
    "networkx==3.2.1",
    "numpy",

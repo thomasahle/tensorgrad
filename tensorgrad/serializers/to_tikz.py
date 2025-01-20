@@ -1,6 +1,6 @@
 from collections import Counter, defaultdict
 from tensorgrad.functions import Convolution, Reshape
-from tensorgrad.tensor import Derivative, Product, Zero, Copy, Variable, Sum, Function
+from tensorgrad.tensor import Derivative, Product, Rename, Zero, Copy, Variable, Sum, Function
 from tensorgrad.extras import Expectation
 import random
 import re
@@ -296,7 +296,11 @@ def _to_tikz(tensor, graph, depth=0):
 
     if isinstance(tensor, Variable):
         graph.add_node(node_id, "var", label=tensor.name, degree=len(tensor.edges))
-        return {e: {"node_id": node_id, "text": orig_name} for e, orig_name in tensor.orig.items()}
+        return {e: {"node_id": node_id, "text": e} for e in tensor.edges}
+
+    if isinstance(tensor, Rename):
+        edges = _to_tikz(tensor.tensor, graph, depth + 1)
+        return {tensor.mapping.get(e, e): d for e, d in edges.items()}
 
     if isinstance(tensor, Zero):
         graph.add_node(node_id := str(id(tensor)), "zero", degree=len(tensor.edges))

@@ -33,12 +33,9 @@ def test_simple3():
     i = symbols("i")
     A2 = Variable("A", x=i, y=i)
     A1 = A2.rename(x="x__", y="x_")
-    A0 = Variable("A", x__=i, x_=i, _orig={"x__": "x", "x_": "y"})
-    assert A0.orig == A1.orig
-    assert A0._symmetries == A1._symmetries
-    assert A0 == A1
-    (mapping,) = A2.isomorphisms(A0)
-    assert mapping == {"x": "x__", "y": "x_"}
+    A0 = Variable("A", x__=i, x_=i)
+    assert A0 != A1, "A0 and A1 are not isomorphic, because their original names are different."
+    () = A2.isomorphisms(A0)
 
 
 def test_hash_counterexample():
