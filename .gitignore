@@ -170,3 +170,4 @@ iso.py
 .DS_Store
 combined_image.png
 data/
+out
