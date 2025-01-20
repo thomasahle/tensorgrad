@@ -81,6 +81,10 @@ def test_all_elementwise(dims, functions):
     assert_close(tg_hessian, torch_hessian)
 
 
+# TODO: We're not testing any "real" (R^n, R^n) -> R functions here. The closest thing
+# is cross_entropy, but it doesn't use a Function object, just an expression.
+# If we were to add such functions, we might run into this issue with Function not supporting
+# shared broadcasted edges...
 @pytest.mark.parametrize(
     "functions",
     [

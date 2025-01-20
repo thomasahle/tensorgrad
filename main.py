@@ -17,8 +17,6 @@ def main():
     b = Variable("b", i)
     X = Variable("X", i, j=i)
     expr = F.graph("a -i- X1 -j-i- X2 -j-i- b", a=a, X1=X, X2=X, b=b)
-    # expr = Derivative(Derivative(graph, X), X)
-    print(to_pytorch(expr))
 
     # cross entropy softmax hessian
     C = symbols("C")
@@ -28,7 +26,6 @@ def main():
     softmax = e / (1 + F.sum(e))  # Altnernative softmax
     ce = -F.sum(target * F.log(softmax))
     expr = ce.grad(logits).grad(logits)
-    expr = expr.full_simplify()
     print(expr)
 
     # Just softmax grad
@@ -37,14 +34,9 @@ def main():
     target = Variable("target", C)
     e = F.exp(logits)
     softmax = e / F.sum(e)
-    expr = (softmax @ target).grad(logits)
+    expr = Derivative(softmax @ target, logits)
     print(expr)
 
-    # expr = 1 + F.sum(logits)
-    # expr = expr.full_simplify()
-    # print(expr)
-
-    # print(to_tikz(expr))
     save_steps(expr)
 
 
@@ -121,7 +113,7 @@ def main5():
     expr = expr.simplify({"expand": True})
     print(expr)
     print(len(expr.tensors))
-    # save_as_image(expr, 'm3.png')
+    save_as_image(expr, 'm3.png')
 
 def main6():
     i, j, k = symbols("i j k")
@@ -144,9 +136,16 @@ def main7():
     expr = F.inverse(A) @ b
     hess = expr.grad(A).grad(A)
     print(hess)
+    print(to_tikz(hess))
     save_steps(hess)
 
-
+def main9():
+    i = symbols("i")
+    A = Variable("A", i=i, j=i)
+    B = Variable("B", j=i, k=i)
+    expr = A @ B.rename(k="j", j="k")
+    save_steps(expr)
+    print(to_tikz(expr))
 
 if __name__ == "__main__":
-    main7()
+    main9()

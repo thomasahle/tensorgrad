@@ -164,16 +164,9 @@ class Expectation(Tensor):
         args = self._check_simplify(args) | {"combine_products": False}
         inner = self.tensor.simplify(args=args)
 
-        # Just a small optimization
+        # Constants
         if not inner.depends_on(self.wrt):
             return inner
-
-        if args["grad_steps"] == 0:
-            # We just steal the grad_steps name for now
-            # TODO: Is this res variable even used? Is this code working right now?
-            res = Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
-        else:
-            args["grad_steps"] -= 1
 
         if isinstance(inner, Sum):
             return Sum(
@@ -183,9 +176,6 @@ class Expectation(Tensor):
                 ],
                 inner.weights,
             )
-
-        if isinstance(inner, Constant):
-            return inner.simplify(args=args)
 
         if isinstance(inner, Rename):
             return Rename(

@@ -10,6 +10,8 @@ import networkx as nx
 from sympy import Symbol
 import torch
 
+from tensorgrad.utils import _MatchEdgesKey, KeyStoringDict
+
 
 class Tensor(ABC):
     @property
@@ -272,6 +274,8 @@ class Tensor(ABC):
         """
         if dims is None:
             dims = {}
+        if not isinstance(values, KeyStoringDict):
+            values = KeyStoringDict(values)
 
         # Load sizes of variables into the dimensions dictionary and check consistency
         for v, t in values.items():
@@ -285,9 +289,10 @@ class Tensor(ABC):
                     raise ValueError(f"Conflicting size for dim {e}")
 
         # See if we have already evaluated a tensor isomorphic to this one
-        if self in values:
+        if (other_tensor := values.get_with_key(self)) is not None:
             # Find the isomorphic representative that we matched
-            other, tensor = next((v, t) for v, t in values.items() if v.is_isomorphic(self))
+            other, tensor = other_tensor
+            assert tensor.names == tuple(other.edges)
             mapping = next(other.isomorphisms(self), None)
             res = tensor.rename(**mapping).align_to(*self.edges)
 
@@ -338,15 +343,13 @@ class Tensor(ABC):
         If new_names is already given, we just check to make sure they are not already present in the tensor.
         """
         if new_names is not None:
-            # if set(x.orig.values()) != set(new_names.keys()):
-            #     raise ValueError(f"The {new_names.keys()=} must match {x.orig.values()=}")
             if x.edges != new_names.keys():
                 raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
             # Check that the new names don't clash with self.edges
             if used := self.edges & new_names.values():
                 raise ValueError(f"{used} are already present in {self.edges=}")
             return new_names
-        # Make new names that are _based_ on x.orig and _avoid_ self.edges
+        # Make new names that are _based_ on x.edges and _avoid_ self.edges
         return _unused_edge_names(x.edges, self.edges)
 
     @staticmethod
@@ -430,7 +433,7 @@ class Variable(Tensor):
         Args:
             name: The name of this variable.
             shape: Dict from edge name to size (Sympy symbol). Can also be a string or list of str.
-            symmetries: Sets of edges (original names) that should be considered equivalent.
+            symmetries: Sets of edges that should be considered equivalent.
         """
         self.name = name
         self._shape = self._check_shape(shape0, shape1)
@@ -494,6 +497,8 @@ class Variable(Tensor):
 
     def rename(self, **kwargs: str) -> Tensor:
         kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
+        if not kwargs:
+            return self
         return Rename(self, kwargs)
 
     def depends_on(self, x: "Variable") -> bool:
@@ -517,7 +522,7 @@ class Rename(Tensor):
         """Rename: old -> new name"""
         self.name = "Rename"
         self.tensor = inner
-        self.mapping = rename
+        self.mapping = {k: v for k, v in rename.items() if k != v}
         self._shape = {rename.get(e, e): s for e, s in inner.shape.items()}
 
     def __repr__(self) -> str:
@@ -567,6 +572,8 @@ class Rename(Tensor):
             res = inner.tensor.rename(**merged)
         else:
             res = inner.rename(**self.mapping)
+        while isinstance(res, Rename) and not res.mapping:
+            res = res.tensor
         assert res.shape == self.shape
         return res
 
@@ -928,7 +935,6 @@ def function(
     name: str,
     output_shape: dict[str, Symbol],
     *inputs: tuple[Tensor | str, ...],
-    orig_out: dict[str, str] | None = None,
 ) -> "Function":
     return Function(
         FunctionSignature(
@@ -938,7 +944,6 @@ def function(
         ),
         [t for (t, *es) in inputs],
         output_shape,
-        orig_out=orig_out,
     )
 
 
@@ -948,7 +953,6 @@ class Function(Tensor):
         signature: FunctionSignature,
         inputs: Iterable[Tensor],
         shape_out: dict[str, Symbol],
-        orig_out: dict[str, str] = None,
     ):
         """
         A function tensor that takes one or more input tensors and produces an output tensor.
@@ -957,27 +961,14 @@ class Function(Tensor):
             signature: The FunctionSignature defining this function, or a string giving the function name.
             inputs: The input tensors and their input edge names. [(t0, e00, e01, ...), (t1, e10, ...), ...]
             shape_out: The names of the output edges of this function.
-            orig_out: If provided, a dict mapping each output edge to its signature edge name. (new -> old)
-                      If not provided, we assume the output edges are the same as in the signature.
         """
         self.shape_out = self._check_shape([], shape_out)
         self.inputs = list(inputs)
         self.signature = signature
 
-        # We need to keep track of the original edges of the function, since we might rename them.
-        self.edges_out = self.shape_out.keys()
-        # self.orig_out = {e: e for e in self.edges_out} if not orig_out else orig_out
-        self.orig_out = {} if orig_out is None else dict(orig_out)
-        self.orig_out |= {e: e for e in self.signature.edges if e not in self.orig_out.values()}
-        # assert self.edges_out == self.orig_out.keys()
-        assert self.orig_out.keys() - self.edges_out == set(), f"{self.orig_out=}, {self.edges_out=}"
-
         # Validation
-        if (orig_mapped := {self.orig_out.get(e, e) for e in self.shape_out.keys()}) != signature.edges:
-            raise ValueError(
-                "The shape_out keys must match signature.edges, once mapped back by orig_out."
-                + f" Got {orig_mapped=} != {signature.edges}"
-            )
+        if self.shape_out.keys() != signature.edges:
+            raise ValueError(f"Signature doesn't match shape: {self.shape_out.keys()=} != {signature.edges}")
         if len(self.inputs) != len(signature.inputs):
             raise ValueError(f"Expected {len(signature.inputs)} inputs, got {len(self.inputs)}")
         for t, es in zip(self.inputs, signature.inputs):
@@ -1005,12 +996,14 @@ class Function(Tensor):
             # Only rename external edges of input tensors.
             rename = {e: v for e, v in kwargs.items() if e not in es}
             renamed_inputs.append(t.rename(**rename))
+        output_rename = {k: v for k, v in kwargs.items() if k in self.shape_out}
         res = Function(
             self.signature,
             renamed_inputs,
-            {kwargs.get(e, e): s for e, s in self.shape_out.items()},
-            orig_out={kwargs.get(e, e): o for e, o in self.orig_out.items()},
+            self.shape_out,
         )
+        if output_rename and any(v != k for k, v in output_rename.items()):
+            res = Rename(res, output_rename)
         assert res.edges == {kwargs.get(e, e) for e in self.edges}
         return res
 
@@ -1039,8 +1032,13 @@ class Function(Tensor):
                 new_inputs2.append(t)
         new_inputs = new_inputs2
 
-        res = Function(self.signature, new_inputs, self.shape_out, self.orig_out)
+        res = Function(self.signature, new_inputs, self.shape_out)
+
+        # This results in an extra simplify call to all the children of the function.
+        # Maybe we can avoid this somehow?
+        old_shape = res.shape
         res = self.signature.simplify(res, args)
+        assert res.shape == old_shape, "Function signature simplify should not change shape"
 
         if pulled_out:
             res = Product([res] + pulled_out)
@@ -1065,21 +1063,14 @@ class Function(Tensor):
             # Take the derivative of the outer function
             # We need "connection" edges for each edge in input_edges. Mostly we could just use the same name
             # but they need to avoid clashing with "new_names" and the output edges of the tensor.
-            connection_names = _unused_edge_names(input_edges, self.edges | new_edges, suffix="_")
-            connection_shape = {connection_names[e]: t.shape[e] for e in input_edges}
+            connection_names = _unused_edge_names(input_edges, self.edges | new_edges)
             # Just like simple calculus, we need the derivative of the outside times the derivative of the inside
             outside = Function(
                 self.signature.derivative(i, connection_names),
                 self.inputs,
-                self.shape_out | connection_shape,
-                self.orig_out,
+                self.shape_out | {connection_names[e]: t.shape[e] for e in input_edges},
             )
-            # The derivative will have the same output edges as the function, but we may have been renamed
-            outside = outside.rename(**{o: e for e, o in self.orig_out.items()})
-            # Actually, now that we give orig_out to the derivative, we don't need to rename it here.
-            assert (
-                outside.edges == self.edges | connection_names.values()
-            ), f"{outside.edges=}, {self.edges=}, {connection_names=}"
+            assert outside.edges == self.edges | connection_names.values()
 
             # The the derivative of the inner function
             # We rename the (former) input edges to the connection edges, but keep the remaining edges
@@ -1107,8 +1098,8 @@ class Function(Tensor):
         # (2) We add a node for each output edge
         # TODO: We should group out-edges by the size-type, similarly to Variable/Constant
         # And of course when we add symmetries to outputs, we need to add that too.
-        for i, (e, o) in enumerate(self.orig_out.items()):
-            G.add_node(i + 2, name=("Original Edge Out", o))
+        for i, e in enumerate(self.shape_out):
+            G.add_node(i + 2, name=("Edge Out", e))
             G.add_edge(1, i + 2)
             edges[e] = i + 2
         # (3) And we add nodes for all the input tensors
@@ -1129,19 +1120,15 @@ class Function(Tensor):
     def __repr__(self) -> str:
         args = []
         args.append(repr(self.signature))
-        args.append(", ".join(map(repr, self.inputs)))
-        args.append(f"{self.shape_out}")
-        if any(e != o for e, o in self.orig_out.items()):
-            args.append(f"orig_out={self.orig_out}")
+        args.append(f"inputs=[{', '.join(map(repr, self.inputs))}]")
+        args.append(f"shape_out={self.shape_out}")
         return f"Function({', '.join(args)})"
 
     def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
         xvals = [t.evaluate(values, dims) for t in self.inputs]
         res = self.signature.eval(*xvals)
-        # Rename the output to the new out-names of the function,
-        # Then align the edges, in case we've transposed them.
-        rename = {o: e for e, o in self.orig_out.items()}
-        res = res.rename(*(rename.get(e, e) for e in res.names))
+        # We require the signature eval to match the names, but not necessarily the order
+        assert set(res.names) == self.edges
         res = res.align_to(*self.edges)
         return res
 
@@ -1161,10 +1148,8 @@ class Derivative(Tensor):
         """
         self.tensor = tensor
         self.x = x
-        # _check_grad makes sure the new_names are not already present in self.edges.
-        # But we haven't set self.edges yet, so we call it on tensor instead of self.
+        # If no edges were given, pick some names based on x, but avoid clashes with tensor.
         self.new_names = tensor._check_grad(x, new_names)
-        # self._shape = tensor.shape | {self.new_names[o]: x.shape[e] for e, o in x.orig.items()}
         self._shape = tensor.shape | {self.new_names[e]: x.shape[e] for e in x.edges}
 
     def simplify(self, args: dict[str, Any] = None) -> Tensor:
@@ -1295,8 +1280,8 @@ class Product(Tensor):
         new_edges = set(new_names.values()) | self.edges
         rename = _unused_edge_names(inner_names, new_edges)
         new_prod = Product([t.rename(**rename) for t in self.tensors])
-        assert new_prod == self and new_prod.shape == self.shape, "Renaming should not change the product"
-        # Note: We don't have to update they keys of new_names, sinc ethey refer to variable orig_names, which never change
+        assert new_prod.shape == self.shape, "Renaming should not change the product"
+        # assert new_prod.simplify() == self.simplify(), "Renaming should not change the product"
 
         # The classic product rule of Calculus: d/dx (f * g) = f' * g + f * g'
         res = Sum(
@@ -1595,25 +1580,6 @@ class Sum(Tensor):
 ################################################################################
 # Some useful functions
 ################################################################################
-
-
-class _MatchEdgesKey:
-    """Normally Tensors use isomorphism as their test for equality, but they don't include
-    the edge names in the comparison. This class is used to compare tensors based on their
-    edge names. It is used in the Sum tensor to combine tensors with the same edge names."""
-
-    def __init__(self, value: Any, **edge_names: str):
-        self.value = value
-        self.hash = hash(value)
-        self.edge_names = edge_names
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, _MatchEdgesKey):
-            return self.value.is_isomorphic(other.value, edge_names=self.edge_names, match_edges=True)
-        return False
-
-    def __hash__(self) -> int:
-        return self.hash
 
 
 def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:

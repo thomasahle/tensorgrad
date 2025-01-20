@@ -12,6 +12,7 @@ from tensorgrad.tensor import (
     FunctionSignature,
     _MatchEdgesKey,
     Ones,
+    Rename,
     Sum,
     Tensor,
     Product,
@@ -364,7 +365,7 @@ class _ScaleFunction(FunctionSignature):
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         assert f.signature is self
-        return self.alpha * Function(self.inner, f.inputs, f.shape_out, f.orig_out).simplify(args)
+        return self.alpha * Function(self.inner, f.inputs, f.shape_out).simplify(args)
 
 
 class _PowerFunction(FunctionSignature):
@@ -393,13 +394,11 @@ class _PowerFunction(FunctionSignature):
         if self.k == 1:
             return (inner).simplify(args)
 
-        kwargs = dict(orig_out=func.orig_out)
-
         # The pow function is multiplicative, so we can pull components out of a product apart.
         if isinstance(inner, Product):
             new_comps = []
             for comp in inner.components():
-                new_comps.append(Function(self, (comp,), func.shape_out, **kwargs))
+                new_comps.append(Function(self, (comp,), func.shape_out))
             if len(new_comps) > 1:
                 return (Product(new_comps)).simplify(args)
 
@@ -407,7 +406,7 @@ class _PowerFunction(FunctionSignature):
         if isinstance(inner, Sum) and len(inner.tensors) == 1:
             (w,) = inner.weights
             (t,) = inner.tensors
-            return Function(self, (t,), func.shape_out, **kwargs) * (w**self.k)
+            return Function(self, (t,), func.shape_out) * (w**self.k)
 
         # Base cases
         if (
@@ -422,12 +421,7 @@ class _PowerFunction(FunctionSignature):
 
         # Combine nested pows
         if isinstance(inner, Function) and isinstance(inner.signature, _PowerFunction):
-            return Function(
-                _PowerFunction(k=inner.signature.k * self.k),
-                inner.inputs,
-                func.shape_out,
-                **kwargs,
-            )
+            return Function(_PowerFunction(k=inner.signature.k * self.k), inner.inputs, func.shape_out)
 
         return func
 
@@ -625,8 +619,6 @@ class _MatrixInverseDerivative(FunctionSignature):
             # -i'-i- A^{-1} -j-
             (o1, e1), (o2, e2) = self.new_edges.items()
             res = -inv.rename(**{o1: e1}) * inv.rename(**{o2: e2})
-            # Since we are removing the Function object, we have to apply its rename
-            res = res.rename(**{o: e for e, o in t.orig_out.items()})
             assert res.edges == t.edges
             return res.simplify(args)
         return t
@@ -653,6 +645,11 @@ def inverse(tensor: Tensor, dims: set[str] = None) -> Tensor:
     if s1 != s2:
         raise ValueError(f"Inverted dimensions must have same size. Got {s1, s2}")
     return Function(_MatrixInverseFunction(dims), [tensor], out_shape)
+
+
+def det(tensor: Tensor, dims: set[str] = None) -> Tensor:
+    """Matrix determinant over two target edges. Broadcasts over the rest."""
+    raise NotImplementedError("Not implemented yet")
 
 
 def _ExpFunction() -> FunctionSignature:
@@ -717,9 +714,7 @@ class _SoftmaxFunction(FunctionSignature):
             assert dims.issubset(inner.edges)
             e = exp(inner)
             res = e / sum(e, dims, keepdims=True)
-            # Since Function includes an implicit rename, we need to apply that
-            # when expanding the Function
-            return res.rename(**{o: e for e, o in f.orig_out.items()})
+            return res.simplify(args)
         return super().simplify(f, args)
 
 
@@ -743,7 +738,7 @@ def cross_entropy(logits: Tensor, targets: Tensor, dim: DimType = None) -> Tenso
 
 
 class _RenameFunction(FunctionSignature):
-    def __init__(self, inner: Function, renames: dict[str, str]):
+    def __init__(self, inner: FunctionSignature, renames: dict[str, str]):
         # Note: The name is important for equality checking, since two functions
         # with the same name, inputs and edges are considered equal.
         self.name = f"rename({inner.name})"
@@ -762,26 +757,14 @@ class _RenameFunction(FunctionSignature):
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         assert f.signature is self
-        # Since the Function object also keeps track of renaming, we have a chain:
-        # inner -> rename -> inverse(orig_out) -> shape_out
-        # We want to merge our rename map with the orig out, so we need:
-        # inverse(rename . inverse(orig_out)) = orig_out . inverse(rename)
-        # Example:
-        #   Variable(i,j)
-        #   self.shape_out: {j___0: j, i___0: i}
-        #   renames: {j: j__, i: i__}
-        #   orig_out: {i___0: i__, j___0: j__}
-        #   new_orig_out = {i___0: i, j___0: j}
-        # Note:
-        #   You'd think we could just commute rename and orig_out and rename
-        #   the inputs, as [input.rename(**self.renames)]. However, this breaks
-        #   the expectation of self.inner.inputs on the input names.
+        # Our function represents `inner` as well as a renaming. If we want to simplify
+        # this into a Rename(Function(...)) tensor, we need to find the shape for the
+        # inner fuction, and then rename the output of that function.
         inverse_renames = {v: k for k, v in self.renames.items()}
-        return Function(
-            self.inner,
-            f.inputs,
-            f.shape_out,
-            {e: inverse_renames[o] for e, o in f.orig_out.items()},
+        inner_shape_out = {inverse_renames.get(e, e): s for e, s in f.shape_out.items()}
+        return Rename(
+            Function(self.inner, f.inputs, inner_shape_out),
+            self.renames,
         ).simplify(args)
 
 
@@ -1000,6 +983,13 @@ def max(t: Tensor, dim: DimType = None, keepdim: bool = False) -> Tensor:
     if keepdim:
         fn = fn @ Ones(**{e: t.shape[e] for e in dim})
     return fn
+
+
+def concat(*ts: Tensor, dim: str):
+    """
+    Concatenate tensors along the given dimension.
+    """
+    raise NotImplementedError("Not implemented yet")
 
 
 class Convolution(Constant):

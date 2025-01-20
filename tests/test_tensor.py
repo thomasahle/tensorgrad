@@ -309,8 +309,8 @@ def test_pseudo_linear_gradient():
     A = function("A", {"i": i, "j": j}, (x, "i"))
     expr = (A @ x).grad(x).simplify()
     assert expr.edges == {"j", "i"}
-    D_0A = function("D_0A", {"i": i, "j": j, "i__": i}, (x, "i")).rename(i__="i_")
-    expected = (D_0A @ x + A.rename(i="i_")).simplify()
+    D_0A = function("D_0A", {"i": i, "j": j, "i_": i}, (x, "i")).rename(i_="i", i="i_")
+    expected = (D_0A @ x.rename(i="i_") + A).simplify()
     assert expr == expected
 
 

@@ -109,8 +109,7 @@ def test_f_1_1():
     assert f.edges == {"y"}
     expr = f.grad(x).simplify()
     assert expr.edges == {"y", "i"}
-    expected = function("D_0f", {"y": y, "i": i}, (x, "i"))
-    expected.orig_out = expr.orig_out
+    expected = function("D_0f", {"y": y, "i_": i}, (x, "i")).rename(i_="i")
     assert expr == expected
 
 
@@ -122,8 +121,7 @@ def test_fxy_1_1_1():
     f = function("f", {"z": z}, (x, "i"), (y, "i"))
     expr = f.grad(x).simplify()
     assert expr.edges == {"z", "i"}
-    expected = function("D_0f", {"z": z, "i": i}, (x, "i"), (y, "i"))
-    expected.orig_out = expr.orig_out
+    expected = function("D_0f", {"z": z, "i_": i}, (x, "i"), (y, "i")).rename(i_="i")
     assert expr == expected
 
 
@@ -167,8 +165,8 @@ def test_f_1_1_nested():
     assert expr.edges == {"k", "i"}
     expected = Product(
         [
-            function("D_0f", {"k": k, "j_": j}, (g, "j")),
-            function("D_0g", {"j": j, "i_": i}, (x, "i")).rename(j="j_", i_="i"),
+            function("D_0f", {"k": k, "j": j}, (g, "j")),
+            function("D_0g", {"j": j, "i_": i}, (x, "i")).rename(i_="i"),
         ]
     )
     assert expr.edges == expected.edges
@@ -185,16 +183,8 @@ def test_f_2_1_nested():
     assert expr.edges == {"l", "i"}
     expected = Product(
         [
-            function(
-                "D_0f",
-                {"l": l, "j_": j, "k_": k},
-                (g, "j", "k"),
-            ),
-            function(
-                "D_0g",
-                {"j": j, "k": k, "i_": i},
-                (x, "i"),
-            ).rename(j="j_", k="k_", i_="i"),
+            function("D_0f", {"l": l, "j": j, "k": k}, (g, "j", "k")),
+            function("D_0g", {"j": j, "k": k, "i_": i}, (x, "i")).rename(i_="i"),
         ]
     )
     assert expr == expected
@@ -212,14 +202,14 @@ def test_f_1_2_nested():
         [
             function(
                 "D_0f",
-                {"l": l, "m": m, "k_": k},
+                {"l": l, "m": m, "k": k},
                 (g, "k"),
             ),
             function(
                 "D_0g",
                 {"k": k, "i_": i, "j_": j},
                 (x, "i", "j"),
-            ).rename(k="k_", i_="i", j_="j"),
+            ).rename(i_="i", j_="j"),
         ]
     )
     assert expr == expected
@@ -235,12 +225,16 @@ def test_f_2_2_nested():
     assert expr.edges == {"m", "n", "i", "j"}
     expected = Product(
         [
-            function("D_0f", {"m": m, "n": n, "k_": k, "l_": l}, (g, "k", "l")),
+            function(
+                "D_0f",
+                {"m": m, "n": n, "l": l, "k": k},
+                (g, "k", "l"),
+            ),
             function(
                 "D_0g",
-                {"k": k, "l": l, "i_": i, "j_": j},
+                {"k": k, "l": l, "j_": j, "i_": i},
                 (x, "i", "j"),
-            ).rename(k="k_", l="l_", i_="i", j_="j"),
+            ).rename(i_="i", j_="j"),
         ]
     )
     assert expr == expected
@@ -260,19 +254,19 @@ def test_f_2_2_double_nested():
         [
             function(
                 "D_0f",
-                {"o": o, "p": p, "m_": m, "n_": n},
+                {"o": o, "p": p, "n": n, "m": m},
                 (g, "m", "n"),
-            ).rename(m_="m", n_="n"),
+            ).rename(n="n_1", m="m_0"),
             function(
                 "D_0g",
-                {"m": m, "n": n, "k_": k, "l_": l},
+                {"m": m, "n": n, "k": k, "l": l},
                 (h, "k", "l"),
-            ).rename(k_="k", l_="l"),
+            ).rename(l="l_0", k="k_1", n="n_1", m="m_0"),
             function(
                 "D_0h",
                 {"k": k, "l": l, "i_": i, "j_": j},
                 (x, "i", "j"),
-            ).rename(i_="i", j_="j"),
+            ).rename(i_="i", j_="j", l="l_0", k="k_1"),
         ]
     )
     assert expr == expected
