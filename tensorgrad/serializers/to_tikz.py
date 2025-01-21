@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from functools import singledispatch
+from functools import singledispatchmethod
+from functools import update_wrapper
 import random
 import re
 
@@ -20,10 +21,18 @@ from tensorgrad.extras import Expectation
 # - Maybe we don't need a border around functions if they don't have any broadcasted edges?
 
 
+def to_tikz(tensor):
+    """
+    Main entry point: produce the LaTeX (TikZ) code for 'tensor'.
+    """
+    graph = TikzGraph(Namer())
+    return graph.to_tikz(tensor)
+
+
 @dataclass
 class NodeRef:
     """
-    Holds a reference to a node in the final TikZ.
+    Holds an edge to a node in the final TikZ.
 
     - name:        The unique internal name used in TikZ (e.g. "node12").
     - edge_style:  A style string for the edge leading to/from this node (if any).
@@ -39,32 +48,81 @@ class NodeRef:
 class Namer:
     def __init__(self):
         self.counter = 0
+        self.edge_mapping = {}
 
     def fresh_name(self, prefix="node"):
         name = f"{prefix}{self.counter}"
         self.counter += 1
         return name
 
+    def edge(self, edge):
+        return self.edge_mapping.get(edge, edge)
+
+
+class depth_tracking_dispatcher(singledispatchmethod):
+    def register(self, cls, method=None):
+        # Get the standard singledispatch register
+        dispatcher = super().register(cls, method)
+
+        # Create our own register that wraps the method
+        def wrapped_register(method):
+            original_method = dispatcher(method)
+
+            def wrapper(self, *args, **kwargs):
+                self.depth += 1
+                try:
+                    return original_method(self, *args, **kwargs)
+                finally:
+                    self.depth -= 1
+
+            return update_wrapper(wrapper, method)
+
+        return wrapped_register
+
 
 ###############################################################################
 # The main TikzGraph class
 ###############################################################################
 class TikzGraph:
-    def __init__(self, namer: Namer):
+    def __init__(self, namer: Namer = None, depth: int = 0):
         # We store lines of TikZ to build the final diagram.
         self.lines = []
-        self.namer = namer
+        self.namer = Namer() if namer is None else namer
+
+        # For outputting nice TeX
+        self.depth = depth
 
         # Keep track of which node names we've actually added to this graph
         # so we don't add them more than once.
         self.added_node_names = set()
 
-    def add_node(self, node_ref: NodeRef, node_type: str, label: str = None, degree: int = None):
+    def subgraph(self):
+        return TikzGraph(self.namer, self.depth + 1)
+
+    def to_tikz(self, tensor):
+        # We'll wrap everything in the prefix plus a single subgraph so that
+        # if we want to do fancy layering, we can:
+        code = [prefix + f"\\graph [{choose_layout(depth=0)}] {{"]
+
+        # Convert the root tensor into a set of edges
+        free_edges = self._to_tikz(tensor)
+
+        # If it's not a Sum, handle the leftover free edges now
+        if not isinstance(tensor, Sum):
+            self.handle_free_edges(free_edges)
+
+        code.append("\n".join(self.lines))
+        code.append("};")
+        code.append("\\end{document}")
+
+        return "\n".join(code)
+
+    def add_node(self, name: str, node_type: str, label: str = None, degree: int = None):
         """
         Add a single node to this graph. We rely on node_ref.name for uniqueness.
         """
-        assert node_ref.name not in self.added_node_names
-        self.added_node_names.add(node_ref.name)
+        assert name not in self.added_node_names
+        self.added_node_names.add(name)
 
         if label is not None:
             label, extra_style = format_label(label)
@@ -76,16 +134,16 @@ class TikzGraph:
 
         if node_type == "identity":
             label_str = f"${label}$" if label else ""
-            self.lines.append(f"  {node_ref.name}[identity, as={label_str},{nudge}];")
+            self.lines.append(f"  {name}[identity, as={label_str},{nudge}];")
 
         elif node_type == "zero":
-            self.lines.append(f"  {node_ref.name}[zero, as=0,{nudge}];")
+            self.lines.append(f"  {name}[zero, as=0,{nudge}];")
 
         elif node_type == "conv":
-            self.lines.append(f"  {node_ref.name}[conv, as=$\\ast$,{nudge}];")
+            self.lines.append(f"  {name}[conv, as=$\\ast$,{nudge}];")
 
         elif node_type == "reshape":
-            self.lines.append(f"  {node_ref.name}[reshape, as=reshape,{nudge}];")
+            self.lines.append(f"  {name}[reshape, as=reshape,{nudge}];")
 
         elif node_type == "var":
             # We optionally style the node by degree:
@@ -96,7 +154,7 @@ class TikzGraph:
                 label_str = f"${label}$"
             else:
                 label_str = ""
-            self.lines.append(f"  {node_ref.name}[{style}, as={label_str},{nudge}];")
+            self.lines.append(f"  {name}[{style}, as={label_str},{nudge}];")
 
         elif node_type == "function":
             # If it is a named function, we might want a shape.
@@ -108,24 +166,25 @@ class TikzGraph:
             clean_label = clean_label.replace("=", "")
             if clean_label:
                 clean_label = f"${clean_label}$"
-            self.lines.append(f"  {node_ref.name}[{style},as={clean_label},style={{{extra_style}}},{nudge}];")
+            self.lines.append(f"  {name}[{style},as={clean_label},style={{{extra_style}}},{nudge}];")
 
         elif node_type == "invisible":
-            self.lines.append(f"  {node_ref.name}[style={{}},as=,{nudge}];")
+            self.lines.append(f"  {name}[style={{}},as=,{nudge}];")
 
         elif node_type == "label":
             # Additional label node
-            self.lines.append(f"  {node_ref.name}[label, as=${label}$];")
+            self.lines.append(f"  {name}[label, as=${label}$];")
 
         else:
             # Fallback
-            self.lines.append(f"  {node_ref.name}[as=${label}$,{nudge}];")
+            self.lines.append(f"  {name}[as=${label}$,{nudge}];")
 
     def add_edge(self, ref1: NodeRef, ref2: NodeRef, label: str, directed=False, multiplicity=1):
         """
         Add an edge between two NodeRefs. We honor any edge_style stored in
         the NodeRef. If both have styles, we prefer the second's or combine them?
         """
+        print("Adding edge", ref1, ref2, label)
         # Extract the internal node names:
         id1 = ref1.name
         id2 = ref2.name
@@ -163,15 +222,15 @@ class TikzGraph:
             f"    ({id1}){edge_type}[{style_str}, bend left={angle}, auto={side} {label_str}] ({id2});"
         )
 
-    def add_subgraph(self, subgraph: "TikzGraph", style: str, layout: str, cluster_id: NodeRef):
+    def add_subgraph(self, subgraph: "TikzGraph", cluster_id: str, *, style: str = None, layout: str = None):
         """
         Insert a subgraph as a cluster. We rely on subgraph.lines (already constructed),
         and we do not re-add subgraph's nodes individually if they've already been
         added at a higher scope. We do, however, want them to appear in the subgraph block.
         """
-        style = style or ""
-        layout = layout or ""
-        self.lines.append(f"{cluster_id.name}[{style}] // [{layout}] {{")
+        style = "" if style is None else style
+        layout = choose_layout(self.depth) if layout is None else layout
+        self.lines.append(f"{cluster_id}[{style}] // [{layout}] {{")
         # Insert all the subgraph lines
         self.lines += subgraph.lines
         self.lines.append("},")
@@ -186,13 +245,214 @@ class TikzGraph:
         """
         for e, node_ref in free_edges.items():
             # Create a new node for the free edge:
-            dummy = NodeRef(self.namer.fresh_name("free"), edge_style="", edge_label="")
-            self.add_node(dummy, "invisible")
+            name = self.namer.fresh_name("free")
+            self.add_node(name, "invisible")
             # Now connect from node_ref -> dummy with the label "e":
-            self.add_edge(node_ref, dummy, label=e)
+            self.add_edge(node_ref, NodeRef(name, edge_label=e), label="")
 
-    def to_tikz(self) -> str:
-        return "\n".join(self.lines)
+    ###############################################################################
+    # Singledispatch for each tensor type
+    ###############################################################################
+    @depth_tracking_dispatcher
+    def _to_tikz(self, tensor):
+        raise RuntimeError(f"Unknown tensor type: {type(tensor)}")
+
+    @_to_tikz.register
+    def _(self, tensor: Delta):
+        # Make one node
+        name = self.namer.fresh_name("copy")
+        self.add_node(name, "identity")
+        # Return that node for every edge
+        return {e: NodeRef(name) for e in tensor.edges}
+
+    @_to_tikz.register
+    def _(self, tensor: Variable):
+        name = self.namer.fresh_name("var")
+        self.add_node(name, "var", label=tensor.name, degree=len(tensor.edges))
+        return {e: NodeRef(name, edge_label=e) for e in tensor.edges}
+
+    @_to_tikz.register
+    def _(self, tensor: Rename):
+        # Build the subgraph from the original
+        edges_map = self._to_tikz(tensor.tensor)
+        # Now rename the keys
+        renamed = {}
+        for old_e, ref in edges_map.items():
+            new_e = tensor.mapping.get(old_e, old_e)
+            renamed[new_e] = ref
+        return renamed
+
+    @_to_tikz.register
+    def _(self, tensor: Zero):
+        name = self.namer.fresh_name("zero")
+        self.add_node(name, "zero", degree=len(tensor.edges))
+        return {e: NodeRef(name) for e in tensor.edges}
+
+    @_to_tikz.register
+    def _(self, tensor: Convolution):
+        name = self.namer.fresh_name("conv")
+        self.add_node(name, "conv", degree=len(tensor.edges))
+        return {e: NodeRef(name) for e in tensor.edges}
+
+    @_to_tikz.register
+    def _(self, tensor: Reshape):
+        name = self.namer.fresh_name("reshape")
+        self.add_node(name, "reshape", degree=len(tensor.edges))
+        return {e: NodeRef(name) for e in tensor.edges}
+
+    @_to_tikz.register
+    def _(self, tensor: Function):
+        # We'll wrap the function node in a subgraph
+        subgraph = self.subgraph()
+        func_node = self.namer.fresh_name("func")
+        name = format_function(tensor.signature.name)
+        subgraph.add_node(func_node, "function", label=name, degree=len(tensor.shape_out))
+
+        free_edges = {}
+        # For each input t, connect it to func_ref with directed edges
+        for t, input_edges in zip(tensor.inputs, tensor.signature.inputs):
+            subedges = subgraph._to_tikz(t)
+            # connect these subedges to func_ref
+            for e in input_edges:
+                sub_ref = subedges.pop(e)
+                subgraph.add_edge(sub_ref, NodeRef(func_node), label=e, directed=True)
+            # everything else remains free
+            free_edges |= subedges
+
+        # Put the subgraph inside the main graph
+        cluster_id = self.namer.fresh_name("cluster_func")
+        self.add_subgraph(subgraph, cluster_id, style="function+subgraph")
+
+        # Return edges for the function's outputs
+        # plus the leftover free edges from the inputs
+        out_dict = {e: NodeRef(func_node) for e in tensor.shape_out}
+        return {**out_dict, **free_edges}
+
+    @_to_tikz.register
+    def _(self, tensor: Derivative):
+        # Subgraph for the main expression
+        subgraph = self.subgraph()
+        edges = subgraph._to_tikz(tensor.tensor)
+
+        # Mark the subgraph as derivative
+        cluster_id = self.namer.fresh_name("cluster_deriv")
+        # For each new edge name, attach it to the cluster with style "Circle-"
+        for e in tensor.new_names.values():
+            edges[e] = NodeRef(cluster_id, edge_style="Circle-")
+
+        self.add_subgraph(subgraph, cluster_id, style="derivative+subgraph")
+        return edges
+
+    @_to_tikz.register
+    def _(self, tensor: Expectation):
+        # Subgraph for the main expression
+        subgraph = self.subgraph()
+        edges = subgraph._to_tikz(tensor.tensor)
+
+        cluster_id = self.namer.fresh_name("cluster_expec")
+        self.add_subgraph(subgraph, cluster_id, style="expectation+subgraph")
+        return edges
+
+    @_to_tikz.register
+    def _(self, tensor: Product):
+        # If empty product, return an identity node
+        if len(tensor.tensors) == 0:
+            self.add_node(self.namer.fresh_name("id"), "identity")
+            return {}
+
+        # Gather sub-ids for each edge
+        sub_ids = defaultdict(list)
+        for t in tensor.tensors:
+            t_edges = self._to_tikz(t)
+            for e, ref in t_edges.items():
+                sub_ids[e].append(ref)
+
+        # If an edge has exactly 2 references, we connect them
+        cnt = Counter()
+        for e, refs in sub_ids.items():
+            if len(refs) == 2:
+                # We have a contraction
+                # We track how many times these two nodes have been connected so far
+                pair_key = tuple(sorted((refs[0].name, refs[1].name)))
+                cnt[pair_key] += 1
+                multiplicity = cnt[pair_key]
+                # TODO: Maybe don't include label here?
+                self.add_edge(
+                    refs[0],
+                    refs[1],
+                    # label=e,
+                    label="",
+                    multiplicity=multiplicity,
+                )
+
+        # If an edge has only one reference, it's free
+        free = {e: refs[0] for e, refs in sub_ids.items() if len(refs) == 1}
+        return free
+
+    @_to_tikz.register
+    def _(self, tensor: Sum):
+        # We'll represent the sum as a subgraph (unlike product, we
+        # actually want to group them visually).
+        subgraph = self.subgraph()
+        free_edges = {}
+
+        for i, (w, t) in enumerate(zip(tensor.weights, tensor.tensors)):
+            # Each term is itself a sub-sub-graph
+            term_graph = self.subgraph()
+
+            subedges = term_graph._to_tikz(t)
+            # If the term has any free edges, handle them in the term_graph
+            term_graph.handle_free_edges(subedges)
+            free_edges |= subedges
+
+            # Possibly style the bounding box if t is a Product with multiple factors
+            style = ""
+            # If it’s a product of 2 or more sub-tensors, we might want a border
+            style = "draw=none" if not isinstance(t, Product) or len(t.components()) <= 1 else ""
+
+            # We add an optional label for the weight
+            wt_prefix = format_weight(w, i)
+            if wt_prefix:
+                # Put a label node in front of the sub-sub-graph
+                label_graph = self.subgraph()
+                label_graph.add_node(
+                    self.namer.fresh_name("label"),
+                    "label",
+                    label=wt_prefix,
+                )
+                # Now add the term_graph as a subgraph of label_graph
+                label_graph.add_subgraph(
+                    term_graph,
+                    self.namer.fresh_name("labelcluster"),
+                    style=style,
+                )
+                # Finally add label_graph to subgraph
+                subgraph.add_subgraph(
+                    label_graph,
+                    self.namer.fresh_name("labelcluster2"),
+                    style="inner sep=0, draw=none",
+                    layout="tree layout",
+                )
+            else:
+                # Just put the term_graph in subgraph
+                subgraph.add_subgraph(
+                    term_graph,
+                    self.namer.fresh_name("sumterm"),
+                    style=style,
+                )
+
+        # If this sum is a top-level expression, we might not want a visible box
+        cluster_id = self.namer.fresh_name("sumcluster")
+        self.add_subgraph(
+            subgraph,
+            cluster_id,
+            style="draw=none" if self.depth == 1 else "inner sep=1em",
+        )
+
+        # Return references for all free edges as if they connect to sum “cluster_id”
+        # so that if the sum is nested in another expression, we treat this sum as if
+        # it’s a single node from the outside.
+        return {e: NodeRef(cluster_id) for e in free_edges.keys()}
 
 
 ###############################################################################
@@ -221,6 +481,46 @@ def format_weight(w, i):
     return str(w)
 
 
+def format_function(label):
+    """Just a small helper for printing weights in sums."""
+    """
+    Sanitizes a string so that it becomes safe to include directly in a LaTeX math environment.
+    """
+
+    special_chars = {
+        "\\": r"\backslash",  # Key difference: use \backslash for math mode
+        "{": r"\{",
+        "}": r"\}",
+    }
+    for char, escaped in special_chars.items():
+        label = label.replace(char, escaped)
+
+    fraction_pattern = r"Fraction\s*\(\s*([\-0-9]+)\s*,\s*([\-0-9]+)\s*\)"
+
+    def fraction_replacer(match):
+        numerator = match.group(1)
+        denominator = match.group(2)
+        # return r"\\frac{%s}{%s}" % (numerator, denominator)
+        return f"{numerator}/{denominator}"
+
+    label = re.sub(fraction_pattern, fraction_replacer, label)
+
+    special_chars = {
+        "_": r"\_",
+        "#": r"\#",
+        "$": r"\$",
+        "%": r"\%",
+        "&": r"\&",
+        "~": r"\sim",  # or \approx, or \tilde{}; depends on your need
+        "^": r"\hat{}",  # or just "^\," if you need an actual caret
+        ",": "{,}",  # curcly brackets are another way to escape
+    }
+    for char, escaped in special_chars.items():
+        label = label.replace(char, escaped)
+
+    return label
+
+
 ###############################################################################
 # Global layout strings
 ###############################################################################
@@ -240,7 +540,7 @@ spring_layout = """\
 """
 
 
-def layout(depth):
+def choose_layout(depth):
     """
     Switch layout or orientation by depth, if desired.
     """
@@ -293,225 +593,3 @@ prefix = r"""\documentclass[tikz]{standalone}
     },
 ]
 """
-
-
-def to_tikz(tensor):
-    """
-    Main entry point: produce the LaTeX (TikZ) code for 'tensor'.
-    """
-    namer = Namer()
-    graph = TikzGraph(namer)
-
-    # We'll wrap everything in the prefix plus a single subgraph so that
-    # if we want to do fancy layering, we can:
-    code = [prefix + f"\\graph [{layout(depth=0)}] {{"]
-
-    # Convert the root tensor into a set of edges
-    free_edges = _to_tikz(tensor, graph, depth=1)
-
-    # If it's not a Sum, handle the leftover free edges now
-    if not isinstance(tensor, Sum):
-        graph.handle_free_edges(free_edges)
-
-    code.append(graph.to_tikz())
-    code.append("};")
-    code.append("\\end{document}")
-
-    return "\n".join(code)
-
-
-###############################################################################
-# Singledispatch for each tensor type
-###############################################################################
-@singledispatch
-def _to_tikz(tensor, graph: TikzGraph, depth=0):
-    raise RuntimeError(f"Unknown tensor type: {type(tensor)}")
-
-
-@_to_tikz.register
-def _(tensor: Delta, graph: TikzGraph, depth=0):
-    # Make one node
-    node_ref = NodeRef(name=graph.namer.fresh_name("copy"))
-    graph.add_node(node_ref, "identity", label=str(tensor._size))
-    # Return that node for every edge
-    return {e: node_ref for e in tensor.edges}
-
-
-@_to_tikz.register
-def _(tensor: Variable, graph: TikzGraph, depth=0):
-    node_ref = NodeRef(name=graph.namer.fresh_name("var"))
-    graph.add_node(node_ref, "var", label=tensor.name, degree=len(tensor.edges))
-    return {e: node_ref for e in tensor.edges}
-
-
-@_to_tikz.register
-def _(tensor: Rename, graph: TikzGraph, depth=0):
-    # Build the subgraph from the original
-    edges_map = _to_tikz(tensor.tensor, graph, depth + 1)
-    # Now rename the keys
-    renamed = {}
-    for old_e, ref in edges_map.items():
-        new_e = tensor.mapping.get(old_e, old_e)
-        ref.edge_label = old_e
-        renamed[new_e] = ref
-    return renamed
-
-
-@_to_tikz.register
-def _(tensor: Zero, graph: TikzGraph, depth=0):
-    node_ref = NodeRef(name=graph.namer.fresh_name("zero"))
-    graph.add_node(node_ref, "zero", degree=len(tensor.edges))
-    return {e: node_ref for e in tensor.edges}
-
-
-@_to_tikz.register
-def _(tensor: Convolution, graph: TikzGraph, depth=0):
-    node_ref = NodeRef(name=graph.namer.fresh_name("conv"))
-    graph.add_node(node_ref, "conv", degree=len(tensor.edges))
-    return {e: node_ref for e in tensor.edges}
-
-
-@_to_tikz.register
-def _(tensor: Reshape, graph: TikzGraph, depth=0):
-    node_ref = NodeRef(name=graph.namer.fresh_name("reshape"))
-    graph.add_node(node_ref, "reshape", degree=len(tensor.edges))
-    return {e: node_ref for e in tensor.edges}
-
-
-@_to_tikz.register
-def _(tensor: Function, graph: TikzGraph, depth=0):
-    # We'll wrap the function node in a subgraph
-    subgraph = TikzGraph(graph.namer)
-
-    func_ref = NodeRef(name=graph.namer.fresh_name("func"))
-    subgraph.add_node(func_ref, "function", label=tensor.signature.name, degree=len(tensor.shape_out))
-
-    free_edges = {}
-    # For each input t, connect it to func_ref with directed edges
-    for t, input_edges in zip(tensor.inputs, tensor.signature.inputs):
-        subedges = _to_tikz(t, subgraph, depth + 1)
-        # connect these subedges to func_ref
-        for e in input_edges:
-            sub_ref = subedges.pop(e)
-            subgraph.add_edge(sub_ref, func_ref, label=e, directed=True)
-        # everything else remains free
-        free_edges |= subedges
-
-    # Put the subgraph inside the main graph
-    cluster_id = NodeRef(name=graph.namer.fresh_name("cluster_func"))
-    graph.add_subgraph(subgraph, "function+subgraph", layout(depth), cluster_id)
-
-    # Return edges for the function's outputs
-    # plus the leftover free edges from the inputs
-    out_dict = {e: func_ref for e in tensor.shape_out}
-    return {**out_dict, **free_edges}
-
-
-@_to_tikz.register
-def _(tensor: Derivative, graph: TikzGraph, depth=0):
-    # Subgraph for the main expression
-    subgraph = TikzGraph(graph.namer)
-    edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
-
-    # Mark the subgraph as derivative
-    cluster_id = NodeRef(name=graph.namer.fresh_name("cluster_deriv"))
-    # For each new edge name, attach it to the cluster with style "Circle-"
-    for e in tensor.new_names.values():
-        edges[e] = NodeRef(cluster_id.name, edge_style="Circle-")
-
-    graph.add_subgraph(subgraph, "derivative+subgraph", layout(depth), cluster_id)
-    return edges
-
-
-@_to_tikz.register
-def _(tensor: Expectation, graph: TikzGraph, depth=0):
-    # Subgraph for the main expression
-    subgraph = TikzGraph(graph.namer)
-    edges = _to_tikz(tensor.tensor, subgraph, depth + 1)
-
-    cluster_id = NodeRef(name=graph.namer.fresh_name("cluster_expec"))
-    graph.add_subgraph(subgraph, "expectation+subgraph", layout(depth), cluster_id)
-    return edges
-
-
-@_to_tikz.register
-def _(tensor: Product, graph: TikzGraph, depth=0):
-    # If empty product, return an identity node
-    if len(tensor.tensors) == 0:
-        node_ref = NodeRef(name=graph.namer.fresh_name("id"))
-        graph.add_node(node_ref, "identity")
-        return {}
-
-    # Gather sub-ids for each edge
-    sub_ids = defaultdict(list)
-    for t in tensor.tensors:
-        t_edges = _to_tikz(t, graph, depth + 1)
-        for e, ref in t_edges.items():
-            sub_ids[e].append(ref)
-
-    # If an edge has exactly 2 references, we connect them
-    cnt = Counter()
-    for e, refs in sub_ids.items():
-        if len(refs) == 2:
-            # We have a contraction
-            # We track how many times these two nodes have been connected so far
-            pair_key = tuple(sorted((refs[0].name, refs[1].name)))
-            cnt[pair_key] += 1
-            multiplicity = cnt[pair_key]
-            graph.add_edge(refs[0], refs[1], label=e, multiplicity=multiplicity)
-
-    # If an edge has only one reference, it's free
-    free = {e: refs[0] for e, refs in sub_ids.items() if len(refs) == 1}
-    return free
-
-
-@_to_tikz.register
-def _(tensor: Sum, graph: TikzGraph, depth=0):
-    # We'll represent the sum as a subgraph (unlike product, we
-    # actually want to group them visually).
-    subgraph = TikzGraph(graph.namer)
-    free_edges = {}
-
-    for i, (w, t) in enumerate(zip(tensor.weights, tensor.tensors)):
-        # Each term is itself a sub-sub-graph
-        term_graph = TikzGraph(graph.namer)
-        sub_id = NodeRef(name=graph.namer.fresh_name("sumterm"))
-
-        subedges = _to_tikz(t, term_graph, depth + 1)
-        # If the term has any free edges, handle them in the term_graph
-        term_graph.handle_free_edges(subedges)
-        free_edges |= subedges
-
-        # Possibly style the bounding box if t is a Product with multiple factors
-        style = ""
-        # If it’s a product of 2 or more sub-tensors, we might want a border
-        style = "draw=none" if not isinstance(t, Product) or len(t.components()) <= 1 else ""
-
-        # We add an optional label for the weight
-        wt_prefix = format_weight(w, i)
-        if wt_prefix:
-            # Put a label node in front of the sub-sub-graph
-            label_graph = TikzGraph(graph.namer)
-            label_id = NodeRef(name=graph.namer.fresh_name("label"))
-            label_graph.add_node(label_id, "label", label=wt_prefix)
-
-            # Now add the term_graph as a subgraph of label_graph
-            label_cluster = NodeRef(name=graph.namer.fresh_name("labelcluster"))
-            label_graph.add_subgraph(term_graph, style, layout(depth + 1), label_cluster)
-
-            # Finally add label_graph to subgraph
-            label_cluster2 = NodeRef(name=graph.namer.fresh_name("labelcluster2"))
-            subgraph.add_subgraph(label_graph, "inner sep=0, draw=none", "tree layout", label_cluster2)
-        else:
-            # Just put the term_graph in subgraph
-            subgraph.add_subgraph(term_graph, style, layout(depth + 1), sub_id)
-
-    # If this sum is a top-level expression, we might not want a visible box
-    style = "draw=none" if depth == 1 else "inner sep=1em"
-    cluster_id = NodeRef(name=graph.namer.fresh_name("sumcluster"))
-    graph.add_subgraph(subgraph, style, layout(depth), cluster_id)
-
-    # Return references for all free edges as if they connect to sum “cluster_id”
-    # so that if the sum is nested in another expression, we treat this sum as if
-    # it’s a single node from the outside.
-    return {e: cluster_id for e in free_edges.keys()}

@@ -452,3 +452,27 @@ def test_start_end():
     expr = A @ B.rename(k="j", j="k")
     out = to_tikz(expr)
     assert '"$j$" at start, "$k$" at end' in out or '"$k$" at start, "$j$" at end' in out
+
+
+def test_start_end2():
+    n, i = symbols("n i")
+    X = Variable("X", i, n1=n)
+    expr = F.dot(X, X, dim="i").full_simplify()
+    out = to_tikz(expr)
+
+    for e1, e2 in re.findall(r'"\$(.*?)\$" at start,\s*"\$(.*?)\$" at end', out):
+        assert e1[0] == e2[0], f"Edge should not connect incompatible dims, {e1} -- {e2}"
+
+    # Examples:
+    # (var0) -- [, bend left=0, auto=right , "$n1$" at start, "$i1$" at end] (var2);
+    # (var0) -- [, bend left=0, auto=right , "$n1$" at start, "$n11$" at end] (copy1);
+    # (copy1) -- [, bend left=0, auto=right , "$n1$" at start, "$n10$" at end] (var2);
+
+
+def test_free_edges():
+    i = symbols("i")
+    X = Variable("X", i)
+    expr = X @ Delta(i, "i", "j", "k", "l")
+    out = to_tikz(expr)
+    for edge in ["i", "j", "k", "l"]:
+        assert f'"${edge}$"' in out

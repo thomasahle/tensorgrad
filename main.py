@@ -177,5 +177,32 @@ def main11():
     out = compiled_fn(vals, dims)[expr]
     assert_close(out, ref)
 
+def main12():
+    n, i = symbols("n i")
+    X = Variable("X", i, n1=n)
+    Y = Variable("Y", i, n2=n)
+    ips = X @ Y  # shape (n1, n2)
+    norm2s = F.dot(X, X, dim='i') @ F.dot(Y, Y, dim='i')
+    cosine = ips / norm2s
+    cosine = ips / F.sqrt(norm2s)
+    grad = Derivative(cosine, X)
+    save_steps(grad)
+    #print(to_tikz(grad))
+
+
+def main13():
+    n, i = symbols("n i")
+    X = Variable("X", i, n)
+    ips = F.dot(X, X, dim='i')
+    save_steps(ips)
+    print(to_tikz(ips.full_simplify()))
+
+def main14():
+    i = symbols("i")
+    X = Variable("X", i)
+    expr = X @ Delta(i, "i", "j", "k", "l")
+    save_steps(expr)
+    print(to_tikz(expr.full_simplify()))
+
 if __name__ == "__main__":
-    main10()
+    main12()
