@@ -69,7 +69,7 @@ def main():
         layers.append(linear := Variable("lin", c2, h2, w2, out))
         logits = x @ linear
 
-    elif True:
+    elif False:
         x = F.relu(x @ conv_layer(0, 1, 2)).simplify()
         c1, h1, w1, c2 = symbols("c1 h1 w1 c2")
         shapes[c2] = 2 * 26**2  # c1*w1*h1
@@ -128,8 +128,6 @@ def main():
     # Train
     print("Training...")
     parameters = rand_values(layers, shapes)
-    # for param, tensor in parameters.items():
-    #     print(param.shape, tensor.names)
     parameters = {s: t/sum(t.shape)**.5 for s, t in parameters.items()}
     for epoch in range(n_epochs):
         total_loss = 0

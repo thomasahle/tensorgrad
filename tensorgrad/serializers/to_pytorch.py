@@ -1,3 +1,4 @@
+from functools import singledispatchmethod
 import textwrap
 import torch
 import sympy
@@ -75,46 +76,32 @@ class CodegenContext:
                 name += f".permute({', '.join(map(str,perm))})"
             return name
 
-        if isinstance(tensor, Variable):
-            var_name = self._emit_variable(tensor)
-        elif isinstance(tensor, Zero):
-            var_name = self._emit_zero(tensor)
-        elif isinstance(tensor, Delta):
-            var_name = self._emit_copy(tensor)
-        elif isinstance(tensor, F.Convolution):
-            var_name = self._emit_convolution(tensor)
-        elif isinstance(tensor, F.Reshape):
-            var_name = self._emit_reshape(tensor)
-        elif isinstance(tensor, Sum):
-            var_name = self._emit_sum(tensor)
-        elif isinstance(tensor, Product):
-            var_name = self._emit_product(tensor)
-        elif isinstance(tensor, Function):
-            var_name = self._emit_function(tensor)
-        elif isinstance(tensor, Rename):
-            var_name = self._emit_derivative(tensor)
-        elif isinstance(tensor, Derivative):
-            var_name = self._emit_derivative(tensor)
-        else:
-            raise NotImplementedError(f"Don't know how to emit code for {type(tensor)}")
-
+        var_name = self._emit_tensor_impl(tensor)
         self.cache[tensor] = (tensor, var_name)
         return var_name
 
-    def _emit_variable(self, t: Variable) -> str:
-        self.seen_variables.add(t)
-        var_name = self.fresh_name(f"var_{t.name}")
-        placeholder_name = f"_var_{id(t)}"
+    @singledispatchmethod
+    def _emit_tensor_impl(self, tensor: Tensor) -> str:
+        """Base implementation for tensor emission."""
+        raise NotImplementedError(f"Don't know how to emit code for {type(tensor)}")
+
+    @_emit_tensor_impl.register
+    def _(self, tensor: Variable) -> str:
+        self.seen_variables.add(tensor)
+        var_name = self.fresh_name(f"var_{tensor.name}")
+        placeholder_name = f"_var_{id(tensor)}"
         self.emit(f"{var_name} = {placeholder_name}")
         return var_name
 
-    def _emit_zero(self, t: Zero) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: Zero) -> str:
         var_name = self.fresh_name("zero_")
         shape_dims = [self.declare_dimension(t.shape[e]) for e in t.edges]
         self.emit(f"{var_name} = torch.zeros([{','.join(shape_dims)}])  # {', '.join(t.edges)}")
         return var_name
 
-    def _emit_copy(self, t: Delta) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: Delta) -> str:
         var_name = self.fresh_name("copy_")
         edges = list(t.edges)
         order = len(edges)
@@ -141,7 +128,8 @@ class CodegenContext:
 
         return var_name
 
-    def _emit_convolution(self, t: F.Convolution) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: F.Convolution) -> str:
         var_name = self.fresh_name("conv_")
         edges = list(t.edges)
         assert len(edges) == 3, "Convolution must have 3 edges"
@@ -162,7 +150,8 @@ class CodegenContext:
         self.emit(code)
         return var_name
 
-    def _emit_reshape(self, t: F.Reshape) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: F.Reshape) -> str:
         var_name = self.fresh_name("reshape_")
         edges = list(t.edges)
         shape_dims = [self.declare_dimension(t.shape[e]) for e in edges]
@@ -185,7 +174,8 @@ class CodegenContext:
         self.emit(f"{var_name} = {tmp_base}.reshape({','.join(shape_dims)})")
         return var_name
 
-    def _emit_sum(self, t: Sum) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: Sum) -> str:
         var_name = self.fresh_name("sum_")
         self.emit(f"{var_name} = 0")
 
@@ -200,7 +190,8 @@ class CodegenContext:
 
         return var_name
 
-    def _emit_product(self, t: Product) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: Product) -> str:
         """Emit code for a Product tensor."""
         var_name = self.fresh_name("prod_")
 
@@ -230,7 +221,8 @@ class CodegenContext:
 
         return var_name
 
-    def _emit_function(self, t: Function) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: Function) -> str:
         signature = t.signature
         name = "".join(c for c in signature.name if c.isalnum())
         var_name = self.fresh_name(f"fn_{name}")
@@ -251,17 +243,19 @@ class CodegenContext:
 
         return var_name
 
-    def _emit_rename(self, t: Rename) -> str:
+    @_emit_tensor_impl.register
+    def _(self, t: Rename) -> str:
         var_name = self._emit_tensor(t.tensor)
         edges = list(t.edges)
         inverse_mapping = {e: o for o, e in t.mapping}
-        perm = [edges.index(inverse_mapping[e]) for e in edges]
+        perm = [edges.index(inverse_mapping.get(e, e)) for e in edges]
         if perm != list(range(t.order)):
             self.emit(f"{var_name} = {var_name}.permute({', '.join(map(str, perm))})")
         return var_name
 
-    def _emit_derivative(self, t: Derivative) -> str:
-        raise NotImplementedError("Derivative not implemented in codegen, please simplify first.")
+    @_emit_tensor_impl.register
+    def _(self, t: Derivative) -> str:
+        raise NotImplementedError(f"Derivative not implemented in codegen, please simplify first. {t=}")
 
 
 def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=True):
