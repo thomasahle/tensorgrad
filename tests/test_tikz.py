@@ -476,3 +476,26 @@ def test_free_edges():
     out = to_tikz(expr)
     for edge in ["i", "j", "k", "l"]:
         assert f'"${edge}$"' in out
+
+
+def test_deriv():
+    i, j = symbols("i j")
+    x = Variable("x", x=i)
+    v = function("v", {"y": j}, (x, "x"))
+    f = function("f", {}, (v, "y"))
+    grad = f.grad(x).simplify()
+    out = to_tikz(grad)
+    assert "$D_0f$" in out
+    assert "$D_0v$" in out
+
+
+def test_boxes():
+    b, x, y = symbols("b x y")
+    X = Variable("X", b, x)
+    Y = Variable("Y", b, y)
+    W = Variable("W", x, y)
+    frob = F.frobenius2(W @ X - Y)
+    grad = frob.grad(W).simplify()
+    out = to_tikz(grad)
+    assert out.count("[inner sep=1em]") == 1
+    assert "[draw=none]" in out  # The rest should have no box

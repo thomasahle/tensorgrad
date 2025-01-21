@@ -117,22 +117,21 @@ class TikzGraph:
 
         return "\n".join(code)
 
-    def add_node(self, name: str, node_type: str, label: str = None, degree: int = None):
+    def add_node(self, name: str, node_type: str, label: str = None, degree: int = None, style=None):
         """
         Add a single node to this graph. We rely on node_ref.name for uniqueness.
         """
         assert name not in self.added_node_names
         self.added_node_names.add(name)
 
-        if label is not None:
-            label, extra_style = format_label(label)
-        else:
-            label, extra_style = "", ""
+        label = label or ""
+        style = style or ""
 
         # We can nudge nodes randomly if you like:
         nudge = f"nudge=(left:{random.random() - 0.5:.3f}em)"
 
         if node_type == "identity":
+            label = format_label(label)
             label_str = f"${label}$" if label else ""
             self.lines.append(f"  {name}[identity, as={label_str},{nudge}];")
 
@@ -159,14 +158,7 @@ class TikzGraph:
         elif node_type == "function":
             # If it is a named function, we might want a shape.
             style = "function" if (degree is None or degree >= 5) else f"degree{degree}"
-            # Clean up underscores
-            clean_label = label.replace("_", "\\_")
-            # Some custom replacements:
-            clean_label = clean_label.replace("k=", "")
-            clean_label = clean_label.replace("=", "")
-            if clean_label:
-                clean_label = f"${clean_label}$"
-            self.lines.append(f"  {name}[{style},as={clean_label},style={{{extra_style}}},{nudge}];")
+            self.lines.append(f"  {name}[{style},as={label},style={{{style}}},{nudge}];")
 
         elif node_type == "invisible":
             self.lines.append(f"  {name}[style={{}},as=,{nudge}];")
@@ -184,7 +176,6 @@ class TikzGraph:
         Add an edge between two NodeRefs. We honor any edge_style stored in
         the NodeRef. If both have styles, we prefer the second's or combine them?
         """
-        print("Adding edge", ref1, ref2, label)
         # Extract the internal node names:
         id1 = ref1.name
         id2 = ref2.name
@@ -192,7 +183,7 @@ class TikzGraph:
         labels = set()
         for edge_label in [ref1.edge_label, label, ref2.edge_label]:
             if edge_label:
-                formatted_label, _extra_style = format_label(edge_label)
+                formatted_label = format_label(edge_label)
                 labels.add(f"${formatted_label}$")
 
         # Combine or choose an edge style:
@@ -305,8 +296,14 @@ class TikzGraph:
         # We'll wrap the function node in a subgraph
         subgraph = self.subgraph()
         func_node = self.namer.fresh_name("func")
-        name = format_function(tensor.signature.name)
-        subgraph.add_node(func_node, "function", label=name, degree=len(tensor.shape_out))
+        label, style = format_function(tensor.signature.name)
+        subgraph.add_node(
+            func_node,
+            "function",
+            label=label,
+            style=style,
+            degree=len(tensor.shape_out),
+        )
 
         free_edges = {}
         # For each input t, connect it to func_ref with directed edges
@@ -376,11 +373,9 @@ class TikzGraph:
                 pair_key = tuple(sorted((refs[0].name, refs[1].name)))
                 cnt[pair_key] += 1
                 multiplicity = cnt[pair_key]
-                # TODO: Maybe don't include label here?
                 self.add_edge(
                     refs[0],
                     refs[1],
-                    # label=e,
                     label="",
                     multiplicity=multiplicity,
                 )
@@ -417,7 +412,7 @@ class TikzGraph:
                 label_graph = self.subgraph()
                 label_graph.add_node(
                     self.namer.fresh_name("label"),
-                    "label",
+                    node_type="label",
                     label=wt_prefix,
                 )
                 # Now add the term_graph as a subgraph of label_graph
@@ -446,7 +441,7 @@ class TikzGraph:
         self.add_subgraph(
             subgraph,
             cluster_id,
-            style="draw=none" if self.depth == 1 else "inner sep=1em",
+            style="draw=none" if self.depth == 0 else "inner sep=1em",
         )
 
         # Return references for all free edges as if they connect to sum “cluster_id”
@@ -463,11 +458,8 @@ def format_label(label):
     Attempt to parse trailing digits and underscores to produce e.g. x_1 or x_{12}.
     Also handle "D_" for double lines, etc.
     """
-    if re.match(r"D_(\d+)", label):
-        return label, "double"
-
     label = label.replace("_", "'")
-    return label, ""
+    return label
 
 
 def format_weight(w, i):
@@ -506,8 +498,10 @@ def format_function(label):
     label = re.sub(fraction_pattern, fraction_replacer, label)
 
     special_chars = {
-        "_": r"\_",
+        # "_": r"\_",
         "#": r"\#",
+        "k=": r"",
+        "=": r"",
         "$": r"\$",
         "%": r"\%",
         "&": r"\&",
@@ -518,7 +512,11 @@ def format_function(label):
     for char, escaped in special_chars.items():
         label = label.replace(char, escaped)
 
-    return label
+    style = ""
+    if re.match(r"D_(\d+)", label):
+        style = "double"
+
+    return f"${label}$", style
 
 
 ###############################################################################

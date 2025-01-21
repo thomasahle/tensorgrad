@@ -11,6 +11,45 @@ from sympy import symbols
 import torch
 import tqdm
 
+# Examples from the notebook
+
+def notebook0():
+    b, x, y = symbols("b x y")
+    X = Variable("X", b, x)
+    Y = Variable("Y", b, y)
+    W = Variable("W", x, y)
+    frob = F.frobenius2(W @ X - Y)
+    grad = frob.grad(W).simplify()
+    save_steps(grad)
+    print(to_tikz(grad))
+
+def notebook1():
+    i, j = symbols("i j")
+    x = Variable("x", x=i)
+    v = function("v", {"y": j}, (x, "x"))
+    f = function("f", {}, (v, "y"))
+    grad = f.grad(x).simplify()
+    save_steps(grad)
+
+def notebook2():
+    b, i = symbols("b i")
+    x = Variable("x", b, i)
+    f = function("max", {}, (x, "i"))
+    expr = f.grad(x).simplify()
+    print(to_tikz(expr))
+    save_steps(expr)
+
+def notebook3():
+    from tensorgrad import functions as F
+    C = symbols("C")
+    logits = Variable("logits", C)
+    target = Variable("target", C)
+    ce = F.cross_entropy(logits, target, ["C"])
+    expr = ce.grad(logits)
+    expr = expr.grad(logits)
+    expr = expr.simplify()
+    save_steps(expr)
+
 
 def main():
     i = symbols("i")
@@ -205,4 +244,4 @@ def main14():
     print(to_tikz(expr.full_simplify()))
 
 if __name__ == "__main__":
-    main12()
+    notebook3()
