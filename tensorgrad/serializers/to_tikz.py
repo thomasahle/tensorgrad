@@ -169,9 +169,6 @@ class TikzGraph:
         and we do not re-add subgraph's nodes individually if they've already been
         added at a higher scope. We do, however, want them to appear in the subgraph block.
         """
-        # Ensure the cluster node itself is unique
-        self.add_node(cluster_id, node_type="invisible")
-
         style = style or ""
         layout = layout or ""
         self.lines.append(f"{cluster_id.name}[{style}] // [{layout}] {{")

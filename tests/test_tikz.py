@@ -25,7 +25,10 @@ def parse_tikz_lines(tikz_output: str):
     for line in tikz_output.splitlines():
         line = line.strip()
         # Attempt to parse a node line, e.g. "0[var, as=$x$,...];"
-        node_match = re.match(r"^(?P<id>\S+)\[(?P<styles>[^\]]+)\];$", line)
+        # node_match = re.match(r"^(?P<id>\S+)\[(?P<styles>[^\]]+)\]", line)
+        node_match = re.match(
+            r"^(?P<id>\S+)\[(?P<styles>[^\]]+)\](?:\s*\/\/\s*\[(?P<layout>[^\]]+)\])?", line
+        )
         if node_match:
             nid = node_match.group("id")
             assert nid not in node_ids, f"Duplicate node id: {nid}"

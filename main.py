@@ -5,6 +5,8 @@ from tensorgrad.extras import Expectation
 from tensorgrad.serializers.to_tikz import to_tikz
 from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
 from tensorgrad.imgtools import save_steps, save_as_image
+from tensorgrad.serializers.to_pytorch import compile_to_callable
+from tensorgrad.testutils import assert_close, rand_values
 from sympy import symbols
 import torch
 import tqdm
@@ -135,7 +137,7 @@ def main7():
     frob = F.frobenius2(expr.grad(A).grad(A))
     frob += 2 * F.frobenius2(expr.grad(A).grad(b))
     frob += F.frobenius2(expr.grad(b).grad(b))
-    frob = frob.full_simplify()
+    frob = frob#.full_simplify()
     #print(to_latex_indexed(frob))
     save_steps(frob)
 
@@ -155,10 +157,25 @@ def main10():
     Y = Variable("Y", b, y)
     W = Variable("W", x, y)
     frob = F.frobenius2(W @ X - Y)
-    grad = frob.grad(W).simplify()
+    grad = Derivative(frob, W)
     save_steps(grad)
-    # print(to_tikz(grad))
+    print(to_tikz(grad))
 
+def main11():
+    i, j, k = symbols("i j k")
+    x = Variable("x", i, j)
+    w = Variable("w", j, k)
+    b = Variable("b", i, k)
+
+    expr = F.relu(x @ w + b)  # shape (i, k)
+
+    compiled_fn = compile_to_callable(expr, verbose=True, torch_compile=False)
+
+    dims = {i: 2, j: 3, k: 4}
+    vals = rand_values([x, w, b], dims)
+    ref = expr.evaluate(vals, dims)
+    out = compiled_fn(vals, dims)[expr]
+    assert_close(out, ref)
 
 if __name__ == "__main__":
-    main7()
+    main10()
