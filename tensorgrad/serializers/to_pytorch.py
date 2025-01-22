@@ -223,7 +223,8 @@ class CodegenContext:
             )
 
         parts.append(f"{[edge_numbers[e] for e in t.edges]}  # ({', '.join(t.edges)})")
-        self.emit(f"{var_name} = torch.einsum(\n    {'\n    '.join(parts)}\n    )")
+        inner = "\n    ".join(parts)  # python3.11 f-strings can't have backslash
+        self.emit(f"{var_name} = torch.einsum(\n    {inner}\n    )")
 
         return var_name
 
