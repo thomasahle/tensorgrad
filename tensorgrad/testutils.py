@@ -163,7 +163,7 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
     sizes = {s: random.randrange(1, 2 * max_dim + 1) for s in symbols_list}
     vars = [
         (
-            Variable(f"var_{symbols}", *symbols),
+            Variable(f"var_{'_'.join(map(str,symbols))}", *symbols),
             torch.randn([sizes[s] for s in symbols], names=list(map(str, symbols))),
         )
         for r in range(1, len(symbols_list) + 1)

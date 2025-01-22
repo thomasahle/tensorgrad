@@ -40,7 +40,6 @@ def notebook2():
     save_steps(expr)
 
 def notebook3():
-    from tensorgrad import functions as F
     C = symbols("C")
     logits = Variable("logits", C)
     target = Variable("target", C)

@@ -196,7 +196,9 @@ class TikzGraph:
 
         # For multiple edges between the same nodes, bend them differently
         angle = (-1) ** multiplicity * 20 * (multiplicity // 2)
-        side = "left" if multiplicity % 2 == 0 else "right"
+        # side = "auto=left" if multiplicity % 2 == 0 else "auto=right"
+        # side = "sloped, above"
+        side = ""
 
         # If there's a style, we put it in brackets after the edge operation
         style_str = style if style else ""
@@ -210,7 +212,7 @@ class TikzGraph:
             label_str = f', "{labels[0]}" at start, "{labels[-1]}" at end'
 
         self.lines.append(
-            f"    ({id1}){edge_type}[{style_str}, bend left={angle}, auto={side} {label_str}] ({id2});"
+            f"    ({id1}){edge_type}[{style_str}, bend left={angle}, {side} {label_str}] ({id2});"
         )
 
     def add_subgraph(self, subgraph: "TikzGraph", cluster_id: str, *, style: str = None, layout: str = None):
@@ -447,7 +449,7 @@ class TikzGraph:
         # Return references for all free edges as if they connect to sum “cluster_id”
         # so that if the sum is nested in another expression, we treat this sum as if
         # it’s a single node from the outside.
-        return {e: NodeRef(cluster_id) for e in free_edges.keys()}
+        return {e: NodeRef(cluster_id, edge_label=e) for e in free_edges.keys()}
 
 
 ###############################################################################
@@ -586,7 +588,6 @@ prefix = r"""\documentclass[tikz]{standalone}
         fill opacity=0.85,
         text opacity=1,
         midway,
-        auto,
         inner sep=1pt,
     },
 ]

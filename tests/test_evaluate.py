@@ -2,6 +2,7 @@ import random
 import pytest
 from sympy import symbols
 import torch
+from tensorgrad.serializers.to_pytorch import compile_to_callable
 from tensorgrad.tensor import (
     Delta,
     Derivative,
@@ -215,11 +216,12 @@ def test_random_small(max_depth, max_dim):
     random.seed(42)
     for _ in range(30):
         expr, expected, variables = random_tensor_expr(max_depth=max_depth, max_dim=max_dim)
-        # expr, expected, variables = random_tensor_expr(max_depth=max_depth, max_dim=max_dim)
-        result = expr.evaluate(variables)
-        assert_close(result, expected, atol=1e-2, rtol=1e-2)
-        result2 = expr.simplify().evaluate(variables)
-        assert_close(result2, expected, atol=1e-2, rtol=1e-2)
+        for expr_ in [expr, expr.simplify()]:
+            print(expr_)
+            result = expr_.evaluate(variables)
+            result_code = compile_to_callable(expr_, verbose=True)(variables)
+            for val in [result, result_code]:
+                assert_close(val, expected, atol=1e-2, rtol=1e-2)
 
 
 def test_rand2():

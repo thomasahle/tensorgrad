@@ -1,7 +1,6 @@
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from sympy import symbols
-import time
 import tqdm
 import torch
 
@@ -17,18 +16,15 @@ def main():
     lr = 1e-2
 
     # Load data
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
-    ])
-    args = dict(root='./data', download=True, transform=transform)
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+    args = dict(root="./data", download=True, transform=transform)
     train_dataset = datasets.MNIST(train=True, **args)
-    test_dataset = datasets.MNIST(train=False, **args)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    # test_dataset = datasets.MNIST(train=False, **args)
+    # test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     # Create model
-    batch, c0, w0, h0, out, kernel_size = symbols(f"batch c0 w0 h0 out ks")
+    batch, c0, w0, h0, out, kernel_size = symbols("batch c0 w0 h0 out ks")
     data = Variable("data", batch, c0, w0, h0)
     targets = Variable("targets", batch, out)
     shapes = {
@@ -41,24 +37,25 @@ def main():
     }
 
     layers = []
-    def conv_layer(i, in_channels, out_channels):
-        c_in, c_out = symbols(f"c{i} c{i+1}")
 
+    def conv_layer(i, in_channels, out_channels):
+        # Declare heigth and weidth convolutions
+        c_in, c_out = symbols(f"c{i} c{i+1}")
         h_in, h_out, w_in, w_out = symbols(f"h{i} h{i+1}, w{i} w{i+1}")
         h_conv = F.Convolution(h_in, h_out, hk=kernel_size)
         w_conv = F.Convolution(w_in, w_out, wk=kernel_size)
-
+        # Declare kernel variable and add it to the layers list
         kernel = Variable(f"kernel_{i}", c_in, c_out, hk=kernel_size, wk=kernel_size)
         layers.append(kernel)
-
+        # Save the shapes of the inner dimensions
         shapes[c_in] = in_channels
         shapes[c_out] = out_channels
         shapes[h_out] = shapes[h_in] - shapes[kernel_size] + 1
         shapes[w_out] = shapes[w_in] - shapes[kernel_size] + 1
-
+        # Apply the convolution
         return kernel @ h_conv @ w_conv
 
-
+    # Build the mode
     x = data
 
     if False:
@@ -69,7 +66,7 @@ def main():
         layers.append(linear := Variable("lin", c2, h2, w2, out))
         logits = x @ linear
 
-    elif False:
+    elif True:
         x = F.relu(x @ conv_layer(0, 1, 2)).simplify()
         c1, h1, w1, c2 = symbols("c1 h1 w1 c2")
         shapes[c2] = 2 * 26**2  # c1*w1*h1
@@ -87,38 +84,11 @@ def main():
         layers.append(linear := Variable("lin", c0, w0, h0, out))
         logits = x @ linear
 
-    #y = F.cross_entropy(logits, targets, dim='out')
-    y = F.mean((logits - targets)**2, dim='out')
-    y = F.mean(y, dim='batch')
+    # y = F.cross_entropy(logits, targets, dim='out')
+    y = F.mean((logits - targets) ** 2, dim="out")
+    y = F.mean(y, dim="batch")
     y = y.full_simplify()
-    prediction = F.argmax(logits, dim='out')
-
-    # parameters = rand_values(kernels + [linear, data, targets], shapes)
-    # clb = compile_to_callable(y, verbose=False, torch_compile=False)
-    # clb_fast = compile_to_callable(y, verbose=False, torch_compile=True)
-
-    # print("Time normal callback")
-    # print(clb(parameters, shapes))
-    # start = time.time()
-    # for _ in range(10):
-    #     _ = clb(parameters, shapes)
-    # print(time.time() - start)
-
-    # print("Time compiled callback")
-    # print(clb_fast(parameters, shapes))
-    # start = time.time()
-    # for _ in range(10):
-    #     _ = clb_fast(parameters, shapes)
-    # print(time.time() - start)
-
-    # print("Time evaluate")
-    # print(y.evaluate(parameters, shapes))
-    # start = time.time()
-    # for _ in range(10):
-    #     _ = y.evaluate(parameters, shapes)
-    # print(time.time() - start)
-
-    # return
+    prediction = F.argmax(logits, dim="out")
 
     print("Computing and simplifying gradients")
     grad_tensors = [y.grad(param).full_simplify() for param in layers]
@@ -128,8 +98,8 @@ def main():
     # Train
     print("Training...")
     parameters = rand_values(layers, shapes)
-    parameters = {s: t/sum(t.shape)**.5 for s, t in parameters.items()}
-    for epoch in range(n_epochs):
+    parameters = {s: t / sum(t.shape) ** 0.5 for s, t in parameters.items()}
+    for _ in range(n_epochs):
         total_loss = 0
         corr = 0
         batches = 0
@@ -137,30 +107,24 @@ def main():
             shapes[batch] = t_data.shape[0]
             input_params = {t: p.clone() for t, p in parameters.items()}
             input_params[data] = t_data.rename("batch", "c0", "w0", "h0")
-            #print(f"{data.edges=}")
             input_params[targets] = torch.eye(10)[t_target].rename("batch", "out")
-            #print(f"{targets.edges=}")
-            #for ip, par in input_params.items():
-            #    print(ip.shape, par.names)
 
-            outputs = backprop(input_params, shapes)
-            #outputs = {gr: gr.evaluate(input_params, shapes) for gr in grad_tensors}
-            #outputs[y] = y.evaluate(input_params, shapes)
-            #outputs[prediction] = prediction.evaluate(input_params, shapes)
+            # Forward and backward pass
+            pred_out, y_out, *grad_outputs = backprop(input_params, shapes)
 
             # Grad update
-            for layer, grad_layer in zip(layers, grad_tensors):
-                g = outputs[grad_layer].align_to(*parameters[layer].names)
+            for layer, grad in zip(layers, grad_outputs):
+                g = grad.align_to(*parameters[layer].names)
                 parameters[layer] -= lr * g
 
             # Forward pass
-            total_loss += outputs[y] / shapes[batch]
-            corr += (outputs[prediction] == t_target).sum() / shapes[batch]
+            total_loss += y_out / shapes[batch]
+            corr += (pred_out == t_target).sum() / shapes[batch]
             batches += 1
 
         print(f"Loss: {total_loss/batches}")
         print(f"Acc: {corr/batches}")
 
+
 if __name__ == "__main__":
     main()
-

@@ -1069,8 +1069,6 @@ class Convolution(Constant):
         return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
     def _inner_evaluate(self, values: dict[Tensor, torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        if not self.edges:
-            return torch.tensor(1.0)
         w_in = dims.get(self.shape[self.input_name])
         k_size = dims.get(self.shape[self.kernel_name])
         w_out = dims.get(self.shape[self.output_name])

@@ -2,7 +2,7 @@ import pytest
 from sympy import symbols
 
 import tensorgrad.functions as F
-from tensorgrad.tensor import Variable, Zero, Delta, Sum, Derivative, Ones
+from tensorgrad.tensor import Product, Variable, Zero, Delta, Sum, Derivative, Ones
 from tensorgrad.serializers.to_pytorch import compile_to_callable
 from tensorgrad.testutils import assert_close, rand_values
 
@@ -20,7 +20,7 @@ def test_codegen_zero(compile):
     dims = {i: 2, j: 3}
     ref = zero_tensor.evaluate({}, dims)
     # Evaluate compiled
-    out = compiled_fn({}, dims)[zero_tensor]
+    out = compiled_fn({}, dims)
     assert_close(ref, out)
 
 
@@ -37,7 +37,7 @@ def test_codegen_copy(compile):
     dims = {i: 3}
     ref = copy_tensor.evaluate({}, dims)
     # Evaluate compiled
-    out = compiled_fn({}, dims)[copy_tensor]
+    out = compiled_fn({}, dims)
     assert_close(ref, out)
 
 
@@ -58,7 +58,7 @@ def test_codegen_sum(compile):
     vals = rand_values([x, y], dims)
     ref = expr.evaluate(vals, dims)
     # Evaluate compiled
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
 
@@ -79,7 +79,7 @@ def test_codegen_product(compile):
     vals = rand_values([a, b], dims)
     ref = expr.evaluate(vals, dims)
     # Evaluate compiled
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
 
@@ -94,7 +94,7 @@ def test_codegen_simple_function():
     dims = {i: 5}
     vals = rand_values([x], dims)
     ref = expr.evaluate(vals, dims)
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
 
@@ -110,7 +110,7 @@ def test_codegen_argmax():
     dims = {i: 4, j: 3}
     vals = rand_values([x], dims)
     ref = expr.evaluate(vals, dims)
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert (ref == out).all()
 
 
@@ -125,7 +125,7 @@ def test_codegen_power():
     dims = {i: 6}
     vals = rand_values([x], dims)
     ref = expr.evaluate(vals, dims)
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
 
@@ -144,7 +144,7 @@ def test_codegen_derivative_placeholder():
     dims = {i: 5}
     vals = rand_values([x], dims)
     ref = expr.evaluate(vals, dims)  # We expect a zero of shape (i, i_) in the current stub
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
 
@@ -158,14 +158,19 @@ def test_codegen_full_expression():
     b = Variable("b", i, k)
 
     expr = F.relu(x @ w + b)  # shape (i, k)
+    grad = Derivative(expr, x).simplify()  # shape (i, k, i', j)
 
-    compiled_fn = compile_to_callable(expr, verbose=False, torch_compile=False)
+    # Call the code generator with two tensors
+    compiled_fn = compile_to_callable(expr, grad, verbose=True)
 
     dims = {i: 2, j: 3, k: 4}
     vals = rand_values([x, w, b], dims)
     ref = expr.evaluate(vals, dims)
-    out = compiled_fn(vals, dims)[expr]
+    grad_ref = grad.evaluate(vals, dims)
+    out, grad_out = compiled_fn(vals, dims)
+    assert out.names == tuple(expr.edges)
     assert_close(ref, out)
+    assert_close(grad_ref, grad_out)
 
 
 def test_codegen_ones():
@@ -183,5 +188,34 @@ def test_codegen_ones():
     dims = {i: 3, j: 2}
     vals = rand_values([x], dims)
     ref = expr.evaluate(vals, dims)
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
+    assert_close(ref, out)
+
+
+def test_from_random():
+    a, b = symbols("a b")
+    var_a = Variable("var_a", a)
+    var_b = Variable("var_b", b)
+    var_a_b = Variable("var_a_b", a, b)
+    expr = Sum(
+        [
+            Product(
+                [
+                    Delta(b, "b, b_1"),
+                    var_a_b.rename(b="b_1"),
+                ]
+            ),
+            Product(
+                [
+                    var_a,
+                    Delta(b, "b"),
+                ]
+            ),
+        ],
+    )
+    compiled_fn = compile_to_callable(expr, verbose=True)
+    dims = {a: 3, b: 2}
+    vals = rand_values([var_a, var_b, var_a_b], dims)
+    ref = expr.evaluate(vals, dims)
+    out = compiled_fn(vals, dims)
     assert_close(ref, out)

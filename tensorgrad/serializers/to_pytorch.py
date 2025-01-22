@@ -30,7 +30,7 @@ class CodegenContext:
         self.lines = []
         self.cache = {}
         self.seen_variables = set()
-        self.seen_symbols = set()
+        self.seen_symbols = {}
         self.seen_names = set()
 
     def emit(self, line: str):
@@ -56,8 +56,11 @@ class CodegenContext:
             # A literal integer
             return str(symbol)
         if isinstance(symbol, sympy.Symbol):
-            self.seen_symbols.add(symbol)
-            return symbol.name  # e.g. "batch"
+            if symbol not in self.seen_symbols:
+                # Make sure the symbol name doesn't clash with e.g. an loop iterator (i)
+                name = self.fresh_name(symbol.name)
+                self.seen_symbols[symbol] = name
+            return self.seen_symbols[symbol]
         raise TypeError(f"Expected int or sympy.Symbol, got {symbol} (type={type(symbol)})")
 
     def _emit_tensor(self, tensor: Tensor) -> str:
@@ -90,7 +93,7 @@ class CodegenContext:
         self.seen_variables.add(tensor)
         var_name = self.fresh_name(f"var_{tensor.name}")
         placeholder_name = f"_var_{id(tensor)}"
-        self.emit(f"{var_name} = {placeholder_name}")
+        self.emit(f"{var_name} = {placeholder_name}  # ({', '.join(tensor.edges)})")
         return var_name
 
     @_emit_tensor_impl.register
@@ -102,7 +105,7 @@ class CodegenContext:
 
     @_emit_tensor_impl.register
     def _(self, t: Delta) -> str:
-        var_name = self.fresh_name("copy_")
+        var_name = self.fresh_name("delta_")
         edges = list(t.edges)
         order = len(edges)
         shape_dims = [self.declare_dimension(t.shape[e]) for e in edges]
@@ -177,10 +180,12 @@ class CodegenContext:
     @_emit_tensor_impl.register
     def _(self, t: Sum) -> str:
         var_name = self.fresh_name("sum_")
-        self.emit(f"{var_name} = 0")
+        self.emit(f"{var_name} = 0  # ({', '.join(t.edges)})")
 
         for w, st in zip(t.weights, t.tensors):
             c_name = self._emit_tensor(st)
+            # We need to permute the tensor to match the parent's order
+            c_name += permute(st, t)
             if w == 1:
                 self.emit(f"{var_name} += {c_name}")
             elif w == -1:
@@ -213,11 +218,12 @@ class CodegenContext:
         parts = []
         for inner in t.tensors:
             torch_var = self._emit_tensor(inner)
-            parts.append(f"{torch_var}")
-            parts.append(str([edge_numbers[e] for e in inner.edges]))
+            parts.append(
+                f"{torch_var}, {[edge_numbers[e] for e in inner.edges]},  # ({', '.join(inner.edges)})"
+            )
 
-        parts.append(str([edge_numbers[e] for e in t.edges]))
-        self.emit(f"{var_name} = torch.einsum({', '.join(parts)})")
+        parts.append(f"{[edge_numbers[e] for e in t.edges]}  # ({', '.join(t.edges)})")
+        self.emit(f"{var_name} = torch.einsum(\n    {'\n    '.join(parts)}\n    )")
 
         return var_name
 
@@ -229,25 +235,32 @@ class CodegenContext:
         child_names = [self._emit_tensor(inp) for inp in t.inputs]
 
         if isinstance(signature, F._PowerFunction):
-            self.emit(f"{var_name} = torch.pow({child_names[0]}, {signature.k})")
+            fun_expr = f"torch.pow({child_names[0]}, {signature.k}){permute(t.inputs[0], t)}"
         elif signature.name in ("exp", "log", "relu"):
-            self.emit(f"{var_name} = torch.{signature.name}({child_names[0]})")
+            fun_expr = f"torch.{signature.name}({child_names[0]}){permute(t.inputs[0], t)}"
         elif signature.name == "gt0":
-            self.emit(f"{var_name} = ({child_names[0]} >= 0).float()")
+            fun_expr = f"({child_names[0]} >= 0).float(){permute(t.inputs[0], t)}"
         elif signature.name == "argmax":
-            dim = list(t.inputs[0].edges).index(signature.dim)
-            self.emit(f"{var_name} = {child_names[0]}.argmax(dim={dim})")
+            edges = list(t.inputs[0].edges)
+            dim = edges.index(signature.dim)
+            fun_expr = f"{child_names[0]}.argmax(dim={dim})"
+            del edges[dim]
+            perm = [edges.index(e) for e in t.edges]
+            if perm != list(range(t.order)):
+                fun_expr += f".permute({', '.join(map(str, perm))})"
             assert not t.shape_out, "argmax should have no output dims"
         else:
             raise NotImplementedError(f"Don't know how to emit code for {t.signature}")
+
+        self.emit(f"{var_name} = {fun_expr}  # ({', '.join(t.edges)})")
 
         return var_name
 
     @_emit_tensor_impl.register
     def _(self, t: Rename) -> str:
         var_name = self._emit_tensor(t.tensor)
-        edges = list(t.edges)
-        inverse_mapping = {e: o for o, e in t.mapping}
+        edges = list(t.tensor.edges)
+        inverse_mapping = {e: o for o, e in t.mapping.items()}
         perm = [edges.index(inverse_mapping.get(e, e)) for e in edges]
         if perm != list(range(t.order)):
             self.emit(f"{var_name} = {var_name}.permute({', '.join(map(str, perm))})")
@@ -258,7 +271,16 @@ class CodegenContext:
         raise NotImplementedError(f"Derivative not implemented in codegen, please simplify first. {t=}")
 
 
-def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=True):
+def permute(tensor: Tensor, parent: Tensor) -> str:
+    """Return a string that permutes the tensor to match the parent's order."""
+    edges = list(tensor.edges)
+    perm = [edges.index(e) for e in parent.edges]
+    if perm == list(range(parent.order)):
+        return ""
+    return f".permute({', '.join(map(str, perm))})"
+
+
+def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=False):
     """
     Build a Python callable:  f(values, *symbol_args) -> torch.Tensor
       where 'symbol_args' are the integer dimension values for each distinct Sympy.Symbol
@@ -284,7 +306,7 @@ def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=True):
 
     # The final signature is: def _generated_forward(<dims>, <vars>):
     # e.g. def _generated_forward(batch, w0, out, _var_140661515588336, _var_140661515588464, ...):
-    symbol_args = [f"{s.name}:int" for s in all_symbols_sorted]
+    symbol_args = [f"{context.declare_dimension(s)}:int" for s in all_symbols_sorted]
     all_args = symbol_args + var_placeholders
     signature = ", ".join(all_args)
 
@@ -307,11 +329,28 @@ def {function_name}({signature}) -> {out_type}:
     exec(wrapped_code, {"torch": torch}, ns)
     generated_forward = ns[function_name]
 
-    def forward_with_values(values: dict[Variable, torch.Tensor], shapes: dict[sympy.Symbol, int]):
+    # Keep track of how many times the inner function is called
+    n_calls = 0
+
+    def forward_with_values(values: dict[Variable, torch.Tensor], shapes: dict[sympy.Symbol, int] = None):
         """
         The user must pass dimension sizes in the same order as sorted(context.seen_symbols).
         For example: forward_with_values({x: x_val}, 64, 28, 10, ...)
         """
+        # Load sizes of variables into the dimensions dictionary and check consistency
+        # This is like the logic in tensor.evaluate(...)
+        if shapes is None:
+            shapes = {}
+        for v, t in values.items():
+            if not isinstance(v, Variable):
+                continue
+            for e, ts in zip(t.names, t.shape):
+                vs = v.shape[e]  # symbolic dimension
+                if vs not in shapes:
+                    shapes[vs] = ts
+                elif shapes[vs] != ts:
+                    raise ValueError(f"Conflicting size for dim {e}")
+
         # Check we got the right number of dimension arguments
         if not set(all_symbols_sorted).issubset(shapes.keys()):
             diff = set(all_symbols_sorted) - set(shapes.keys())
@@ -330,19 +369,27 @@ def {function_name}({signature}) -> {out_type}:
             # The code will assume that this is always the case.
             # print(f"{values[var].names=}, {var.edges=} {var.orig=}")
             # local_ns[placeholder_name] = values[var].align_to(*(var.orig[e] for e in var.edges))
-            local_ns[placeholder_name] = values[var].align_to(*var.edges)
+            local_ns[placeholder_name] = values[var].align_to(*var.edges).rename(None)
 
         # Now call `_generated_forward(batch, w0, out, _var_..., _var_...)`
-        call_args = [s.name for s in all_symbols_sorted] + [
-            f"_var_{id(v)}.rename(None)" for v in context.seen_variables
-        ]
+        call_args = [s.name for s in all_symbols_sorted] + [f"_var_{id(v)}" for v in context.seen_variables]
         call_expr = f"{function_name}({', '.join(call_args)})"
+
+        nonlocal n_calls
+        if verbose and n_calls == 0:
+            print(f"{call_expr}")
+        n_calls += 1
+
         outputs = eval(call_expr, {}, local_ns)
 
         # If there's only one output, we pack it in a tuple
         if len(tensors) == 1:
             outputs = (outputs,)
 
-        return {tensor: output.refine_names(*tensor.edges) for tensor, output in zip(tensors, outputs)}
+        # If people call compile(...) with just one tensor, they also assume to get back just one tensor
+        res = [output.refine_names(*tensor.edges) for tensor, output in zip(tensors, outputs)]
+        if len(res) == 1:
+            return res[0]
+        return tuple(res)
 
     return forward_with_values
