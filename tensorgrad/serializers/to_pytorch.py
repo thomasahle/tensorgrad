@@ -368,8 +368,6 @@ def {function_name}({signature}) -> {out_type}:
                 raise KeyError(f"No value provided for variable {var.name}")
             # Ensure the torch tensors follow the order of the variable edges.
             # The code will assume that this is always the case.
-            # print(f"{values[var].names=}, {var.edges=} {var.orig=}")
-            # local_ns[placeholder_name] = values[var].align_to(*(var.orig[e] for e in var.edges))
             local_ns[placeholder_name] = values[var].align_to(*var.edges).rename(None)
 
         # Now call `_generated_forward(batch, w0, out, _var_..., _var_...)`

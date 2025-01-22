@@ -133,7 +133,7 @@ class TikzGraph:
         if node_type == "identity":
             label = format_label(label)
             label_str = f"${label}$" if label else ""
-            self.lines.append(f"  {name}[identity, as={label_str},{nudge}];")
+            self.lines.append(f" {name}[identity, as={{}}, {nudge}, pin=45:{label_str}];")
 
         elif node_type == "zero":
             self.lines.append(f"  {name}[zero, as=0,{nudge}];")
@@ -171,20 +171,20 @@ class TikzGraph:
             # Fallback
             self.lines.append(f"  {name}[as=${label}$,{nudge}];")
 
-    def add_edge(self, ref1: NodeRef, ref2: NodeRef, label: str, directed=False, multiplicity=1):
+    def add_edge(self, ref1: NodeRef, ref2: NodeRef, directed=False, multiplicity=1):
         """
         Add an edge between two NodeRefs. We honor any edge_style stored in
         the NodeRef. If both have styles, we prefer the second's or combine them?
         """
-        # Extract the internal node names:
-        id1 = ref1.name
-        id2 = ref2.name
 
-        labels = set()
-        for edge_label in [ref1.edge_label, label, ref2.edge_label]:
+        # We use a list because python sets don't keep insertion order like dicts
+        labels = []
+        for edge_label in [ref1.edge_label, ref2.edge_label]:
             if edge_label:
                 formatted_label = format_label(edge_label)
-                labels.add(f"${formatted_label}$")
+                labels.append(f"${formatted_label}$")
+        if labels and labels[0] == labels[-1]:
+            labels = labels[:1]
 
         # Combine or choose an edge style:
         style = ref1.edge_style or ref2.edge_style or ""
@@ -212,7 +212,7 @@ class TikzGraph:
             label_str = f', "{labels[0]}" at start, "{labels[-1]}" at end'
 
         self.lines.append(
-            f"    ({id1}){edge_type}[{style_str}, bend left={angle}, {side} {label_str}] ({id2});"
+            f"    ({ref1.name}){edge_type}[{style_str}, bend left={angle}, {side} {label_str}] ({ref2.name});"
         )
 
     def add_subgraph(self, subgraph: "TikzGraph", cluster_id: str, *, style: str = None, layout: str = None):
@@ -241,7 +241,8 @@ class TikzGraph:
             name = self.namer.fresh_name("free")
             self.add_node(name, "invisible")
             # Now connect from node_ref -> dummy with the label "e":
-            self.add_edge(node_ref, NodeRef(name, edge_label=e), label="")
+            print("Adding free edge", node_ref, NodeRef(name, edge_label=e))
+            self.add_edge(node_ref, NodeRef(name, edge_label=e))
 
     ###############################################################################
     # Singledispatch for each tensor type
@@ -254,7 +255,8 @@ class TikzGraph:
     def _(self, tensor: Delta):
         # Make one node
         name = self.namer.fresh_name("copy")
-        self.add_node(name, "identity")
+        label = tensor._size.name if tensor.order == 0 else None
+        self.add_node(name, "identity", label=label)
         # Return that node for every edge
         return {e: NodeRef(name) for e in tensor.edges}
 
@@ -314,7 +316,7 @@ class TikzGraph:
             # connect these subedges to func_ref
             for e in input_edges:
                 sub_ref = subedges.pop(e)
-                subgraph.add_edge(sub_ref, NodeRef(func_node), label=e, directed=True)
+                subgraph.add_edge(sub_ref, NodeRef(func_node, edge_label=e), directed=True)
             # everything else remains free
             free_edges |= subedges
 
@@ -356,7 +358,7 @@ class TikzGraph:
     def _(self, tensor: Product):
         # If empty product, return an identity node
         if len(tensor.tensors) == 0:
-            self.add_node(self.namer.fresh_name("id"), "identity")
+            self.add_node(self.namer.fresh_name("id"), "identity", label="1")
             return {}
 
         # Gather sub-ids for each edge
@@ -378,7 +380,6 @@ class TikzGraph:
                 self.add_edge(
                     refs[0],
                     refs[1],
-                    label="",
                     multiplicity=multiplicity,
                 )
 
@@ -590,5 +591,7 @@ prefix = r"""\documentclass[tikz]{standalone}
         midway,
         inner sep=1pt,
     },
+    pin distance=.5ex,
+    every pin/.style={font=\small\itshape}
 ]
 """

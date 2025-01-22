@@ -21,7 +21,7 @@ def simple_variables():
 
 def test_names1():
     x, mu, covar, covar_names = simple_variables()
-    res = Expectation(x, x, mu, covar, covar_names).simplify()
+    res = Expectation(x, x, mu, covar, covar_names).full_simplify()
     assert res == mu
 
 
@@ -30,7 +30,7 @@ def test_names2():
     # The expectation of a X transposed should be mu transposed
     xt = x.rename(i="j", j="i")
     mut = mu.rename(i="j", j="i")
-    res = Expectation(xt, x, mu, covar, covar_names).simplify()
+    res = Expectation(xt, x, mu, covar, covar_names).full_simplify()
     assert res == mut
 
 
@@ -39,7 +39,7 @@ def test_names3():
     zero = Zero(**x.shape)
     # The expectation of the outer product x (x) x2 should be covar if mu = 0
     x2 = x.rename(i="i2", j="j2")
-    res = Expectation(x @ x2, x, zero, covar, covar_names).simplify()
+    res = Expectation(x @ x2, x, zero, covar, covar_names).full_simplify()
     assert res == covar
 
 
@@ -51,7 +51,7 @@ def test_names4():
     x2t = xt.rename(i="i2", j="j2")
     covart = covar.rename(i="j", j="i", i2="j2", j2="i2")
     ex = Expectation(xt @ x2t, x, zero, covar, covar_names)
-    res = ex.simplify()
+    res = ex.full_simplify()
     assert res == covart
 
 
@@ -68,7 +68,7 @@ def test_quadratic():
     expr = X.rename(i="i0", j="j") @ A @ X.rename(j="j1", i="i")
     assert expr.edges == {"i0", "i"}
 
-    res = Expectation(expr, X, mu, covar, {"i": "i_", "j": "j_"}).simplify().evaluate(ts)
+    res = Expectation(expr, X, mu, covar, {"i": "i_", "j": "j_"}).full_simplify().evaluate(ts)
     expected = ts[A].rename(None).trace() * torch.eye(2).rename("i0", "i")  # trace(A) * I
     assert_close(res, expected)
 
@@ -179,7 +179,7 @@ def test_x():
     # E[out]_p2 = E[out_p2] = E[S_{p2}^2] = 1
     expr = Product([S, S1, Delta(p0, "p0, p1, p2")])
     expr = Expectation(expr, S)
-    assert expr.simplify() == Delta(p0, "p2")
+    assert expr.full_simplify() == Delta(p0, "p2")
 
 
 def test_triple_S():

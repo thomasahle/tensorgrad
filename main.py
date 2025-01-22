@@ -242,5 +242,16 @@ def main14():
     save_steps(expr)
     print(to_tikz(expr.full_simplify()))
 
+def main15():
+    d = symbols("d")
+    gs = [Variable(f"g{k}", i=d) for k in range(1)]
+    Ms = [Delta(d, "i", "j") - g @ g.rename(i='j') / Delta(d) for g in gs]
+    A = F.multi_dot(Ms * 2, dims=("i", "j"))
+    assert A.edges == {"i", "j"}, A.edges
+    B = A @ A
+    for g in gs:
+        B = Expectation(B, g).full_simplify()
+    save_steps(B)
+
 if __name__ == "__main__":
-    notebook3()
+    main15()

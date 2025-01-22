@@ -231,6 +231,7 @@ class Tensor(ABC):
         G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
+        # return nx.vf2pp_is_isomorphic(G1, G2, node_label="name")
 
     def isomorphisms(self, other: "Tensor") -> Generator[dict[str, str], None, None]:
         """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
@@ -305,8 +306,6 @@ class Tensor(ABC):
             return res
 
         res = self._inner_evaluate(values, dims)
-        if torch.isnan(res.rename(None)).any():
-            print(res)
         assert not torch.isnan(res.rename(None)).any(), f"Got NaN in result in {self}"
         # We guarantee that inner_evaluate returns the edges in the same order as self.edges
         assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
@@ -1079,9 +1078,9 @@ class Function(Tensor):
 
             # The two parts are then multiplied together on the connection names,
             # while broadcasted on their remaining shared edges.
-            from .functions import dot  # Import here to avoid circular import
+            import tensorgrad.functions as F  # Import here to avoid circular import
 
-            part = dot(outside, inner, connection_names.values())
+            part = F.sum(outside * inner, connection_names.values())
             parts.append(part)
         res = Sum(parts)
         assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"

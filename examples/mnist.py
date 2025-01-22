@@ -38,18 +38,16 @@ def main():
 
     layers = []
 
-    def conv_layer(i, in_channels, out_channels):
+    def conv_layer(channels: int):
         # Declare heigth and weidth convolutions
-        c_in, c_out = symbols(f"c{i} c{i+1}")
-        h_in, h_out, w_in, w_out = symbols(f"h{i} h{i+1}, w{i} w{i+1}")
+        i = len(layers)
+        c_in, c_out, h_in, h_out, w_in, w_out = symbols(f"c{i} c{i+1} h{i} h{i+1}, w{i} w{i+1}")
         h_conv = F.Convolution(h_in, h_out, hk=kernel_size)
         w_conv = F.Convolution(w_in, w_out, wk=kernel_size)
-        # Declare kernel variable and add it to the layers list
         kernel = Variable(f"kernel_{i}", c_in, c_out, hk=kernel_size, wk=kernel_size)
+        # Save the layer and shapes of the inner dimensions
         layers.append(kernel)
-        # Save the shapes of the inner dimensions
-        shapes[c_in] = in_channels
-        shapes[c_out] = out_channels
+        shapes[c_out] = channels
         shapes[h_out] = shapes[h_in] - shapes[kernel_size] + 1
         shapes[w_out] = shapes[w_in] - shapes[kernel_size] + 1
         # Apply the convolution
@@ -59,15 +57,15 @@ def main():
     x = data
 
     if False:
-        x = F.relu(x @ conv_layer(0, 1, 2)).simplify()
-        x = F.relu(x @ conv_layer(1, 2, 3)).simplify()
+        x = F.relu(x @ conv_layer(channels=2)).simplify()
+        x = F.relu(x @ conv_layer(channels=3)).simplify()
         c2, h2, w2, c3 = symbols("c2 h2 w2 c3")
         shapes[c3] = 3 * 24**2  # c2*w2*h2
         layers.append(linear := Variable("lin", c2, h2, w2, out))
         logits = x @ linear
 
     elif True:
-        x = F.relu(x @ conv_layer(0, 1, 2)).simplify()
+        x = F.relu(x @ conv_layer(channels=2)).simplify()
         c1, h1, w1, c2 = symbols("c1 h1 w1 c2")
         shapes[c2] = 2 * 26**2  # c1*w1*h1
         layers.append(linear := Variable("lin", c1, h1, w1, out))

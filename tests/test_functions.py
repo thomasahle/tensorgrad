@@ -481,7 +481,7 @@ def test_dot():
     tB = torch.randn(2, 3, names=("i", "j"))
 
     # Contract along 'j'
-    expr = F.dot(A, B, ["j"])
+    expr = F.dot(A, B, "j")
     out = expr.evaluate({A: tA, B: tB})
 
     # Behavior check: sum-of-products along 'j':

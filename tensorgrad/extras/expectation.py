@@ -1,7 +1,6 @@
 from sympy import Symbol
 import torch
 from tensorgrad.tensor import (
-    Constant,
     Derivative,
     Product,
     Rename,
@@ -170,16 +169,13 @@ class Expectation(Tensor):
 
         if isinstance(inner, Sum):
             return Sum(
-                [
-                    Expectation(t, self.wrt, self.mu, self.covar, self.covar_names).simplify(args)
-                    for t in inner.tensors
-                ],
+                [Expectation(t, self.wrt, self.mu, self.covar, self.covar_names) for t in inner.tensors],
                 inner.weights,
             )
 
         if isinstance(inner, Rename):
             return Rename(
-                Expectation(inner.tensor, self.wrt, self.mu, self.covar, self.covar_names).simplify(args),
+                Expectation(inner.tensor, self.wrt, self.mu, self.covar, self.covar_names),
                 inner.mapping,
             )
 
@@ -232,35 +228,39 @@ class Expectation(Tensor):
                     self.covar_names,
                 )
                 assert res.edges == self.edges, f"{res.edges=} != {self.edges=}"
-                return res.simplify(args=args)
+                return res
 
             # Look for a power function with exponent >= 1 and pull out a factor
             if (
-                fn := next(
-                    (
-                        t
-                        for t in prod.tensors
-                        if isinstance(t, Function)
-                        and isinstance(t.signature, _PowerFunction)
-                        and t.signature.k >= 1
-                    ),
-                    None,
+                True
+                and (
+                    fn := next(
+                        (
+                            t
+                            for t in prod.tensors
+                            if isinstance(t, Function)
+                            and isinstance(t.signature, _PowerFunction)
+                            and t.signature.k >= 1
+                        ),
+                        None,
+                    )
                 )
-            ) is not None:
-                assert isinstance(fn, Function)
+                is not None
+            ):
                 subs = prod.tensors[:]
                 subs.remove(fn)
                 (inner,) = fn.inputs
-                subs.append(inner * fn.weight)  # We pull the weight out as well
+                subs.append(inner)
                 if fn.signature.k > 1:
                     subs.append(pow(inner, fn.signature.k - 1))
-                return Expectation(Product(subs), self.wrt, self.mu, self.covar, self.covar_names).simplify(
-                    args=args
-                )
+                res = Expectation(Product(subs), self.wrt, self.mu, self.covar, self.covar_names)
+                return res
 
             # Otherwise we look for constant factors to pull out
-            elif args.get("extract_constants_from_expectation") and any(
-                not t.depends_on(self.wrt) for t in prod.tensors
+            elif (
+                False
+                and args.get("extract_constants_from_expectation")
+                and any(not t.depends_on(self.wrt) for t in prod.tensors)
             ):
                 # Separate into constant and wrt-dependent factors
                 constant_terms, wrt_terms = [], []

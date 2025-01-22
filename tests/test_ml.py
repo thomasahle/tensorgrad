@@ -16,10 +16,10 @@ def test_attention():
     query = (W_q @ X).rename(seq="seq_q")
     key = (W_k @ X).rename(seq="seq_k")
     value = (W_v @ X).rename(seq="seq_k")
-    logits = F.dot(query, key, ["inner"])
+    logits = F.dot(query, key, dim="inner")
     attention_scores = function("softmax", {"seq_k": seq}, (logits, "seq_k"))
-    expr = F.dot(value, attention_scores, ["seq_k"])
-    expr = F.dot(W_o, expr, ["inner", "head"])
+    expr = F.dot(value, attention_scores, dim="seq_k")
+    expr = F.sum(W_o * expr, ["inner", "head"])
 
 
 def test_attention_2():

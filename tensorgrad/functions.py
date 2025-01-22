@@ -341,10 +341,36 @@ def mean(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     return s / normalization
 
 
-def dot(t1: Tensor, t2: Tensor, dim: DimType = None) -> Tensor:
-    """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges."""
-    dim = parse_dim(t1.edges & t2.edges, dim)
-    return sum(t1 * t2, dim)
+def dot(t1: Tensor, t2: Tensor, dim: str | tuple[str, str]) -> Tensor:
+    """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges.
+    If the dimension is a tuple of two strings, the first string is the dimension of t1
+    and the second is the dimension of t2."""
+    if isinstance(dim, str):
+        dim = (dim, dim)
+    if len(dim) != 2 or not all(isinstance(d, str) for d in dim):
+        raise ValueError(f"Dot product requires one or two dimensions, got {dim=}")
+    if dim[0] not in t1.edges or dim[1] not in t2.edges:
+        raise ValueError(f"Edges {dim} must be in the tensors")
+    free_name = dim[0] + "_"
+    while free_name in t1.edges | t2.edges:
+        free_name += "_"
+    prod = t1.rename(**{dim[0]: free_name}) * t2.rename(**{dim[1]: free_name})
+    return sum(prod, free_name)
+
+
+def multi_dot(ts: list[Tensor], dims: tuple[str, str]) -> Tensor:
+    """
+    Compute the dot product of two or more tensors.
+    """
+    if not ts:
+        return Ones()
+    prod = ts[0]
+    assert isinstance(prod, Tensor)
+    for t2 in ts[1:]:
+        # We use the right edge of t and the left edge of t2
+        prod = dot(prod, t2, dim=(dims[1], dims[0]))
+        assert isinstance(prod, Tensor)
+    return prod
 
 
 class _ScaleFunction(FunctionSignature):

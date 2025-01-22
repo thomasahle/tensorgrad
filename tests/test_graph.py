@@ -337,7 +337,7 @@ def test_broadcast1():
     b, i = symbols("b i")
     A = Variable("A", i)
     B = Variable("B", b, i)
-    expected = F.dot(A, B, ["i"])
+    expected = F.dot(A, B, "i")
     assert expected.simplify() == F.graph("A -i- B", A=A, B=B).simplify()
 
 
@@ -345,7 +345,7 @@ def test_broadcast2():
     b, i = symbols("b i")
     A = Variable("A", b, i)
     B = Variable("B", b, i)
-    expected = F.dot(A, B, ["i"])
+    expected = F.dot(A, B, "i")
     assert expected.simplify() == F.graph("A -i- B", A=A, B=B).simplify()
 
 
@@ -353,7 +353,7 @@ def test_broadcast3():
     b, i = symbols("b i")
     A = Variable("A", b, i)
     B = Variable("B", b, i)
-    expected = F.dot(A, B, ["i"])
+    expected = F.dot(A, B, "i")
     assert (
         expected.simplify()
         == F.graph(
@@ -372,7 +372,7 @@ def test_broadcast4():
     b, i = symbols("b i")
     A = Variable("A", b, i)
     B = Variable("B", b, i)
-    expected = F.dot(A, B, ["i"])
+    expected = F.dot(A, B, "i")
     assert (
         expected.simplify()
         == F.graph(
