@@ -1,7 +1,7 @@
 from sympy import symbols
 
 from tensorgrad.tensor import Variable, Sum, Product
-from tensorgrad.serializers.to_latex import to_latex, Rename
+from tensorgrad.extras.to_latex import to_latex, Rename
 
 
 def test_variable_indexed():

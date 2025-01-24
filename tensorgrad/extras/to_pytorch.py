@@ -3,6 +3,10 @@ import textwrap
 import torch
 import sympy
 
+import sparse
+import cotengra as ctg
+
+
 from tensorgrad import functions as F
 from tensorgrad.tensor import (
     Rename,
@@ -108,26 +112,61 @@ class CodegenContext:
         var_name = self.fresh_name("delta_")
         edges = list(t.edges)
         order = len(edges)
-        shape_dims = [self.declare_dimension(t.shape[e]) for e in edges]
+        size = self.declare_dimension(t._size)
 
         if order == 0:
             size_str = self.declare_dimension(t.size)
             self.emit(f"{var_name} = torch.tensor({size_str}, dtype=torch.float32)")
         elif order == 1:
-            self.emit(
-                f"{var_name} = torch.ones([{shape_dims[0]}], dtype=torch.float32)  # {', '.join(edges)}"
-            )
+            self.emit(f"{var_name} = torch.ones([{size}], dtype=torch.float32)  # {', '.join(edges)}")
         elif order == 2:
-            self.emit(f"{var_name} = torch.eye({shape_dims[0]}, dtype=torch.float32)  # {', '.join(edges)}")
+            self.emit(f"{var_name} = torch.eye({size}, dtype=torch.float32)  # {', '.join(edges)}")
         else:
-            dims_str = "[" + ",".join(shape_dims) + "]"
-            self.emit(f"{var_name} = torch.zeros({dims_str}, dtype=torch.float32)  # {', '.join(edges)}")
-            loopvar = self.fresh_name("i")
-            code = textwrap.dedent(f"""\
-                for {loopvar} in range({shape_dims[0]}):
-                    {var_name}[{','.join([loopvar]*order)}] = 1
-            """)
-            self.emit(code)
+            shape_str = ", ".join([size] * order)
+            method = "dense"
+            if method == "dense":
+                self.emit(
+                    f"{var_name} = torch.zeros([{shape_str}], dtype=torch.float32)  # {', '.join(edges)}"
+                )
+                loopvar = self.fresh_name("i")
+                self.emit(
+                    textwrap.dedent(f"""\
+                    for {loopvar} in range({size}):
+                        {var_name}[{','.join([loopvar]*order)}] = 1
+                """)
+                )
+            elif method == "sparse.COO":
+                self.emit(
+                    textwrap.dedent(f"""
+                    diagonal_indices = torch.arange({size}, dtype=torch.int64)
+                    coords = torch.stack([diagonal_indices] * {order})  # Shape will be (order, size)
+                    data = torch.ones({size}, dtype=torch.float32)
+                    {var_name} = sparse.COO(coords.numpy(), data.numpy(), shape=({shape_str}))  # {', '.join(edges)}
+                """).strip()
+                )
+            elif method == "sparse.CSR":
+                indices_str = ", ".join(["diagonal_indices"] * order)
+                self.emit(
+                    textwrap.dedent(f"""
+                    diagonal_indices = torch.arange({size}, dtype=torch.int64)
+                    indices = torch.stack([{indices_str}])  # Shape will be (order, nnz)
+                    values = torch.ones({size}, dtype=torch.float32)
+                    {var_name} = torch.sparse_coo_tensor(indices, values, size=({shape_str}))  # {', '.join(edges)}
+                """).strip()
+                )
+            elif method == "sparse.CSC":
+                self.emit(
+                    textwrap.dedent(f"""
+                    indices = torch.arange({size}, dtype=torch.int64)
+                    values = torch.ones({size}, dtype=torch.float32)
+                    {var_name} = torch.sparse_csr_tensor(
+                        crow_indices=torch.arange({size} + 1, dtype=torch.int64),
+                        col_indices=indices,
+                        values=values,
+                        size=({shape_str})
+                    )
+                """).strip()
+                )
 
         return var_name
 
@@ -213,18 +252,63 @@ class CodegenContext:
 
         self.emit(f"# Product of {len(t.tensors)} tensors")
 
-        edge_numbers = {e: i for i, e in enumerate({e for child in t.tensors for e in child.edges})}
+        method = "pytorch"
+        if method == "einsum_opt":
+            # TODO: Be smarter about converting Delta tensors to indices,
+            # and use somethin glike the following to manually contract tensors.
+            # But if the tensor is a Convolution, we can use
+            # other.unfold(0, K, 1) instead.
 
-        parts = []
-        for inner in t.tensors:
-            torch_var = self._emit_tensor(inner)
-            parts.append(
-                f"{torch_var}, {[edge_numbers[e] for e in inner.edges]},  # ({', '.join(inner.edges)})"
-            )
+            # shapes = [operand.shape for operand in operands]
+            # path = oe.contract_path(equation, *shapes, shapes=True)[0]
+            # tensors = list(operands)
+            # # Perform contractions according to the path
+            # for contraction in path:
+            #     idx0, idx1 = contraction
+            #     tensors[idx0] = np.einsum(equation, tensors[idx0], tensors[idx1])
+            #     del tensors[idx1]
 
-        parts.append(f"{[edge_numbers[e] for e in t.edges]}  # ({', '.join(t.edges)})")
-        inner = "\n    ".join(parts)  # python3.11 f-strings can't have backslash
-        self.emit(f"{var_name} = torch.einsum(\n    {inner}\n    )")
+            # return tensors[0]
+            pass
+        if method == "pytorch":
+            edge_numbers = {e: i for i, e in enumerate({e for child in t.tensors for e in child.edges})}
+
+            parts = []
+            for inner in t.tensors:
+                torch_var = self._emit_tensor(inner)
+                parts.append(
+                    f"{torch_var}, {[edge_numbers[e] for e in inner.edges]},  # ({', '.join(inner.edges)})"
+                )
+
+            parts.append(f"{[edge_numbers[e] for e in t.edges]}  # ({', '.join(t.edges)})")
+            inner = "\n    ".join(parts)  # python3.11 f-strings can't have backslash
+            self.emit(f"{var_name} = torch.einsum(\n    {inner}\n    )")
+        elif method == "cotengra":
+            # Instead of using edge numbers, we'll use the edge names directly since cotengra supports hashable objects
+            parts = []
+            arrays = []
+            inputs = []
+
+            for inner in t.tensors:
+                torch_var = self._emit_tensor(inner)
+                arrays.append(torch_var)
+                inputs.append(tuple(inner.edges))
+                parts.append(f"# {torch_var}: ({', '.join(inner.edges)})")
+
+            # Add comments showing the structure for debugging
+            self.emit("\n".join(parts))
+
+            arrays_str = ", ".join(arrays)
+            inputs_str = repr(inputs)
+            output_str = repr(tuple(t.edges))
+
+            # Use array_contract since we have arbitrary hashable indices
+            self.emit(f"{var_name} = ctg.array_contract(")
+            self.emit(f"    arrays=[{arrays_str}],")
+            self.emit(f"    inputs={inputs_str},")
+            self.emit(f"    output={output_str},")
+            self.emit(f"    optimize='auto'")
+            self.emit(f")")
 
         return var_name
 
@@ -327,7 +411,7 @@ def {function_name}({signature}) -> {out_type}:
         print("\n".join(f"{i+1:3}: {line}" for i, line in enumerate(wrapped_code.split("\n"))))
 
     ns = {}
-    exec(wrapped_code, {"torch": torch}, ns)
+    exec(wrapped_code, {"torch": torch, "sparse": sparse, "ctg": ctg}, ns)
     generated_forward = ns[function_name]
 
     # Keep track of how many times the inner function is called

@@ -237,11 +237,8 @@ class TikzGraph:
         a dangling line.
         """
         for e, node_ref in free_edges.items():
-            # Create a new node for the free edge:
             name = self.namer.fresh_name("free")
             self.add_node(name, "invisible")
-            # Now connect from node_ref -> dummy with the label "e":
-            print("Adding free edge", node_ref, NodeRef(name, edge_label=e))
             self.add_edge(node_ref, NodeRef(name, edge_label=e))
 
     ###############################################################################

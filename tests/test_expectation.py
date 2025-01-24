@@ -1,4 +1,3 @@
-import math
 from sympy import symbols
 import torch
 from einops import einsum

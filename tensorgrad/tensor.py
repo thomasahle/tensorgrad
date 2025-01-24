@@ -10,7 +10,7 @@ import networkx as nx
 from sympy import Symbol
 import torch
 
-from tensorgrad.utils import _MatchEdgesKey, KeyStoringDict
+from tensorgrad.utils import _MatchEdgesKey
 
 
 class Tensor(ABC):
@@ -148,6 +148,13 @@ class Tensor(ABC):
         G, _ = self.edge_structural_graph(match_edges=True)
         return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
 
+    def evaluate(
+        self, values: dict["Variable", torch.Tensor], dims: dict[Symbol, int] | None = None
+    ) -> torch.Tensor:
+        from tensorgrad.extras.evaluate import evaluate  # Avoid circular import
+
+        return evaluate(self, values, dims)
+
     # Overloaded ops
 
     def __add__(self, other: Union[Number, "Tensor"]) -> "Tensor":
@@ -260,72 +267,6 @@ class Tensor(ABC):
         if hasattr(self, "_symmetries"):
             assert symmetries == self._symmetries, f"{symmetries=} {self._symmetries=}"
         return symmetries
-
-    def evaluate(
-        self,
-        values: dict["Variable", torch.Tensor],
-        dims: dict[Symbol, int] | None = None,
-    ) -> torch.Tensor:
-        """
-        Evaluate this tensor given values for the variable tensors.
-
-        Args:
-            values: A dict mapping variable tensors to their values.
-            dims: Optional dict specifying the dimensions of free edges.
-        """
-        if dims is None:
-            dims = {}
-        if not isinstance(values, KeyStoringDict):
-            values = KeyStoringDict(values)
-
-        # Load sizes of variables into the dimensions dictionary and check consistency
-        for v, t in values.items():
-            if not isinstance(v, Variable):
-                continue
-            for e, ts in zip(t.names, t.shape):
-                vs = v.shape[e]  # symbolic dimension
-                if vs not in dims:
-                    dims[vs] = ts
-                elif dims[vs] != ts:
-                    raise ValueError(f"Conflicting size for dim {e}")
-
-        # See if we have already evaluated a tensor isomorphic to this one
-        if (other_tensor := values.get_with_key(self)) is not None:
-            # Find the isomorphic representative that we matched
-            other, tensor = other_tensor
-            assert tensor.names == tuple(other.edges)
-            mapping = next(other.isomorphisms(self), None)
-            res = tensor.rename(**mapping).align_to(*self.edges)
-
-            if __debug__:
-                expected = self._inner_evaluate(values, dims)
-                # We guarantee that inner_evaluate returns the edges in the same order as self.edges,
-                # and res has had the order forced on it by align_to.
-                assert expected.names == res.names, f"{expected.names=} {res.names=} {self.edges=}"
-                torch.testing.assert_close(res.rename(None), expected.rename(None))
-            return res
-
-        res = self._inner_evaluate(values, dims)
-        assert not torch.isnan(res.rename(None)).any(), f"Got NaN in result in {self}"
-        # We guarantee that inner_evaluate returns the edges in the same order as self.edges
-        assert res.names == tuple(self.edges), f"Expected {self.edges=} but got {res.names=}"
-        values[self] = res
-        return res
-
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        """
-        The inner implementation of tensor evaluation.
-
-        Subclasses should override this to define the actual evaluation logic.
-
-        Args:
-            values: A dictionary mapping variable tensors to their values.
-            dims: A dictionary mapping edge names to their dimensions.
-
-        Returns:
-            The result of evaluating this tensor.
-        """
-        raise NotImplementedError
 
     def _check_rename(self, kwargs: dict[str, str]) -> dict[str, str]:
         """Check that the renaming is valid, and return the renaming dictionary."""
@@ -503,13 +444,6 @@ class Variable(Tensor):
     def depends_on(self, x: "Variable") -> bool:
         return x == self
 
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        tensor = values.get(self)
-        if tensor is None:
-            raise ValueError(f"Missing value for {self}, got {values}")
-        assert tensor.names == tuple(self.edges)
-        return tensor
-
 
 ################################################################################
 # Constants
@@ -527,14 +461,6 @@ class Rename(Tensor):
     def __repr__(self) -> str:
         argstring = ", ".join(f'{k}="{v}"' for k, v in self.mapping.items())
         return f"{self.tensor}.rename({argstring})"
-
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        res = self.tensor.evaluate(values, dims)
-        if self.mapping:
-            # If mapping is empty, the rename would fail
-            res = res.rename(**self.mapping)
-        assert res.names == tuple(self.edges)
-        return res
 
     def depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
@@ -671,15 +597,6 @@ class Delta(Constant):
             return f"Delta({self.size})"
         return f"Delta({self.size}, \"{', '.join(self.edges)}\")"
 
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        size = dims[self.size]
-        if not self.edges:
-            return torch.tensor(size)
-        copy = torch.zeros([size] * self.order)
-        for idx in range(size):
-            copy[(idx,) * len(self.edges)] = 1
-        return copy.rename(*self.edges)
-
     def rename(self, **kwargs: str) -> Tensor:
         return Delta(self.size, *[kwargs.get(e, e) for e in self.edges])
 
@@ -766,9 +683,6 @@ class Delta(Constant):
 
 class Zero(Constant):
     """Matrix such that Z_{i,j,k} = 0 for all i, j, k"""
-
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        return torch.zeros([dims[s] for s in self.shape.values()]).rename(*self.edges)
 
 
 def Ones(*shape0: Symbol, **shape1: Symbol) -> Tensor:
@@ -978,8 +892,8 @@ class Function(Tensor):
         # Note that this approach pushes all the broadcasted edges to the end of the shape.
         # But we don't care about the order of the edges, so it's fine.
         self._shape = dict(self.shape_out)
-        # We allow “broadcasting” for edges that are not in fn_sig.inputs[i].
-        # So if an input has edges that are not used, they’re broadcasted.
+        # We allow "broadcasting" for edges that are not in fn_sig.inputs[i].
+        # So if an input has edges that are not used, they're broadcasted.
         for t, es in zip(self.inputs, self.signature.inputs):
             # any edges in t.edges - es are "broadcast"
             broadcast_edges = t.edges - es
@@ -1123,14 +1037,6 @@ class Function(Tensor):
         args.append(f"shape_out={self.shape_out}")
         return f"Function({', '.join(args)})"
 
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        xvals = [t.evaluate(values, dims) for t in self.inputs]
-        res = self.signature.eval(*xvals)
-        # We require the signature eval to match the names, but not necessarily the order
-        assert set(res.names) == self.edges
-        res = res.align_to(*self.edges)
-        return res
-
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.inputs)
 
@@ -1201,11 +1107,6 @@ class Derivative(Tensor):
 
     def __repr__(self) -> str:
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
-
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        # We could use numerical differentiation here...  But it would potentially require quite a lot of
-        # evaluations, since we need to evaluate the tensor in all directions.
-        raise ValueError("Derivative tensors cannot be evaluated directly. Please use simplify() first.")
 
     def depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
@@ -1298,45 +1199,6 @@ class Product(Tensor):
         else:
             inner = "    " + ",\n    ".join(map(repr, self.tensors)) + ","
             return f"Product([\n{inner}\n])"
-
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        # TODO: Keep track of how many contractions we made
-        # extras["contractions"] = extras.get("contractions", 0) + len(self.contractions)
-        if not self.tensors:
-            return torch.tensor(1.0)
-        # We use "operator" einsum interface, which doesn't require single letter names.
-        # e.g.  einsum('i,i', b, b)  =  einsum(b, [0], b, [0])
-        # and   einsum('ij,jk->ik', b, c)  =  einsum(b, [0, 1], c, [1, 2], [0, 2])
-        edge_numbers = {e: i for i, e in enumerate({e for t in self.tensors for e in t.edges})}
-
-        # TODO: Merging copies is currently broken, because einsum doesn't allow us
-        # to use the same index twice in the output.
-        merge_copies = False
-        # We can't remove copies, if that's all we have
-        if all(isinstance(t, Delta) for t in self.tensors):
-            merge_copies = False
-        # We can't merge when there are repeated edges in the output, due to einsum
-        # limmitations
-        if len(set(edge_numbers[e] for e in self.edges)) != len(self.edges):
-            merge_copies = False
-
-        # We can make this more efficient by removing Delta tensors.
-        if merge_copies:
-            for t in self.tensors:
-                if isinstance(t, Delta):
-                    i0 = len(edge_numbers)
-                    for i, e in enumerate(t.edges):
-                        edge_numbers[e] = i0
-        parts = []
-        for t in self.tensors:
-            if not merge_copies or not isinstance(t, Delta):
-                torch_tensor = t.evaluate(values, dims)
-                parts.append(torch_tensor.rename(None))
-                parts.append([edge_numbers[e] for e in torch_tensor.names])
-        parts.append([edge_numbers[e] for e in self.edges])
-        out = torch.einsum(*parts).rename(*self.edges)
-        assert out.names == tuple(self.edges)
-        return out
 
     def simplify(self, args: dict[str, Any] = None) -> Tensor:
         args = self._check_simplify(args)
@@ -1566,12 +1428,6 @@ class Sum(Tensor):
         assert edges.keys() == self.edges
         return G, edges
 
-    def _inner_evaluate(self, values: dict["Tensor", torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        values = [t.evaluate(values, dims).align_to(*self.edges) for t in self.tensors]
-        res = sum(float(w) * v for w, v in zip(self.weights, values))
-        assert set(res.names) == self.edges, f"Expected {self.edges}, got {res.names}"
-        return res
-
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.tensors)
 
@@ -1632,10 +1488,17 @@ def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: 
     return rename
 
 
-def _make_distinct(*tensors: list["Tensor"], used_names: Iterable[str] = None) -> list["Tensor"]:
+def _make_distinct(
+    *tensors: Tensor, used_names: Iterable[str] | None = None
+) -> tuple[list[Tensor], list[dict[str, str]]]:
     """Makes sure all tensors have distinct edges.
     Optionally takes used_names, an extra set of names to avoid.
     suffix is an optional string to append to the new names.
+
+    Returns:
+        A tuple containing:
+        - List of tensors with renamed edges
+        - List of rename mappings used for each tensor
     """
     # Delta the set, so we don't modify the input
     used_names = set() if used_names is None else set(used_names)

@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import itertools
 import math
 from numbers import Number
@@ -158,7 +158,7 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
         If the graph specification is invalid, such as using undefined variables,
         invalid edge names, or inconsistent hyperedge sizes.
     """
-    vars: dict[str, Tensor] = vars.copy()
+    vars = vars.copy()
 
     # Parse the graph, converting long lines into a list of edges:
     # st. "A -i-j- B" -> ("A", "i", "j", "B")
@@ -193,7 +193,7 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
 
     # Keep track of the hyperedges and their sizes
     # Keys are *i for some i, values are lists of edge names/symbols
-    hyperedges: dict[str, list[str]] = defaultdict(list)
+    hyperedges: dict[str | tuple[str, str], list[str]] = defaultdict(list)
     hypersizes: DisjointSets[Any, Symbol] = DisjointSets()
 
     # Keep track of free edge names we can use
@@ -345,6 +345,8 @@ def dot(t1: Tensor, t2: Tensor, dim: str | tuple[str, str]) -> Tensor:
     """Contract two tensors along the given dimensions, broadcasting over the remaining shared edges.
     If the dimension is a tuple of two strings, the first string is the dimension of t1
     and the second is the dimension of t2."""
+    # Like https://pytorch.org/docs/stable/generated/torch.tensordot.html
+    # TODO: Should support a list of strings, or a tuple[list[str], list[str]]
     if isinstance(dim, str):
         dim = (dim, dim)
     if len(dim) != 2 or not all(isinstance(d, str) for d in dim):
@@ -371,6 +373,16 @@ def multi_dot(ts: list[Tensor], dims: tuple[str, str]) -> Tensor:
         prod = dot(prod, t2, dim=(dims[1], dims[0]))
         assert isinstance(prod, Tensor)
     return prod
+
+
+def contract(ts: list[Tensor], inputs: list[dict[str, str]], output: set[str]) -> Tensor:
+    # Like einsum, but with tensors
+    # CSRz = ctg.array_contract(
+    #    arrays=(x, y),
+    #    inputs=[{'i': 'i', 'j': 'k'}, {'i': 'k', 'j': 'j'}],
+    #    output={'i', 'j'},
+    # )
+    raise NotImplementedError("Not clear this is useful")
 
 
 class _ScaleFunction(FunctionSignature):
@@ -588,12 +600,12 @@ class _MatrixInverseFunction(FunctionSignature):
         if not self.edges.issubset(x.names):
             raise ValueError(f"Input {x.names} didn't have all edges {self.edges}")
         d1, d2 = self.edges
-        # torch.inverse assumes matrix dimensions are at the end
-        z = x.align_to(..., d1, d2)
-        z1 = x.align_to(..., d2, d1)
-        # TODO: I think I want to swap d1 and d2 here, so it's the edges with
+        # torch.inverse assumes matrix dimensions are at the end.
+        # We swap d1 and d2 for z1, so it's the edges with
         # the same name that cancel, and not the opposite name.
-        y = torch.inverse(z.rename(None)).rename(*z1.names).align_to(*self.edges)
+        z = x.align_to(..., d1, d2).rename(None)
+        out_names = x.align_to(..., d2, d1).names
+        y = torch.inverse(z).rename(*out_names).align_to(*self.edges)
         assert y.names == tuple(self.edges)
         return y
 
@@ -1028,52 +1040,6 @@ class Convolution(Constant):
         input size win, kernel size kw, and output size wout.
         wout will be win - kw + 1.
         For 2D convolution, use Convolution(win, kw, wout) @ Convolution(hin, kh, hout).
-
-        Output shape (patches, dim) where dim = channels * kernel_width * kernel_height
-        But that's where I'm arguing that we don't need to flatten the channels unto the output
-        we can just keep it broadcasted and people can flatten it if they want.
-        I don't know why torch.Unfold doesn't do it this way, but presumably there's some performance hit?
-
-        width_in = 6
-        [x x x x x x]
-        [1 0 0 - - -] [0 1 0 - - -] [0 0 1 - - -]
-        [- 1 0 0 - -] [- 0 1 0 - -] [- 0 0 1 - -]
-        [- - 1 0 0 -] [- - 0 1 0 -] [- - 0 0 1 -]
-        [- - - 1 0 0] [- - - 0 1 0] [- - - 0 0 1]
-        width_out = 4
-        kw = 3
-
-        (width_out, kw, width_in)
-        [1 0 0 - - -]
-        [0 1 0 - - -]
-        [0 0 1 - - -]
-
-        [- 1 0 0 - -]
-        [- 0 1 0 - -]
-        [- 0 0 1 - -]
-
-        [- - 1 0 0 -]
-        [- - 0 1 0 -]
-        [- - 0 0 1 -]
-
-        [- - - 1 0 0]
-        [- - - 0 1 0]
-        [- - - 0 0 1]
-
-        width_in = 5
-        height_in = 3
-        [x x x x x]
-        [x x x x x]
-        [x x x x x]
-        [1 0 - - -]
-        [0 1 - - -]
-
-        [1 0 0 - - -] [0 1 0 - - -] [0 0 1 - - -]
-        [- 1 0 0 - -] [- 0 1 0 - -] [- 0 0 1 - -]
-        [- - 1 0 0 -] [- - 0 1 0 -] [- - 0 0 1 -]
-        [- - - 1 0 0] [- - - 0 1 0] [- - - 0 0 1]
-        width_out = 4
-        kw = 3
         """
         shape = self._check_shape(shape0, shape1)
         assert len(shape) == 3, "Convolution must have exactly 3 edges: input, kernel, output"
@@ -1094,30 +1060,6 @@ class Convolution(Constant):
         kwargs = self._check_rename(kwargs)
         return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
 
-    def _inner_evaluate(self, values: dict[Tensor, torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        w_in = dims.get(self.shape[self.input_name])
-        k_size = dims.get(self.shape[self.kernel_name])
-        w_out = dims.get(self.shape[self.output_name])
-
-        # We only need 2/3 of the input sizes to be given
-        if Counter([w_in, k_size, w_out])[None] >= 2:
-            raise ValueError(f"Convolution expects >= 2 of {self.shape.keys()} to be given")
-        if w_in is None:
-            w_in = w_out + k_size - 1
-        elif k_size is None:
-            k_size = w_in - w_out + 1
-        elif w_out is None:
-            w_out = w_in - k_size + 1
-        elif w_out != w_in - k_size + 1:
-            raise ValueError(f"{w_out=} != {w_in=} - {k_size=} + 1")
-
-        # Make a tensor T, such that T[i,j,k] = 1 iff i=j+k
-        res = torch.zeros(w_in, k_size, w_out)
-        for k in range(w_out):
-            for j in range(k_size):
-                res[k + j, j, k] = 1
-        return res.rename(self.input_name, self.kernel_name, self.output_name)
-
 
 class Reshape(Constant):
     """Just the identity matrices, but with a different shape."""
@@ -1135,14 +1077,3 @@ class Reshape(Constant):
     def rename(self, **kwargs: str) -> "Tensor":
         kwargs = self._check_rename(kwargs)
         return Reshape(**{kwargs.get(k, k): v for k, v in self.shape.items()})
-
-    def _inner_evaluate(self, values: dict[Tensor, torch.Tensor], dims: dict[Symbol, int]) -> torch.Tensor:
-        if not set(self.shape.values()).issubset(dims.keys()):
-            diff = self.shape.values() - dims.keys()
-            raise ValueError(f"Dims {diff} not supplied to Reshape")
-        sizes = [dims[s] for s in self.shape.values()]
-        full = math.prod(sizes)
-        half = int(math.sqrt(full))
-        if half**2 != full:
-            raise ValueError(f"{sizes=} must multiply to a square number")
-        return torch.eye(half).reshape(*sizes).rename(*self.edges)

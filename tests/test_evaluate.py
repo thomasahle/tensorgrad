@@ -2,7 +2,7 @@ import random
 import pytest
 from sympy import symbols
 import torch
-from tensorgrad.serializers.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_pytorch import compile_to_callable
 from tensorgrad.tensor import (
     Delta,
     Derivative,

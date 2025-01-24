@@ -3,7 +3,7 @@ from sympy import symbols
 
 import tensorgrad.functions as F
 from tensorgrad.tensor import Product, Variable, Zero, Delta, Sum, Derivative, Ones
-from tensorgrad.serializers.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_pytorch import compile_to_callable
 from tensorgrad.testutils import assert_close, rand_values
 
 

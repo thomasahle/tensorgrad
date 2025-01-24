@@ -253,5 +253,17 @@ def main15():
         B = Expectation(B, g).full_simplify()
     save_steps(B)
 
+def main16():
+    d = symbols("d")
+    g = Variable(f"g", i=d)
+    A = Delta(d, "i", "j") - g @ g.rename(i='j') / Delta(d)
+    M = Variable("M", i=d, j=d)
+
+    C = F.multi_dot([A,M] * 2, dims=("i", "j"))
+    assert C.edges == {"i", "j"}, A.edges
+    frob = C @ C
+    B = Expectation(frob, g).full_simplify()
+    save_steps(B)
+
 if __name__ == "__main__":
-    main15()
+    main16()

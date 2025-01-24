@@ -8,7 +8,7 @@ from tensorgrad.tensor import Delta, Variable, Product, Sum, Derivative, functio
 from tensorgrad.functions import Convolution, Reshape
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
-from tensorgrad.serializers.to_tikz import to_tikz
+from tensorgrad.extras.to_tikz import to_tikz
 
 
 def parse_tikz_lines(tikz_output: str):
