@@ -77,3 +77,12 @@ def test_transpose_grad():
     Xt = X.rename(i="j", j="i")
     assert X == Xt
     assert (X + Xt).simplify() == (2 * X).simplify()
+
+
+def test_transpose_not_equal():
+    # If we don't have symmetries, the transpose is not equal to M
+    d = symbols("d")
+    M = Variable("M", i=d, j=d)
+    Mt = M.rename(i="j", j="i")
+    assert M == Mt  # Nomal equality allows for transposes
+    assert not M.is_isomorphic(Mt, match_edges=True)

@@ -4,7 +4,7 @@ import os
 import subprocess
 from PIL import Image, ImageDraw
 
-from tensorgrad.serializers.to_tikz import to_tikz
+from tensorgrad.extras.to_tikz import to_tikz
 
 from tensorgrad import Derivative
 from tensorgrad.extras import Expectation

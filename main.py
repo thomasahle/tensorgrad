@@ -2,10 +2,10 @@ from tensorgrad import Variable, Product, Function, Derivative, Sum, Delta, Zero
 from collections import defaultdict
 import tensorgrad.functions as F
 from tensorgrad.extras import Expectation
-from tensorgrad.serializers.to_tikz import to_tikz
+from tensorgrad.extras.to_tikz import to_tikz
 from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
 from tensorgrad.imgtools import save_steps, save_as_image
-from tensorgrad.serializers.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_pytorch import compile_to_callable
 from tensorgrad.testutils import assert_close, rand_values
 from sympy import symbols
 import torch
@@ -257,7 +257,9 @@ def main16():
     d = symbols("d")
     g = Variable(f"g", i=d)
     A = Delta(d, "i", "j") - g @ g.rename(i='j') / Delta(d)
-    M = Variable("M", i=d, j=d)
+    M = Variable("M", i=d, j=d).with_symmetries("i j")
+
+    assert M == M.rename(i="j", j="i")
 
     C = F.multi_dot([A,M] * 2, dims=("i", "j"))
     assert C.edges == {"i", "j"}, A.edges

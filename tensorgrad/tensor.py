@@ -2,8 +2,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 import math
-from typing import Any, Generator, Iterable, Optional, Union
-from abc import ABC
+from typing import Any, Generator, Iterable, Optional, Union, final
+from abc import ABC, ABCMeta
 from fractions import Fraction
 from numbers import Number, Rational
 import networkx as nx
@@ -13,7 +13,36 @@ import torch
 from tensorgrad.utils import _MatchEdgesKey
 
 
-class Tensor(ABC):
+class TensorMeta(ABCMeta):
+    def __call__(cls, *args, **kwargs):
+        """Calling Tensor(...) is a shortcut to wrapping the argument in a tensor."""
+
+        # Since we're hacking the metaclass, we need to check if we're being called on a subclass
+        if cls is not Tensor:
+            return super().__call__(*args, **kwargs)
+
+        if len(args) != 1 or kwargs:
+            raise TypeError("Tensor(...) expects exactly one argument, e.g. Tensor(1).")
+        val = args[0]
+
+        if isinstance(val, Number):
+            if val == 0:
+                return Zero()
+            elif val == 1:
+                return Product([])
+            else:
+                return Sum([Product([])], [val])
+
+        if isinstance(val, Symbol):
+            return Delta(val)
+
+        if isinstance(val, Tensor):
+            return val
+
+        raise ValueError(f"Invalid argument {val}")
+
+
+class Tensor(metaclass=TensorMeta):
     @property
     def edges(self) -> set[str]:
         """Returns an _ordered_ set of edge names"""
@@ -27,10 +56,11 @@ class Tensor(ABC):
 
     @property
     def order(self) -> int:
-        """The number of edges the tensor has."""
+        """The number of edges the tensor has. Same as ndim in torch/numpy"""
         return len(self.shape)
 
-    def grad(self, x: "Variable", new_names: Optional[dict[str, str]]) -> "Tensor":
+    @final
+    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> "Tensor":
         """
         Take the derivative of this tensor with respect to the variable x.
 
@@ -46,9 +76,36 @@ class Tensor(ABC):
         Returns:
             The tensor representing the derivative.
         """
-        new_names = self._check_grad(x, new_names)
-        raise NotImplementedError
 
+        new_names = self._check_grad(x, new_names)
+        result = self._grad(x, new_names)
+
+        # Check that the shape is preserved
+        assert result.shape == self.shape | {n: x.shape[o] for o, n in new_names.items()}
+
+        return result
+
+    def _check_grad(self, x: "Variable", new_names: dict[str, str]) -> dict[str, Symbol]:
+        # When taking a derivative with respect to a variable, we need some edge names for the derivative.
+        # If new_names is not given, we generate names based on the edge names of x.
+        # However, we need to make sure they don't clash with any names already present in the tensor.
+        # If new_names is already given, we just check to make sure they are not already present in the tensor.
+        if new_names is not None:
+            if x.edges != new_names.keys():
+                raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
+            # Check that the new names don't clash with self.edges
+            if used := self.edges & new_names.values():
+                raise ValueError(f"{used} are already present in {self.edges=}")
+            return new_names
+
+        # Make new names that are _based_ on x.edges and _avoid_ self.edges
+        return _unused_edge_names(x.edges, self.edges)
+
+    def _grad(self, x: "Variable", new_names: dict[str, str]) -> "Tensor":
+        # Override this method to implement differentiation
+        raise NotImplementedError(f"Derivative not implemented for {type(self)}")
+
+    @final
     def rename(self, **kwargs: str) -> "Tensor":
         """
         Rename free edges of this tensor.
@@ -61,9 +118,26 @@ class Tensor(ABC):
         Returns:
             A new tensor with the edges renamed according to kwargs.
         """
-        kwargs = self._check_rename(kwargs)
+
+        # Check that the renaming is valid, and return the renaming dictionary.
+        if len({kwargs.get(e, e) for e in self.edges}) != len(self.edges):
+            raise ValueError(f"Renamed an edge to an existing edge name. {self.edges=} {kwargs=}")
+
+        # Restrict renaming to free edges
+        kwargs = {new: old for new, old in kwargs.items() if new in self.edges}
+
+        result = self._rename(**kwargs)
+
+        # Check that the shape is preserved
+        assert result.shape == {kwargs.get(e, e): s for e, s in self.shape.items()}
+
+        return result
+
+    def _rename(self, **kwargs: str) -> "Tensor":
+        # Override this method to implement renaming
         raise NotImplementedError
 
+    @final
     def simplify(self, args: dict[str, Any] = None) -> "Tensor":
         """
         Apply simplification rules to this tensor.
@@ -76,6 +150,28 @@ class Tensor(ABC):
         Returns:
             A simplified version of this tensor.
         """
+
+        if args is None:
+            args = {}
+        # args["grad_steps"] allows us to control how far we propagate the derivative.
+        args.setdefault("grad_steps", float("inf"))
+        args.setdefault("associative_products", True)
+        args.setdefault("associative_sums", True)
+        args.setdefault("sum_combine_terms", True)
+        args.setdefault("combine_products", True)
+        args.setdefault("factor_components", True)
+        args.setdefault("expand_functions", True)
+        args.setdefault("expand", False)
+
+        result = self._simplify(args)
+
+        # Check that the shape is preserved
+        assert result.shape == self.shape
+
+        return result
+
+    def _simplify(self, args: dict[str, Any]) -> "Tensor":
+        # Override this method to implement simplification
         return self
 
     def full_simplify(self) -> "Tensor":
@@ -201,11 +297,10 @@ class Tensor(ABC):
             if other == 1:
                 return self
             return Sum([self], [other])
-        # Element-wise (Hadamard) product is easy to implement using Delta tensors
-        # These are the edges we multiply over
-        shared_edges = self.edges & other.edges
-        (t0, t1), (rename0, rename1) = _make_distinct(self, other, used_names=shared_edges)
-        return Product([t0, t1] + [Delta(self.shape[e], e, rename0[e], rename1[e]) for e in shared_edges])
+
+        from tensorgrad.functions import prod  # Avoid circular import
+
+        return prod(self, other)
 
     def __rtruediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         # Handle other / self
@@ -268,49 +363,10 @@ class Tensor(ABC):
             assert symmetries == self._symmetries, f"{symmetries=} {self._symmetries=}"
         return symmetries
 
-    def _check_rename(self, kwargs: dict[str, str]) -> dict[str, str]:
-        """Check that the renaming is valid, and return the renaming dictionary."""
-        if len({kwargs.get(e, e) for e in self.edges}) != len(self.edges):
-            raise ValueError(f"Renamed an edge to an existing edge name. {self.edges=} {kwargs=}")
-        # Restrict renaming to free edges
-        return {new: old for new, old in kwargs.items() if new in self.edges}
-
-    def _check_grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> dict[str, str]:
-        """
-        When taking a derivative with respect to a variable, we need some edge names for the derivative.
-        If new_names is not given, we generate names based on the edge names of x.
-        However, we need to make sure they don't clash with any names already present in the tensor.
-        If new_names is already given, we just check to make sure they are not already present in the tensor.
-        """
-        if new_names is not None:
-            if x.edges != new_names.keys():
-                raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
-            # Check that the new names don't clash with self.edges
-            if used := self.edges & new_names.values():
-                raise ValueError(f"{used} are already present in {self.edges=}")
-            return new_names
-        # Make new names that are _based_ on x.edges and _avoid_ self.edges
-        return _unused_edge_names(x.edges, self.edges)
-
-    @staticmethod
-    def _check_simplify(args: dict[str, Any] | None = None) -> dict[str, Any]:
-        if args is None:
-            args = {}
-        # args["grad_steps"] allows us to control how far we propagate the derivative.
-        args.setdefault("grad_steps", float("inf"))
-        args.setdefault("associative_products", True)
-        args.setdefault("associative_sums", True)
-        args.setdefault("sum_combine_terms", True)
-        args.setdefault("combine_products", True)
-        args.setdefault("factor_components", True)
-        args.setdefault("expand_functions", True)
-        args.setdefault("expand", False)
-        return args
-
     @staticmethod
     def _check_edges(edges: Iterable[str]) -> list[str]:
-        if edges is None:
-            return None
+        # Parses the standard input format for edges, which can be a string or list of strings.
+        # If only one string is given, it is split by commas.
         if not isinstance(edges, Iterable):
             raise ValueError("Edges must be an iterable of strings")
         edges = list(edges)
@@ -323,6 +379,7 @@ class Tensor(ABC):
 
     @staticmethod
     def _check_shape(shape0: Iterable[Symbol], shape1: dict[str, Symbol]) -> dict[str, Symbol]:
+        # Parses the standard shape input format, which allows both a list of symbols and a dict.
         shape0 = tuple(shape0)
         if not isinstance(shape0, tuple) or not all(isinstance(s, Symbol) for s in shape0):
             raise ValueError("Shape0 must be a tuple of sympy symbols")
@@ -337,6 +394,8 @@ class Tensor(ABC):
     def _check_symmetries(
         shape: dict[str, Symbol], symmetries: str | set[frozenset[str]]
     ) -> set[frozenset[str]]:
+        # Parses the standard input format for symmetries, which can be a string or set of sets.
+        # If using a string, the notation is 'a b, c d' for two symmetries."""
         if symmetries is None:
             return {frozenset({e}) for e in shape.keys()}
         if isinstance(symmetries, str):
@@ -382,8 +441,7 @@ class Variable(Tensor):
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
         return Variable(self.name, **self.shape, _symmetries=symmetries)
 
-    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> Tensor:
-        new_names = self._check_grad(x, new_names)
+    def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
         if x == self:
             # TODO: If X has symmetries, the derivative can actually be more complex than this.
             # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
@@ -432,11 +490,10 @@ class Variable(Tensor):
         assert edges.keys() == self.edges
         return G, edges
 
-    def simplify(self, args: dict[str, Any] = None) -> Tensor:
+    def _simplify(self, args: dict[str, Any]) -> Tensor:
         return self
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)  # Checks only free edges are in kwargs
+    def _rename(self, **kwargs: str) -> Tensor:
         if not kwargs:
             return self
         return Rename(self, kwargs)
@@ -465,16 +522,13 @@ class Rename(Tensor):
     def depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
 
-    def grad(self, x: "Variable", new_names: Optional[dict[str, str]] = None) -> Tensor:
-        new_names = self._check_grad(x, new_names)  # ~_unused_edge_names(x.edges, self.edges)
+    def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
         # If the new names are used in inner, we need to rename them, and then add the
         # new names to our own rename dict.
         middle = _unused_edge_names(new_names.values(), self.edges | self.tensor.edges)
         middle_names = {o: middle[n] for o, n in new_names.items()}
         middle_to_new = {middle[n]: n for o, n in new_names.items()}
-        res = Rename(self.tensor.grad(x, middle_names), middle_to_new | self.mapping)
-        assert res.shape == self.shape | {n: x.shape[o] for o, n in new_names.items()}
-        return res
+        return Rename(self.tensor.grad(x, middle_names), middle_to_new | self.mapping)
 
     @classmethod
     def merge_renames(cls, *renames: dict[str, str]) -> dict[str, str]:
@@ -490,7 +544,7 @@ class Rename(Tensor):
                     merged[o] = n
         return merged
 
-    def simplify(self, args: dict[str, Any] = None) -> Tensor:
+    def _simplify(self, args: dict[str, Any]) -> Tensor:
         inner = self.tensor.simplify(args)
         if isinstance(inner, Rename):
             merged = self.merge_renames(inner.mapping, self.mapping)
@@ -499,14 +553,10 @@ class Rename(Tensor):
             res = inner.rename(**self.mapping)
         while isinstance(res, Rename) and not res.mapping:
             res = res.tensor
-        assert res.shape == self.shape
         return res
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)
-        res = Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
-        assert res.shape == {kwargs.get(e, e): s for e, s in self.shape.items()}
-        return res
+    def _rename(self, **kwargs: str) -> Tensor:
+        return Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         # Rename is the only tensor that doesn't actually create its own node in the graph
@@ -559,14 +609,10 @@ class Constant(Tensor, ABC):
                     edges[e] = orbit_node
         return G, edges
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)
-        c = type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
-        assert c.edges == {kwargs.get(e, e) for e in self.edges}
-        return c
+    def _rename(self, **kwargs: str) -> Tensor:
+        return type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
-        new_names = self._check_grad(x, new_names)
+    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
     def depends_on(self, x: "Variable") -> bool:
@@ -597,7 +643,7 @@ class Delta(Constant):
             return f"Delta({self.size})"
         return f"Delta({self.size}, \"{', '.join(self.edges)}\")"
 
-    def rename(self, **kwargs: str) -> Tensor:
+    def _rename(self, **kwargs: str) -> Tensor:
         return Delta(self.size, *[kwargs.get(e, e) for e in self.edges])
 
     @classmethod
@@ -902,8 +948,7 @@ class Function(Tensor):
             for b in broadcast_edges:
                 self._shape[b] = t.shape[b]
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)
+    def _rename(self, **kwargs: str) -> Tensor:
         renamed_inputs = []
         for t, es in zip(self.inputs, self.signature.inputs):
             # Only rename external edges of input tensors.
@@ -917,11 +962,9 @@ class Function(Tensor):
         )
         if output_rename and any(v != k for k, v in output_rename.items()):
             res = Rename(res, output_rename)
-        assert res.edges == {kwargs.get(e, e) for e in self.edges}
         return res
 
-    def simplify(self, args: dict[str, Any] = None) -> Tensor:
-        args = self._check_simplify(args)
+    def _simplify(self, args: dict[str, Any]) -> Tensor:
         new_inputs = [t.simplify(args=args) for t in self.inputs]
 
         # Broadcasting can be pulled out of the function.
@@ -956,15 +999,9 @@ class Function(Tensor):
         if pulled_out:
             res = Product([res] + pulled_out)
 
-        assert res.shape == self.shape, "Free edges should be preserved"
         return res
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
-        # First find the new names for the gradient edges. These will be guaranteed
-        # to avoid any outer edges of the Function tensor as well as the edges of x.
-        new_names = self._check_grad(x, new_names)
-        new_edges = set(new_names.values())
-
+    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         # We sum over each input function, just like the normal chain rule:
         # d/dx f(g₁(x), …, gₖ(x)) = Σᵢ₌₁ᵏ (d/dx gᵢ(x)) Dᵢf(g₁(x), …, gₖ(x))
 
@@ -976,7 +1013,7 @@ class Function(Tensor):
             # Take the derivative of the outer function
             # We need "connection" edges for each edge in input_edges. Mostly we could just use the same name
             # but they need to avoid clashing with "new_names" and the output edges of the tensor.
-            connection_names = _unused_edge_names(input_edges, self.edges | new_edges)
+            connection_names = _unused_edge_names(input_edges, self.edges | new_names.values())
             # Just like simple calculus, we need the derivative of the outside times the derivative of the inside
             outside = Function(
                 self.signature.derivative(i, connection_names),
@@ -996,9 +1033,7 @@ class Function(Tensor):
 
             part = F.sum(outside * inner, connection_names.values())
             parts.append(part)
-        res = Sum(parts)
-        assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"
-        return res
+        return Sum(parts)
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
@@ -1057,8 +1092,7 @@ class Derivative(Tensor):
         self.new_names = tensor._check_grad(x, new_names)
         self._shape = tensor.shape | {self.new_names[e]: x.shape[e] for e in x.edges}
 
-    def simplify(self, args: dict[str, Any] = None) -> Tensor:
-        args = self._check_simplify(args)
+    def _simplify(self, args: dict[str, Any]) -> Tensor:
         if not self.tensor.depends_on(self.x):
             return Zero(**self.shape)
         inner = self.tensor.simplify(args)
@@ -1069,27 +1103,20 @@ class Derivative(Tensor):
             args["grad_steps"] -= 1
             # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
             res = inner.grad(self.x, self.new_names).simplify(args)
-        assert res.shape == self.shape, f"Shape changed from {self.shape} to {res.shape}"
         return res
 
-    def grad(self, x: Variable, new_names: dict[str, str] | None = None) -> Tensor:
-        new_names = self._check_grad(x, new_names)
+    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         # To avoid an infinite loop, we let the grad pass through us, rather than creating a double derivative.
-        res = Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
-        assert res.edges == self.edges | new_names.values()
-        return res
+        return Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)
+    def _rename(self, **kwargs: str) -> Tensor:
         # The free edges of Derivative are both the free edges of self.tensor and the new_names.
         # This is the only place where we need to rename the "internal edges" of the tensor.
-        res = Derivative(
+        return Derivative(
             self.tensor.rename(**kwargs),
             self.x,
             {o: kwargs.get(e, e) for o, e in self.new_names.items()},
         )
-        assert res.shape == {kwargs.get(e, e): s for e, s in self.shape.items()}
-        return res
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
@@ -1139,8 +1166,7 @@ class Product(Tensor):
                     f"edge {edge} had multiplicity {len(ts)}. Use an identity tensor to combine multiple edges."
                 )
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)
+    def _rename(self, **kwargs: str) -> Tensor:
         # Rename the inner edges (contractions) to avoid the new names introduced
         # by the renaming of the free edges.
         new_names = {kwargs.get(e, e) for e in self.edges}
@@ -1151,9 +1177,7 @@ class Product(Tensor):
         # It's safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
         # contain keys that are in self.edges.
         rename |= kwargs
-        res = Product([t.rename(**rename) for t in self.tensors])
-        assert res.edges == new_names
-        return res
+        return Product([t.rename(**rename) for t in self.tensors])
 
     @staticmethod
     def merge(products: list["Product"]) -> "Product":
@@ -1170,10 +1194,7 @@ class Product(Tensor):
             used_edges.update(rename.values())  # Later renames should not clash with this one
         return Product(res)
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
-        # This checks that there is no overlap between the new names and the free edges.
-        new_names = self._check_grad(x, new_names)
-
+    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         # Since we are adding new edges to an internal tensor in the product, we need to make sure
         # none of the other tensors in the product have edges that clash with these new edges.
         inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
@@ -1181,17 +1202,14 @@ class Product(Tensor):
         rename = _unused_edge_names(inner_names, new_edges)
         new_prod = Product([t.rename(**rename) for t in self.tensors])
         assert new_prod.shape == self.shape, "Renaming should not change the product"
-        # assert new_prod.simplify() == self.simplify(), "Renaming should not change the product"
 
         # The classic product rule of Calculus: d/dx (f * g) = f' * g + f * g'
-        res = Sum(
+        return Sum(
             [
                 Product(new_prod.tensors[:i] + [Derivative(t, x, new_names)] + new_prod.tensors[i + 1 :])
                 for i, t in enumerate(new_prod.tensors)
             ]
         )
-        assert res.edges == self.edges | new_edges, f"{res.edges} != {self.edges} | {new_edges}"
-        return res
 
     def __repr__(self) -> str:
         if len(self.tensors) <= 1:
@@ -1200,9 +1218,7 @@ class Product(Tensor):
             inner = "    " + ",\n    ".join(map(repr, self.tensors)) + ","
             return f"Product([\n{inner}\n])"
 
-    def simplify(self, args: dict[str, Any] = None) -> Tensor:
-        args = self._check_simplify(args)
-
+    def _simplify(self, args: dict[str, Any]) -> Tensor:
         tensors = [t.simplify(args=args) for t in self.tensors]
 
         # If any tensor in a product is 0, so is the whole product
@@ -1231,8 +1247,7 @@ class Product(Tensor):
 
         def verify_edges(tensors: list[Tensor], msg: str = "") -> None:
             cnt = Counter(e for t in tensors for e in t.edges)
-            if cnt:
-                assert cnt.most_common()[0][1] <= 2, msg
+            assert not cnt or cnt.most_common()[0][1] <= 2, msg
 
         # Simplify Delta Tensors
         verify_edges(tensors)
@@ -1270,7 +1285,6 @@ class Product(Tensor):
         if res_weight != 1:
             res = res_weight * res
 
-        assert res.shape == self.shape, f"Edges changed from {self.edges} to {res.edges}"
         return res
 
     def components(self) -> list["Product"]:
@@ -1357,18 +1371,13 @@ class Sum(Tensor):
         self.weights = [1] * len(tensors) if weights is None else list(weights)
         assert len(tensors) == len(self.weights)
 
-    def rename(self, **kwargs: str) -> Tensor:
-        kwargs = self._check_rename(kwargs)
-        res = Sum([t.rename(**kwargs) for t in self.tensors], self.weights)
-        assert set(res.edges) == {kwargs.get(e, e) for e in self.edges}
-        return res
+    def _rename(self, **kwargs: str) -> Tensor:
+        return Sum([t.rename(**kwargs) for t in self.tensors], self.weights)
 
-    def grad(self, x: Variable, new_names: Optional[dict[str, str]] = None) -> Tensor:
-        new_names = self._check_grad(x, new_names)
+    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         return Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
 
-    def simplify(self, args: dict[str, Any] = None) -> Tensor:
-        args = self._check_simplify(args)
+    def _simplify(self, args: dict[str, Any]) -> Tensor:
         terms = [t.simplify(args=args) for t in self.tensors]
 
         term_counter = Counter()
@@ -1402,9 +1411,7 @@ class Sum(Tensor):
         # If there is just one tensor with weight 1, we don't need LinearComb
         if weights == (1,):
             return tensors[0]
-        res = Sum(tensors, weights)
-        assert res.shape == self.shape, f"Edges changed from {self.edges} to {res.edges}"
-        return res
+        return Sum(tensors, weights)
 
     def __repr__(self) -> str:
         return f"Sum({self.tensors}, {self.weights})"
@@ -1493,7 +1500,6 @@ def _make_distinct(
 ) -> tuple[list[Tensor], list[dict[str, str]]]:
     """Makes sure all tensors have distinct edges.
     Optionally takes used_names, an extra set of names to avoid.
-    suffix is an optional string to append to the new names.
 
     Returns:
         A tuple containing:

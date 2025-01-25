@@ -332,6 +332,25 @@ def sum(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     return out
 
 
+def prod(*tensors: Tensor) -> Tensor:
+    """Element-wise product of tensors."""
+    shared_edges = set.intersection(*[set(t.edges) for t in tensors])
+    for e in shared_edges:
+        if not all(t.shape[e] == tensors[0].shape[e] for t in tensors):
+            raise ValueError(f"Shapes of tensors don't match for edge {e}")
+
+    # Rename all edges to be distinct, and use names that won't be in the final output
+    # Also doesn't rename unique names, which is good, since those will also be in the output
+    ts, renames = _make_distinct(*tensors, used_names=shared_edges)
+
+    # Element-wise (Hadamard) product is easy to implement using Delta tensors
+    ts += [Delta(tensors[0].shape[e], e, *(rn[e] for rn in renames)) for e in shared_edges]
+
+    res = Product(ts)
+    assert res.shape == {e: s for t in tensors for e, s in t.shape.items()}
+    return res
+
+
 def mean(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     dim = parse_dim(tensor.edges, dim, none_is="all")
     s = sum(tensor, dim, keepdims)
@@ -366,6 +385,8 @@ def multi_dot(ts: list[Tensor], dims: tuple[str, str]) -> Tensor:
     """
     if not ts:
         return Ones()
+    if any(v for v in ts if not isinstance(v, Tensor)):
+        raise ValueError(f"All arguments must be tensors, got {ts}")
     prod = ts[0]
     assert isinstance(prod, Tensor)
     for t2 in ts[1:]:
@@ -430,31 +451,26 @@ class _PowerFunction(FunctionSignature):
         if self.k == 0:
             return Ones(**func.shape)
         if self.k == 1:
-            return (inner).simplify(args)
+            return inner.simplify(args)
 
         # The pow function is multiplicative, so we can pull components out of a product apart.
+        # Ie. (A * B)^k = A^k * B^k
         if isinstance(inner, Product):
-            new_comps = []
-            for comp in inner.components():
-                new_comps.append(Function(self, (comp,), func.shape_out))
+            assert func.shape_out == {}
+            new_comps = [Function(self, (comp,), {}) for comp in inner.components()]
+            # We only apply this if we actually got more than one component
             if len(new_comps) > 1:
-                return (Product(new_comps)).simplify(args)
+                return Product(new_comps).simplify(args)
 
         # We can pull out the weight of a sum if it's just a single tensor
         if isinstance(inner, Sum) and len(inner.tensors) == 1:
             (w,) = inner.weights
             (t,) = inner.tensors
-            return Function(self, (t,), func.shape_out) * (w**self.k)
+            return Function(self, (t,), {}) * (w**self.k)
 
-        # Base cases
-        if (
-            # Pow of 1 is just 1.
-            isinstance(inner, Delta)
-            # Delta of order 0 can have values other than 1
-            and inner.order > 0
-            # Pow of 0 is just 0
-            or isinstance(inner, Zero)
-        ):
+        # Base cases. We could add Copy(d)**k = Copy(d**k) here, but we're trying to keep the
+        # mathematical expressions in tensorgrad space, rather than in sympy space.
+        if isinstance(inner, Zero) or isinstance(inner, Product) and not inner.tensors:
             return inner
 
         # Combine nested pows
@@ -475,10 +491,12 @@ class _PowerFunction(FunctionSignature):
         #  - Finally we could try to recreate some pow functions from the remaining subgraphs,
         #    but it's not clear that this is actually useful.
 
+        # Combine pow(x, k) * pow(x, l) = pow(x, k + l)
         tensors = cls._combine_powers(tensors)
         assert Product(tensors).edges == original_edges
 
         if args["factor_components"]:
+            # Combine  pow(x, k) * x = pow(x, k + 1)  or cancellations  pow(x, -1) * x = 1
             tensors = cls._combine_components(tensors)
             assert Product(tensors).edges == original_edges
 
@@ -1027,6 +1045,19 @@ def concat(*ts: Tensor, dim: str):
     """
     Concatenate tensors along the given dimension.
     """
+    raise NotImplementedError("Not implemented yet")
+
+
+def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:
+    """
+    Repeat the tensor along the given dimensions.
+    E.g. to create a batch of identity matrices, you can do
+    I = repeat(Delta(d, i, j=i), b)
+    """
+    # TODO: Maybe this should instead be implemented using smart slicing,
+    # like t[:, :, None, :, :, None] to repeat along the 2nd and 5th dimension.
+    # Then we might also want to implement slicing in general, like t[b=3], but
+    # unfortuantely python doesn't support this syntax.
     raise NotImplementedError("Not implemented yet")
 
 

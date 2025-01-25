@@ -1,11 +1,9 @@
 from sympy import symbols
 import torch
 from einops import einsum
-from tensorgrad import Variable
+from tensorgrad import Variable, Tensor, Sum, Delta, Product, Zero
 from tensorgrad import functions as F
 from tensorgrad.extras.expectation import Expectation
-from tensorgrad import Delta, Product, Zero
-from tensorgrad.tensor import Sum, Tensor
 from tensorgrad.testutils import assert_close, rand_values
 
 
@@ -258,3 +256,27 @@ def test_outer_product():
     assert prods[1] == Delta(i, "i0, i1")
     assert prods[2] == Zero(i0=i, i1=i, i2=i)
     assert prods[3] == (F.symmetrize(Delta(i, "i0, i1") @ Delta(i, "i2, i3")) / 8).full_simplify()
+
+
+def test_constant_factor_product():
+    i = symbols("i")
+    u = Variable("u", i)
+    expr = Expectation(Delta(i) @ (u @ u), u)
+    assert expr.full_simplify() == pow(Delta(i), 2)
+
+
+def test_chi_square():
+    i = symbols("i")
+    u = Variable("u", i)
+    kth_moment = Tensor(1)  # Should we make this work with 1?
+    for k in range(5):
+        expr = Expectation(pow(u @ u, k), u).full_simplify()
+        assert expr.full_simplify() == kth_moment.full_simplify()
+        kth_moment *= Tensor(i) + 2 * k
+
+
+def test_cancelation():
+    i = symbols("i")
+    u = Variable("u", i)
+    u2 = u @ u
+    assert Expectation(u2 / u2, u).full_simplify() == Product([])

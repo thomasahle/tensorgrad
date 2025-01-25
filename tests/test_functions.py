@@ -646,3 +646,21 @@ def test_inverse():
     J = jacobian((lambda x: x.inverse().T), tA).rename("i", "j", "i_", "j_")
     myJ = F.inverse(A).grad(A).simplify().evaluate(ts)
     assert_close(myJ, J)
+
+
+def test_multi_dot():
+    i = symbols("i")
+    A = Variable("A", i, j=i)
+    N = 3
+
+    # Test the evaluation
+    expr = F.multi_dot([A] * N, dims=("i", "j"))
+    ts = rand_values([A], {i: N})
+    assert_close(expr.evaluate(ts), torch.matrix_power(ts[A], N))
+
+    # Test the equation  d/dA Tr(A^N) = N A^(N-1)
+    grad = F.trace(expr).grad(A).full_simplify()
+    expected = (N * F.multi_dot([A] * (N - 1), dims=("i", "j"))).full_simplify()
+    assert grad == expected
+
+    # TODO: Add symmetric tests from section "2.5.3 Higher Order" in matrix cookbook

@@ -1,5 +1,3 @@
-from sympy import Symbol
-import torch
 from tensorgrad.tensor import (
     Derivative,
     Product,
@@ -13,6 +11,7 @@ from tensorgrad.tensor import (
     Zero,
     Function,
 )
+import tensorgrad.functions as F
 from tensorgrad.functions import _PowerFunction
 import networkx as nx
 
@@ -70,98 +69,9 @@ class Expectation(Tensor):
         self.covar_names = covar_names
         self.covar = covar
 
-        # Compute the mapping between the two sets of edge names in covar:
-        # self.covar_out_edges = [e for e in covar.edges if e not in mu.edges]
-
-    def evaluate(
-        self,
-        values: dict["Variable", torch.Tensor],
-        dims: dict[Symbol, int] | None = None,
-    ) -> torch.Tensor:
-        """
-        Numerically approximate E[tensor] via Monte Carlo sampling from N(mu, covar),
-        storing a *batch* dimension ("samples") in wrt and taking the mean over that dimension.
-
-        Steps:
-        - Evaluate mu, covar => align/flatten => sample in R^D
-        - Reshape to (samples, *wrt.shape)
-        - Insert that into values[self.wrt]
-        - Evaluate self.tensor(...) => shape (samples, *rest)
-        - .mean over 'samples' => final result
-        """
-
-        # If we already computed this Expectation, return cached value:
-        if self in values:
-            return values[self]
-
-        # If user pinned a specific wrt => just evaluate the tensor directly
-        if self.wrt in values:
-            out = self.tensor.evaluate(values, dims)
-            values[self] = out
-            return out
-
-        if dims is None:
-            dims = {}
-
-        # 1) Evaluate mu and covar numerically
-        mu_torch = self.mu.evaluate(values, dims)  # named edges = same as self.mu.edges
-        covar_torch = self.covar.evaluate(values, dims)
-
-        # 2) Align mu => shape(*self.wrt.edges)
-        #    Example: if wrt.edges = (i, j), we call mu_torch.align_to("i","j").
-        #    That ensures the dimension order matches wrt's order.
-        mu_aligned = mu_torch.align_to(*self.wrt.edges)
-        # Flatten to (D,)
-        D = mu_aligned.numel()
-        mu_flat = mu_aligned.rename(None).reshape(D)
-
-        # 3) Align covar => shape(*self.wrt.edges, *mapped_wrt_edges)
-        #    For example: (i, j, i2, j2).  Let's define the order explicitly:
-        #    first the "row" edges (i, j), then the "column" edges (i2, j2).
-        col_edges = [self.covar_names[e] for e in self.wrt.edges]
-        covar_aligned = covar_torch.align_to(*self.wrt.edges, *col_edges)
-        # Flatten to (D, D)
-        covar_reshaped = covar_aligned.rename(None).reshape(D, D)
-
-        # 4) Number of samples
-        num_samples = dims.get("samples", 1000)
-        if "seed" in dims:
-            torch.manual_seed(dims["seed"])
-
-        # 5) Cholesky
-        L = torch.linalg.cholesky(covar_reshaped)
-
-        # 6) Sample => shape (samples, D)
-        z = torch.randn(num_samples, D, device=mu_flat.device, dtype=mu_flat.dtype)
-        x_flat = mu_flat + (z @ L.T)  # shape (samples, D)
-
-        # 7) Reshape => (samples, *wrt.shape)  => name the leading dim "samples"
-        wrt_shape = mu_aligned.shape  # e.g. (2,3)
-        x_batched = x_flat.reshape(num_samples, *wrt_shape)
-        x_batched_named = x_batched.refine_names("samples", *self.wrt.edges)
-
-        # 8) Insert into values => call self.tensor.evaluate
-        temp_values = dict(values)
-        temp_values[self.wrt] = x_batched_named  # Now wrt has a leading 'samples' dimension
-        out_batched = self.tensor.evaluate(temp_values, dims)  # => shape (samples, ...)
-
-        # 9) Take mean over the "samples" dimension
-        out_batched_unnamed = out_batched.rename(None)  # drop named dims to index them
-        out_mean = out_batched_unnamed.mean(dim=0)  # remove 'samples' from the front
-
-        # 10) Rename the result to the free edges => i.e. self.tensor.edges
-        #     but "out_batched" might have shape (samples, E...) => after mean => shape(E...).
-        #     So we can do:
-        out_named = out_mean.refine_names(*self.tensor.edges)
-
-        # Cache
-        values[self] = out_named
-        return out_named
-
-    def simplify(self, args=None):
-        # We don't currently support pow() functions directly, so we prefer to expand them.
-        args = self._check_simplify(args) | {"combine_products": False}
-        inner = self.tensor.simplify(args=args)
+    def _simplify(self, args: dict[str, str]):
+        # We prefer products to not be factored using the pow function when taking expectations
+        inner = self.tensor.simplify(args=args | {"factor_components": False})
 
         # Constants
         if not inner.depends_on(self.wrt):
@@ -185,136 +95,71 @@ class Expectation(Tensor):
             return self.mu.rename(**iso_rename)
 
         if isinstance(inner, Product):
-            prod = inner
-            # Right now we only support expectations of products where wrt is directly in the product.
-            if self.wrt in prod.tensors:
-                # 1) Look for an instance of wrt in the product
-                x = next(x for x in prod.tensors if x == self.wrt)
+            return self._simplify_product(inner, args)
 
-                # Rename the mu and covar to match the actual edges of x
-                # E.g. if x is actually the transpose of wrt
-                iso_rename = next(self.wrt.isomorphisms(x))
-                mu = self.mu.rename(**iso_rename)
-
-                # 2) Form x * rest by removing x from the product
-                # Note subs.remove will only remove _the first_ occurrence of x, not all of them.
-                subs = prod.tensors[:]
-                subs.remove(x)
-                rest = Product(subs)
-
-                # 3) Expand: x * rest = (x - mu + mu) * rest = mu * rest + (x - mu) * rest
-                res = mu @ Expectation(rest, self.wrt, self.mu, self.covar, self.covar_names)
-                assert res.edges == self.edges, f"{res.edges=} != {self.edges=}"
-
-                # Before we can rename covar with iso_rename, we have to make sure it there's
-                # no clash with the covar_names.
-                out_rename = _unused_edge_names(self.covar_names.values(), x.edges | rest.edges)
-                covar = self.covar.rename(**(out_rename | iso_rename))
-                expected = x.shape | {out_rename[self.covar_names[k]]: s for k, s in self.wrt.shape.items()}
-                assert covar.shape == expected, f"{covar.shape=} != {expected=}"
-                new_edges = {k: out_rename[v] for k, v in self.covar_names.items()}
-
-                # We use the covar_names as the new_names for the derivative. Note that these will eventually
-                # be consumed by the multiplication with @ covar.
-                res += covar @ Expectation(
-                    # We have to take the derivative wrt x, not wrt. Or maybe it works with wrt too?
-                    # I guess derivatives don't really care about renamings of the variable, as long as the
-                    # new edges are consistent
-                    # Derivative(rest, x, new_edges),
-                    Derivative(rest, self.wrt, new_edges),
-                    self.wrt,
-                    self.mu,
-                    self.covar,
-                    self.covar_names,
-                )
-                assert res.edges == self.edges, f"{res.edges=} != {self.edges=}"
-                return res
-
-            # Look for a power function with exponent >= 1 and pull out a factor
-            if (
-                True
-                and (
-                    fn := next(
-                        (
-                            t
-                            for t in prod.tensors
-                            if isinstance(t, Function)
-                            and isinstance(t.signature, _PowerFunction)
-                            and t.signature.k >= 1
-                        ),
-                        None,
-                    )
-                )
-                is not None
-            ):
-                subs = prod.tensors[:]
-                subs.remove(fn)
-                (inner,) = fn.inputs
-                subs.append(inner)
-                if fn.signature.k > 1:
-                    subs.append(pow(inner, fn.signature.k - 1))
-                res = Expectation(Product(subs), self.wrt, self.mu, self.covar, self.covar_names)
-                return res
-
-            # Otherwise we look for constant factors to pull out
-            elif (
-                False
-                and args.get("extract_constants_from_expectation")
-                and any(not t.depends_on(self.wrt) for t in prod.tensors)
-            ):
-                # Separate into constant and wrt-dependent factors
-                constant_terms, wrt_terms = [], []
-                for t in prod.tensors:
-                    if t.depends_on(self.wrt):
-                        wrt_terms.append(t)
-                    else:
-                        constant_terms.append(t)
-                assert len(wrt_terms) > 0
-                assert len(constant_terms) > 0
-
-                # Pull out the constant terms.
-                # Note we need to avoid introducing a Product with a single element,
-                # so we don't get an infinite loop in the simplify method.
-                constant_prod = Product(constant_terms).simplify(args=args)
-                wrt_prod = Product(wrt_terms).simplify(args=args)
-
-                # Compute E[wrt-dependent part] and multiply by constants
-                return (
-                    constant_prod @ Expectation(wrt_prod, self.wrt, self.mu, self.covar, self.covar_names)
-                ).simplify(args=args)
-
-            # Finally check if any factors contain sums that we can expand
-            if False and (
-                sum_idx := next(
-                    (i for i, t in enumerate(prod.tensors) if isinstance(t, Sum) and t.depends_on(self.wrt)),
-                    None,
-                )
-                is not None
-            ):
-                sum_term = prod.tensors[sum_idx]
-                assert isinstance(sum_term, Sum)
-                other_terms = prod.tensors[:sum_idx] + prod.tensors[sum_idx + 1 :]
-
-                # Distribute the product over the sum
-                return Sum(
-                    [
-                        Expectation(
-                            Product([t] + other_terms), self.wrt, self.mu, self.covar, self.covar_names
-                        )
-                        for t in sum_term.tensors
-                    ],
-                    sum_term.weights,
-                ).simplify(args=args)
+        if isinstance(inner, Function):
+            return self._simplify_function(inner, args)
 
         # If nothing was found that we know how to simplify, we just return the original
         return Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
 
-    def grad(self, x: Variable, new_names: dict[str, str] | None = None) -> Tensor:
-        new_names = self._check_grad(x, new_names)
-        # TODO: There's some issue here if x == self.wrt
-        res = Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.covar, self.covar_names)
-        assert res.shape == self.shape | {new_names[k]: s for k, s in x.shape.items()}
-        return res
+    def _simplify_product(self, prod: Product, args: dict[str, str]):
+        # Right now we only support expectations of products where wrt is directly in the product.
+        if self.wrt in prod.tensors:
+            # 1) Look for an instance of wrt in the product
+            x = next(x for x in prod.tensors if x == self.wrt)
+
+            # Rename the mu and covar to match the actual edges of x
+            # E.g. if x is actually the transpose of wrt
+            iso_rename = next(self.wrt.isomorphisms(x))
+            mu = self.mu.rename(**iso_rename)
+
+            # 2) Form x * rest by removing x from the product
+            # Note subs.remove will only remove _the first_ occurrence of x, not all of them.
+            subs = prod.tensors[:]
+            subs.remove(x)
+            rest = Product(subs)
+
+            # 3) Expand: x * rest = (x - mu + mu) * rest = mu * rest + (x - mu) * rest
+            res = mu @ Expectation(rest, self.wrt, self.mu, self.covar, self.covar_names)
+            assert res.edges == self.edges, f"{res.edges=} != {self.edges=}"
+
+            # Before we can rename covar with iso_rename, we have to make sure it there's
+            # no clash with the covar_names.
+            out_rename = _unused_edge_names(self.covar_names.values(), x.edges | rest.edges)
+            covar = self.covar.rename(**(out_rename | iso_rename))
+            expected = x.shape | {out_rename[self.covar_names[k]]: s for k, s in self.wrt.shape.items()}
+            assert covar.shape == expected, f"{covar.shape=} != {expected=}"
+            new_edges = {k: out_rename[v] for k, v in self.covar_names.items()}
+
+            # We use the covar_names as the new_names for the derivative. Note that these will eventually
+            # be consumed by the multiplication with @ covar.
+            return res + covar @ Expectation(
+                # We have to take the derivative wrt x, not wrt. Or maybe it works with wrt too?
+                # I guess derivatives don't really care about renamings of the variable, as long as the
+                # new edges are consistent
+                Derivative(rest, self.wrt, new_edges),
+                self.wrt,
+                self.mu,
+                self.covar,
+                self.covar_names,
+            )
+
+        # Unable to simplify
+        return prod
+
+    def _simplify_function(self, fn: Function, args: dict[str, str]):
+        if isinstance(fn.signature, _PowerFunction) and fn.signature.k >= 0:
+            (inner,) = fn.inputs
+            prod = F.prod(*[inner] * fn.signature.k).simplify(args | {"factor_components": False})
+            res = self._simplify_product(prod, args)
+            return res
+        return fn
+
+    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
+        if x == self.wrt:
+            raise ValueError("Cannot take the gradient wrt the variable we're taking the expectation over")
+        return Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.covar, self.covar_names)
 
     def __repr__(self):
         return f"E[{self.tensor}]"
@@ -329,12 +174,9 @@ class Expectation(Tensor):
         G, _ = _add_structural_graph(G, self.covar, root_edge_label="self.covar")
         return G, t_edges
 
-    def rename(self, **kwargs: dict[str, str]):
-        kwargs = self._check_rename(kwargs)
+    def _rename(self, **kwargs: dict[str, str]):
         # The variables, wrt, mu, covar shouldn't influence our free edge names
-        res = Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
-        assert res.edges == {kwargs.get(e, e) for e in self.edges}
-        return res
+        return Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
 
     def depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
