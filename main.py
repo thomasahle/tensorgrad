@@ -212,7 +212,7 @@ def main11():
     dims = {i: 2, j: 3, k: 4}
     vals = rand_values([x, w, b], dims)
     ref = expr.evaluate(vals, dims)
-    out = compiled_fn(vals, dims)[expr]
+    out = compiled_fn(vals, dims)
     assert_close(out, ref)
 
 def main12():
@@ -268,4 +268,4 @@ def main16():
     save_steps(B)
 
 if __name__ == "__main__":
-    main16()
+    main11()

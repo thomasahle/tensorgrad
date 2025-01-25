@@ -6,7 +6,7 @@ import torch
 
 from tensorgrad import Variable
 from tensorgrad.testutils import rand_values
-from tensorgrad.serializers.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_pytorch import compile_to_callable
 import tensorgrad.functions as F
 
 
@@ -56,7 +56,8 @@ def main():
     # Build the mode
     x = data
 
-    if False:
+    model = "conv-2"
+    if model == "conv-2":
         x = F.relu(x @ conv_layer(channels=2)).simplify()
         x = F.relu(x @ conv_layer(channels=3)).simplify()
         c2, h2, w2, c3 = symbols("c2 h2 w2 c3")
@@ -64,21 +65,21 @@ def main():
         layers.append(linear := Variable("lin", c2, h2, w2, out))
         logits = x @ linear
 
-    elif True:
+    elif model == "conv-1":
         x = F.relu(x @ conv_layer(channels=2)).simplify()
         c1, h1, w1, c2 = symbols("c1 h1 w1 c2")
         shapes[c2] = 2 * 26**2  # c1*w1*h1
         layers.append(linear := Variable("lin", c1, h1, w1, out))
         logits = x @ linear
 
-    elif False:
+    elif model == "linear-2":
         shapes[mid := symbols("mid")] = 40
         layers.append(linear1 := Variable("lin1", c0, h0, w0, mid))
         layers.append(linear2 := Variable("lin2", mid, out))
         x = F.relu(x @ linear1)
         logits = x @ linear2
 
-    else:
+    elif model == "linear-1":
         layers.append(linear := Variable("lin", c0, w0, h0, out))
         logits = x @ linear
 

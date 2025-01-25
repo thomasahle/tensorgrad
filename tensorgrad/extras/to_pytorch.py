@@ -1,10 +1,12 @@
+from collections import defaultdict
 from functools import singledispatchmethod
 import textwrap
 import torch
 import sympy
+from string import ascii_letters
 
-import sparse
-import cotengra as ctg
+import opt_einsum as oe
+from tensorgrad.extras._convolution import conv_einsum_dispatch
 
 
 from tensorgrad import functions as F
@@ -19,6 +21,128 @@ from tensorgrad.tensor import (
     Derivative,
     Function,
 )
+
+
+def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=False):
+    """
+    Build a Python callable:  f(values, *symbol_args) -> torch.Tensor
+      where 'symbol_args' are the integer dimension values for each distinct Sympy.Symbol
+      in sorted order by symbol.name, and 'values' is a dict {Variable: torch.Tensor}.
+
+    The generated function `_generated_forward(...)` will have arguments like:
+        def _generated_forward(batch, c0, w0, h0, _var_1234, _var_5678, ...):
+            ...
+            return result
+    """
+    context = CodegenContext()
+    final_var_names = [context._emit_tensor(t) for t in tensors]
+    script = "\n".join(context.lines)
+
+    function_name = "_generated_forward"
+
+    # Sort the symbol names so we have a deterministic argument order
+    all_symbols_sorted = sorted(context.seen_symbols, key=lambda s: s.name)
+    # e.g. if we have sympy.Symbol("batch"), sympy.Symbol("w0"), etc.
+
+    # Gather placeholders for each Variable
+    var_placeholders = [f"_var_{id(v)}:torch.Tensor" for v in context.seen_variables]
+
+    # The final signature is: def _generated_forward(<dims>, <vars>):
+    # e.g. def _generated_forward(batch, w0, out, _var_140661515588336, _var_140661515588464, ...):
+    symbol_args = [f"{context.declare_dimension(s)}:int" for s in all_symbols_sorted]
+    all_args = symbol_args + var_placeholders
+    signature = ", ".join(all_args)
+
+    out_type = "torch.Tensor" if len(tensors) == 1 else "tuple[torch.Tensor]"
+
+    # Use a raw triple-quoted string with f-string substitution, no dedent
+    wrapped_code = f"""\
+def {function_name}({signature}) -> {out_type}:
+{textwrap.indent(script, "    ")}
+    return {', '.join(final_var_names)}
+"""
+    if torch_compile:
+        wrapped_code = "@torch.compile()\n" + wrapped_code
+
+    if verbose:
+        print()
+        print("\n".join(f"{i+1:3}: {line}" for i, line in enumerate(wrapped_code.split("\n"))))
+
+    ns = {}
+    exec(
+        wrapped_code,
+        {
+            "torch": torch,
+            "oe": oe,
+            "conv_einsum_dispatch": conv_einsum_dispatch,
+            # "sparse": sparse, "ctg": ctg,
+        },
+        ns,
+    )
+    generated_forward = ns[function_name]
+
+    # Keep track of how many times the inner function is called
+    n_calls = 0
+
+    def forward_with_values(values: dict[Variable, torch.Tensor], shapes: dict[sympy.Symbol, int] = None):
+        """
+        The user must pass dimension sizes in the same order as sorted(context.seen_symbols).
+        For example: forward_with_values({x: x_val}, 64, 28, 10, ...)
+        """
+        # Load sizes of variables into the dimensions dictionary and check consistency
+        # This is like the logic in tensor.evaluate(...)
+        if shapes is None:
+            shapes = {}
+        for v, t in values.items():
+            if not isinstance(v, Variable):
+                continue
+            for e, ts in zip(t.names, t.shape):
+                vs = v.shape[e]  # symbolic dimension
+                if vs not in shapes:
+                    shapes[vs] = ts
+                elif shapes[vs] != ts:
+                    raise ValueError(f"Conflicting size for dim {e}")
+
+        # Check we got the right number of dimension arguments
+        if not set(all_symbols_sorted).issubset(shapes.keys()):
+            diff = set(all_symbols_sorted) - set(shapes.keys())
+            raise ValueError(f"Missing dimension values for symbols: {diff}")
+
+        # Add variables to namespace
+        local_ns = {}
+        local_ns[function_name] = generated_forward
+        for sym, val in shapes.items():
+            local_ns[sym.name] = val
+        for var in context.seen_variables:
+            placeholder_name = f"_var_{id(var)}"
+            if var not in values:
+                raise KeyError(f"No value provided for variable {var.name}")
+            # Ensure the torch tensors follow the order of the variable edges.
+            # The code will assume that this is always the case.
+            local_ns[placeholder_name] = values[var].align_to(*var.edges).rename(None)
+
+        # Now call `_generated_forward(batch, w0, out, _var_..., _var_...)`
+        call_args = [s.name for s in all_symbols_sorted] + [f"_var_{id(v)}" for v in context.seen_variables]
+        call_expr = f"{function_name}({', '.join(call_args)})"
+
+        nonlocal n_calls
+        if verbose and n_calls == 0:
+            print(f"{call_expr}")
+        n_calls += 1
+
+        outputs = eval(call_expr, {}, local_ns)
+
+        # If there's only one output, we pack it in a tuple
+        if len(tensors) == 1:
+            outputs = (outputs,)
+
+        # If people call compile(...) with just one tensor, they also assume to get back just one tensor
+        res = [output.refine_names(*tensor.edges) for tensor, output in zip(tensors, outputs)]
+        if len(res) == 1:
+            return res[0]
+        return tuple(res)
+
+    return forward_with_values
 
 
 class CodegenContext:
@@ -235,52 +359,103 @@ class CodegenContext:
         return var_name
 
     @_emit_tensor_impl.register
-    def _(self, t: Product) -> str:
+    def _(self, prod: Product) -> str:
         """Emit code for a Product tensor."""
         var_name = self.fresh_name("prod_")
 
         # Handle empty product
-        if not t.tensors:
+        if not prod.tensors:
             self.emit(f"{var_name} = torch.tensor(1.0)  # empty product")
             return var_name
 
         # Handle single tensor case
-        if len(t.tensors) == 1:
-            single_name = self._emit_tensor(t.tensors[0])
+        if len(prod.tensors) == 1:
+            single_name = self._emit_tensor(prod.tensors[0])
             self.emit(f"{var_name} = {single_name}  # single tensor product")
             return var_name
 
-        self.emit(f"# Product of {len(t.tensors)} tensors")
+        self.emit(f"# Product of {len(prod.tensors)} tensors")
 
-        method = "pytorch"
+        method = "einsum_opt"
         if method == "einsum_opt":
+            # Einsum opt requires single letter names
+            name_to_idx = defaultdict(lambda: ascii_letters[len(name_to_idx)])
+
+            # Compress Delta tensors
+            # contracted_edges = set.union(*[set(t.edges) for t in t.tensors]) - t.edges
+            factor_names, factors = [], []
+            for ft in prod.tensors:
+                if isinstance(ft, F.Convolution):
+                    factors.append(ft)
+                    shape = [
+                        self.declare_dimension(ft.shape[e])
+                        for e in (ft.input_name, ft.kernel_name, ft.output_name)
+                    ]
+                    factor_names.append(f"({shape[0]}, {shape[1]}, {shape[2]})")
+                elif isinstance(ft, Delta) and ft.order >= 1:
+                    output_edges = ft.edges & prod.edges
+                    input_edges = ft.edges - output_edges
+                    # However, einsum doesn't support duplicated indices in the output, like i->ii,
+                    # So we need to recreate some Delta tensors manually
+                    if len(input_edges) >= 1:
+                        e0 = list(input_edges)[0]
+                        if len(output_edges) <= 1:
+                            for e in ft.edges:
+                                name_to_idx[e] = name_to_idx[e0]
+                        if len(output_edges) > 1:
+                            for e in input_edges:
+                                name_to_idx[e] = name_to_idx[e0]
+                            compressed_delta = Delta(ft._size, e0, *output_edges)
+                            factors.append(compressed_delta)
+                            factor_names.append(self._emit_tensor(compressed_delta))
+                    else:
+                        factors.append(ft)
+                        factor_names.append(self._emit_tensor(ft))
+                else:
+                    factors.append(ft)
+                    factor_names.append(self._emit_tensor(ft))
+
+            operands = self.fresh_name("operands_")
+            self.emit(f"{operands} = [{', '.join(factor_names)}]")
+
+            equation = ",".join("".join(name_to_idx[e] for e in ft.edges) for ft in factors)
+
+            equation += "->" + "".join(name_to_idx[e] for e in prod.edges)
+            shape_strs = [", ".join(self.declare_dimension(ft.shape[e]) for e in ft.edges) for ft in factors]
+            shape_str = "[" + "], [".join(shape_strs) + "]"
+            path_name = self.fresh_name("path_")
+            self.emit(f"{path_name} = oe.contract_expression('{equation}', {shape_str}).contraction_list")
+
             # TODO: Be smarter about converting Delta tensors to indices,
             # and use somethin glike the following to manually contract tensors.
             # But if the tensor is a Convolution, we can use
             # other.unfold(0, K, 1) instead.
 
-            # shapes = [operand.shape for operand in operands]
-            # path = oe.contract_path(equation, *shapes, shapes=True)[0]
-            # tensors = list(operands)
-            # # Perform contractions according to the path
-            # for contraction in path:
-            #     idx0, idx1 = contraction
-            #     tensors[idx0] = np.einsum(equation, tensors[idx0], tensors[idx1])
-            #     del tensors[idx1]
+            ids, eq_name = self.fresh_name("ids_"), self.fresh_name("eq_")
+            args = self.fresh_name("args_")
+            self.emit(f"for {ids}, _, {eq_name}, _, _ in {path_name}:")
+            self.emit(f"    {args} = [{operands}.pop(i) for i in sorted({ids}, reverse=True)]")
+            self.emit(
+                f"    if len({args}) == 2 and (isinstance({args}[0], tuple) or isinstance({args}[1], tuple)):"
+            )
+            self.emit(f"        {operands}.append(conv_einsum_dispatch({eq_name}, {args}[0], {args}[1]))")
+            self.emit(f"    else:")  # noqa: F541
+            self.emit(f"        {operands}.append(torch.einsum({eq_name}, *{args}))")
+            self.emit(f"{var_name} = {operands}[0]")
 
-            # return tensors[0]
-            pass
+            return var_name
+
         if method == "pytorch":
-            edge_numbers = {e: i for i, e in enumerate({e for child in t.tensors for e in child.edges})}
+            edge_numbers = {e: i for i, e in enumerate({e for child in prod.tensors for e in child.edges})}
 
             parts = []
-            for inner in t.tensors:
+            for inner in prod.tensors:
                 torch_var = self._emit_tensor(inner)
                 parts.append(
                     f"{torch_var}, {[edge_numbers[e] for e in inner.edges]},  # ({', '.join(inner.edges)})"
                 )
 
-            parts.append(f"{[edge_numbers[e] for e in t.edges]}  # ({', '.join(t.edges)})")
+            parts.append(f"{[edge_numbers[e] for e in prod.edges]}  # ({', '.join(prod.edges)})")
             inner = "\n    ".join(parts)  # python3.11 f-strings can't have backslash
             self.emit(f"{var_name} = torch.einsum(\n    {inner}\n    )")
         elif method == "cotengra":
@@ -289,7 +464,7 @@ class CodegenContext:
             arrays = []
             inputs = []
 
-            for inner in t.tensors:
+            for inner in prod.tensors:
                 torch_var = self._emit_tensor(inner)
                 arrays.append(torch_var)
                 inputs.append(tuple(inner.edges))
@@ -300,7 +475,7 @@ class CodegenContext:
 
             arrays_str = ", ".join(arrays)
             inputs_str = repr(inputs)
-            output_str = repr(tuple(t.edges))
+            output_str = repr(tuple(prod.edges))
 
             # Use array_contract since we have arbitrary hashable indices
             self.emit(f"{var_name} = ctg.array_contract(")
@@ -311,6 +486,23 @@ class CodegenContext:
             self.emit(f")")
 
         return var_name
+
+    def _emit_torch_einsum(
+        self, var_names: list[str], ts: list[Tensor], edge_map: dict[str, str], eq: str
+    ) -> str:
+        pass
+        # edge_numbers = {e: i for i, e in enumerate({e for child in t.tensors for e in child.edges})}
+
+        # parts = []
+        # for inner in t.tensors:
+        #     torch_var = self._emit_tensor(inner)
+        #     parts.append(
+        #         f"{torch_var}, {[edge_numbers[e] for e in inner.edges]},  # ({', '.join(inner.edges)})"
+        #     )
+
+        # parts.append(f"{[edge_numbers[e] for e in t.edges]}  # ({', '.join(t.edges)})")
+        # inner = "\n    ".join(parts)  # python3.11 f-strings can't have backslash
+        # self.emit(f"{var_name} = torch.einsum(\n    {inner}\n    )")
 
     @_emit_tensor_impl.register
     def _(self, t: Function) -> str:
@@ -363,116 +555,3 @@ def permute(tensor: Tensor, parent: Tensor) -> str:
     if perm == list(range(parent.order)):
         return ""
     return f".permute({', '.join(map(str, perm))})"
-
-
-def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=False):
-    """
-    Build a Python callable:  f(values, *symbol_args) -> torch.Tensor
-      where 'symbol_args' are the integer dimension values for each distinct Sympy.Symbol
-      in sorted order by symbol.name, and 'values' is a dict {Variable: torch.Tensor}.
-
-    The generated function `_generated_forward(...)` will have arguments like:
-        def _generated_forward(batch, c0, w0, h0, _var_1234, _var_5678, ...):
-            ...
-            return result
-    """
-    context = CodegenContext()
-    final_var_names = [context._emit_tensor(t) for t in tensors]
-    script = "\n".join(context.lines)
-
-    function_name = "_generated_forward"
-
-    # Sort the symbol names so we have a deterministic argument order
-    all_symbols_sorted = sorted(context.seen_symbols, key=lambda s: s.name)
-    # e.g. if we have sympy.Symbol("batch"), sympy.Symbol("w0"), etc.
-
-    # Gather placeholders for each Variable
-    var_placeholders = [f"_var_{id(v)}:torch.Tensor" for v in context.seen_variables]
-
-    # The final signature is: def _generated_forward(<dims>, <vars>):
-    # e.g. def _generated_forward(batch, w0, out, _var_140661515588336, _var_140661515588464, ...):
-    symbol_args = [f"{context.declare_dimension(s)}:int" for s in all_symbols_sorted]
-    all_args = symbol_args + var_placeholders
-    signature = ", ".join(all_args)
-
-    out_type = "torch.Tensor" if len(tensors) == 1 else "tuple[torch.Tensor]"
-
-    # Use a raw triple-quoted string with f-string substitution, no dedent
-    wrapped_code = f"""\
-def {function_name}({signature}) -> {out_type}:
-{textwrap.indent(script, "    ")}
-    return {', '.join(final_var_names)}
-"""
-    if torch_compile:
-        wrapped_code = "@torch.compile()\n" + wrapped_code
-
-    if verbose:
-        print()
-        print("\n".join(f"{i+1:3}: {line}" for i, line in enumerate(wrapped_code.split("\n"))))
-
-    ns = {}
-    exec(wrapped_code, {"torch": torch, "sparse": sparse, "ctg": ctg}, ns)
-    generated_forward = ns[function_name]
-
-    # Keep track of how many times the inner function is called
-    n_calls = 0
-
-    def forward_with_values(values: dict[Variable, torch.Tensor], shapes: dict[sympy.Symbol, int] = None):
-        """
-        The user must pass dimension sizes in the same order as sorted(context.seen_symbols).
-        For example: forward_with_values({x: x_val}, 64, 28, 10, ...)
-        """
-        # Load sizes of variables into the dimensions dictionary and check consistency
-        # This is like the logic in tensor.evaluate(...)
-        if shapes is None:
-            shapes = {}
-        for v, t in values.items():
-            if not isinstance(v, Variable):
-                continue
-            for e, ts in zip(t.names, t.shape):
-                vs = v.shape[e]  # symbolic dimension
-                if vs not in shapes:
-                    shapes[vs] = ts
-                elif shapes[vs] != ts:
-                    raise ValueError(f"Conflicting size for dim {e}")
-
-        # Check we got the right number of dimension arguments
-        if not set(all_symbols_sorted).issubset(shapes.keys()):
-            diff = set(all_symbols_sorted) - set(shapes.keys())
-            raise ValueError(f"Missing dimension values for symbols: {diff}")
-
-        # Add variables to namespace
-        local_ns = {}
-        local_ns[function_name] = generated_forward
-        for sym, val in shapes.items():
-            local_ns[sym.name] = val
-        for var in context.seen_variables:
-            placeholder_name = f"_var_{id(var)}"
-            if var not in values:
-                raise KeyError(f"No value provided for variable {var.name}")
-            # Ensure the torch tensors follow the order of the variable edges.
-            # The code will assume that this is always the case.
-            local_ns[placeholder_name] = values[var].align_to(*var.edges).rename(None)
-
-        # Now call `_generated_forward(batch, w0, out, _var_..., _var_...)`
-        call_args = [s.name for s in all_symbols_sorted] + [f"_var_{id(v)}" for v in context.seen_variables]
-        call_expr = f"{function_name}({', '.join(call_args)})"
-
-        nonlocal n_calls
-        if verbose and n_calls == 0:
-            print(f"{call_expr}")
-        n_calls += 1
-
-        outputs = eval(call_expr, {}, local_ns)
-
-        # If there's only one output, we pack it in a tuple
-        if len(tensors) == 1:
-            outputs = (outputs,)
-
-        # If people call compile(...) with just one tensor, they also assume to get back just one tensor
-        res = [output.refine_names(*tensor.edges) for tensor, output in zip(tensors, outputs)]
-        if len(res) == 1:
-            return res[0]
-        return tuple(res)
-
-    return forward_with_values

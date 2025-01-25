@@ -1062,7 +1062,9 @@ def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:
 
 
 class Convolution(Constant):
-    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, **shape1: Symbol):
+    def __init__(
+        self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, _stride: int = 1, **shape1: Symbol
+    ):
         """
         A Convolution is a 3-tensor such that C[i,j,k] = 1 if i=j+k and 0 otherwise.
         Typically the first argument (i) is the input dim, and two others are the kernel and output dims.
@@ -1071,15 +1073,17 @@ class Convolution(Constant):
         input size win, kernel size kw, and output size wout.
         wout will be win - kw + 1.
         For 2D convolution, use Convolution(win, kw, wout) @ Convolution(hin, kh, hout).
+
+        We don't currently support stride, but if we did the size would be wout = (win - kw) // stride + 1.
+        The formula would be C[i,j,k] = 1 if i = j + k * stride.
         """
         shape = self._check_shape(shape0, shape1)
         assert len(shape) == 3, "Convolution must have exactly 3 edges: input, kernel, output"
         (e0, _s0), (e1, s1), (e2, s2) = shape.items()
-        if s1 == s2:
-            assert len({s1, s2}) == 1, "Kernel and output size must be the same"
         symmetries = {frozenset([e1, e2]), frozenset([e0])} if s1 == s2 else None
         super().__init__(_symmetries=symmetries, **shape)
         self.input_name, self.kernel_name, self.output_name = e0, e1, e2
+        self.stride = _stride
 
     def __repr__(self) -> str:
         return f"Convolution({self.input_name}, {self.kernel_name}, {self.output_name})"
@@ -1087,9 +1091,8 @@ class Convolution(Constant):
     def __hash__(self) -> int:
         return hash((type(self).__name__,) + tuple(self.shape.items()))
 
-    def rename(self, **kwargs: str) -> "Tensor":
-        kwargs = self._check_rename(kwargs)
-        return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()})
+    def _rename(self, **kwargs: str) -> "Tensor":
+        return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()}, _stride=self.stride)
 
 
 class Reshape(Constant):
@@ -1105,6 +1108,5 @@ class Reshape(Constant):
     def __hash__(self) -> int:
         return hash((type(self).__name__,) + tuple(self.shape.items()))
 
-    def rename(self, **kwargs: str) -> "Tensor":
-        kwargs = self._check_rename(kwargs)
+    def _rename(self, **kwargs: str) -> "Tensor":
         return Reshape(**{kwargs.get(k, k): v for k, v in self.shape.items()})
