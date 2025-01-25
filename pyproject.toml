@@ -10,7 +10,8 @@ dependencies = [
    "einops",
    "pdf2image",
    "sympy",
-   "sparse"
+   "sparse",
+   "opt_einsum"
 ]
 requires-python = ">=3.10"
 authors = [
