@@ -39,7 +39,7 @@ def compile_latex(latex_code, suffix=""):
 
 
 def combine_images_vertically(
-    image_paths, padding=10, line_padding=5, background_color="white", line_color="black", line_width=2
+    image_paths, padding=10, line_padding=5, background_color="white", line_color="black", line_width=2, output_path="combined_image.png"
 ):
     images = [Image.open(x) for x in image_paths]
 
@@ -77,7 +77,7 @@ def combine_images_vertically(
             y_offset += line_width + line_padding
 
     # Save the combined image
-    combined_image_path = "combined_image.png"
+    combined_image_path = output_path
     combined_image.save(combined_image_path)
 
     return combined_image_path
@@ -106,7 +106,7 @@ def save_steps_old(expr, min_steps=None):
     print(f"Combined image saved to {output_path}")
 
 
-def save_steps(expr, slow_grad=False):
+def save_steps(expr, slow_grad=False, output_path="steps.png"):
     images = []
     images.append(compile_latex(to_tikz(expr), suffix="0"))
 
@@ -139,7 +139,7 @@ def save_steps(expr, slow_grad=False):
         images.append(compile_latex(to_tikz(new), suffix=f"{len(images)}"))
         expr = new
 
-    output_path = combine_images_vertically(images)
+    combine_images_vertically(images, output_path=output_path)
     print(f"Combined image saved to {output_path}")
 
 

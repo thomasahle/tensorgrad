@@ -163,14 +163,32 @@ def test_det():
     assert_close(res, expected)
 
     # Test the gradient
-    J = jacobian(lambda x: x.det(), ts[A].rename(None)).rename("b", "b_", "j", "i")
+    J = jacobian(lambda x: x.det(), ts[A].rename(None)).rename("b", "b_", "i", "j")
     myJ = F.det(A, dims={"i", "j"}).grad(A).simplify().evaluate(ts)
     assert_close(myJ, J)
 
     # Test the hessian (have to sum, because hessian doesn't support batching)
-    H = hessian(lambda x: x.det().sum(), ts[A].rename(None)).rename("b", "j", "i", "b_", "j_", "i_")
+    H = hessian(lambda x: x.det().sum(), ts[A].rename(None)).rename("b", "i", "j", "b_", "i_", "j_")
     myH = F.sum(F.det(A, dims={"i", "j"}), dim="b").grad(A).grad(A).simplify().evaluate(ts)
     assert_close(myH, H)
+
+
+def test_det_hess_symbolic():
+    # Test the third derivative of the determinant, symbolically
+    i = symbols("i")
+    X = Variable("X", i, j=i)
+    det = F.det(X)
+    hess = det.grad(X).grad(X).grad(X).full_simplify(expand=True)
+    inv = F.inverse(X)
+    expected = (
+        det
+        * F.symmetrize(
+            inv @ inv.rename(i="i_", j="j_") @ inv.rename(i="i__", j="j__"),
+            dims={"j", "j_", "j__"},
+            signed=True,
+        )
+    ).full_simplify(expand=True)
+    assert hess == expected
 
 
 def test_softmax_grad_mat():

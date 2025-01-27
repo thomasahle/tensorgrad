@@ -174,14 +174,15 @@ class Tensor(metaclass=TensorMeta):
         # Override this method to implement simplification
         return self
 
-    def full_simplify(self) -> "Tensor":
+    def full_simplify(self, expand=True) -> "Tensor":
         """Applies multiple simplification rules until the expression no longer changes"""
         expr = self
         while (new := expr.simplify()) != expr:
             expr = new
-        expr = expr.simplify({"expand": True})
-        while (new := expr.simplify()) != expr:
-            expr = new
+        if expand:
+            expr = expr.simplify({"expand": True})
+            while (new := expr.simplify({"expand": True})) != expr:
+                expr = new
         return expr
 
     def __hash__(self) -> int:

@@ -270,10 +270,21 @@ def main16():
 def main17():
     i = symbols("i")
     X = Variable("X", i, j=i)
-    adj = F.inverse(X) * F.det(X)
-    expr = adj.grad(X).grad(X)
+    det = F.det(X)
+    inv = F.inverse(X)
+    adj = det * inv
+    expr = det.grad(X).grad(X).grad(X)
+
+    expected = (
+        det
+        * F.symmetrize(
+            inv @ inv.rename(i="i_", j="j_") @ inv.rename(i="i__", j="j__"),
+            dims={"j", "j_", "j__"},
+            signed=True,
+        ).full_simplify()
+    )
+
     save_steps(expr)
-    print(to_tikz(expr))
 
 if __name__ == "__main__":
     main17()

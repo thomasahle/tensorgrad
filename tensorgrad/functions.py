@@ -52,7 +52,7 @@ def frobenius2(t: Tensor) -> Tensor:
     return Product([t, t])
 
 
-def _is_even_permutation(permutation: Sequence[Any]) -> bool:
+def _is_even_permutation(permutation: Sequence[int]) -> bool:
     """
     Checks if given permutation is even.
     >>> is_even_permutation(range(10))
@@ -73,15 +73,17 @@ def _is_even_permutation(permutation: Sequence[Any]) -> bool:
 # TODO: Make a SymmetrizeFunctionSignature class. This will be extra nice
 # when FunctionSignature supports symmetries, since we can then symmetrize stuff
 # without having to pay for the super-exponential cost of all permutations.
-def symmetrize(t: Tensor, signed: bool = False) -> Tensor:
+def symmetrize(t: Tensor, dims: DimType = None, signed: bool = False) -> Tensor:
     """Sum over all permutations of the edges."""
-    edges = list(t.edges)
+    dims = parse_dim(t.edges, dims, none_is="all")
+    edges = list(dims)
     res: list[Tensor] = []
     weights: list[Number] = []
-    for perm in itertools.permutations(edges):
+    for i_perm in itertools.permutations(range(len(edges))):
+        perm = [edges[i] for i in i_perm]
         res.append(t.rename(**dict(zip(edges, perm))))
         if signed:
-            weights.append(1 if _is_even_permutation(perm) else -1)
+            weights.append(1 if _is_even_permutation(i_perm) else -1)
         else:
             weights.append(1)
     return Sum(res, weights)
@@ -621,8 +623,10 @@ class _MatrixInverseFunction(FunctionSignature):
         # torch.inverse assumes matrix dimensions are at the end.
         # We swap d1 and d2 for z1, so it's the edges with
         # the same name that cancel, and not the opposite name.
-        z = x.align_to(..., d1, d2)
-        return torch.inverse(z.rename(None)).rename(*z.names).align_to(*x.names)
+        z = x.align_to(..., d2, d1)
+        z = x.align_to(..., d1, d2).rename(None)
+        out_names = x.align_to(..., d2, d1).names
+        return torch.inverse(z).rename(*out_names).align_to(*x.names)
 
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         assert i == 0

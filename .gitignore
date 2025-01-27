@@ -172,3 +172,4 @@ combined_image.png
 data/
 out
 examples/mnist_torch.py
+steps.png
