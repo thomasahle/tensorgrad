@@ -267,5 +267,13 @@ def main16():
     B = Expectation(frob, g).full_simplify()
     save_steps(B)
 
+def main17():
+    i = symbols("i")
+    X = Variable("X", i, j=i)
+    adj = F.inverse(X) * F.det(X)
+    expr = adj.grad(X).grad(X)
+    save_steps(expr)
+    print(to_tikz(expr))
+
 if __name__ == "__main__":
-    main11()
+    main17()

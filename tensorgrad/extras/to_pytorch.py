@@ -57,6 +57,7 @@ def compile_to_callable(*tensors: Tensor, verbose=False, torch_compile=False):
 
     # Use a raw triple-quoted string with f-string substitution, no dedent
     wrapped_code = f"""\
+@torch.no_grad()
 def {function_name}({signature}) -> {out_type}:
 {textwrap.indent(script, "    ")}
     return {', '.join(final_var_names)}

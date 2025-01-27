@@ -154,6 +154,25 @@ def test_bivariate_functions(functions):
         assert_close(my_hessian, torch_hessians[i][j].rename("N", "C", "N_", "C_"))
 
 
+def test_det():
+    b, i = symbols("b i")
+    A = Variable("A", b, i, j=i)
+    ts = rand_values([A], {b: 4, i: 3})
+    res = F.det(A, dims={"i", "j"}).evaluate(ts)
+    expected = ts[A].rename(None).det().rename("b")
+    assert_close(res, expected)
+
+    # Test the gradient
+    J = jacobian(lambda x: x.det(), ts[A].rename(None)).rename("b", "b_", "j", "i")
+    myJ = F.det(A, dims={"i", "j"}).grad(A).simplify().evaluate(ts)
+    assert_close(myJ, J)
+
+    # Test the hessian (have to sum, because hessian doesn't support batching)
+    H = hessian(lambda x: x.det().sum(), ts[A].rename(None)).rename("b", "j", "i", "b_", "j_", "i_")
+    myH = F.sum(F.det(A, dims={"i", "j"}), dim="b").grad(A).grad(A).simplify().evaluate(ts)
+    assert_close(myH, H)
+
+
 def test_softmax_grad_mat():
     i, j = symbols("i j")
     A = Variable("A", i=i, j=j)

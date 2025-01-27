@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 from sympy import symbols
 import tqdm
 import torch
+import argparse
 
 from tensorgrad import Variable
 from tensorgrad.testutils import rand_values
@@ -10,7 +11,7 @@ from tensorgrad.extras.to_pytorch import compile_to_callable
 import tensorgrad.functions as F
 
 
-def main():
+def main(model):
     n_epochs = 10
     batch_size = 32
     lr = 1e-2
@@ -56,19 +57,16 @@ def main():
     # Build the mode
     x = data
 
-    model = "conv-2"
     if model == "conv-2":
         x = F.relu(x @ conv_layer(channels=2)).simplify()
         x = F.relu(x @ conv_layer(channels=3)).simplify()
-        c2, h2, w2, c3 = symbols("c2 h2 w2 c3")
-        shapes[c3] = 3 * 24**2  # c2*w2*h2
+        c2, h2, w2 = symbols("c2 h2 w2")
         layers.append(linear := Variable("lin", c2, h2, w2, out))
         logits = x @ linear
 
     elif model == "conv-1":
         x = F.relu(x @ conv_layer(channels=2)).simplify()
-        c1, h1, w1, c2 = symbols("c1 h1 w1 c2")
-        shapes[c2] = 2 * 26**2  # c1*w1*h1
+        c1, h1, w1 = symbols("c1 h1 w1")
         layers.append(linear := Variable("lin", c1, h1, w1, out))
         logits = x @ linear
 
@@ -92,7 +90,7 @@ def main():
     print("Computing and simplifying gradients")
     grad_tensors = [y.grad(param).full_simplify() for param in layers]
 
-    backprop = compile_to_callable(prediction, y, *grad_tensors, verbose=True, torch_compile=False)
+    backprop = compile_to_callable(prediction, y, *grad_tensors, verbose=True, torch_compile=True)
 
     # Train
     print("Training...")
@@ -126,4 +124,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "model", type=str, default="linear-1", choices=["conv-1", "conv-2", "linear-1", "linear-2"]
+    )
+    args = parser.parse_args()
+    main(args.model)

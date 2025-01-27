@@ -621,11 +621,8 @@ class _MatrixInverseFunction(FunctionSignature):
         # torch.inverse assumes matrix dimensions are at the end.
         # We swap d1 and d2 for z1, so it's the edges with
         # the same name that cancel, and not the opposite name.
-        z = x.align_to(..., d1, d2).rename(None)
-        out_names = x.align_to(..., d2, d1).names
-        y = torch.inverse(z).rename(*out_names).align_to(*self.edges)
-        assert y.names == tuple(self.edges)
-        return y
+        z = x.align_to(..., d1, d2)
+        return torch.inverse(z.rename(None)).rename(*z.names).align_to(*x.names)
 
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         assert i == 0
@@ -701,11 +698,6 @@ def inverse(tensor: Tensor, dims: set[str] = None) -> Tensor:
     if s1 != s2:
         raise ValueError(f"Inverted dimensions must have same size. Got {s1, s2}")
     return Function(_MatrixInverseFunction(dims), [tensor], out_shape)
-
-
-def det(tensor: Tensor, dims: set[str] = None) -> Tensor:
-    """Matrix determinant over two target edges. Broadcasts over the rest."""
-    raise NotImplementedError("Not implemented yet")
 
 
 def _ExpFunction() -> FunctionSignature:
@@ -1059,6 +1051,52 @@ def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:
     # Then we might also want to implement slicing in general, like t[b=3], but
     # unfortuantely python doesn't support this syntax.
     raise NotImplementedError("Not implemented yet")
+
+
+class _DeterminantDerivative(FunctionSignature):
+    def __init__(self, dims: set[str], new_edges: dict[str, str] = None):
+        self.name = "det_grad"
+        self.edges = frozenset(new_edges.values())
+        self.inputs = (frozenset(dims),)
+        self.new_edges = new_edges
+
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+        raise NotImplementedError("Please expand with simplify() first")
+
+    def simplify(self, t: Function, args: dict[str, Any]):
+        (dims,) = self.inputs
+        (inner,) = t.inputs
+        if args["expand_functions"]:
+            return det(inner, dims) * inverse(inner, dims).rename(**self.new_edges)
+
+
+class _DeterminantFunction(FunctionSignature):
+    def __init__(self, dims: set[str]):
+        self.name = "det"
+        self.edges = frozenset()
+        assert len(dims) == 2, f"Determinant takes exactly 2 dims, got {dims=}"
+        self.inputs = (frozenset(dims),)
+
+    def eval(self, x: torch.Tensor) -> torch.Tensor:
+        (dims,) = self.inputs
+        new_names = [n for n in x.names if n not in dims]  # Names after the determinant
+        return torch.linalg.det(x.rename(None)).rename(*new_names)
+
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+        return _DeterminantDerivative(self.inputs[0], new_edges)
+
+
+def det(t: Tensor, dims: DimType = None) -> Tensor:
+    """
+    Compute the determinant of square matrices.
+    """
+    dims = parse_dim(t.edges, dims, none_is="all")
+    if len(dims) != 2:
+        raise ValueError(f"Determinant takes exactly 2 dims, got {dims=}")
+    dim0, dim1 = dims
+    if t.shape[dim0] != t.shape[dim1]:
+        raise ValueError(f"Determinant requires square matrices, got {t.shape[dim0]=} != {t.shape[dim1]=}")
+    return Function(_DeterminantFunction(dims), [t], {})
 
 
 class Convolution(Constant):
