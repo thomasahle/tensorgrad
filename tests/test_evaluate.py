@@ -1,27 +1,31 @@
 import random
+
 import pytest
-from sympy import symbols
 import torch
+import torch.nn.functional as tF
+from sympy import symbols
+
+import tensorgrad.functions as F
 from tensorgrad.extras.to_pytorch import compile_to_callable
 from tensorgrad.tensor import (
     Delta,
     Derivative,
-    FunctionSignature,
     Function,
+    FunctionSignature,
     Ones,
     Product,
     Sum,
     Variable,
     Zero,
 )
-import tensorgrad.functions as F
-from tensorgrad.testutils import assert_close, random_tensor_expr, rand_values
-import torch.nn.functional as tF
+from tensorgrad.testutils import assert_close, rand_values, random_tensor_expr
+from tensorgrad.extras.evaluate import evaluate
 
 
 def test_copy():
     i = symbols("i")
     copy_tensor = Delta(i, "i, j")
+    evaluate(copy_tensor, values, dims)
     result = copy_tensor.evaluate({}, dims={i: 3})
     expected = torch.eye(3).rename("i", "j")
     assert_close(result, expected)
