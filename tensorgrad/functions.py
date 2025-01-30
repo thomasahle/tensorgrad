@@ -1,29 +1,29 @@
-from collections import defaultdict
 import itertools
 import math
-from numbers import Number
 import re
-from typing import Any, Callable, Iterable, Iterator, Sequence, Union
+from collections import defaultdict
+from fractions import Fraction
+from numbers import Number
+from typing import Any, Iterable, Iterator, Sequence, Union
+
 from sympy import Symbol
-import torch
+
 from tensorgrad.tensor import (
     Constant,
+    Delta,
     Function,
     FunctionSignature,
-    _MatchEdgesKey,
     Ones,
+    Product,
     Rename,
     Sum,
     Tensor,
-    Product,
-    Delta,
     Variable,
     Zero,
     _make_distinct,
+    _MatchEdgesKey,
     _unused_edge_names,
 )
-from fractions import Fraction
-
 from tensorgrad.utils import DisjointSets
 
 # We include a "sum" function, which overloads the python sum. So we keep a reference
@@ -418,9 +418,6 @@ class _ScaleFunction(FunctionSignature):
         self.inner = inner
         self.alpha = alpha
 
-    def eval(self, *xs: torch.Tensor) -> torch.Tensor:
-        return self.alpha * self.inner.eval(*xs)
-
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         return _ScaleFunction(self.inner.derivative(i, new_edges), self.alpha)
 
@@ -435,11 +432,6 @@ class _PowerFunction(FunctionSignature):
         self.edges = frozenset()
         self.inputs = (frozenset(),)
         self.k = k
-
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        if self.k < 0:
-            x = x.to(torch.float)
-        return torch.pow(x, float(self.k))
 
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         assert i == 0 and (new_edges is None or not new_edges)
@@ -615,19 +607,6 @@ class _MatrixInverseFunction(FunctionSignature):
             raise ValueError(f"Called Matrix Inverse takes exactly 2 edges. Got {edges=}.")
         super().__init__("inv", frozenset(edges), (frozenset(edges),))
 
-    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
-        (x,) = input_tensors
-        if not self.edges.issubset(x.names):
-            raise ValueError(f"Input {x.names} didn't have all edges {self.edges}")
-        d1, d2 = self.edges
-        # torch.inverse assumes matrix dimensions are at the end.
-        # We swap d1 and d2 for z1, so it's the edges with
-        # the same name that cancel, and not the opposite name.
-        z = x.align_to(..., d2, d1)
-        z = x.align_to(..., d1, d2).rename(None)
-        out_names = x.align_to(..., d2, d1).names
-        return torch.inverse(z).rename(*out_names).align_to(*x.names)
-
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         assert i == 0
         # Derivative gets new_edges : {old_name : new_name}
@@ -706,7 +685,7 @@ def inverse(tensor: Tensor, dims: set[str] = None) -> Tensor:
 
 def _ExpFunction() -> FunctionSignature:
     # Small hack to handle recursive initialization
-    exp_function = _SimpleFunction("exp", torch.exp, None)
+    exp_function = _SimpleFunction("exp", None)
     exp_function._derivative = exp_function
     return exp_function
 
@@ -719,7 +698,7 @@ def _LogFunction() -> FunctionSignature:
     # If we want to support more complicated simplification rules,
     # like expanding log(a*b) into log(a) + log(b),
     # we should define a custom function signature.
-    return _SimpleFunction("log", torch.log, _PowerFunction(-1))
+    return _SimpleFunction("log", _PowerFunction(-1))
 
 
 def log(t: Tensor) -> Tensor:
@@ -748,16 +727,6 @@ class _SoftmaxFunction(FunctionSignature):
 
     def derivative(self, i: int, new_edges: dict[str, str] = None):
         raise NotImplementedError("Simplify and then differentiate")
-
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        (dims,) = self.inputs
-        sizes = [x.size(d) for d in dims]
-        names = [d for d in x.names if d not in dims]
-        other_sizes = [x.size(n) for n in names]
-        # Softmax doesn't support named dimensions, so we have to rename them to None.
-        # We move the affected dimensions to the front, then flatten them.
-        y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
-        return y.softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         if args["expand_functions"]:
@@ -801,9 +770,6 @@ class _RenameFunction(FunctionSignature):
         self.renames = renames
         self.inner = inner
 
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        return self.inner.eval(x).rename(**self.renames)
-
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         return _RenameFunction(self.inner.derivative(i, new_edges), self.renames)
 
@@ -837,15 +803,6 @@ class _ZeroFunction(FunctionSignature):
         inverse_new_edges = {v: k for k, v in new_edges.items()}
         return _ZeroFunction(self.new_edges | inverse_new_edges)
 
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        # Like any function, we have to support broadcasted inputs, so we detect
-        # which names are in x, which are not consumed in self.inputs
-        broadcasted = [e for e in x.names if e not in self.inputs[0]]
-        return torch.zeros(
-            size=[x.size(o) for o in broadcasted + list(self.new_edges.values())],
-            names=broadcasted + list(self.new_edges.keys()),
-        )
-
     def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
         # Instead of trying to calculate the shape ourselves, which is complicated
         # because of broadcasting, and that the function may have been renamed,
@@ -857,15 +814,10 @@ class _SimpleFunction(FunctionSignature):
     def __init__(
         self,
         name: str,
-        eval_fn: Callable[[torch.Tensor], torch.Tensor],
         derivative: Union["FunctionSignature", None],
     ) -> None:
         super().__init__(name, frozenset(), (frozenset(),))
-        self._eval_fn = eval_fn
         self._derivative = derivative
-
-    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
-        return self._eval_fn(input_tensors[0])
 
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         assert i == 0 and not new_edges, "Simple functions are element-wise"
@@ -877,7 +829,7 @@ class _SimpleFunction(FunctionSignature):
 def _SignFunction() -> FunctionSignature:
     # We keep these FunctionObject functions around, since they are used both
     # for the function itself (like sign) and in derivatives (like abs)
-    return _SimpleFunction("sign", torch.sign, _ZeroFunction())
+    return _SimpleFunction("sign", _ZeroFunction())
 
 
 def sign(t: Tensor) -> Tensor:
@@ -891,11 +843,7 @@ def sign(t: Tensor) -> Tensor:
 
 def _Gt0Function() -> FunctionSignature:
     # This could also be implemented as (sign(x) + 1) / 2
-    return _SimpleFunction(
-        "gt0",
-        lambda x: torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names),
-        _ZeroFunction(),
-    )
+    return _SimpleFunction("gt0", _ZeroFunction())
 
 
 def gt0(t: Tensor) -> Tensor:
@@ -917,11 +865,11 @@ def maximum(x: Tensor, y: Tensor) -> Tensor:
 
 
 def relu(t: Tensor) -> Tensor:
-    return Function(_SimpleFunction("relu", torch.relu, _Gt0Function()), (t,), {})
+    return Function(_SimpleFunction("relu", _Gt0Function()), (t,), {})
 
 
 def abs(t: Tensor) -> Tensor:
-    return Function(_SimpleFunction("abs", torch.abs, _SignFunction()), (t,), {})
+    return Function(_SimpleFunction("abs", _SignFunction()), (t,), {})
 
 
 def argmax(t: Tensor, dim: str) -> Tensor:
@@ -932,13 +880,6 @@ class _ArgMaxFunction(FunctionSignature):
     def __init__(self, dim: str) -> None:
         super().__init__("argmax", frozenset(), (frozenset([dim]),))
         self.dim = dim
-
-    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
-        (t,) = input_tensors
-        i = t.names.index(self.dim)
-        names = list(t.names)
-        names.pop(i)
-        return torch.argmax(t.rename(None), dim=i).rename(*names)
 
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         raise NotImplementedError(f"Derivative not implemented for {self.name}")
@@ -956,15 +897,6 @@ class _MaxGradFunction(FunctionSignature):
         inverse = {n: o for o, n in new_edges.items()}
         identity = {o: o for o, e in new_edges.items()}
         return _ZeroFunction(inverse | identity)
-
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        (dims,) = self.inputs
-        adim = [x.names.index(e) for e in dims]
-        x, names = x.rename(None), x.names
-        max_vals = x.amax(dim=adim, keepdim=True)
-        mask = (x == max_vals).float()
-        res = mask / mask.sum(dim=adim, keepdim=True).clamp(min=1.0)
-        return res.rename(*names)
 
 
 def max_grad(t: Tensor, dim: DimType = None) -> Tensor:
@@ -1003,14 +935,6 @@ class _MaxFunction(FunctionSignature):
         self.name = "max"
         self.edges = frozenset()
         self.inputs = (frozenset(dims),)
-
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        (dims,) = self.inputs
-        return torch.amax(
-            x.rename(None),
-            dim=[x.names.index(e) for e in dims],
-            keepdim=False,
-        ).rename(*(n for n in x.names if n not in dims))
 
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         (dims,) = self.inputs
@@ -1081,13 +1005,26 @@ class _DeterminantFunction(FunctionSignature):
         assert len(dims) == 2, f"Determinant takes exactly 2 dims, got {dims=}"
         self.inputs = (frozenset(dims),)
 
-    def eval(self, x: torch.Tensor) -> torch.Tensor:
-        (dims,) = self.inputs
-        new_names = [n for n in x.names if n not in dims]  # Names after the determinant
-        return torch.linalg.det(x.rename(None)).rename(*new_names)
-
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
         return _DeterminantDerivative(self.inputs[0], new_edges)
+
+    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
+        assert f.signature is self
+
+        # TODO: Let's of properties we can add:
+        # det(cA) = c^n det(A), if A ∈ R^n×n (19)
+        # det(A^T) = det(A) (20)
+        # det(AB) = det(A) det(B) (21)
+        # det(A^−1) = 1/det(A) (22)
+        # det(A^n) = det(A)^n (23)
+        # det(I + uv^T) = 1 + u^Tv (24)
+
+        # Most (all?) of them would also follow from using Penrose's
+        # "implementation" of the determinant, using the Levi-Civita tensor.
+        # However, that requires making "size" many copies of f.inner, which is
+        # still symbolic for us.
+
+        return f
 
 
 def det(t: Tensor, dims: DimType = None) -> Tensor:

@@ -1,6 +1,7 @@
 import torch
 from sympy import symbols
 from tensorgrad import Variable
+from tensorgrad.extras.evaluate import evaluate
 import tensorgrad.functions as F
 from tensorgrad.tensor import Delta, Product, function
 from tensorgrad.testutils import assert_close, rand_values
@@ -13,7 +14,7 @@ def test_simple_grad():
     A = Variable("A", x_sym, y_sym)
     ts = rand_values([x, A], {x_sym: 2, y_sym: 3})
     res = (A @ x).grad(x).simplify()
-    assert_close(res.evaluate(ts), ts[A].rename("x", "y"))
+    assert_close(evaluate(res, ts), ts[A].rename("x", "y"))
 
 
 def test_simple_hessian():
@@ -28,14 +29,14 @@ def test_simple_hessian():
     res = quad.grad(x).grad(x).simplify()
     assert res == F.symmetrize(A).simplify()
     ApAt = (ts[A].rename(None) + ts[A].rename(None).T).rename("x", "x_")
-    assert_close(res.evaluate(ts), ApAt)
+    assert_close(evaluate(res, ts), ApAt)
 
     # Test x^T A^T A x
     quad2 = x @ A @ A @ x
     res2 = quad2.grad(x).grad(x).simplify()
     assert res2.symmetries == {frozenset({"x", "x_"})}
     tA = ts[A].rename(None)
-    torch.testing.assert_close(res2.evaluate(ts).rename(None), 2 * tA @ tA.T)
+    torch.testing.assert_close(evaluate(res2, ts).rename(None), 2 * tA @ tA.T)
 
     # Test Frobenius norm ||Ax - y||^2
     j = symbols("j")
@@ -43,7 +44,7 @@ def test_simple_hessian():
     A = Variable("A", x=i, y=j)
     ts = rand_values([x, y, A], {i: 2, j: 3})
     frob = F.frobenius2(A @ x - y)
-    hess = frob.grad(x).grad(x).simplify().evaluate(ts)
+    hess = evaluate(frob.grad(x).grad(x).simplify(), ts)
     tH = 2 * ts[A].rename(None) @ ts[A].rename(None).T
     assert_close(hess, tH.rename("x", "x_"))
 
@@ -54,8 +55,8 @@ def test_derivative_of_hadamard_product():
     a = Variable("a", i, j)
     b = Variable("b", i, j)
     ts = rand_values([a, b], {i: 2, j: 3})
-    res_a = (a * b).grad(a).simplify().evaluate(ts)
-    res_b = (a * b).grad(b).simplify().evaluate(ts)
+    res_a = evaluate((a * b).grad(a).simplify(), ts)
+    res_b = evaluate((a * b).grad(b).simplify(), ts)
     torch.testing.assert_close(res_a.sum(), ts[b].sum())
     torch.testing.assert_close(res_b.sum(), ts[a].sum())
 

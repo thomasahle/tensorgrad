@@ -3,6 +3,7 @@ from sympy import symbols
 from tensorgrad.functions import frobenius2
 from tensorgrad.tensor import Variable, Function, Delta, Zero, Product, Sum, Ones, function
 from tensorgrad.testutils import assert_close, rand_values
+from tensorgrad.extras.evaluate import evaluate
 
 
 def test_x():
@@ -112,7 +113,7 @@ def test_simplify():
     assert c3.simplify() == x.rename(i="j")
 
     c4 = (x @ Delta(i, "i, j")) @ y
-    assert c4.simplify() == Product([x.rename(i="j"), y])
+    assert c4.simplify() == Product([x.rename(i="j"), y]).simplify()
 
 
 def test_multiplication():
@@ -355,10 +356,10 @@ def test_transpose():
 
     expr = x + x.rename(i="j", j="i")
 
-    res = expr.evaluate(ts)
+    res = evaluate(expr, ts)
     expected = ts[x].rename(None) + ts[x].rename(None).T
     assert_close(res, expected.rename("i", "j"))
-    res2 = expr.simplify().evaluate(ts)
+    res2 = evaluate(expr.simplify(), ts)
     assert_close(res2, expected.rename("i", "j"))
 
 

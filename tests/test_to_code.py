@@ -5,8 +5,11 @@ import torch
 from tensorgrad.extras._convolution import conv_einsum_dispatch
 import tensorgrad.functions as F
 from tensorgrad.tensor import Product, Variable, Zero, Delta, Sum, Derivative, Ones
-from tensorgrad.extras.to_pytorch import compile_to_callable
+
+# from tensorgrad.extras.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_numpy import compile_to_callable
 from tensorgrad.testutils import assert_close, rand_values
+from tensorgrad.extras.evaluate import evaluate
 
 
 @pytest.mark.parametrize("compile", [False, True])
@@ -20,7 +23,7 @@ def test_codegen_zero(compile):
 
     # Evaluate reference
     dims = {i: 2, j: 3}
-    ref = zero_tensor.evaluate({}, dims)
+    ref = evaluate(zero_tensor, {}, dims)
     # Evaluate compiled
     out = compiled_fn({}, dims)
     assert_close(ref, out)
@@ -37,7 +40,7 @@ def test_codegen_copy(compile):
 
     # Evaluate reference
     dims = {i: 3}
-    ref = copy_tensor.evaluate({}, dims)
+    ref = evaluate(copy_tensor, {}, dims)
     # Evaluate compiled
     out = compiled_fn({}, dims)
     assert_close(ref, out)
@@ -58,7 +61,7 @@ def test_codegen_sum(compile):
     # Evaluate reference
     dims = {i: 4, j: 5}
     vals = rand_values([x, y], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     # Evaluate compiled
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
@@ -79,7 +82,7 @@ def test_codegen_product(compile):
     # Evaluate reference
     dims = {i: 2, j: 3, k: 4}
     vals = rand_values([a, b], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     # Evaluate compiled
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
@@ -95,7 +98,7 @@ def test_codegen_simple_function():
 
     dims = {i: 5}
     vals = rand_values([x], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
@@ -111,7 +114,7 @@ def test_codegen_argmax():
 
     dims = {i: 4, j: 3}
     vals = rand_values([x], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert (ref == out).all()
 
@@ -126,7 +129,7 @@ def test_codegen_power():
 
     dims = {i: 6}
     vals = rand_values([x], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
@@ -145,7 +148,7 @@ def test_codegen_derivative_placeholder():
 
     dims = {i: 5}
     vals = rand_values([x], dims)
-    ref = expr.evaluate(vals, dims)  # We expect a zero of shape (i, i_) in the current stub
+    ref = evaluate(expr, vals, dims)  # We expect a zero of shape (i, i_) in the current stub
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
@@ -167,8 +170,8 @@ def test_codegen_full_expression():
 
     dims = {i: 2, j: 3, k: 4}
     vals = rand_values([x, w, b], dims)
-    ref = expr.evaluate(vals, dims)
-    grad_ref = grad.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
+    grad_ref = evaluate(grad, vals, dims)
     out, grad_out = compiled_fn(vals, dims)
     assert out.names == tuple(expr.edges)
     assert_close(ref, out)
@@ -189,7 +192,7 @@ def test_codegen_ones():
 
     dims = {i: 3, j: 2}
     vals = rand_values([x], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
@@ -218,7 +221,7 @@ def test_from_random():
     compiled_fn = compile_to_callable(expr, verbose=True)
     dims = {a: 3, b: 2}
     vals = rand_values([var_a, var_b, var_a_b], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
 
@@ -233,7 +236,7 @@ def test_convolution():
     compiled_fn = compile_to_callable(expr, verbose=True)
     dims = {batch: 2, c_in: 3, c_out: 4, h_in: 5, h_out: 3, w_in: 5, w_out: 3, ks: 3}
     vals = rand_values([data, kernel], dims)
-    ref = expr.evaluate(vals, dims)
+    ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
 

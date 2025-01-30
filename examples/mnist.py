@@ -7,21 +7,22 @@ import argparse
 
 from tensorgrad import Variable
 from tensorgrad.testutils import rand_values
-from tensorgrad.extras.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_pytorch import compile_to_callable as compile_torch
+from tensorgrad.extras.to_numpy import compile_to_callable as compile_numpy
 import tensorgrad.functions as F
 
 
-def main(model):
+def main(args):
     n_epochs = 10
     batch_size = 32
     lr = 1e-2
 
     # Load data
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-    args = dict(root="./data", download=True, transform=transform)
-    train_dataset = datasets.MNIST(train=True, **args)
+    mnist_args = dict(root="./data", download=True, transform=transform)
+    train_dataset = datasets.MNIST(train=True, **mnist_args)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    # test_dataset = datasets.MNIST(train=False, **args)
+    # test_dataset = datasets.MNIST(train=False, **mnist_args)
     # test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     # Create model
@@ -57,40 +58,42 @@ def main(model):
     # Build the mode
     x = data
 
-    if model == "conv-2":
+    if args.model == "conv-2":
         x = F.relu(x @ conv_layer(channels=2)).simplify()
         x = F.relu(x @ conv_layer(channels=3)).simplify()
         c2, h2, w2 = symbols("c2 h2 w2")
         layers.append(linear := Variable("lin", c2, h2, w2, out))
         logits = x @ linear
 
-    elif model == "conv-1":
+    elif args.model == "conv-1":
         x = F.relu(x @ conv_layer(channels=2)).simplify()
         c1, h1, w1 = symbols("c1 h1 w1")
         layers.append(linear := Variable("lin", c1, h1, w1, out))
         logits = x @ linear
 
-    elif model == "linear-2":
+    elif args.model == "linear-2":
         shapes[mid := symbols("mid")] = 40
         layers.append(linear1 := Variable("lin1", c0, h0, w0, mid))
         layers.append(linear2 := Variable("lin2", mid, out))
         x = F.relu(x @ linear1)
         logits = x @ linear2
 
-    elif model == "linear-1":
+    elif args.model == "linear-1":
         layers.append(linear := Variable("lin", c0, w0, h0, out))
         logits = x @ linear
 
     # y = F.cross_entropy(logits, targets, dim='out')
+    logits = logits.full_simplify(expand=False)
     y = F.mean((logits - targets) ** 2, dim="out")
     y = F.mean(y, dim="batch")
-    y = y.full_simplify()
+    # y = y.full_simplify()
     prediction = F.argmax(logits, dim="out")
 
     print("Computing and simplifying gradients")
-    grad_tensors = [y.grad(param).full_simplify() for param in layers]
+    grad_tensors = [y.grad(param).full_simplify(expand=False) for param in layers]
 
-    backprop = compile_to_callable(prediction, y, *grad_tensors, verbose=True, torch_compile=True)
+    compile_func = compile_numpy if args.backend == "numpy" else compile_torch
+    backprop = compile_func(prediction, y, *grad_tensors, verbose=True, torch_compile=True)
 
     # Train
     print("Training...")
@@ -126,7 +129,9 @@ def main(model):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "model", type=str, default="linear-1", choices=["conv-1", "conv-2", "linear-1", "linear-2"]
+        "model", type=str, default="linear-1",
+        choices=["conv-1", "conv-2", "linear-1", "linear-2"]
     )
+    parser.add_argument("--backend", type=str, default="torch", choices=["torch", "numpy"])
     args = parser.parse_args()
-    main(args.model)
+    main(args)

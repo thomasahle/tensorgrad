@@ -1,6 +1,7 @@
 from tensorgrad import Variable
 import tensorgrad.functions as F
 from sympy import symbols
+from tensorgrad.extras.evaluate import evaluate
 
 # Various tests from matrix calculus
 
@@ -16,7 +17,7 @@ def test_gradient_of_product():
     d = Variable("d", d=d)
 
     expr = (B @ x + b) @ C @ (D @ x + d)
-    gradient = expr.grad(x)
+    gradient = expr.grad(x).simplify()
 
     expected = B @ C @ (D @ x + d) + D @ C @ (B @ x + b)
 

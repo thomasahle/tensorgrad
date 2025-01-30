@@ -5,6 +5,7 @@ from tensorgrad import Variable, Tensor, Sum, Delta, Product, Zero
 from tensorgrad import functions as F
 from tensorgrad.extras.expectation import Expectation
 from tensorgrad.testutils import assert_close, rand_values
+from tensorgrad.extras.evaluate import evaluate
 
 
 def simple_variables():
@@ -65,7 +66,8 @@ def test_quadratic():
     expr = X.rename(i="i0", j="j") @ A @ X.rename(j="j1", i="i")
     assert expr.edges == {"i0", "i"}
 
-    res = Expectation(expr, X, mu, covar, {"i": "i_", "j": "j_"}).full_simplify().evaluate(ts)
+    expr = Expectation(expr, X, mu, covar, {"i": "i_", "j": "j_"}).full_simplify()
+    res = evaluate(expr, ts)
     expected = ts[A].rename(None).trace() * torch.eye(2).rename("i0", "i")  # trace(A) * I
     assert_close(res, expected)
 
@@ -111,7 +113,7 @@ def test_quartic():
     ts[C] = ts[C] ** 2
     tA, tB, tC = ts[A].rename(None), ts[B].rename(None), ts[C].rename(None)
 
-    res = expr.evaluate(ts)
+    res = evaluate(expr, ts)
     expected = (
         tA.trace() * tC.trace() * tB
         + (tA.T @ tC).trace() * tB.T
@@ -152,7 +154,7 @@ def test_quartic2():
     X = torch.randn(m, i_val, j_val) @ tSh.T
 
     expected_covar = torch.cov(X.reshape(-1, j_val).T).rename("j", "l")
-    assert_close(S.evaluate(ts), expected_covar, rtol=0.05, atol=1e-2)
+    assert_close(evaluate(S, ts), expected_covar, rtol=0.05, atol=1e-2)
 
     X += ts[M].rename(None)
 
@@ -162,7 +164,7 @@ def test_quartic2():
         .rename("i0", "i")
     )
 
-    res = expr.evaluate(ts)
+    res = evaluate(expr, ts)
     assert_close(res, expected, rtol=0.1, atol=0.1)
 
 

@@ -1,11 +1,25 @@
 from collections import Counter
-from functools import singledispatchmethod
+from functools import singledispatch, singledispatchmethod
 import math
 import torch
 from sympy import Symbol
 from tensorgrad import Tensor, Variable, Derivative, Function, Product
-from tensorgrad.functions import Convolution, Reshape
-from tensorgrad.tensor import Delta, Rename, Sum, Zero
+from tensorgrad.functions import (
+    _DeterminantFunction,
+    _PowerFunction,
+    _RenameFunction,
+    _ScaleFunction,
+    _MatrixInverseFunction,
+    _SimpleFunction,
+    _ArgMaxFunction,
+    _MaxGradFunction,
+    _MaxFunction,
+    _SoftmaxFunction,
+    _ZeroFunction,
+    Convolution,
+    Reshape,
+)
+from tensorgrad.tensor import Delta, FunctionSignature, Rename, Sum, Zero
 from tensorgrad.utils import KeyStoringDict
 
 
@@ -123,7 +137,7 @@ class Context:
     @_evaluate.register
     def _(self, fn: Function):
         xvals = [self.evaluate(t) for t in fn.inputs]
-        res = fn.signature.eval(*xvals)
+        res = evaluate_function(fn.signature, *xvals)
         # We require the signature eval to match the names, but not necessarily the order
         assert set(res.names) == fn.edges
         return res.align_to(*fn.edges)
@@ -217,3 +231,125 @@ class Context:
         if half**2 != full:
             raise ValueError(f"{sizes=} must multiply to a square number")
         return torch.eye(half).reshape(*sizes).rename(*reshape.edges)
+
+
+@singledispatch
+def evaluate_function(func: FunctionSignature, *xs: torch.Tensor) -> torch.Tensor:
+    raise NotImplementedError(f"Cannot evaluate {func}")
+
+
+@evaluate_function.register
+def _(func: _ScaleFunction, *xs: torch.Tensor):
+    return func.alpha * evaluate_function(func.inner, *xs)
+
+
+def _(func: _DeterminantFunction, x: torch.Tensor):
+    (dims,) = func.inputs
+    new_names = [n for n in x.names if n not in dims]  # Names after the determinant
+    return torch.linalg.det(x.rename(None)).rename(*new_names)
+
+
+@evaluate_function.register
+def _(func: _MatrixInverseFunction, x: torch.Tensor) -> torch.Tensor:
+    if not func.edges.issubset(x.names):
+        raise ValueError(f"Input {x.names} didn't have all edges {func.edges}")
+    d1, d2 = func.edges
+    # torch.inverse assumes matrix dimensions are at the end.
+    # We swap d1 and d2 for z1, so it's the edges with
+    # the same name that cancel, and not the opposite name.
+    z = x.align_to(..., d2, d1)
+    z = x.align_to(..., d1, d2).rename(None)
+    out_names = x.align_to(..., d2, d1).names
+    return torch.inverse(z).rename(*out_names).align_to(*x.names)
+
+
+@evaluate_function.register
+def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
+    return func._eval_fn(x)
+
+
+@evaluate_function.register
+def _(func: _ArgMaxFunction, x: torch.Tensor) -> torch.Tensor:
+    i = x.names.index(func.dim)
+    names = list(x.names)
+    names.pop(i)
+    return torch.argmax(x.rename(None), dim=i).rename(*names)
+
+
+@evaluate_function.register
+def _(func: _MaxGradFunction, x: torch.Tensor) -> torch.Tensor:
+    (dims,) = func.inputs
+    adim = [x.names.index(e) for e in dims]
+    x, names = x.rename(None), x.names
+    max_vals = x.amax(dim=adim, keepdim=True)
+    mask = (x == max_vals).float()
+    res = mask / mask.sum(dim=adim, keepdim=True).clamp(min=1.0)
+    return res.rename(*names)
+
+
+@evaluate_function.register
+def _(func: _MaxFunction, x: torch.Tensor) -> torch.Tensor:
+    (dims,) = func.inputs
+    return torch.amax(
+        x.rename(None),
+        dim=[x.names.index(e) for e in dims],
+        keepdim=False,
+    ).rename(*(n for n in x.names if n not in dims))
+
+
+@evaluate_function.register
+def _(func: _PowerFunction, x: torch.Tensor) -> torch.Tensor:
+    if func.k < 0:
+        x = x.to(torch.float)
+    return torch.pow(x, float(func.k))
+
+
+@evaluate_function.register
+def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
+    if func.name == "exp":
+        return torch.exp(x)
+    if func.name == "log":
+        return torch.log(x)
+    if func.name == "sign":
+        return torch.sign(x)
+    if func.name == "relu":
+        return torch.relu(x)
+    if func.name == "abs":
+        return torch.abs(x)
+    if func.name == "gt0":
+        return torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names)
+
+
+@evaluate_function.register
+def _(func: _SoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
+    (dims,) = func.inputs
+    sizes = [x.size(d) for d in dims]
+    names = [d for d in x.names if d not in dims]
+    other_sizes = [x.size(n) for n in names]
+    # Softmax doesn't support named dimensions, so we have to rename them to None.
+    # We move the affected dimensions to the front, then flatten them.
+    y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
+    return y.softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
+
+
+@evaluate_function.register
+def _(func: _RenameFunction, x: torch.Tensor) -> torch.Tensor:
+    return func.inner.eval(x).rename(**func.renames)
+
+
+@evaluate_function.register
+def _(func: _ZeroFunction, x: torch.Tensor) -> torch.Tensor:
+    # Like any function, we have to support broadcasted inputs, so we detect
+    # which names are in x, which are not consumed in self.inputs
+    broadcasted = [e for e in x.names if e not in func.inputs[0]]
+    return torch.zeros(
+        size=[x.size(o) for o in broadcasted + list(func.new_edges.values())],
+        names=broadcasted + list(func.new_edges.keys()),
+    )
+
+
+@evaluate_function.register
+def _(func: _DeterminantFunction, x: torch.Tensor) -> torch.Tensor:
+    (dims,) = func.inputs
+    new_names = [n for n in x.names if n not in dims]  # Names after the determinant
+    return torch.linalg.det(x.rename(None)).rename(*new_names)

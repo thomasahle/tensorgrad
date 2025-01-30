@@ -2,13 +2,14 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 import math
+from string import ascii_letters
 from typing import Any, Generator, Iterable, Optional, Union, final
 from abc import ABC, ABCMeta
 from fractions import Fraction
 from numbers import Number, Rational
+
 import networkx as nx
 from sympy import Symbol
-import torch
 
 from tensorgrad.utils import _MatchEdgesKey
 
@@ -244,13 +245,6 @@ class Tensor(metaclass=TensorMeta):
         """Returns an ASCII tree-like representation of the structural graph."""
         G, _ = self.edge_structural_graph(match_edges=True)
         return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
-
-    def evaluate(
-        self, values: dict["Variable", torch.Tensor], dims: dict[Symbol, int] | None = None
-    ) -> torch.Tensor:
-        from tensorgrad.extras.evaluate import evaluate  # Avoid circular import
-
-        return evaluate(self, values, dims)
 
     # Overloaded ops
 
@@ -858,13 +852,6 @@ class FunctionSignature(ABC):
     # TODO: Functions should support symmetric outputs, just like Constant and Variable.
     # Actually we could define symmetries for the inputs too, since the order doesn't always matter.
 
-    def eval(self, *input_tensors: torch.Tensor) -> torch.Tensor:
-        """
-        Evaluates this function given a list of input torch tensors,
-        corresponding to the edges specified in `inputs`.
-        """
-        raise NotImplementedError
-
     def derivative(self, i: int, new_edges: dict[str, str] = None) -> "FunctionSignature":
         """
         Returns a new FunctionSignature that represents the derivative
@@ -1334,6 +1321,43 @@ class Product(Tensor):
 
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.tensors)
+
+    def _to_einsum_eq(self) -> tuple[list[Tensor], str]:
+        """Convert the product to an einsum equation. The main utility is that Delta tensors are\
+            mostly removed in favor of hyper edges, which are more efficient to compute.
+            However, some Deltas are still needed, so we return the list of tensors that should be
+            used with the einsum equation. """
+        # Most einsum implementations allow only single upper and lower case letters
+        if (n := len({e for t in self.tensors for e in t.edges})) > 52:
+            raise ValueError(f"Too many unique edges ({n} > 52) to convert to einsum equation")
+        name_to_idx = defaultdict(lambda: ascii_letters[len(name_to_idx)])
+
+        # The main challenge is to convert Delta tensors to hyper edges
+        factors = []
+        for ft in self.tensors:
+            if isinstance(ft, Delta) and ft.order >= 1:
+                output_edges = ft.edges & self.edges
+                input_edges = ft.edges - output_edges
+                # However, einsum doesn't support duplicated indices in the output, like i->ii,
+                # So we need to recreate some Delta tensors manually
+                if len(input_edges) >= 1:
+                    e0 = list(input_edges)[0]
+                    if len(output_edges) <= 1:
+                        for e in ft.edges:
+                            name_to_idx[e] = name_to_idx[e0]
+                    if len(output_edges) > 1:
+                        for e in input_edges:
+                            name_to_idx[e] = name_to_idx[e0]
+                        compressed_delta = Delta(ft._size, e0, *output_edges)
+                        factors.append(compressed_delta)
+                else:
+                    factors.append(ft)
+            else:
+                factors.append(ft)
+
+        equation = ",".join("".join(name_to_idx[e] for e in ft.edges) for ft in factors)
+        equation += "->" + "".join(name_to_idx[e] for e in self.edges)
+        return factors, equation
 
 
 ################################################################################

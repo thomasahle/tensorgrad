@@ -9,6 +9,7 @@ from tensorgrad import Variable
 import tensorgrad.functions as F
 from tensorgrad.tensor import Delta
 from tensorgrad.testutils import rand_values, assert_close
+from tensorgrad.extras.evaluate import evaluate
 
 
 @pytest.mark.parametrize("dims", [1, 2])
@@ -56,24 +57,24 @@ def test_all_elementwise(dims, functions):
     expr = tg_fun(x)
 
     # Basic evaluation
-    result = expr.evaluate(ts)
+    result = evaluate(expr, ts.copy())
     expected = torch_fun(tX).rename(*batch, "i")
     assert_close(result, expected)
 
     # Evaluation of function expanded
     expanded = expr.simplify({"expand_functions": True})
-    result2 = expanded.evaluate(ts)
+    result2 = evaluate(expanded, ts)
     assert_close(result2, expected)
 
     # Evaluation of jacobian
-    tg_jac = expanded.grad(x).simplify().evaluate(ts)
+    tg_jac = evaluate(expanded.grad(x).simplify(), ts)
     if dims == 1:
         torch_jac = jacobian(torch_fun, tX).rename("i", "i_")
     elif dims == 2:
         torch_jac = jacobian(torch_fun, tX).rename("b", "i", "b_", "i_")
     assert_close(tg_jac, torch_jac)
 
-    tg_hessian = F.sum(expanded).grad(x).grad(x).simplify().evaluate(ts)
+    tg_hessian = evaluate(F.sum(expanded).grad(x).grad(x).simplify(), ts)
     torch_hessian = hessian(lambda x: torch_fun(x).sum(), tX, vectorize=True)
     torch_hessian = (
         torch_hessian.rename("b", "i", "b_", "i_") if dims == 2 else torch_hessian.rename("i", "i_")
@@ -126,19 +127,19 @@ def test_bivariate_functions(functions):
     # This is normally a fine performance optimization, but it's annoying when debugging
     # in tests, so we take copies of `ts` each time we use it.
     expr = tg_fun(x, y)
-    result = expr.evaluate(ts.copy())
+    result = evaluate(expr, ts.copy())
     names = ("N", "C") if len(expr.edges) == 2 else ("N",)
     expected = torch_fun(tx, ty).rename(*names)
     assert_close(result, expected)
 
     # Evaluation of function expanded
     expanded = expr.simplify({"expand_functions": True})
-    result2 = expanded.evaluate(ts.copy())
+    result2 = evaluate(expanded, ts.copy())
     assert_close(result2, expected)
 
     # Jacobians
-    tg_jac_x = expanded.grad(x).simplify().evaluate(ts.copy())
-    tg_jac_y = expanded.grad(y).simplify().evaluate(ts.copy())
+    tg_jac_x = evaluate(expanded.grad(x).simplify(), ts.copy())
+    tg_jac_y = evaluate(expanded.grad(y).simplify(), ts.copy())
     jac_x, jac_y = jacobian(torch_fun, (tx, ty))
     names = ("N", "C", "N_", "C_") if len(expr.edges) == 2 else ("N", "N_", "C")
     assert_close(tg_jac_x, jac_x.rename(*names))
@@ -150,7 +151,7 @@ def test_bivariate_functions(functions):
     for i, j in itertools.product(range(2), repeat=2):
         v1, v2 = [x, y][i], [x, y][j]
         my_hessian_expr = F.sum(expanded).grad(v1).grad(v2).simplify()
-        my_hessian = my_hessian_expr.evaluate(ts.copy())
+        my_hessian = evaluate(my_hessian_expr, ts.copy())
         assert_close(my_hessian, torch_hessians[i][j].rename("N", "C", "N_", "C_"))
 
 
@@ -158,18 +159,18 @@ def test_det():
     b, i = symbols("b i")
     A = Variable("A", b, i, j=i)
     ts = rand_values([A], {b: 4, i: 3})
-    res = F.det(A, dims={"i", "j"}).evaluate(ts)
+    res = evaluate(F.det(A, dims={"i", "j"}), ts)
     expected = ts[A].rename(None).det().rename("b")
     assert_close(res, expected)
 
     # Test the gradient
     J = jacobian(lambda x: x.det(), ts[A].rename(None)).rename("b", "b_", "i", "j")
-    myJ = F.det(A, dims={"i", "j"}).grad(A).simplify().evaluate(ts)
+    myJ = evaluate(F.det(A, dims={"i", "j"}).grad(A).simplify(), ts)
     assert_close(myJ, J)
 
     # Test the hessian (have to sum, because hessian doesn't support batching)
     H = hessian(lambda x: x.det().sum(), ts[A].rename(None)).rename("b", "i", "j", "b_", "i_", "j_")
-    myH = F.sum(F.det(A, dims={"i", "j"}), dim="b").grad(A).grad(A).simplify().evaluate(ts)
+    myH = evaluate(F.sum(F.det(A, dims={"i", "j"}), dim="b").grad(A).grad(A).simplify(), ts)
     assert_close(myH, H)
 
 
@@ -195,7 +196,7 @@ def test_softmax_grad_mat():
     i, j = symbols("i j")
     A = Variable("A", i=i, j=j)
     ts = rand_values([A], {i: 3, j: 2})
-    res = F.softmax(A, {"i": i}).simplify({"expand_functions": True}).grad(A).simplify().evaluate(ts)
+    res = evaluate(F.softmax(A, {"i": i}).simplify({"expand_functions": True}).grad(A).simplify(), ts)
     expected = jacobian(lambda A: tF.softmax(A, dim=0), ts[A].rename(None)).rename("i", "j", "i_", "j_")
     assert_close(res, expected)
 
@@ -207,7 +208,7 @@ def test_ce():
     ts = rand_values([logits, target], {N: 3, C: 3})
     ts[target] = ts[target].softmax(dim=1)
     ce = F.cross_entropy(logits, target, dim="C").simplify()
-    res = ce.evaluate(ts)
+    res = evaluate(ce, ts)
     expected = tF.cross_entropy(
         ts[logits].rename(None),
         ts[target].rename(None),
@@ -222,8 +223,8 @@ def test_ce_grad():
     target = Variable("target", C=C)
     ts = rand_values([logits, target], {C: 3})
     ce = F.cross_entropy(logits, target, {"C": C})
-    my_jac_logits = ce.grad(logits).simplify().evaluate(ts)
-    my_jac_targets = ce.grad(target).simplify().evaluate(ts)
+    my_jac_logits = evaluate(ce.grad(logits).simplify(), ts)
+    my_jac_targets = evaluate(ce.grad(target).simplify(), ts)
     jac_logits, jac_targets = [
         jac.rename("C")
         for jac in jacobian(
@@ -243,11 +244,11 @@ def test_ce_hess():
     ce = F.cross_entropy(logits, target, dim="C")
     my_hessians = [
         [
-            ce.grad(logits).grad(logits).simplify().evaluate(ts.copy()),
-            ce.grad(logits).grad(target).simplify().evaluate(ts.copy()),
+            evaluate(ce.grad(logits).grad(logits).simplify(), ts.copy()),
+            evaluate(ce.grad(logits).grad(target).simplify(), ts.copy()),
         ],
         [
-            ce.grad(target).grad(logits).simplify().evaluate(ts.copy()),
+            evaluate(ce.grad(target).grad(logits).simplify(), ts.copy()),
             torch.zeros(3, 3).rename("C", "C_"),
         ],
     ]
@@ -265,7 +266,7 @@ def test_frobenius2():
     t = torch.randn(2, 3, 4, names=("a", "b", "c"))
     v = Variable("t", a=a, b=b, c=c)
     frob = F.frobenius2(v)
-    res = frob.evaluate({v: t})
+    res = evaluate(frob, {v: t})
     expected = (t * t).sum()
     assert_close(res, expected)
 
@@ -275,7 +276,7 @@ def test_diag():
     v = Variable("v", a=a)
     mat = F.diag(v, {"a": a, "b": b})
     t = torch.randn(2, names=("a",))
-    res = mat.evaluate({v: t})
+    res = evaluate(mat, {v: t})
     expected = torch.diag(t.rename(None)).rename("a", "b")
     assert_close(res, expected)
 
@@ -286,7 +287,7 @@ def test_kronecker():
     b = Variable("b", k=k, l=l)
     t_a = torch.randn(2, 3, names=("i", "j"))
     t_b = torch.randn(4, 5, names=("k", "l"))
-    result = F.kronecker(a, b).evaluate({a: t_a, b: t_b})
+    result = evaluate(F.kronecker(a, b), {a: t_a, b: t_b})
     expected = (
         torch.kron(t_a.rename(None), t_b.rename(None))
         .reshape(2, 4, 3, 5)
@@ -302,12 +303,12 @@ def test_sum():
     t_a = torch.randn(2, 3, names=("i", "j"))
 
     # Test sum over one dimension
-    result = F.sum(a, {"i": i}).evaluate({a: t_a})
+    result = evaluate(F.sum(a, {"i": i}), {a: t_a})
     expected = t_a.sum(dim="i")
     torch.testing.assert_close(result.rename(None), expected.rename(None))
 
     # Test sum over multiple dimensions
-    result = F.sum(a, {"i": i, "j": j}).evaluate({a: t_a})
+    result = evaluate(F.sum(a, {"i": i, "j": j}), {a: t_a})
     expected = t_a.sum(dim=("i", "j"))
     torch.testing.assert_close(result.rename(None), expected.rename(None))
 
@@ -318,15 +319,15 @@ def test_mean():
     t_a = torch.randn(2, 3, names=("i", "j"))
 
     # Test mean over one dimension
-    result1 = F.mean(a, ["i"]).evaluate({a: t_a})
-    result2 = F.mean(a, ["i"]).simplify().evaluate({a: t_a})
+    result1 = evaluate(F.mean(a, ["i"]), {a: t_a})
+    result2 = evaluate(F.mean(a, ["i"]).simplify(), {a: t_a})
     expected = t_a.mean(dim="i")
     assert_close(result1, expected)
     assert_close(result2, expected)
 
     # Test mean over multiple dimensions
-    result1 = F.mean(a, ["i", "j"]).evaluate({a: t_a})
-    result2 = F.mean(a, ["i", "j"]).simplify().evaluate({a: t_a})
+    result1 = evaluate(F.mean(a, ["i", "j"]), {a: t_a})
+    result2 = evaluate(F.mean(a, ["i", "j"]).simplify(), {a: t_a})
     expected = t_a.mean(dim=("i", "j"))
     assert_close(result1, expected)
     assert_close(result2, expected)
@@ -336,7 +337,7 @@ def test_pow():
     i, j = symbols("i j")
     a = Variable("a", i=i, j=j)
     t_a = torch.randn(2, 3, names=("i", "j")).abs()
-    result = F.pow(a, -1).evaluate({a: t_a})
+    result = evaluate(F.pow(a, -1), {a: t_a})
     expected = torch.pow(t_a.rename(None), -1).rename("i", "j")
     assert_close(result, expected)
 
@@ -383,7 +384,7 @@ def test_pow_multi():
     expr = F.pow(S, 5)
     val = 1
     for n in range(5, -1, -1):
-        assert expr.simplify().evaluate({S: x}) == val
+        assert evaluate(expr.simplify(), {S: x}) == val
         expr = expr.grad(S)
         val *= n
 
@@ -392,7 +393,7 @@ def test_trace():
     i = symbols("i")
     x = Variable("x", i=i, j=i)
     ts = rand_values([x], {i: 3})
-    res = F.trace(x).simplify().evaluate({x: ts[x]})
+    res = evaluate(F.trace(x).simplify(), {x: ts[x]})
     expected = ts[x].rename(None).trace()
     assert_close(res, expected)
 
@@ -427,7 +428,7 @@ def test_flatten():
 
     ts = rand_values([X], {i: 3, j: 2})
 
-    result = (X @ flatten).evaluate(ts, {k: 6})
+    result = evaluate((X @ flatten), ts, {k: 6})
     expected = ts[X].rename(None).reshape(-1).rename("k")
     assert_close(result, expected)
 
@@ -443,7 +444,7 @@ def test_reshape():
 
     ts = rand_values([X], sizes)
 
-    result = (X @ flatten).evaluate(ts, sizes)
+    result = evaluate(X @ flatten, ts, sizes)
     expected = ts[X].rename(None).reshape(1, 6).rename("k", "l")
     assert_close(result, expected)
 
@@ -469,7 +470,7 @@ def test_taylor(x_vals, eps_vals):
 
     t_x = torch.tensor(x_vals, names=("i",))
     t_eps = torch.tensor(eps_vals, names=("i",))
-    out_approx = expr.simplify().evaluate({x: t_x, eps: t_eps})
+    out_approx = evaluate(expr.simplify(), {x: t_x, eps: t_eps})
     out_true = (t_x.rename(None) + t_eps.rename(None)).log().rename("i")
 
     # We check behavior by ensuring the difference is reasonably small,
@@ -519,7 +520,7 @@ def test_dot():
 
     # Contract along 'j'
     expr = F.dot(A, B, "j")
-    out = expr.evaluate({A: tA, B: tB})
+    out = evaluate(expr, {A: tA, B: tB})
 
     # Behavior check: sum-of-products along 'j':
     expected = (tA * tB).sum(dim="j")
@@ -538,7 +539,7 @@ def test_pairwise_distance():
     tX = torch.tensor([1.0, 2.0, 3.0], names=("i",))
     tY = torch.tensor([2.0, 2.0, 2.0], names=("i",))
     expr = F.pairwise_distance(X, Y, ["i"])
-    out = expr.evaluate({X: tX, Y: tY})
+    out = evaluate(expr, {X: tX, Y: tY})
 
     # Behavior check: manual sum of squared differences
     expected = (tX.rename(None) - tY.rename(None)).pow(2).sum()
@@ -553,7 +554,8 @@ def test_max_grad():
     i, j = symbols("i j")
     X = Variable("X", i, j)
     assert_close(
-        F.max_grad(X, dim="j").evaluate(
+        evaluate(
+            F.max_grad(X, dim="j"),
             {
                 X: torch.tensor(
                     [
@@ -564,7 +566,7 @@ def test_max_grad():
                     ],
                     names=("i", "j"),
                 )
-            }
+            },
         ),
         torch.tensor(
             [
@@ -621,7 +623,7 @@ def test_max_grad2():
         # Now do the same in tensorgrad:
         # The derivative is: F.max(X, "i").grad(X)
         expr = F.max(X, "i").grad(X).simplify()
-        tg_grad = expr.evaluate({X: tX.detach()})  # pass the detached version
+        tg_grad = evaluate(expr, {X: tX.detach()})  # pass the detached version
 
         # Compare numeric results
         assert_close(tg_grad, py_grad)
@@ -644,7 +646,7 @@ def test_max(keepdim, dims):
         names = tuple(n for n in names if n not in dims and dims)
 
     # Test max operation
-    res = F.max(X, dims, keepdim=keepdim).evaluate(ts)
+    res = evaluate(F.max(X, dims, keepdim=keepdim), ts)
     adims = tuple(ts[X].names.index(d) for d in dims)
     expected = tX.amax(dim=adims, keepdim=keepdim)
     expected = expected.rename(*names)
@@ -655,7 +657,7 @@ def test_max(keepdim, dims):
     # since our version of keepdim also _keeps the size of the dimensions_
     # where pytorch just uses dummy/size-1 dimensions.
     res_max = F.max(X, dims, keepdim=keepdim)
-    res = F.mean(res_max).grad(X).simplify().evaluate(ts)
+    res = evaluate(F.mean(res_max).grad(X).simplify(), ts)
     x = tX.clone().detach().requires_grad_(True)
     y = x.amax(dim=adims, keepdim=keepdim).rename(*names)
     y.mean().backward()
@@ -670,10 +672,10 @@ def test_inverse():
     ts = rand_values([A], {i: N})
     tA = ts[A].rename(None)
 
-    res = F.inverse(A).evaluate(ts)
+    res = evaluate(F.inverse(A), ts)
     assert_close(res, tA.inverse().rename("j", "i"))
 
-    assert abs((A @ F.inverse(A)).evaluate(ts) - N) < 1e-5
+    assert abs(evaluate(A @ F.inverse(A), ts) - N) < 1e-5
 
     # This simplification is not currently supported
     # assert (A @ F.inverse(A)).simplify() == Copy(i)
@@ -681,7 +683,7 @@ def test_inverse():
     assert F.inverse(F.inverse(A)).simplify() == A
 
     J = jacobian((lambda x: x.inverse().T), tA).rename("i", "j", "i_", "j_")
-    myJ = F.inverse(A).grad(A).simplify().evaluate(ts)
+    myJ = evaluate(F.inverse(A).grad(A).simplify(), ts)
     assert_close(myJ, J)
 
 
@@ -693,7 +695,7 @@ def test_multi_dot():
     # Test the evaluation
     expr = F.multi_dot([A] * N, dims=("i", "j"))
     ts = rand_values([A], {i: N})
-    assert_close(expr.evaluate(ts), torch.matrix_power(ts[A], N))
+    assert_close(evaluate(expr, ts), torch.matrix_power(ts[A], N))
 
     # Test the equation  d/dA Tr(A^N) = N A^(N-1)
     grad = F.trace(expr).grad(A).full_simplify()
