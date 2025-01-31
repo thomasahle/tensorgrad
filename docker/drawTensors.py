@@ -127,9 +127,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Common headers for all responses
     headers = {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",  # Allow CORS
+        "Access-Control-Allow-Origin": "https://tensorcookbook.com",  # Allow CORS
         "Access-Control-Allow-Headers": "content-type",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Cache-Control": "max-age=86400, public",  # 24 hours
+        "Vary": "Origin"  # Important when using specific CORS origins
     }
 
     try:
@@ -160,16 +162,3 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": str(e)})}
 
-
-# Example usage
-if __name__ == "__main__":
-    test_event = {
-        "code": """
-i = sp.symbols('i')
-x = tg.Delta(i, "i", "j")
-y = x * 2
-save_steps(y)
-"""
-    }
-    result = lambda_handler(test_event, None)
-    print(result)
