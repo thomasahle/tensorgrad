@@ -260,7 +260,7 @@ W = tg.Variable("W", x, y)
 error = X @ W - Y
 loss = error @ error
 expr = tg.Derivative(loss, W)
-save_steps(grad)
+save_steps(expr)
 </textarea>
 
           <button class="button" id="submitButton" onclick="generateVisualization()">Simplify Step by Step</button>
