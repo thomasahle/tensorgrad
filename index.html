@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Google Analytics scripts omitted for brevity -->
+    <!-- Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-E8JHF8QM6N"></script>
     <script>
        window.dataLayer = window.dataLayer || [];
@@ -12,9 +12,11 @@
 
     <link rel="icon" type="image/png" href="media/favicon.png">
 
-    <meta name="description" content="The Tensor Cookbook is a comprehensive guide to tensors,
-         using the visual language of tensor diagrams. It closely follows the legendary 'Matrix Cookbook'
-         while providing a new way to understand and appreciate tensor operations through diagrams.">
+    <meta name="description"
+          content="The Tensor Cookbook is a comprehensive guide to tensors,
+                   using the visual language of tensor diagrams. It closely follows
+                   the legendary 'Matrix Cookbook' while providing a new way to understand
+                   and appreciate tensor operations through diagrams.">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Tensor Cookbook</title>
@@ -24,7 +26,7 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
     />
-    <!-- (Optional) You can add a CodeMirror theme, for example:
+    <!-- (Optional) Add a CodeMirror theme for styling. Example: 
          <link
            rel="stylesheet"
            href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/dracula.min.css"
@@ -109,7 +111,8 @@
          border-radius: 5px;
          font-size: 1.2em;
       }
-      /* Wide layout */
+
+      /* Wide layout for large screens */
       .container {
          grid-template-columns: 4fr 1fr;
          grid-template-rows: auto auto auto auto 1fr;
@@ -159,13 +162,12 @@
                 "citation"
                 "other";
          }
-
          #access-paper { display: none; }
          #author-info { display: none; }
          #mobile-top { display: block; }
       }
 
-      /* CodeMirror & button styling */
+      /* CodeMirror & button styling for the demo */
       .CodeMirror {
         width: 100%;
         height: 150px;
@@ -181,7 +183,6 @@
         border-radius: 4px;
         cursor: pointer;
         font-size: 1rem;
-        /* match the width of the editor */
         width: 100%;
         margin-bottom: 1rem;
       }
@@ -224,7 +225,9 @@
 </head>
 <body>
     <h1>The Tensor Cookbook</h1>
+
     <div class="container">
+       <!-- MAIN CONTENT AREA -->
        <div class="main-content">
           <h2>What are Tensor Diagrams?</h2>
           <p>
@@ -234,10 +237,11 @@
             It turns out all the trouble with tensors disappears when you instead represent them using graphs:
           </p>
           <div class="diagram">
-             <img src="paper/figures/front.png" />
+             <img src="paper/figures/front.png" alt="Tensor Diagram Example" />
           </div>
           <p>
-            This book aims to <strong>standardize the notation for tensor diagrams</strong> by rewriting the classical "<a href="https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf">Matrix Cookbook</a>" using this notation.
+            This book aims to <strong>standardize the notation for tensor diagrams</strong> by rewriting the classical
+            "<a href="https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf">Matrix Cookbook</a>" using this notation.
           </p>
           <p>
             Tensor diagrams are better than alternative notation like Index Notation (einsum) because they:
@@ -249,8 +253,11 @@
              <li>Represent functions and broadcasting effortlessly</li>
           </ul>
 
+          <!-- DEMO SECTION -->
           <h2>Demo</h2>
-<textarea id="codeInput">
+
+          <!-- CodeMirror Textarea -->
+<textarea id="codeInput" placeholder="Enter your tensor code here...">
 b, x, y = sp.symbols("b x y")
 X = tg.Variable("X", b, x)
 Y = tg.Variable("Y", b, y)
@@ -260,13 +267,14 @@ loss = error @ error
 expr = tg.Derivative(loss, W)
 save_steps(grad)
 </textarea>
-          <button id="submitButton" onclick="generateVisualization()">Generate Visualization</button>
 
-          <!-- Error and image container -->
-          <div id="error">Error message goes here</div>
+          <!-- Button & Output Containers -->
+          <button id="submitButton" onclick="generateVisualization()">Generate Visualization</button>
+          <div id="error"></div>
           <div id="imageContainer" class="image-container"></div>
        </div>
 
+       <!-- SIDEBAR SECTIONS -->
        <div id="access-paper">
           <h2>Access Paper:</h2>
           <ul>
@@ -278,15 +286,15 @@ save_steps(grad)
        <div id="author-info">
           <h2>Author:</h2>
           <p>Thomas Dybdahl Ahle<br />
-          <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.
+             <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.
           </p>
        </div>
 
+       <!-- Mobile-friendly top panel -->
        <div id="mobile-top">
           <p>By <a href="https://thomasahle.com">Thomas Ahle</a> @ <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.</p>
           <a href="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/paper/cookbook.pdf" class="button">View PDF</a>
           <a href="https://github.com/thomasahle/tensorgrad/" class="button">Github Page</a>
-          </p>
        </div>
 
        <div id="topics">
@@ -301,7 +309,6 @@ save_steps(grad)
              <li>And much more!</li>
           </ul>
        </div>
-
 
        <div id="citation-info">
           <h2>How to Cite:</h2>
@@ -328,29 +335,31 @@ save_steps(grad)
           </ul>
        </div>
     </div>
+
     <footer>
        <hr />
        <p>
-         Inspired by <a href="https://web.archive.org/web/20070126190021/http://matrixcookbook.com/">The Matrix Cookbook</a> by Kaare Brandt Petersen and Michael Syskind Pedersen.
+         Inspired by <a href="https://web.archive.org/web/20070126190021/http://matrixcookbook.com/">
+         The Matrix Cookbook</a> by Kaare Brandt Petersen and Michael Syskind Pedersen.
        </p>
        <p>&copy; 2024 Thomas Dybdahl Ahle. All rights reserved.</p>
     </footer>
 
-    <!-- 3. CodeMirror JS -->
+    <!-- 2. CodeMirror JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
-    <!-- If you want Python syntax highlighting, add: -->
+    <!-- For Python syntax highlighting, use: -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
-    <!-- For JavaScript, you could include:
+    <!-- For JS, you could do:
          <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script> -->
 
     <script>
-      // Initialize CodeMirror on the textarea
+      // Initialize CodeMirror in the Demo section
       const editor = CodeMirror.fromTextArea(
-        document.getElementById('codeInput'), 
+        document.getElementById('codeInput'),
         {
           mode: 'python',  // or 'javascript', etc.
           lineNumbers: true,
-          // theme: 'dracula', // (optional) if you've included a theme above
+          // theme: 'dracula', // if you included a theme above
         }
       );
 
@@ -359,48 +368,65 @@ save_steps(grad)
         const errorDiv = document.getElementById('error');
         const imageContainer = document.getElementById('imageContainer');
 
-        // Clear previous error/image
+        // Clear any previous error and image
         errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
         imageContainer.innerHTML = '';
 
-        // Disable button + show loading
+        // Disable button + show loading indicator
         submitButton.disabled = true;
         submitButton.innerHTML = '<div class="loading"></div>Processing...';
 
         try {
-          // Grab code from CodeMirror
           const code = editor.getValue();
-
-          // Example: Make a POST to some API endpoint
-          const response = await fetch('https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
-          });
+          const response = await fetch(
+            'https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code })
+            }
+          );
 
           if (!response.ok) {
-            throw new Error('Network response was not ok');
+            // E.g., network or server error (non-200 status)
+            throw new Error(`Server returned status ${response.status}`);
           }
 
           const data = await response.json();
-          if (data.success && data.image) {
-            // Show the returned image (Base64-encoded PNG)
+          // data = { success, output, error, stacktrace, image? }
+
+          if (!data.success) {
+            // If success is false, we may have "error" or "stacktrace" or both
+            let errorMsg = data.error || 'Failed to generate tensor visualization.';
+            if (data.stacktrace) {
+              errorMsg += '\n\nStack Trace:\n' + data.stacktrace;
+            }
+            throw new Error(errorMsg);
+          }
+
+          // If success is true:
+          if (data.image) {
             const img = document.createElement('img');
             img.src = `data:image/png;base64,${data.image}`;
             img.alt = 'Tensor visualization';
             imageContainer.appendChild(img);
           } else {
-            throw new Error('Failed to generate tensor visualization');
+            // Possibly no image was generated
+            throw new Error('No image returned from server.');
           }
+
         } catch (err) {
+          // Display error from server or network
           errorDiv.textContent = 'Error: ' + err.message;
           errorDiv.style.display = 'block';
         } finally {
-          // Reset button
+          // Re-enable button
           submitButton.disabled = false;
           submitButton.innerHTML = 'Generate Visualization';
         }
       }
     </script>
+
 </body>
 </html>
