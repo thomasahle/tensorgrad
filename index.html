@@ -250,13 +250,16 @@
           </ul>
 
           <h2>Demo</h2>
-          <!-- 2. CodeMirror text area for Demo -->
-          <textarea id="codeInput" placeholder="Enter your tensor code here...">
-i = sp.symbols('i'); 
-x = tg.Delta(i, 'i', 'j'); 
-y = x * 2; 
-save_steps(y)
-          </textarea>
+<textarea id="codeInput">
+b, x, y = sp.symbols("b x y")
+X = tg.Variable("X", b, x)
+Y = tg.Variable("Y", b, y)
+W = tg.Variable("W", x, y)
+error = X @ W - Y
+loss = error @ error
+expr = tg.Derivative(loss, W)
+save_steps(grad)
+</textarea>
           <button id="submitButton" onclick="generateVisualization()">Generate Visualization</button>
 
           <!-- Error and image container -->
