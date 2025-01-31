@@ -253,11 +253,12 @@
              <li>Represent functions and broadcasting effortlessly</li>
           </ul>
 
-          <!-- DEMO SECTION -->
-          <h2>Demo</h2>
+          <h2>Tensorgrad</h2>
+          <p>is a <a href="https://github.com/thomasahle/tensorgrad/">python library</a>
+            for symbolic tensor manipulation and derivatives using tensor diagrams.
+            Try it here:</p>
 
-          <!-- CodeMirror Textarea -->
-<textarea id="codeInput" placeholder="Enter your tensor code here...">
+<textarea id="codeInput">
 b, x, y = sp.symbols("b x y")
 X = tg.Variable("X", b, x)
 Y = tg.Variable("Y", b, y)
@@ -268,7 +269,6 @@ expr = tg.Derivative(loss, W)
 save_steps(grad)
 </textarea>
 
-          <!-- Button & Output Containers -->
           <button id="submitButton" onclick="generateVisualization()">Generate Visualization</button>
           <div id="error"></div>
           <div id="imageContainer" class="image-container"></div>
