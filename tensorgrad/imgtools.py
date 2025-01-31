@@ -1,3 +1,4 @@
+import tempfile
 from pdf2image import convert_from_path
 
 import os
@@ -13,8 +14,7 @@ import networkx as nx
 
 
 def compile_latex(latex_code, suffix=""):
-    output_dir = "output_files"
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = tempfile.mkdtemp()
 
     # Save the LaTeX code to a file
     tex_file_path = os.path.join(output_dir, f"output_{suffix}.tex")
@@ -22,10 +22,28 @@ def compile_latex(latex_code, suffix=""):
         file.write(latex_code)
 
     # Compile the LaTeX file to PDF
-    subprocess.run(
-        ["lualatex", "-output-directory", output_dir, tex_file_path],
-        check=True,
-    )
+    # subprocess.run(
+    #    ["lualatex", "-output-directory", output_dir, tex_file_path],
+    #    check=True,
+    # )
+    try:
+        result = subprocess.run(
+            [
+                "lualatex",
+                "-interaction=batchmode",  # Make it quieter
+                "-halt-on-error",  # Stop on first error
+                "-output-directory",
+                output_dir,
+                tex_file_path,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,  # Ensures output is returned as a string
+        )
+        print("LuaLaTeX Output:", result.stdout)
+    except subprocess.CalledProcessError as e:
+        raise ValueError(e.stderr)
 
     # Convert the PDF to an image
     pdf_path = tex_file_path.replace(".tex", ".pdf")
@@ -39,7 +57,13 @@ def compile_latex(latex_code, suffix=""):
 
 
 def combine_images_vertically(
-    image_paths, padding=10, line_padding=5, background_color="white", line_color="black", line_width=2, output_path="combined_image.png"
+    image_paths,
+    padding=10,
+    line_padding=5,
+    background_color="white",
+    line_color="black",
+    line_width=2,
+    output_path="combined_image.png",
 ):
     images = [Image.open(x) for x in image_paths]
 

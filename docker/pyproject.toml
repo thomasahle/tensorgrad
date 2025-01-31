@@ -1,0 +1,8 @@
+[project]
+name = "tensorg_lambda"
+version = "0.1.0"
+dependencies = [
+    "networkx==3.2.1",
+    "pdf2image",
+    "sympy"
+]

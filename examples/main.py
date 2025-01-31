@@ -285,6 +285,7 @@ def main17():
     )
 
     save_steps(expr)
+    print(to_tikz(expr))
 
 if __name__ == "__main__":
     main17()
