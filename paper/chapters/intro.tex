@@ -15,11 +15,14 @@ For example, while we cover all of the results on Expectation of Linear Combinat
 I have also had to rearrange the material a bit, to avoid having to introduce all the notation up front.
 
 \paragraph{Complex Matrices and Covariance}
-Tensor diagrams (or networks) are currently most often seen in Quantum Physics.
-Here most values are complex numbers, which introduce some extra complexity.
-In particular transposing a matrix now involves taking the conjugate (flipping the sign of the imaginary part), which introduces the need for co- and contra-variant tensors.
-None of this complexity is present with standard real valued matrices, as is common e.g. in Machine Learning applications.
-For simplicity I have decided to not include these complexities.
+Tensor diagrams (or networks) are currently most often seen in Quantum Physics,
+but this is not a book for physicists.
+The Matrix Cookbook is a book for engineers, in particular in Machine Learning, where complex numbers are less common.
+Without complex numbers, we don't have to worry about complex conjugation, which simplifies transposes, and gets rid of the need for co- and contra-variant tensors.
+% In particular transposing a matrix now involves taking the conjugate (flipping the sign of the imaginary part), which introduces the need for co- and contra-variant tensors.
+% None of this complexity is present with standard real valued matrices, as is common e.g. in Machine Learning applications.
+%For simplicity I have decided to not include these complexities.
+If you are a physicist, you probably want a book on Tensor Analysis.
 
 \paragraph{Tensorgrad}
 The symbolic nature of tensor diagrams make the well suited for symbolic computation.
@@ -925,7 +928,7 @@ We write this using a squiggly line over the symmetrized edges:
    \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(1,0);
       \draw (0,1) -- ++(1,0);
-      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.5,-.7) to (0.5,1.7);
+      \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (0.5,-.7) to (0.5,1.7);
    \end{tikzpicture}
    =
    \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
@@ -942,7 +945,7 @@ We write this using a squiggly line over the symmetrized edges:
       \draw (0,0) -- ++(1,0);
       \draw (0,1) -- ++(1,0);
       \draw (0,2) -- ++(1,0);
-      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.5,-.7) to (0.5,2.7);
+      \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (0.5,-.7) to (0.5,2.7);
    \end{tikzpicture}
    =
    \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
@@ -1037,15 +1040,15 @@ Both tensors are idempotent, since symmetrizing a symmetric tensor has no effect
       \draw (0,0) -- ++(2,0);
       \draw (0,1) -- ++(2,0);
       \draw (0,2) -- ++(2,0);
-      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.66,-.7) to (0.66,2.7);
-      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (1.33,-.7) to (1.33,2.7);
+      \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (0.66,-.7) to (0.66,2.7);
+      \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (1.33,-.7) to (1.33,2.7);
    \end{tikzpicture}
    =
    \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(1,0);
       \draw (0,1) -- ++(1,0);
       \draw (0,2) -- ++(1,0);
-      \draw [very thick, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm, line width=2pt}] (0.5,-.7) to (0.5,2.7);
+      \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (0.5,-.7) to (0.5,2.7);
    \end{tikzpicture}
    ,\quad
    \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]

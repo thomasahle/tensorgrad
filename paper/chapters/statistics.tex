@@ -242,12 +242,9 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    \\
    E[\mathbf{x}^T A\mathbf{x}] &= \text{Tr}(AM) + m^T Am \tag{318} \\
 \end{align*}
-Note, the later is really a quartic form.
 
-Also, assume $\mathbf{x}$ to be a stochastic vector with mean m, and covariance M.
-Then
+
 \begin{align*}
-   \text{Var}[\mathbf{x}^T A\mathbf{x}] &= 2\mu_2^2\text{Tr}(A^2) + 4\mu_2 c^T A^2 c + 4\mu_3 c^T Aa + (\mu_4 - 3\mu_2^2)a^T a \tag{319} \\
    E[(A\mathbf{x} + a)(B\mathbf{x} + b)^T] &= AMB^T + (Am + a)(Bm + b)^T \tag{320} \\
    E[\mathbf{x}\mathbf{x}^T] &= M + mm^T \tag{321} \\
    E[\mathbf{x} a^T \mathbf{x}] &= (M + mm^T)a \tag{322} \\
@@ -455,7 +452,181 @@ AMB^T (Cm + c)
 \end{align*}
 
 
+\section{Quartic Forms}
+When $x$ is a stochastic vector iid. entries, and cumulants, $\kappa_1, \kappa_2, \kappa_3, \kappa_4$ are known,
+\[
+\begin{bmatrix}
+   \begin{tikzpicture}[
+      baseline=(T.base),
+      every node/.style={inner sep=1pt, circle, draw=none, fill=white},
+    ]
+    \draw (30:.2) node[label] {$x$} -- (30:.5);
+    \draw (120:.2) node[label] {$x$} -- (120:.5);
+    \draw (210:.2) node[label] {$x$} -- (210:.5);
+    \draw (300:.2) node[label] {$x$} -- (300:.5);
+   \end{tikzpicture}
+\end{bmatrix}
+=
+\begin{tikzpicture}[
+  every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+  label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+  declare function={
+    xgap=1;  % Horizontal spacing between diagrams
+    ygap=.6;  % Vertical spacing between rows
+  },
+  baseline=-1cm
+  ]
 
+  % Pattern {4} - 1 partition
+  \drawPartitionAtAngle{(0,0)}{4}{$\kappa_4$}{{{1,2,3,4}}}
+
+  % Pattern {3,1} - 4 partitions
+  \drawPartitionAtAngle{(0,-ygap)}{4}{$+\kappa_3\kappa_1\Big($}{{{1,2,3},{4}}}
+  \drawPartitionAtAngle{(xgap,-ygap)}{4}{$+$}{{{1,2,4},{3}}}
+  \drawPartitionAtAngle{(2*xgap,-ygap)}{4}{$+$}{{{1,3,4},{2}}}
+  \drawPartitionAtAngle{(3*xgap,-ygap)}{4}{$+$}{{{2,3,4},{1}}}
+  \node[label] at (3.5*xgap,-ygap) {$\Big)$};
+
+  % Pattern {2,2} - 3 partitions
+  \drawPartitionAtAngle{(0,-2*ygap)}{4}{$+\kappa_2^2\Big($}{{{1,2},{3,4}}}
+  \drawPartitionAtAngle{(xgap,-2*ygap)}{4}{$+$}{{{1,3},{2,4}}}
+  \drawPartitionAtAngle{(2*xgap,-2*ygap)}{4}{$+$}{{{1,4},{2,3}}}
+  \node[label] at (2.5*xgap,-2*ygap) {$\Big)$};
+
+  % Pattern {2,1,1} - 6 partitions
+  \drawPartitionAtAngle{(0,-3*ygap)}{4}{$+\kappa_2\kappa_1^2\Big($}{{{1,2},{3},{4}}}
+  \drawPartitionAtAngle{(xgap,-3*ygap)}{4}{$+$}{{{1,3},{2},{4}}}
+  \drawPartitionAtAngle{(2*xgap,-3*ygap)}{4}{$+$}{{{1,4},{2},{3}}}
+  \drawPartitionAtAngle{(3*xgap,-3*ygap)}{4}{$+$}{{{2,3},{1},{4}}}
+  \drawPartitionAtAngle{(4*xgap,-3*ygap)}{4}{$+$}{{{2,4},{1},{3}}}
+  \drawPartitionAtAngle{(5*xgap,-3*ygap)}{4}{$+$}{{{3,4},{1},{2}}}
+  \node[label] at (5.5*xgap,-3*ygap) {$\Big)$};
+
+  % Pattern {1,1,1,1} - 1 partition
+  \drawPartitionAtAngle{(0,-4*ygap)}{4}{$+\kappa_1^4$}{{{1},{2},{3},{4}}}
+
+\end{tikzpicture}
+\]
+
+We can use this to compute $\mathrm{Var}[x^T A x]$.
+We assume $A$ is symmetric:
+\begin{walign}
+   \mathrm{Var}[x^T A x]
+   &=
+   \begin{tikzpicture}[baseline=.5em, inner sep=1pt, x=1.8em, y=1.2em]
+      \node (x0) at (0,0) {$x$};
+      \node (A0) at (1,0) {$A$};
+      \node (x1) at (2,0) {$x$};
+      \draw (x0) -- (A0) -- (x1);
+      \node (x2) at (0,1) {$x$};
+      \node (A1) at (1,1) {$A$};
+      \node (x3) at (2,1) {$x$};
+      \draw (x2) -- (A1) -- (x3);
+      \draw (-.5,-.8) -- (2.5,-.8) -- (2.5,1.8) -- (1.5,1.8) -- (1.5,-.5) -- (.5,-.5) -- (.5,1.8) -- (-.5,1.8) -- (-.5,-.8);
+   \end{tikzpicture}
+   -
+   \begin{tikzpicture}[baseline=.5em, inner sep=1pt, x=1.8em, y=1.2em]
+      \node (x0) at (0,0) {$x$};
+      \node (A0) at (1,0) {$A$};
+      \node (x1) at (2,0) {$x$};
+      \draw (x0) -- (A0) -- (x1);
+      \node (x2) at (0,1) {$x$};
+      \node (A1) at (1,1) {$A$};
+      \node (x3) at (2,1) {$x$};
+      \draw (x2) -- (A1) -- (x3);
+      \draw (-.5,-.8) -- (2.5,-.8) -- (2.5,.4) -- (1.5,.4) -- (1.5,-.5) -- (.5,-.5) -- (.5,.4) -- (-.5,.4) -- (-.5,-.8);
+      \draw (-.5,1.8) -- (2.5,1.8) -- (2.5,.6) -- (1.5,.6) -- (1.5,1.5) -- (.5,1.5) -- (.5,.6) -- (-.5,.6) -- (-.5,1.8);
+   \end{tikzpicture}
+   \\&=
+   \kappa_4
+   \begin{tikzpicture}[baseline=(A0.base), inner sep=0pt, fill=white]
+       \node (A1) at (0,0) {$A$};
+       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[anchor=west] (A2) at (1.4,0) {$A$};
+       \draw (A1.east) to[out=45,in=135] (bullet) to[out=45,in=135] (A2.west);
+       \draw (A1.east) to[out=-45,in=-135] (bullet) to[out=-45,in=-135] (A2.west);
+   \end{tikzpicture}
+   +
+   4\kappa_3\kappa_1
+   \begin{tikzpicture}[baseline=(A0.base), inner sep=1pt]
+       \node (A1) at (0,0) {$A$};
+       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[anchor=west] (A2) at (1.1,0) {$A$};
+       \node (bullet2) at (1.8,0) {$\sbullet$};
+       \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west)
+       \draw (A1.east) to[out=-45,in=-135] (bullet);
+       \draw (A2.east) -- (bullet2);
+   \end{tikzpicture}
+   \\&\quad+
+   2 \kappa_2^2 \hspace{-.5em}\trace{a,a}{2}\hspace{-.5em} + \kappa_2^2 \hspace{-1em}\trace{a}{1}\hspace{-2em}\trace{a}{1}
+   \\&\quad+
+   4\kappa_2\kappa_1^2
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+       \node (bullet) at (0,0) {$\sbullet$};
+       \node (A) at (.5,0) {$A$};
+       \node (A2) at (1,0) {$A$};
+       \node (bullet2) at (1.5,0) {$\sbullet$};
+       \draw (bullet.east) -- (A.west);
+       \draw (A.east) -- (A2.west);
+       \draw (A2.east) -- (bullet2.west);
+   \end{tikzpicture}
+   +2\kappa_2\kappa_1^2
+   \hspace{-1em} \trace{A}{1}\hspace{-1em}
+   \vecmatvec{.5em}{\sbullet}{A}{\sbullet}
+   \\&\quad+\kappa_1^4 \vecmatvec{.5em}{\sbullet}{A}{\sbullet}
+   \vecmatvec{.5em}{\sbullet}{A}{\sbullet}
+   \\&\quad-\big(
+      \kappa_2 
+      \hspace{-1em} \trace{A}{1}\hspace{-1em}
+      +
+      \kappa_1^2
+      \vecmatvec{.5em}{\sbullet}{A}{\sbullet}
+   \big)^2
+   \\&=
+   %%%
+   2 \kappa_2^2 \hspace{-.5em}\trace{A,A}{2}\hspace{-.5em}
+   +4\kappa_2\kappa_1^2
+   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
+       \node (bullet) at (0,0) {$\sbullet$};
+       \node (A) at (.5,0) {$A$};
+       \node (A2) at (1,0) {$A$};
+       \node (bullet2) at (1.5,0) {$\sbullet$};
+       \draw (bullet.east) -- (A.west);
+       \draw (A.east) -- (A2.west);
+       \draw (A2.east) -- (bullet2.west);
+   \end{tikzpicture}
+   \\&\quad+
+   4\kappa_3\kappa_1
+   \begin{tikzpicture}[baseline=(A0.base), inner sep=1pt]
+       \node (A1) at (0,0) {$A$};
+       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[anchor=west] (A2) at (1.1,0) {$A$};
+       \node (bullet2) at (1.8,0) {$\sbullet$};
+       \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west)
+       \draw (A1.east) to[out=-45,in=-135] (bullet);
+       \draw (A2.east) -- (bullet2);
+   \end{tikzpicture}
+   +\kappa_4
+   \begin{tikzpicture}[baseline=(A0.base), inner sep=0pt, fill=white]
+       \node (A1) at (0,0) {$A$};
+       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[anchor=west] (A2) at (1.4,0) {$A$};
+       \draw (A1.east) to[out=45,in=135] (bullet) to[out=45,in=135] (A2.west);
+       \draw (A1.east) to[out=-45,in=-135] (bullet) to[out=-45,in=-135] (A2.west);
+   \end{tikzpicture}
+\end{walign}
+The Matrix Cookbook lists this as
+\[
+   \mathrm{Var}[x^T A x]
+   =
+   2\mu_2^2\text{Tr}(A^2)
+   + 4\mu_2 c^T A^2 c
+   + 4\mu_3 c^T Aa
+   + (\mu_4 - 3\mu_2^2)a^T a \tag{319}
+\]
+where $c = \mu_1$ is the mean of $x$,
+and $a = \mathrm{diag}(A)$ is the diagonal of $A$,
+and $\mu_4 = \kappa_4 + 3\kappa_2^2$ is the fourth central moment.
 
 
 \section{Weighted Scalar Variable}

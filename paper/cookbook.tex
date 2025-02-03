@@ -1,5 +1,5 @@
 \documentclass[oneside]{book}
-\usepackage{ifthen, tikz}
+\usepackage{ifthen}
 \usepackage{lipsum} % for generating dummy text
 \usepackage{xparse}
 \usepackage{amsmath}
@@ -14,6 +14,15 @@
 \usepackage{changepage} % for adjustwidth
 \usepackage{listings}
 \usepackage{xcolor}
+
+\usepackage{geometry}
+\geometry{hmargin=4cm,vmargin=4cm}
+
+\allowdisplaybreaks
+
+\usepackage{tikz}
+\input{chapters/tikz-styles.tex}
+\input{chapters/tikz-macros.tex}
 
 % https://tex.stackexchange.com/a/398211/24956
 \usepackage{environ}
@@ -49,12 +58,6 @@
   tabsize=2,
 }
 
-\usepackage{geometry}
-\geometry{hmargin=4cm,vmargin=4cm}
-
-\allowdisplaybreaks
-
-\input{chapters/tikz-styles.tex}
 
 \newtheoremstyle{normalstyle} % Name of the style
   {3pt}   % Space above
@@ -87,10 +90,10 @@
 
 \maketitle
 
-\input{chapters/intro.tex}
+%\input{chapters/intro.tex}
 %\input{chapters/simple_derivatives.tex}
 %\input{chapters/kronecker.tex}
-%\input{chapters/functions.tex}
+\input{chapters/functions.tex}
 \input{chapters/statistics.tex}
 
 %\input{chapters/determinant.tex}
