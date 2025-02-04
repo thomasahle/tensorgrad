@@ -8,10 +8,10 @@
 </div>
 
 # Tensorgrad
-A tensor & deep learning framework. PyTorch meets SymPy.
+A Tensor & Deep Learning framework - It's like PyTorch meets SymPy.
 
-Tensor diagrams let you manipulate high dimensional tensors are graphs in a way that makes derivatives and complex products easy to understand.
-The [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) contains everything you need to know.
+Tensorgrad is an open-source python package for symbolic tensor manipulation.
+It performs any simplification described in the [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf)  automatically, and can even be used as a machine learning framework.
 
 ## Examples
 
