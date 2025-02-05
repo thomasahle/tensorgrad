@@ -218,13 +218,17 @@ class Tensor(metaclass=TensorMeta):
         raise NotImplementedError
 
     def edge_structural_graph(
-        self, match_edges: bool = True, edge_names: None | dict[str, str] = None
+        self, match_edges: bool = True, edge_names: Optional[dict[str, str]] = None
     ) -> tuple[nx.MultiDiGraph, list[str]]:
-        """Like structural_graph(), but adds dummy nodes for the outer edges.
+        """
+        Build a structural graph of the tensor with dummy nodes for outer edges.
 
         Args:
-            if match_edges is True, the edge names are used to match the edges of the two tensors.
-            if edge_names is given, it is used to rename the edges of the tensor.
+            match_edges: If True the names are used to match edges.
+            edge_names: An optional mapping of edge names.
+
+        Returns:
+            A tuple (G, edge_list) where G is the graph and edge_list is the list of edge names.
         """
         if edge_names is None:
             edge_names = {}
@@ -242,11 +246,16 @@ class Tensor(metaclass=TensorMeta):
         return G, list(edges.keys())
 
     def graph_to_string(self) -> str:
-        """Returns an ASCII tree-like representation of the structural graph."""
+        """
+        Returns an ASCII tree-like representation of the structural graph.
+
+        Returns:
+            A string showing the graph structure.
+        """
         G, _ = self.edge_structural_graph(match_edges=True)
         return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
 
-    # Overloaded ops
+    # Overloaded operators
 
     def __add__(self, other: Union[Number, "Tensor"]) -> "Tensor":
         w = 1
@@ -285,7 +294,9 @@ class Tensor(metaclass=TensorMeta):
         return self * other
 
     def __mul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
-        """Contract self and other, but use a 3d-identity to keep the shared edges free."""
+        """
+        Contract self with other using tensor product and contraction rules.
+        """
         if isinstance(other, Number):
             if other == 0:
                 return Zero(**self.shape)
@@ -323,6 +334,17 @@ class Tensor(metaclass=TensorMeta):
     def is_isomorphic(
         self, other: "Tensor", match_edges: bool = False, edge_names: None | dict[str, str] = None
     ) -> bool:
+        """
+        Test whether this tensor is isomorphic to another tensor.
+
+        Args:
+            other: The tensor to compare with.
+            match_edges: Whether to require a matching of edge names.
+            edge_names: Optional mapping to use for edge renaming.
+
+        Returns:
+            True if the tensors are isomorphic; False otherwise.
+        """
         if self.weisfeiler_lehman != other.weisfeiler_lehman:
             return False
         G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
@@ -331,8 +353,15 @@ class Tensor(metaclass=TensorMeta):
         # return nx.vf2pp_is_isomorphic(G1, G2, node_label="name")
 
     def isomorphisms(self, other: "Tensor") -> Generator[dict[str, str], None, None]:
-        """Given self and other are isomorphic, this method returns a dictionary that renames self into other."""
-        # We need the edges1 and edges2 lists to keep track of the order of edges added to the graph
+        """
+        Yield all isomorphisms (edge renamings) between self and other.
+
+        Args:
+            other: The other tensor to compare.
+
+        Yields:
+            Dictionaries mapping edge names in self to edge names in other.
+        """
         G1, edges1 = self.edge_structural_graph(match_edges=False)
         G2, edges2 = other.edge_structural_graph(match_edges=False)
         for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
@@ -360,8 +389,18 @@ class Tensor(metaclass=TensorMeta):
 
     @staticmethod
     def _check_edges(edges: Iterable[str]) -> list[str]:
-        # Parses the standard input format for edges, which can be a string or list of strings.
-        # If only one string is given, it is split by commas.
+        """
+        Validate and standardize an iterable of edge names.
+
+        Args:
+            edges: An iterable of edge names.
+
+        Returns:
+            A list of edge names.
+
+        Raises:
+            ValueError: If any edge is not a string.
+        """
         if not isinstance(edges, Iterable):
             raise ValueError("Edges must be an iterable of strings")
         edges = list(edges)
@@ -374,7 +413,19 @@ class Tensor(metaclass=TensorMeta):
 
     @staticmethod
     def _check_shape(shape0: Iterable[Symbol], shape1: dict[str, Symbol]) -> dict[str, Symbol]:
-        # Parses the standard shape input format, which allows both a list of symbols and a dict.
+        """
+        Check and merge a shape given as an iterable and a dict.
+
+        Args:
+            shape0: An iterable of Sympy symbols.
+            shape1: A dictionary mapping edge names to Sympy symbols.
+
+        Returns:
+            A dictionary merging the two representations.
+
+        Raises:
+            ValueError: If inputs are not of the expected types.
+        """
         shape0 = tuple(shape0)
         if not isinstance(shape0, tuple) or not all(isinstance(s, Symbol) for s in shape0):
             raise ValueError("Shape0 must be a tuple of sympy symbols")
@@ -387,10 +438,21 @@ class Tensor(metaclass=TensorMeta):
 
     @staticmethod
     def _check_symmetries(
-        shape: dict[str, Symbol], symmetries: str | set[frozenset[str]]
+        shape: dict[str, Symbol], symmetries: Union[str, set[frozenset[str]], None]
     ) -> set[frozenset[str]]:
-        # Parses the standard input format for symmetries, which can be a string or set of sets.
-        # If using a string, the notation is 'a b, c d' for two symmetries."""
+        """
+        Validate the symmetries for a tensor.
+
+        Args:
+            shape: A dictionary mapping edge names to sizes.
+            symmetries: Either a string (with groups separated by commas) or a set of frozensets.
+
+        Returns:
+            A set of frozensets representing the symmetry groups.
+
+        Raises:
+            ValueError: If the symmetries are inconsistent with the shape.
+        """
         if symmetries is None:
             return {frozenset({e}) for e in shape.keys()}
         if isinstance(symmetries, str):
@@ -425,9 +487,10 @@ class Variable(Tensor):
         A tensor holding a variable.
 
         Args:
-            name: The name of this variable.
-            shape: Dict from edge name to size (Sympy symbol). Can also be a string or list of str.
-            symmetries: Sets of edges that should be considered equivalent.
+            name: The name of the variable.
+            shape0: Positional Sympy symbols for dimensions.
+            _symmetries: Optional symmetries (as a string or set of frozensets).
+            shape1: Keyword arguments for dimensions.
         """
         self.name = name
         self._shape = self._check_shape(shape0, shape1)
@@ -503,8 +566,21 @@ class Variable(Tensor):
 
 
 class Rename(Tensor):
+    """
+    A tensor that renames the edges of an inner tensor.
+
+    This is used to change free edge names (and sometimes inner edge names)
+    without modifying the underlying contraction.
+    """
+
     def __init__(self, inner: Tensor, rename: dict[str, str]):
-        """Rename: old -> new name"""
+        """
+        Initialize a Rename tensor.
+
+        Args:
+            inner: The tensor to be renamed.
+            rename: A dictionary mapping old edge names to new names.
+        """
         self.name = "Rename"
         self.tensor = inner
         self.mapping = {k: v for k, v in rename.items() if k != v}
@@ -527,7 +603,16 @@ class Rename(Tensor):
 
     @classmethod
     def merge_renames(cls, *renames: dict[str, str]) -> dict[str, str]:
-        merged = {}
+        """
+        Merge several renaming dictionaries into one.
+
+        Args:
+            *renames: Arbitrary number of renaming dictionaries.
+
+        Returns:
+            A single dictionary representing the merged renaming.
+        """
+        merged: dict[str, str] = {}
         for rename in renames:
             used = merged.keys() | merged.values()
             # Apply the rename to the existing chains
@@ -567,13 +652,18 @@ class Rename(Tensor):
 
 
 class Constant(Tensor, ABC):
-    def __init__(self, *shape0: Symbol, _symmetries: set[frozenset[str]] | None = None, **shape1: Symbol):
+    """
+    An abstract tensor that represents a constant (non-variable) tensor.
+    """
+
+    def __init__(self, *shape0: Symbol, _symmetries: Optional[set[frozenset[str]]] = None, **shape1: Symbol):
         """
         A constant tensor with the given edges.
 
         Args:
-            edges: The names of the edges of this constant tensor.
-            link: An optional variable that this tensor is associated with, used to compute edge dimensions.
+            shape0: Positional dimensions (as Sympy symbols).
+            _symmetries: Optional symmetry groups.
+            shape1: Keyword dimensions.
         """
         self.name = "NotImplemented"
         self._shape = self._check_shape(shape0, shape1)
@@ -624,6 +714,13 @@ class Delta(Constant):
     """
 
     def __init__(self, size: Symbol, *edges: str):
+        """
+        Initialize a Delta tensor.
+
+        Args:
+            size: The size (dimension) of the tensor.
+            edges: The names of the tensor edges.
+        """
         edges = self._check_edges(edges)
         super().__init__(**{e: size for e in edges})
         assert isinstance(size, (Symbol, Number)), "Size must be a sympy symbol"
@@ -756,7 +853,7 @@ class FunctionSignature(ABC):
     edges : Set[str]
         The output edges of this function. These are string identifiers that symbolically
         represent the dimensions of the output tensor.
-    inputs : Tuple[Set[str], ...]
+    inputs : tuple[Set[str], ...]
         A tuple where each element is a set of edges required from one input tensor.
         For example, if the first input tensor must share dimension edges {"b", "i"} and
         the second input tensor must share dimension edges {"b", "j"}, then
@@ -883,6 +980,18 @@ def function(
     output_shape: dict[str, Symbol],
     *inputs: tuple[Tensor | str, ...],
 ) -> "Function":
+    """
+    Create a Function tensor from a name, output shape and inputs.
+
+    Args:
+        name: The function name.
+        output_shape: A dictionary mapping output edge names to sizes.
+        inputs: A sequence of tuples where each tuple starts with a tensor (or string)
+                followed by the required edge names.
+
+    Returns:
+        A Function tensor.
+    """
     return Function(
         FunctionSignature(
             name,
@@ -895,6 +1004,15 @@ def function(
 
 
 class Function(Tensor):
+    """
+    A tensor that represents a function applied to one or more input tensors.
+
+    Attributes:
+        signature: The FunctionSignature for this function.
+        inputs: A list of input tensors.
+        shape_out: A dictionary mapping output edge names to sizes.
+    """
+
     def __init__(
         self,
         signature: FunctionSignature,
@@ -1065,14 +1183,18 @@ class Function(Tensor):
 
 
 class Derivative(Tensor):
-    def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[dict[str]] = None):
+    """
+    A tensor representing the derivative of another tensor with respect to a variable.
+    """
+
+    def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[dict[str, str]] = None):
         """
         A tensor representing the derivative of another tensor.
 
         Args:
-            tensor: The tensor to take the derivative of.
-            x: The variable to take the derivative with respect to.
-            new_names: The names to use for the new edges created by the derivative. If not provided, they will be generated.
+            tensor: The tensor to differentiate.
+            x: The variable with respect to which to differentiate.
+            new_names: A mapping for renaming edges (if not provided, it will be generated).
         """
         self.tensor = tensor
         self.x = x
@@ -1133,12 +1255,16 @@ class Derivative(Tensor):
 
 
 class Product(Tensor):
+    """
+    A tensor representing the product (contraction) of several tensors.
+    """
+
     def __init__(self, tensors: Iterable[Tensor]):
         """
-        A product of multiple tensors.
+        Initialize a Product tensor.
 
         Args:
-            tensors: The tensors to multiply together.
+            tensors: An iterable of tensors to be multiplied/contracted.
         """
         self.tensors = list(tensors)
         self._shape = {}
@@ -1169,8 +1295,15 @@ class Product(Tensor):
 
     @staticmethod
     def merge(products: list["Product"]) -> "Product":
-        """Rename internal edges (multiplicity > 1) to be distinct between each group."""
-        # The union of free edges from each product contains the free edges and "level 1" inner edges.
+        """
+        Merge several Product tensors into one, renaming inner edges so they are distinct.
+
+        Args:
+            products: A list of Product tensors.
+
+        Returns:
+            A new Product tensor merging the inputs.
+        """
         used_edges = {e for p in products for e in p.edges}
         res = []
         for p in products:
@@ -1233,8 +1366,8 @@ class Product(Tensor):
         else:
             res_weight = 1
 
-        def verify_edges(tensors: list[Tensor], msg: str = "") -> None:
-            cnt = Counter(e for t in tensors for e in t.edges)
+        def verify_edges(ts: list[Tensor], msg: str = "") -> None:
+            cnt = Counter(e for t in ts for e in t.edges)
             assert not cnt or cnt.most_common()[0][1] <= 2, msg
 
         # Simplify Delta Tensors
@@ -1276,10 +1409,11 @@ class Product(Tensor):
         return res
 
     def components(self) -> list["Product"]:
-        """Find all disjoint components, that is, subgraphs that are not connected by an edge.
+        """
+        Decompose the product into disjoint components (subgraphs).
 
         Returns:
-            - A list of disjoint components, each represented by a Product tensor.
+            A list of Product tensors representing disjoint components.
         """
         # Create graph of tensor connections
         G = nx.Graph()
@@ -1323,12 +1457,22 @@ class Product(Tensor):
         return any(t.depends_on(x) for t in self.tensors)
 
     def _to_einsum_eq(self) -> tuple[list[Tensor], str]:
-        """Convert the product to an einsum equation. The main utility is that Delta tensors are\
-            mostly removed in favor of hyper edges, which are more efficient to compute.
-            However, some Deltas are still needed, so we return the list of tensors that should be
-            used with the einsum equation. """
-        # Most einsum implementations allow only single upper and lower case letters
-        if (n := len({e for t in self.tensors for e in t.edges})) > 52:
+        """
+        Convert the product to an einsum equation.
+
+        The main utility is that Delta tensors are mostly removed in favor of hyper edges, which are more efficient to compute.
+        However, some Deltas are still needed, so we return the list of tensors that should be
+        used with the einsum equation.
+
+        Returns:
+            A tuple (factors, equation) where factors is a list of tensors and
+            equation is the corresponding einsum string.
+
+        Raises:
+            ValueError: If there are too many unique edges.
+        """
+        unique_edges = {e for t in self.tensors for e in t.edges}
+        if (n := len(unique_edges)) > 52:
             raise ValueError(f"Too many unique edges ({n} > 52) to convert to einsum equation")
         name_to_idx = defaultdict(lambda: ascii_letters[len(name_to_idx)])
 
@@ -1366,7 +1510,11 @@ class Product(Tensor):
 
 
 class Sum(Tensor):
-    def __init__(self, tensors: Iterable[Tensor], weights: None | Iterable[Number] = None):
+    """
+    A weighted sum of several tensors.
+    """
+
+    def __init__(self, tensors: Iterable[Tensor], weights: Optional[Iterable[Number]] = None):
         """
         A weighted sum of multiple tensors.
 
@@ -1479,10 +1627,19 @@ def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
 
 
 def _add_structural_graph(
-    G: nx.MultiDiGraph, tensor: Tensor, root_edge_label: bool = None
+    G: nx.MultiDiGraph, tensor: Tensor, root_edge_label: Optional[Union[bool, str]] = None
 ) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-    """Computes the structural graph of tensor, and unions it with G."""
-    # We assert that Gx has nodes named [0, Gx.number_of_nodes())
+    """
+    Compute the structural graph for a tensor and merge it with an existing graph G.
+
+    Args:
+        G: An existing MultiDiGraph.
+        tensor: The tensor whose graph is to be added.
+        root_edge_label: An optional label for the root edge.
+
+    Returns:
+        A tuple (G, t_edges) where G is the updated graph and t_edges maps edge names to node IDs.
+    """
     assert set(G.nodes()) == set(range(G.number_of_nodes())), f"{G.nodes()}"
     Gx, x_edges = tensor.structural_graph()
     offset = G.number_of_nodes()
@@ -1505,9 +1662,16 @@ def _add_structural_graph(
 
 
 def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = "") -> dict[str, str]:
-    """Given a list of edges, return a dict[str, str] that renames the original names into
-    new fresh names, not in either edges nor used_names.
-    Also append suffix to the new names.
+    """
+    Generate a mapping from each edge in 'edges' to a new name that is not in used_names.
+
+    Args:
+        edges: An iterable of original edge names.
+        used_names: A collection of names that must be avoided.
+        suffix: A suffix to append to new names.
+
+    Returns:
+        A dictionary mapping original edge names to fresh names.
     """
     used_names = set(used_names)
     rename = {}
@@ -1521,10 +1685,14 @@ def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: 
 
 
 def _make_distinct(
-    *tensors: Tensor, used_names: Iterable[str] | None = None
+    *tensors: Tensor, used_names: Optional[Iterable[str]] = None
 ) -> tuple[list[Tensor], list[dict[str, str]]]:
-    """Makes sure all tensors have distinct edges.
-    Optionally takes used_names, an extra set of names to avoid.
+    """
+    Ensure that the tensors have distinct edge names.
+
+    Args:
+        *tensors: A sequence of tensors.
+        used_names: Additional names that must be avoided.
 
     Returns:
         A tuple containing:
