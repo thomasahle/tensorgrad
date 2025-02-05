@@ -37,15 +37,16 @@ DimType = None | str | Iterable[str]
 
 def taylor(f: Tensor, wrt: Variable, eps: Tensor, n: int) -> Tensor:
     """Return the nth order Taylor approximation of f at x+eps."""
-    if eps.edges != wrt.edges:
-        raise ValueError("eps must have the same edges as wrt.")
-    total = f
-    for i in range(1, n + 1):
+    if eps.shape != wrt.shape:
+        raise ValueError("eps must have the same shape as wrt.")
+    terms = [f]
+    for _ in range(n):
+        # Taking the derivative of f wrt wrt, creates new edges that match the shape of eps
         connection_names = _unused_edge_names(wrt.edges, f.edges)
-        fg = f.grad(wrt, new_names=connection_names)
-        scaled_eps = eps.rename(**connection_names)
-        total = total + (fg @ scaled_eps) * (1.0 / math.factorial(i))
-    return total
+        # To save time, we reuse the derivatives we've already computed
+        f = f.grad(wrt, new_names=connection_names) @ eps.rename(**connection_names)
+        terms.append(f)
+    return Sum(terms, [Fraction(1, math.factorial(i)) for i in range(n + 1)])
 
 
 def frobenius2(t: Tensor) -> Tensor:

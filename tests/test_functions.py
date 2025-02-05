@@ -456,7 +456,7 @@ def test_reshape():
         ([1.0, 2.0, 5.0], [0.01, -0.05, 0.3]),
     ],
 )
-def test_taylor(x_vals, eps_vals):
+def test_taylor_numeric(x_vals, eps_vals):
     """
     Test the n=1 Taylor expansion of log(x) at x+eps by comparing it to
     log(x+eps). We don't directly compare the expansions; rather, we check
@@ -477,6 +477,19 @@ def test_taylor(x_vals, eps_vals):
     # not by direct equality.
     diff = (out_approx - out_true).abs().max()
     assert diff < 1e-2, f"Taylor approximation differs too much ({diff.item()})"
+
+
+def test_taylor_exp():
+    x, eps = symbols("x eps")
+    x = Variable(x)
+    eps = Variable(eps)
+    f = F.exp(x)
+    taylors = [F.taylor(f, x, eps, n=n) for n in range(0, 3)]
+    expected = [f, f + f * eps, f + f * eps + f * eps**2 / 2]
+    for taylor, exp in zip(taylors, expected):
+        taylor = taylor.full_simplify()
+        exp = exp.full_simplify()
+        assert taylor == exp
 
 
 def test_symmetrize():
