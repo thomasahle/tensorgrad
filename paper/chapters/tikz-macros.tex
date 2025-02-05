@@ -1,3 +1,7 @@
+
+\pgfmathsetmacro{\outerRadius}{.7}
+\pgfmathsetmacro{\innerRadius}{.3}
+
 \newcounter{csvcounter}
 \newcommand{\CountCSV}[2]{%
    \setcounter{csvcounter}{0}%
@@ -6,23 +10,21 @@
    }%
    \pgfmathsetmacro{#1}{\value{csvcounter}}%
 }
-\newcommand{\drawPartitionAtAngle}[4]{%
-  \def\globaln{#2}%
-  \begin{scope}[shift={#1}]%
-    \node[label, anchor=east] at (-.3,0) {#3};%
-    \CountCSV{\blockCount}{#4}%
+\newcommand{\drawPartitionAtAngle}[5][]{%
+  \def\globaln{#3}%
+  \begin{scope}[shift={#2}]%
+    \node[label, anchor=east] at (-\outerRadius,0) {#4};%
+    \CountCSV{\blockCount}{#5}%
     
     % First optimize the assignment of blocks to hub positions
     \def\bestTotalDist{1000}%
     \def\bestOffset{0}%
     
     % Try different rotational offsets for the hub arrangement
-    %\foreach \offset in {0,15,...,345} {%
-    %\foreach \offset in {61, 209, 19, 88, 79} {%
     \foreach \offset in {42, 62, 82} {%
         \pgfmathsetmacro{\totalDist}{0}%
         % For each block in the partition:
-        \foreach [count=\blockIndex from 0] \block in #4 {%
+        \foreach [count=\blockIndex from 0] \block in #5 {%
             \pgfmathsetmacro{\angleStep}{30+360/\blockCount}%
             \pgfmathsetmacro{\hubAngle}{mod(\blockIndex * \angleStep + \offset, 360)}%
             % For each element in this block:
@@ -42,25 +44,29 @@
 
     % Now draw each block using the optimized hub positions:
     \pgfmathsetmacro{\angleStep}{360/\blockCount}%
-    \pgfmathsetmacro{\hubRadius}{.1}%
     \ifnum\blockCount=1
       \def\hubRadius{0}%
     \else
-      \def\hubRadius{0.1}%
+      \def\hubRadius{\innerRadius}%
     \fi
-    \foreach [count=\i from 0] \block in #4 {%
+    \foreach [count=\i from 0] \block in #5 {%
       \pgfmathsetmacro{\currentAngle}{\i * \angleStep + \bestOffset}%
-      \drawBlock{\currentAngle:\hubRadius}{\block}%
+      \drawBlock[#1]{\currentAngle:\hubRadius}{\block}{\i}%
     }%
   \end{scope}%
 }
-\newcommand{\drawBlock}[2]{%
-    \coordinate (hub) at (#1);%
+\newcommand{\drawBlock}[3][]{%
+    \coordinate (hub) at (#2);%
     % For each element in this block, draw a spoke:
-    \foreach \elem in #2 {%
+    \foreach \elem in #3 {%
         \pgfmathsetmacro{\thisAngle}{30+(\elem - 1)*360/\globaln}%
-        \path (hub) (\thisAngle:0.3) coordinate (node\elem);%
+        \path (hub) (\thisAngle:\outerRadius) coordinate (node\elem);%
         \draw[thin] (hub) -- (node\elem);%
     }%
-    \node[inner sep=1pt] at (hub) {};%
+    \if\relax\detokenize{#1}\relax
+        \node[inner sep=1pt, circle, fill, minimum size=2pt] at (hub) {};%
+    \else
+        \CountCSV{\blockSize}{#3}%
+        \node[label, inner sep=0pt, fill=white] at (hub) {\scriptsize$K_{\blockSize}$};%
+    \fi
 }

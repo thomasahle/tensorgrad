@@ -166,14 +166,11 @@ The following first order derivatives show the basic linearity properties of the
  \\&&&=
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
          \node (a0) {};
-         \node[right=1em of a0] (a1) {};
-         \node[right=1em of a1] (a2) {$A$};
-         \node[right=1em of a2] (a3) {};
-         \draw (a0) -- (a1) node[midway, above left, font=\tiny] {i};
-         \draw (a1) -- (a2);
-         \draw (a2) -- (a3) node[midway, below right, font=\tiny] {j};
-         \draw (a1.west) -- ++(.1,.2) node[midway, above left, font=\tiny] {m};
-         \draw (a1.east) -- ++(-.1,-.2) node[midway, below right, font=\tiny] {n};
+         \node[right=1.5em of a0] (a2) {$A$};
+         \draw (a0) -- ++(-.1,0) node[midway, above left, font=\tiny] {i};
+         \draw (a2) -- ++(.5,0) node[midway, below right, font=\tiny] {j};
+         \draw (a0.west) -- ++(.2,0) arc (90:270:-.1) node[pos=1, above right, font=\tiny] {m};
+         \draw (a2.west) -- ++(-.2,0) arc (90:270:.1) node[midway, below left, font=\tiny] {n};
       \end{tikzpicture}
 \end{walign}
 
@@ -1033,11 +1030,23 @@ $\frac{\partial}{\partial X} f(X)^T \neq
 
 \section{Exercises}
 \begin{exercise}
-   Find the derivative of \[x^T A^T x x^T A x\] with respect to $x$.
+   Find the derivative of \((x^T A x)^2\) with respect to $x$.
 \end{exercise}
 
 \begin{exercise}
-   Find the derivative of \[X^T A X\] with respect to $X$.
+   Find the second derivative of
+   \[
+      x^T A^T x x^T A x
+   \]
+   with respect to $x$.
+   % Using tensorgrad we get that it is
+   % https://math.stackexchange.com/questions/3015464/second-derivative-of-a-matrix-quartic-form/4977819#4977819
+   % 2 ((x^T S)(S x) + x^T A x S),
+   % where S = A^T + A.
+\end{exercise}
+
+\begin{exercise}
+   Find the derivative of \(X^T A X\) with respect to $X$.
 \end{exercise}
 
 \begin{exercise}
@@ -1099,14 +1108,3 @@ $\frac{\partial}{\partial X} f(X)^T \neq
    \end{align*}
 \end{exercise}
 
-\begin{exercise}
-   Find the second derivative of
-   \[
-      x^T A^T x x^T A x
-   \]
-   with respect to $x$.
-   % Using tensorgrad we get that it is
-   % https://math.stackexchange.com/questions/3015464/second-derivative-of-a-matrix-quartic-form/4977819#4977819
-   % 2 ((x^T S)(S x) + x^T A x S),
-   % where S = A^T + A.
-\end{exercise}

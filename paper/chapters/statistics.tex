@@ -7,14 +7,18 @@ $M=\mathrm{Var}[x] = E[(x-m)(x-m)^T]$ for the covariance (when these quantities 
 
 In tensor diagrams, we will use square brackets:
 \[
+   \vecmatvec{1em}{}{}{m}
+   =
 \mathbin{\begin{tikzpicture}[baseline=(n0.base), inner sep=1pt]
-   \node (n0) at (0,0) {$m=[$};
+   \node (n0) at (0,0) {$[$};
    \node [right=1em of n0] (n1) {$x]$};
    \draw (n0) -- (n1);
 \end{tikzpicture}}
 \quad\text{and}\quad
+   \vecmatvec{1em}{}{M}{}
+   =
 \mathbin{\begin{tikzpicture}[baseline=(n0.base), inner sep=1pt]
-   \node (n0) at (0,0) {$M=[$};
+   \node (n0) at (0,0) {$[$};
    \node [right=1em of n0] (n1) {$(x\ominus m)$};
    \node [right=.5em of n1] (n2) {$(x\ominus m)$};
    \node [right=1em of n2] (n3) {$]$};
@@ -26,7 +30,13 @@ We will use the circled minus, $\ominus$, to distinguish the operation from cont
 
 We can also define the third and fourth centralized moment tensors
 \[
-   M_3=
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$M_3$};
+      \draw (T) -- ++(.5,.3);
+      \draw (T) -- ++(.5,-.3);
+      \draw (T) -- ++(.5,0);
+   \end{tikzpicture}
+   =
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
       \vecmatvec{1em}{(x\ominus m)}{}{} \\
@@ -34,7 +44,14 @@ We can also define the third and fourth centralized moment tensors
       \vecmatvec{1em}{(x\ominus m)}{}{}
    \end{bmatrix}
 \quad\text{and}\quad
-M_4=
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$M_4$};
+      \draw (T) -- ++(.5,.5);
+      \draw (T) -- ++(.5,-.5);
+      \draw (T) -- ++(.5,.2);
+      \draw (T) -- ++(.5,-.2);
+   \end{tikzpicture}
+   =
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
       \vecmatvec{1em}{(x\ominus m)}{}{} \\
@@ -44,66 +61,67 @@ M_4=
    \end{bmatrix}
 .
 \]
-These are less common in introductory causes, even though the scalar third and fourth moment are common.
-This is presumably because they require higher order tensors.
+%These are less common in introductory causes, even though the scalar third and fourth moment are common.
+%This is presumably because they require higher order tensors.
 
-If the entries of $x$ are independent, the non-diagonal entries disappear, so we get
-\[
-M =
-\left[
-   \begin{tikzpicture}[baseline=(c.base), inner sep=1pt]
-      \node (T1) {$(x\ominus m)$};
-      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
-      \node (c)[right=.7em of T1, yshift=-1em] {$\sbullet$};
-      \draw (T1) -- (c);
-      \draw (T2) -- (c);
-      \draw (c) -- ++(.7em,0);
-   \end{tikzpicture}
-\right]
-\quad\text{and}\quad
-M_3 =
-\left[
-   \begin{tikzpicture}[baseline=(T2.base), inner sep=1pt]
-      \node (T1) {$(x\ominus m)$};
-      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
-      \node (T3)[below=.5em of T2] {$(x\ominus m)$};
-      \node (c)[right=.7em of T2] {$\sbullet$};
-      \draw (T1) -- (c);
-      \draw (T2) -- (c);
-      \draw (T3) -- (c);
-      \draw (c) -- ++(.7em,0);
-   \end{tikzpicture}
-\right]
-\quad\text{and so on.}
-\]
-If the entries are also identically distributed, we simply have
-\[
-   M = \sigma^2
-   \,
-\begin{tikzpicture}[baseline=(T.base), inner sep=0]
-   \node (T) {$\sbullet$};
-   \draw (T) -- ++(0,.3);
-   \draw (T) -- ++(0,-.3);
-\end{tikzpicture}
-   \text{ and }
-   M_3 = \mathrm{E}[(x_0-m_0)^3]
-\begin{tikzpicture}[baseline=(T.base), inner sep=0]
-   \node (T) {$\sbullet$};
-   \draw (T) -- ++(0,.3);
-   \draw (T) -- ++(-.2,-.3);
-   \draw (T) -- ++(.2,-.3);
-\end{tikzpicture}
-.
-\]
+%If the entries of $x$ are independent, the non-diagonal entries disappear, so we get
+%\[
+%M =
+%\left[
+%   \begin{tikzpicture}[baseline=(c.base), inner sep=1pt]
+%      \node (T1) {$(x\ominus m)$};
+%      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
+%      \node (c)[right=.7em of T1, yshift=-1em] {$\sbullet$};
+%      \draw (T1) -- (c);
+%      \draw (T2) -- (c);
+%      \draw (c) -- ++(.7em,0);
+%   \end{tikzpicture}
+%\right]
+%\quad\text{and}\quad
+%M_3 =
+%\left[
+%   \begin{tikzpicture}[baseline=(T2.base), inner sep=1pt]
+%      \node (T1) {$(x\ominus m)$};
+%      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
+%      \node (T3)[below=.5em of T2] {$(x\ominus m)$};
+%      \node (c)[right=.7em of T2] {$\sbullet$};
+%      \draw (T1) -- (c);
+%      \draw (T2) -- (c);
+%      \draw (T3) -- (c);
+%      \draw (c) -- ++(.7em,0);
+%   \end{tikzpicture}
+%\right]
+%\quad\text{and so on.}
+%\]
+% If the entries are also identically distributed, we simply have
+% \[
+%    M = \sigma^2
+%    \,
+% \begin{tikzpicture}[baseline=(T.base), inner sep=0]
+%    \node (T) {$\sbullet$};
+%    \draw (T) -- ++(0,.3);
+%    \draw (T) -- ++(0,-.3);
+% \end{tikzpicture}
+%    \text{ and }
+%    M_3 = \mathrm{E}[(x_0-m_0)^3]
+% \begin{tikzpicture}[baseline=(T.base), inner sep=0]
+%    \node (T) {$\sbullet$};
+%    \draw (T) -- ++(0,.3);
+%    \draw (T) -- ++(-.2,-.3);
+%    \draw (T) -- ++(.2,-.3);
+% \end{tikzpicture}
+% .
+% \]
 
-\section{Expectation of Linear Combinations}
+
+\subsection{Expectation of Linear Combinations}
 General principle: The ``linearity of expectation'' lets you pull out all parts of the graph not involving $X$.
 \[
    \vcenter{\hbox{
       \import{figures/}{linearityOfExpectation.pdf_tex}
    }}
 \]
-where $M_3$ is the expectation
+where $M_3$ is the expectation\footnote{FIXME: This is different from the notation just introduced above.}
 \(
 \left[
 \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
@@ -131,9 +149,51 @@ where $M_3$ is the expectation
 which is an order-9 tensor with no dependence on the constants $A$, $B$, $C$ and $D$.
 In practice you would want to name the edges to keep track of what gets multiplied with what.
 
-\subsection{Linear Forms}
-The Matrix Cookbook gives the following simple expectations:
+We can even use linearity of expectation to push the expectation inside an infinite sum of tensors, as in the following moment generating function, which relates all the $M_k$ tensors:
 \begin{align*}
+   \mathrm{E}(\mathrm{e}^{\langle x\ominus m, t\rangle})
+   &= \sum_{k=0}^\infty \frac{1}{k!} \mathrm{E}[\langle x\ominus m, t\rangle^k]
+    = \mathrm{E}\big[\sum_{k=0}^\infty \frac{1}{k!} \langle (x\ominus m)^{\otimes k}, t^{\otimes k}\rangle\big]
+   = \sum_{k=0}^\infty \frac{1}{k!} \langle M_k, t^{\otimes k}\rangle
+ \\&=
+  % =
+   1
+   +
+   \begin{tikzpicture}[baseline=.5em, inner sep=1]
+      \node (T) {$m$};
+      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \frac{1}{2}
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1]
+      \node (T) {$M$};
+      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
+      \draw (T) -- ++(0,-.5) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \frac{1}{6}
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1]
+      \node (T) {$M_3$};
+      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
+      \draw (T) -- ++(-.4,-.4) node[fill=white] {$t$};
+      \draw (T) -- ++(.4,-.4) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \frac{1}{24}
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1]
+      \node (T) {$M_4$};
+      \draw (T) -- ++(-.4,-.4) node[fill=white] {$t$};
+      \draw (T) -- ++(.4,-.4) node[fill=white] {$t$};
+      \draw (T) -- ++(-.4,.4) node[fill=white] {$t$};
+      \draw (T) -- ++(.4,.4) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \dots
+\end{align*}
+
+\subsection{Linear Forms}
+The Matrix Cookbook gives the following simple expectation:
+\begin{walign}
    \tag{312}
    \E[AXB+C] &= A \E[X] B + C
    &
@@ -146,8 +206,40 @@ The Matrix Cookbook gives the following simple expectations:
    \begin{matrix}
       \matmul{A,[X],B} \\+\, \matmul{C}
    \end{matrix}
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   \\
+\end{walign}
+
+\subsection{Quadratic Forms}
+We often prefer to write expectations in terms of the simple centered moments, which we can do by pulling out the mean:
+\renewcommand*{\arraystretch}{1}
+\[
+   \begin{bmatrix}
+      x - \\
+      x -
+   \end{bmatrix}
+   =
+   \begin{bmatrix}
+      (x\ominus m) - \\
+      (x\ominus m) -
+   \end{bmatrix}
+   +
+   \begin{array}{c}
+      m - \\
+      m -
+   \end{array}
+   =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$M$};
+      \draw (T) -- ++(.5,.25);
+      \draw (T) -- ++(.5,-.25);
+   \end{tikzpicture}
+   +
+   \begin{array}{c}
+      m - \\
+      m -
+   \end{array}
+\]
+This makes it easy to handle the quadratic forms from the Matrix Cookbook:
+\begin{walign}
    \tag{313}
    \mathrm{Var}[Ax] &= A \mathrm{Var}[x] A^T
    &
@@ -171,32 +263,11 @@ The Matrix Cookbook gives the following simple expectations:
    \end{tikzpicture}}}
  \\&&& =
    \vecmatvec{.5em}{}{A,M_2,A}{}
-\end{align*}
-
-\subsection{Quadratic Forms}
-We often prefer to write expectations in terms of the simple centered moments, which we can do by pulling out the mean:
-\renewcommand*{\arraystretch}{1}
-\[
-\begin{bmatrix}
-   x - \\
-   x -
-\end{bmatrix}
-=
-\begin{bmatrix}
-   (x\ominus m) - \\
-   (x\ominus m) -
-\end{bmatrix}
-+
-\begin{array}{c}
-   m - \\
-   m -
-\end{array}
-\]
-This makes it easy to handle the quadratic forms from the Matrix Cookbook:
-\renewcommand*{\arraystretch}{1}
-\begin{align*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   \\[.5em]
+   \tag{318}
    \E[x^T A x]
-   &= \mathrm{Tr}(A \Sigma) + m^T A m
+   &= \mathrm{Tr}(A M) + m^T A m
    &
    [\vecmatvec{.5em}{x}{A}{x}]
    &=
@@ -236,13 +307,11 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    \end{tikzpicture}
    \\
    &&&=
-   \trace{\Sigma,A}2
+   \trace{M,A}2
    +
    \vecmatvec{.5em}{m}{A}{m}
-   \\
-   E[\mathbf{x}^T A\mathbf{x}] &= \text{Tr}(AM) + m^T Am \tag{318} \\
-\end{align*}
-
+   \\[.5em]
+\end{walign}
 
 \begin{align*}
    E[(A\mathbf{x} + a)(B\mathbf{x} + b)^T] &= AMB^T + (Am + a)(Bm + b)^T \tag{320} \\
@@ -258,97 +327,31 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    E[(\mathbf{x} + a)^T(\mathbf{x} + a)] &= \text{Tr}(M) + (m + a)^T(m + a) \tag{330}
 \end{align*}
 
-\begin{walign}
-   \tag{319}
-   \text{Var}[x^T A x] &= 2\mu_2^2\text{Tr}(A^2) + 4\mu_2 c^T A^2 c + 4\mu_3 c^T A a + (\mu_4 - 3\mu_2^2)a^T a
-   &&
-   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
-      % Start with y = x^T A x
-      \node (a0) {$x^T A x$};
-      \node[right=1em of a0] (sq) {${}^2$};
-      \draw[d] (sq.east) -- ++(.2,.2);
-      \draw[d] (sq.east) -- ++(.3,.1);
-   \end{tikzpicture}
- \\&&&=
-   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-      % Expand x into m + (x⊖m)
-      \node (x1) {$(x \ominus m)$};
-      \node[right=1em of x1] (A) {$A$};
-      \node[right=1em of A] (x2) {$(x \ominus m)$};
-      \draw (x1) -- (A) -- (x2);
-      \node[above=0.3em of A] {$+$ terms\,with\,m$\,\,$};
-      % This diagram represents one of the central terms of the quartic expansion
-   \end{tikzpicture}
-   +
-   \dots
- \\&&&=
-   % Here we would show all pairings using Isserlis/Wick expansions:
-   % Terms with (x⊖m)⁴ → μ_4 or μ_2²
-   % Terms with (x⊖m)³ m → μ_3
-   % Terms with (x⊖m)² m² → μ_2
-   % Terms with m³ (x⊖m) → linear terms in μ_3
-   % and pure m^4 terms
-   % After careful collection of all terms:
-   \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
-      \node (res) {$2\mu_2^2\text{Tr}(A^2) + 4\mu_2 c^T A^2 c + 4\mu_3 c^T A a + (\mu_4 - 3\mu_2^2)a^T a$};
-   \end{tikzpicture}
-\end{walign}
 
-\begin{walign}
-   \tag{320}
-   E[(A x + a)(B x + b)^T] &= A M B^T + (A m + a)(B m + b)^T
-   &&
-   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-      \node (A) {$A$};
-      \node[right=.5em of A] (x) {$x$};
-      \node[right=.7em of x] (+a) {$+\,a$};
-      \node[right=2em of +a] (B) {$B$};
-      \node[right=.5em of B] (x2) {$x$};
-      \node[right=.7em of x2] (+b) {$+\,b$};
-      \draw[d] (+b.east) -- ++(.2,.2);
-      \draw[d] (+b.east) -- ++(.3,.1);
-   \end{tikzpicture}
- \\&&&=
-   \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-      % Distribute expectation:
-      % E[(A x)(B x)^T] + E[(A x)b^T] + E[a(B x)^T] + a b^T
-      \node (A) {$A$};
-      \node[right=.5em of A] (xx) {$[x x^T]$};
-      \node[right=.5em of xx] (B) {$B^T$};
-      \draw (A) -- (xx) -- (B);
-      \draw[d] (B.east) -- ++(.2,-.2);
-      \draw[d] (B.east) -- ++(.3,-.1);
-   \end{tikzpicture}
-   +
-   \begin{tikzpicture}[baseline=(m.base), inner sep=1pt]
-      \node (A) {$A$};
-      \node[right=.5em of A] (m) {$m$};
-      \node[right=.5em of m] (b) {$b^T$};
-      \draw (A) -- (m);
-      \draw (m) -- (b);
-   \end{tikzpicture}
-   +
-   \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
-      \node (a) {$a$};
-      \node[right=.5em of a] (B) {$B$};
-      \node[right=.5em of B] (m2) {$m^T$};
-      \draw (a) -- (B);
-      \draw (B) -- (m2);
-   \end{tikzpicture}
-   +
-   \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
-      \node (a) {$a$};
-      \node[right=.5em of a] (b) {$b^T$};
-      \draw (a) -- (b);
-   \end{tikzpicture}
- \\&&&=
-   A(M + m m^T) B^T + (A m + a)(B m + b)^T
-   \quad=\quad A M B^T + (A m + a)(B m + b)^T.
-\end{walign}
 
 \subsection{Cubic Forms}
+
+\[
+\begin{tikzpicture}[scale=1.3,
+  every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+  label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+  declare function={
+    xgap=.8;  % Horizontal spacing between diagrams
+  }]
+
+  \drawPartitionAtAngle{(-1.6*xgap,0)}{3}{$\kappa_3$}{{{1,2,3}}}
+  \drawPartitionAtAngle{(0,0)}{3}{$+\kappa_2\kappa_1\Big($}{{{1,2},{3}}}
+  \drawPartitionAtAngle{(xgap,0)}{3}{$+$}{{{1,3},{2}}}
+  \drawPartitionAtAngle{(2*xgap,0)}{3}{$+$}{{{2,3},{1}}}
+  \drawPartitionAtAngle{(3.6*xgap,0)}{3}{$\Big)+\kappa_1^3$}{{{1},{2},{3}}}
+
+\end{tikzpicture}
+\]
+
+
 When $x$ is a stochastic vector with mean vector $m$,
 it can be convenient to expand the raw third moment in terms of the central moments:
+
 \renewcommand*{\arraystretch}{1}
 \begin{align*}
 \begin{bmatrix}
@@ -427,6 +430,12 @@ it can be convenient to expand the raw third moment in terms of the central mome
 \end{align*}
 TODO: The edges from the $m,M$ term needs to be symmetrized.
 
+
+But this is still a bit of a mess.
+See also below on Cumulants.
+
+
+
 Assume \(\mathbf{x}\) to be a stochastic vector with independent coordinates, mean \(m\),
 covariance \(M\) and central moments \(v_3 = \mathbb{E}[(\mathbf{x} - m)^3]\). Then (see [7])
 \begin{align*}
@@ -452,8 +461,112 @@ AMB^T (Cm + c)
 \end{align*}
 
 
-\section{Quartic Forms}
-When $x$ is a stochastic vector iid. entries, and cumulants, $\kappa_1, \kappa_2, \kappa_3, \kappa_4$ are known,
+\section{Cumulants}
+
+Given a random vector $x\in\mathbb R^d$,
+its $n$th Cumulant Tensor, $K_n\in\R^{d,\ldots,d}$ is defined by
+\[
+   \log \mathrm{E}(\mathrm{e}^{\langle t, x\rangle})
+   = \sum_{n=1}^\infty \frac{1}{n!} \langle K_n, t^{\otimes n}\rangle
+   =
+   \begin{tikzpicture}[baseline=.5em, inner sep=1]
+      \node (T) {$K_1$};
+      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \frac{1}{2}
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1]
+      \node (T) {$K_2$};
+      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
+      \draw (T) -- ++(0,-.5) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \frac{1}{6}
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1]
+      \node (T) {$K_3$};
+      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
+      \draw (T) -- ++(-.4,-.4) node[fill=white] {$t$};
+      \draw (T) -- ++(.4,-.4) node[fill=white] {$t$};
+   \end{tikzpicture}
+   +
+   \dots
+\]
+The first couple of cumulants are similar to the central moments:
+\[
+   K_1 = m
+   \quad\text{and}\quad
+   K_2 = M
+   \quad\text{and}\quad
+   K_3 = M_3
+   \quad\text{and}\quad
+   K_4 = M_4
+   - \begin{tikzpicture}[baseline=-.8em, inner sep=.5pt]
+      \node (M1) {\scriptsize $M_2$};
+      \node[below=.4em of M1] (M2) {\scriptsize $M_2$};
+      \draw (M1) -- ++(.35,0);
+      \draw (M2) -- ++(.35,0);
+      \draw (M1) -- ++(-.35,0);
+      \draw (M2) -- ++(-.35,0);
+   \end{tikzpicture}
+   - \begin{tikzpicture}[baseline=(M1.base), inner sep=.5pt]
+      \node (M1) {\scriptsize $M_2$};
+      \node[right=.05em of M1] (M2) {\scriptsize $M_2$};
+      \draw (M1) -- ++(-.25,.25);
+      \draw (M1) -- ++(-.25,-.25);
+      \draw (M2) -- ++(.25,.25);
+      \draw (M2) -- ++(.25,-.25);
+   \end{tikzpicture}
+   - \begin{tikzpicture}[baseline=(M1.base), inner sep=.5pt]
+      \node (M1) {\scriptsize $M_2$};
+      \node[right=.05em of M1, yshift=-2pt] (M2) {\scriptsize $M_2$};
+      \draw (M1) -- ++(-.25,.25);
+      \draw (M1) -- ++(+.7,-.25);
+      \draw (M2) -- ++(-.7,-.25);
+      \draw (M2) -- ++(.25,.25);
+   \end{tikzpicture}
+   .
+\]
+They have the nice property (which is easy to see from the definition) that they are additive for independent random variables:
+$
+   K_n(x + y) = K_n(x) + K_n(y).
+$
+This generalizes the standard property that the variance of the sum of independent random variables is the sum of the variances.
+
+We can write the expectations of $x^{\otimes n}$ in terms of the cumulants:
+
+\[
+   \begin{bmatrix}
+      \begin{tikzpicture}[
+         baseline=(T.base),
+         every node/.style={inner sep=1pt, circle, draw=none, fill=white},
+       ]
+       \draw (30:.2) node[label] {$x$} -- (30:.6);
+       \draw (150:.2) node[label] {$x$} -- (150:.6);
+       \draw (270:.2) node[label] {$x$} -- (270:.6);
+      \end{tikzpicture}
+   \end{bmatrix}
+   =
+   \begin{tikzpicture}[
+      baseline=-1em,
+     every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+     label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+     declare function={
+       xgap=1.8;  % Horizontal spacing between diagrams
+     }]
+     \drawPartitionAtAngle[k]{(-1*xgap,0)}{3}{}{{{1,2,3}}}
+     \drawPartitionAtAngle[k]{(0,0)}{3}{$+$}{{{1,2},{3}}}
+     \drawPartitionAtAngle[k]{(xgap,0)}{3}{$+$}{{{1,3},{2}}}
+     \drawPartitionAtAngle[k]{(xgap*2,0)}{3}{$+$}{{{1},{2,3}}}
+     \drawPartitionAtAngle[k]{(xgap*3,0)}{3}{$+$}{{{1},{2},{3}}}
+   \end{tikzpicture}
+   .
+\]
+In general the sum is over all the partitions of the set $\{1,\ldots,n\}$.
+
+If the entries of $x$ are \emph{independent}, the off-diagonals of the cumulant tensors $K_1, K_2, \dots$ are zero.
+This means 
+%
+Assume each $x_i$ has cumulants $\kappa_1, \kappa_2, \kappa_3, \kappa_4 \in \R$, then
 \[
 \begin{bmatrix}
    \begin{tikzpicture}[
@@ -476,6 +589,8 @@ When $x$ is a stochastic vector iid. entries, and cumulants, $\kappa_1, \kappa_2
   },
   baseline=-1cm
   ]
+  \pgfmathsetmacro{\outerRadius}{.3}
+  \pgfmathsetmacro{\innerRadius}{.1}
 
   % Pattern {4} - 1 partition
   \drawPartitionAtAngle{(0,0)}{4}{$\kappa_4$}{{{1,2,3,4}}}
@@ -483,8 +598,8 @@ When $x$ is a stochastic vector iid. entries, and cumulants, $\kappa_1, \kappa_2
   % Pattern {3,1} - 4 partitions
   \drawPartitionAtAngle{(0,-ygap)}{4}{$+\kappa_3\kappa_1\Big($}{{{1,2,3},{4}}}
   \drawPartitionAtAngle{(xgap,-ygap)}{4}{$+$}{{{1,2,4},{3}}}
-  \drawPartitionAtAngle{(2*xgap,-ygap)}{4}{$+$}{{{1,3,4},{2}}}
-  \drawPartitionAtAngle{(3*xgap,-ygap)}{4}{$+$}{{{2,3,4},{1}}}
+  \drawPartitionAtAngle{(2*xgap,-ygap)}{4}{$+$}{{{2},{1,3,4}}}
+  \drawPartitionAtAngle{(3*xgap,-ygap)}{4}{$+$}{{{1},{2,3,4}}}
   \node[label] at (3.5*xgap,-ygap) {$\Big)$};
 
   % Pattern {2,2} - 3 partitions
@@ -497,9 +612,9 @@ When $x$ is a stochastic vector iid. entries, and cumulants, $\kappa_1, \kappa_2
   \drawPartitionAtAngle{(0,-3*ygap)}{4}{$+\kappa_2\kappa_1^2\Big($}{{{1,2},{3},{4}}}
   \drawPartitionAtAngle{(xgap,-3*ygap)}{4}{$+$}{{{1,3},{2},{4}}}
   \drawPartitionAtAngle{(2*xgap,-3*ygap)}{4}{$+$}{{{1,4},{2},{3}}}
-  \drawPartitionAtAngle{(3*xgap,-3*ygap)}{4}{$+$}{{{2,3},{1},{4}}}
-  \drawPartitionAtAngle{(4*xgap,-3*ygap)}{4}{$+$}{{{2,4},{1},{3}}}
-  \drawPartitionAtAngle{(5*xgap,-3*ygap)}{4}{$+$}{{{3,4},{1},{2}}}
+  \drawPartitionAtAngle{(3*xgap,-3*ygap)}{4}{$+$}{{{1},{2,3},{4}}}
+  \drawPartitionAtAngle{(4*xgap,-3*ygap)}{4}{$+$}{{{1},{3},{2,4}}}
+  \drawPartitionAtAngle{(5*xgap,-3*ygap)}{4}{$+$}{{{1},{2},{3,4}}}
   \node[label] at (5.5*xgap,-3*ygap) {$\Big)$};
 
   % Pattern {1,1,1,1} - 1 partition
@@ -507,6 +622,101 @@ When $x$ is a stochastic vector iid. entries, and cumulants, $\kappa_1, \kappa_2
 
 \end{tikzpicture}
 \]
+
+Note in particular, that if the mean, $\kappa_1$, is zero, only four terms survive.
+%\(
+%\begin{tikzpicture}[
+%   baseline=4em,
+%  every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+%  label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+%  declare function={
+%    xgap=1;  % Horizontal spacing between diagrams
+%    ygap=.6;  % Vertical spacing between rows
+%  },
+%  baseline=-1cm
+%  ]
+%  \pgfmathsetmacro{\outerRadius}{.3}
+%  \pgfmathsetmacro{\innerRadius}{.1}
+%
+%  \drawPartitionAtAngle{(-1.5*xgap,0)}{4}{$\kappa_4$}{{{1,2,3,4}}}
+%  \drawPartitionAtAngle{(0,0)}{4}{$+\kappa_2^2\Big($}{{{1,2},{3,4}}}
+%  \drawPartitionAtAngle{(xgap,0)}{4}{$+$}{{{1,3},{2,4}}}
+%  \drawPartitionAtAngle{(2*xgap,0)}{4}{$+$}{{{1,4},{2,3}}}
+%  \node[label] at (2.5*xgap,0) {$\Big)$};
+%\end{tikzpicture}
+%.
+%\)
+For $n=5$ there are 52 partitions in total, but only 11 survive if $\kappa_1=0$:
+\[
+   \begin{tikzpicture}[
+     every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+     label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+     declare function={
+       xgap=1;  % Horizontal spacing between diagrams
+       ygap=.6;  % Vertical spacing between rows
+     },
+     baseline=-1cm
+     ]
+     \pgfmathsetmacro{\outerRadius}{.3}
+     \pgfmathsetmacro{\innerRadius}{.1}
+   % Pattern {5} - 1 partition
+   \drawPartitionAtAngle{(-1.8*xgap,-ygap)}{5}{$\kappa_5$}{{{1,2,3,4,5}}}
+   % Pattern {3,2} - 10 partitions
+   \drawPartitionAtAngle{(0,-ygap)}{5}{$+\kappa_3\kappa_2\Big($}{{{1,2,3},{4,5}}}
+   \drawPartitionAtAngle{(xgap,-ygap)}{5}{$+$}{{{3,5},{1,2,4}}}
+   \drawPartitionAtAngle{(2*xgap,-ygap)}{5}{$+$}{{{1,2,5},{3,4}}}
+   \drawPartitionAtAngle{(3*xgap,-ygap)}{5}{$+$}{{{1,3,4},{2,5}}}
+   \drawPartitionAtAngle{(4*xgap,-ygap)}{5}{$+$}{{{1,3,5},{2,4}}}
+   \drawPartitionAtAngle{(5*xgap,-ygap)}{5}{$+$}{{{1,4,5},{2,3}}}
+   \drawPartitionAtAngle{(6*xgap,-ygap)}{5}{$+$}{{{1,5},{2,3,4}}}
+   \drawPartitionAtAngle{(7*xgap,-ygap)}{5}{$+$}{{{2,3,5},{1,4}}}
+   \drawPartitionAtAngle{(8*xgap,-ygap)}{5}{$+$}{{{1,3},{2,4,5}}}
+   \drawPartitionAtAngle{(9*xgap,-ygap)}{5}{$+$}{{{1,2},{3,4,5}}}
+   \node[label] at (9.5*xgap,-ygap) {$\Big)$};
+   \end{tikzpicture}
+\]
+
+If $x$ is Gaussian, all cumulants of order $3$ and higher are zero.
+For $n=6$ there are 203 partitions in total, but only 15 terms\footnote{This is why $\E[g^6]=15$ for $g\sim N(0,1)$.} for $E[x^{\otimes 6}]$:
+\[
+   \begin{tikzpicture}[
+     every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+     label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+     declare function={
+       xgap=1;  % Horizontal spacing between diagrams
+       ygap=.8;  % Vertical spacing between rows
+     },
+     baseline=-1cm
+     ]
+     \pgfmathsetmacro{\outerRadius}{.3}
+     \pgfmathsetmacro{\innerRadius}{.1}
+     % Pattern {2,2,2} - 15 partitions
+     \drawPartitionAtAngle{(0,0)}{6}{$\kappa_2^3\Big($}{{{1,2},{3,4},{5,6}}}
+     \drawPartitionAtAngle{(xgap,0)}{6}{$+$}{{{1,2},{3,5},{4,6}}}
+     \drawPartitionAtAngle{(2*xgap,0)}{6}{$+$}{{{1,2},{3,6},{4,5}}}
+     \drawPartitionAtAngle{(3*xgap,0)}{6}{$+$}{{{1,3},{2,4},{5,6}}}
+     \drawPartitionAtAngle{(4*xgap,0)}{6}{$+$}{{{1,3},{2,5},{4,6}}}
+     \drawPartitionAtAngle{(5*xgap,0)}{6}{$+$}{{{1,3},{2,6},{4,5}}}
+     \drawPartitionAtAngle{(6*xgap,0)}{6}{$+$}{{{1,4},{2,3},{5,6}}}
+     % row 2
+     \drawPartitionAtAngle{(1*xgap,-ygap)}{6}{$+$}{{{1,4},{2,5},{3,6}}}
+     \drawPartitionAtAngle{(2*xgap,-ygap)}{6}{$+$}{{{1,4},{2,6},{3,5}}}
+     \drawPartitionAtAngle{(3*xgap,-ygap)}{6}{$+$}{{{1,5},{2,3},{4,6}}}
+     \drawPartitionAtAngle{(4*xgap,-ygap)}{6}{$+$}{{{1,5},{2,4},{3,6}}}
+     \drawPartitionAtAngle{(5*xgap,-ygap)}{6}{$+$}{{{1,5},{2,6},{3,4}}}
+     \drawPartitionAtAngle{(6*xgap,-ygap)}{6}{$+$}{{{1,6},{2,3},{4,5}}}
+     \drawPartitionAtAngle{(7*xgap,-ygap)}{6}{$+$}{{{1,6},{3,5},{2,4}}}
+     \drawPartitionAtAngle{(8*xgap,-ygap)}{6}{$+$}{{{1,6},{3,4},{2,5}}}
+     \node[label] at (8.5*xgap,-ygap) {$\Big)$};
+     \end{tikzpicture}
+     .
+\]
+
+\subsection{Quartic Forms}
+
+
+
+
 
 We can use this to compute $\mathrm{Var}[x^T A x]$.
 We assume $A$ is symmetric:
@@ -553,12 +763,12 @@ We assume $A$ is symmetric:
        \node (bullet) at (.8,0) {$\sbullet$};
        \node[anchor=west] (A2) at (1.1,0) {$A$};
        \node (bullet2) at (1.8,0) {$\sbullet$};
-       \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west)
+       \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west);
        \draw (A1.east) to[out=-45,in=-135] (bullet);
        \draw (A2.east) -- (bullet2);
    \end{tikzpicture}
    \\&\quad+
-   2 \kappa_2^2 \hspace{-.5em}\trace{a,a}{2}\hspace{-.5em} + \kappa_2^2 \hspace{-1em}\trace{a}{1}\hspace{-2em}\trace{a}{1}
+   2 \kappa_2^2 \hspace{-.5em}\trace{A,A}{2}\hspace{-.5em} + \kappa_2^2 \hspace{-1em}\trace{A}{1}\hspace{-2em}\trace{A}{1}
    \\&\quad+
    4\kappa_2\kappa_1^2
    \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
@@ -602,7 +812,7 @@ We assume $A$ is symmetric:
        \node (bullet) at (.8,0) {$\sbullet$};
        \node[anchor=west] (A2) at (1.1,0) {$A$};
        \node (bullet2) at (1.8,0) {$\sbullet$};
-       \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west)
+       \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west);
        \draw (A1.east) to[out=-45,in=-135] (bullet);
        \draw (A2.east) -- (bullet2);
    \end{tikzpicture}
@@ -632,10 +842,13 @@ and $\mu_4 = \kappa_4 + 3\kappa_2^2$ is the fourth central moment.
 \section{Weighted Scalar Variable}
 Let $y=w^T x$, and let $m=E[y]$, then
 \begin{align*}
+   \tag{321}
    \E[y] &= m = w^T \mu
    \\
+   \tag{322}
    \E[(y\ominus m)^2] &= \vecmatvec{.5em}{w}{M_2}{w}
    \\
+   \tag{323}
    \E[(y\ominus m)^3] &=
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$M_3$};
@@ -647,6 +860,7 @@ Let $y=w^T x$, and let $m=E[y]$, then
       \draw (a0.west) -- (n3);
    \end{tikzpicture}}
    \\
+   \tag{324}
    \E[(y\ominus m)^4] &=
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$M_4$};
@@ -660,25 +874,14 @@ Let $y=w^T x$, and let $m=E[y]$, then
       \draw (a0.west) -- (n3);
    \end{tikzpicture}}
 \end{align*}
-For specific distributions, like $x$ Gaussian, we can often reduce the moment tensors further.
-Khintchine's inequality also gives a way to bound all of these in terms of $E[(y-m)^2]$.
 
 
-Similarly,
+For $x\sim N(0,1)$, we have the inequality:
 \[
-\mathbb{E}[(y\ominus m_y)^3]
-=
-\begin{tikzpicture}[baseline=(M3.base), inner sep=1pt]
-   \node (M3) {$M_3$};
-   \node[above=.3em of M3] (w0) {$w$};
-   \node[left=.3em of M3] (w1) {$w$};
-   \node[right=.3em of M3] (w2) {$w$};
-   \draw (M3) -- (w0);
-   \draw (M3) -- (w1);
-   \draw (M3) -- (w2);
-\end{tikzpicture}
-= w^T M_3 (w,w).
+   \E[y^n]^{1/n} \leq \sqrt{2/\pi}\, \|w\|_2.
 \]
+
+
 \section{Gaussian Moments}
 
 For a Gaussian vector $x \sim \mathcal{N}(m,M)$:
@@ -704,19 +907,72 @@ Stein's lemma gives the following very general equation, for any differentiable 
 \]
 Combined with the tensor chain rule from chapter~\ref{chapter:functions}, this can be a very powerful way to evaluate many hard expectations.
 
-\subsection{Mean and covariance of linear forms}
-TODO
-\subsection{Mean and variance of square forms}
-TODO
+
+
+\begin{align*}
+E(xx^T) &= \Sigma + mm^T \tag{377} \\
+E[x^TAx] &= \text{Tr}(A\Sigma) + m^TAm \tag{378} \\
+\text{Var}(x^TAx) &= \text{Tr}[A\Sigma(A + A^T)\Sigma] + \cdots \tag{379} \\
+&\quad +m^T(A + A^T)\Sigma(A + A^T)m \\
+E[(x - m')^TA(x - m')] &= (m - m')^TA(m - m') + \text{Tr}(A\Sigma) \tag{380}
+\end{align*}
+
+If $\Sigma = \sigma^2I$ and $A$ is symmetric, then
+
+\begin{align*}
+\text{Var}(x^TAx) = 2\sigma^4\text{Tr}(A^2) + 4\sigma^2m^TA^2m \tag{381}
+\end{align*}
+
+Assume $x \sim \mathcal{N}(0, \sigma^2I)$ and $A$ and $B$ to be symmetric, then
+
+\begin{align*}
+\text{Cov}(x^TAx, x^TBx) = 2\sigma^4\text{Tr}(AB) \tag{382}
+\end{align*}
+
 \subsection{Cubic forms}
-TODO
+
+Assume $x$ to be a stochastic vector with independent coordinates, mean $m$ and covariance $M$
+
+\begin{align*}
+E[xb^Txx^T] &= mb^T(M + mm^T) + (M + mm^T)bm^T \tag{383} \\
+&\quad +b^Tm(M - mm^T)
+\end{align*}
+
 \subsection{Mean of Quartic Forms}
-TODO
-For the fourth moment of a Gaussian with zero mean, Isserlis' theorem gives:
-\[
-E[x_i x_j x_k x_l] = M_{ij}M_{kl} + M_{ik}M_{jl} + M_{il}M_{jk}.
-\]
-With a nonzero mean, add corresponding terms involving $m$.
+
+\begin{align*}
+E[xx^Txx^T] &= 2(\Sigma + mm^T)^2 + m^Tm(\Sigma - mm^T) \\
+&\quad +\text{Tr}(\Sigma)(\Sigma + mm^T) \\[1em]
+E[xx^TAxx^T] &= (\Sigma + mm^T)(A + A^T)(\Sigma + mm^T) \\
+&\quad +m^TAm(\Sigma - mm^T) + \text{Tr}[A\Sigma](\Sigma + mm^T) \\[1em]
+E[x^Txx^Tx] &= 2\text{Tr}(\Sigma^2) + 4m^T\Sigma m + (\text{Tr}(\Sigma) + m^Tm)^2 \\[1em]
+E[x^TAxx^TBx] &= \text{Tr}[A\Sigma(B + B^T)\Sigma] + m^T(A + A^T)\Sigma(B + B^T)m \\
+&\quad +(\text{Tr}(A\Sigma) + m^TAm)(\text{Tr}(B\Sigma) + m^TBm)
+\end{align*}
+
+\begin{align*}
+E[a^Txb^Txc^Txd^Tx] &= (a^T(\Sigma + mm^T)b)(c^T(\Sigma + mm^T)d) \\
+&\quad +(a^T(\Sigma + mm^T)c)(b^T(\Sigma + mm^T)d) \\
+&\quad +(a^T(\Sigma + mm^T)d)(b^T(\Sigma + mm^T)c) - 2a^Tmb^Tmc^Tmd^Tm
+\end{align*}
+
+\begin{align*}
+&E[(Ax + a)(Bx + b)^T(Cx + c)(Dx + d)^T] \\
+&= [A\Sigma B^T + (Am + a)(Bm + b)^T][C\Sigma D^T + (Cm + c)(Dm + d)^T] \\
+&\quad +[A\Sigma C^T + (Am + a)(Cm + c)^T][B\Sigma D^T + (Bm + b)(Dm + d)^T] \\
+&\quad +(Bm + b)^T(Cm + c)[A\Sigma D^T - (Am + a)(Dm + d)^T] \\
+&\quad +\text{Tr}(B\Sigma C^T)[A\Sigma D^T + (Am + a)(Dm + d)^T]
+\end{align*}
+
+\begin{align*}
+&E[(Ax + a)^T(Bx + b)(Cx + c)^T(Dx + d)] \\
+&= \text{Tr}[A\Sigma(C^TD + D^TC)\Sigma B^T] \\
+&\quad +[(Am + a)^TB + (Bm + b)^TA]\Sigma[C^T(Dm + d) + D^T(Cm + c)] \\
+&\quad +[\text{Tr}(A\Sigma B^T) + (Am + a)^T(Bm + b)][\text{Tr}(C\Sigma D^T) + (Cm + c)^T(Dm + d)]
+\end{align*}
+
+See [7].
+
 
 \subsection{Mixture of Gaussians}
 For a mixture of Gaussians:
@@ -729,6 +985,12 @@ the moments are weighted sums:
    \mathrm{Var}[x] = \sum_k \pi_k (M_k + m_k m_k^T) - \left(\sum_k \pi_k m_k\right)\left(\sum_k \pi_k m_k\right)^T.
 \]
 Higher moments similarly combine via linearity.
+
+
+\begin{align*}
+E[x] &= \sum_k \rho_k m_k \tag{384} \\[1em]
+\text{Cov}(x) &= \sum_k\sum_{k'} \rho_k\rho_{k'} (\Sigma_k + m_km_k^T - m_km_{k'}^T) \tag{385}
+\end{align*}
 
 \subsection{Derivatives}
 Derivatives of moments with respect to $m$ or $M$ can be found by differentiating under the integral sign, and using Stein's lemma for Gaussian cases.
