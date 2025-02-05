@@ -23,13 +23,15 @@ jobs:
       # 3. Install pydoctor.
       - name: Install pydoctor
         run: |
-          pip install pydoctor
+          #pip install pydoctor
+          pip install pdoc
 
       # 4. Build the API documentation using pydoctor.
       #    This command tells pydoctor to generate HTML docs in docs/api for the module tensorgrad.
       - name: Build API Documentation with Pydoctor
         run: |
-          pydoctor --html-output=docs/api tensorgrad/
+          # pydoctor --html-output=docs/api tensorgrad/
+          pdoc --html tensorgrad -o docs/api
 
       # 5. Deploy the generated documentation to the gh-pages branch.
       - name: Deploy API Documentation to gh-pages
