@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<meta name="generator" content="pdoc3 0.11.5">
+<title>tensorgrad.extras.expectation API documentation</title>
+<meta name="description" content="">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source > summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible;min-width:max-content}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin:1em 0}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => {
+hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
+hljs.highlightAll();
+/* Collapse source docstrings */
+setTimeout(() => {
+[...document.querySelectorAll('.hljs.language-python > .hljs-string')]
+.filter(el => el.innerHTML.length > 200 && ['"""', "'''"].includes(el.innerHTML.substring(0, 3)))
+.forEach(el => {
+let d = document.createElement('details');
+d.classList.add('hljs-string');
+d.innerHTML = '<summary>"""</summary>' + el.innerHTML.substring(3);
+el.replaceWith(d);
+});
+}, 100);
+})</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>tensorgrad.extras.expectation</code></h1>
+</header>
+<section id="section-intro">
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="tensorgrad.extras.expectation.Expectation"><code class="flex name class">
+<span>class <span class="ident">Expectation</span></span>
+<span>(</span><span>tensor: <a title="tensorgrad.tensor.Tensor" href="../tensor.html#tensorgrad.tensor.Tensor">Tensor</a>,<br>wrt: <a title="tensorgrad.tensor.Variable" href="../tensor.html#tensorgrad.tensor.Variable">Variable</a>,<br>mu: None | <a title="tensorgrad.tensor.Tensor" href="../tensor.html#tensorgrad.tensor.Tensor">Tensor</a> = None,<br>covar: None | <a title="tensorgrad.tensor.Tensor" href="../tensor.html#tensorgrad.tensor.Tensor">Tensor</a> = None,<br>covar_names: None | dict[str, str] = None)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Expectation(Tensor):
+    def __init__(
+        self,
+        tensor: Tensor,
+        wrt: Variable,
+        mu: None | Tensor = None,
+        covar: None | Tensor = None,
+        covar_names: None | dict[str, str] = None,
+    ):
+        &#34;&#34;&#34;
+        Take the Expectation of a tensor with respect to a variable, assumed to have a multi-normal
+        distribution with the given expectation and covariance.
+
+        Note:
+            The covariance tensor should be the expectation, covar = E[x x^T - mu mu^T].
+            The edges of covar should include the edges of x, as well as a disjoint copy
+            of the same edges. The mapping from the original edges to the new edges should be
+            given in covar_names.
+
+        Args:
+            tensor (Tensor): The input tensor.
+            wrt (Variable): The variable with respect to which the expectation is computed.
+            mu (Tensor): The mean tensor. Defaults to the zero tensor.
+            covar (Tensor): The covariance tensor. Defaults to the identity tensor.
+            covar_names (dict[str, str]): Map from original (wrt) name to covar name.
+            Note: It is not a map from wrt.original name, like in the Derivative class.
+        &#34;&#34;&#34;
+        self.tensor = tensor
+        self._shape = tensor.shape
+        self.wrt = wrt
+
+        if mu is None:
+            mu = Zero(**wrt.shape)
+        assert mu.shape == wrt.shape, f&#34;{mu.shape=} != {wrt.shape=}&#34;
+        self.mu = mu
+
+        if covar is None:
+            if covar_names is None:
+                covar_names = _unused_edge_names(wrt.edges, wrt.edges)
+            covar = Product([Copy(wrt.shape[e], e, e2) for e, e2 in covar_names.items()])
+        elif covar_names is None:
+            raise ValueError(&#34;If covar is not given, covar_names must be given.&#34;)
+        if covar.shape != wrt.shape | {covar_names[k]: s for k, s in wrt.shape.items()}:
+            co_size = {covar_names[k]: s for k, s in wrt.shape.items()}
+            raise ValueError(f&#34;{covar.shape=} != {wrt.shape=} | {co_size=}&#34;)
+        assert covar.order % 2 == 0, f&#34;{covar.order=}&#34;
+
+        assert covar_names.keys() == wrt.edges, f&#34;{covar_names.keys()=} != {wrt.edges=}&#34;
+        for k, v in covar_names.items():
+            assert any((k in s and v in s) for s in covar.symmetries), f&#34;{k}, {v} should be symmetric&#34;
+        self.covar_names = covar_names
+        self.covar = covar
+
+        # Compute the mapping between the two sets of edge names in covar:
+        # self.covar_out_edges = [e for e in covar.edges if e not in mu.edges]
+
+    def evaluate(
+        self,
+        values: dict[&#34;Variable&#34;, torch.Tensor],
+        dims: dict[Symbol, int] | None = None,
+    ) -&gt; torch.Tensor:
+        &#34;&#34;&#34;
+        Numerically approximate E[tensor] via Monte Carlo sampling from N(mu, covar),
+        storing a *batch* dimension (&#34;samples&#34;) in wrt and taking the mean over that dimension.
+
+        Steps:
+        - Evaluate mu, covar =&gt; align/flatten =&gt; sample in R^D
+        - Reshape to (samples, *wrt.shape)
+        - Insert that into values[self.wrt]
+        - Evaluate self.tensor(...) =&gt; shape (samples, *rest)
+        - .mean over &#39;samples&#39; =&gt; final result
+        &#34;&#34;&#34;
+
+        # If we already computed this Expectation, return cached value:
+        if self in values:
+            return values[self]
+
+        # If user pinned a specific wrt =&gt; just evaluate the tensor directly
+        if self.wrt in values:
+            out = self.tensor.evaluate(values, dims)
+            values[self] = out
+            return out
+
+        if dims is None:
+            dims = {}
+
+        # 1) Evaluate mu and covar numerically
+        mu_torch = self.mu.evaluate(values, dims)  # named edges = same as self.mu.edges
+        covar_torch = self.covar.evaluate(values, dims)
+
+        # 2) Align mu =&gt; shape(*self.wrt.edges)
+        #    Example: if wrt.edges = (i, j), we call mu_torch.align_to(&#34;i&#34;,&#34;j&#34;).
+        #    That ensures the dimension order matches wrt&#39;s order.
+        mu_aligned = mu_torch.align_to(*self.wrt.edges)
+        # Flatten to (D,)
+        D = mu_aligned.numel()
+        mu_flat = mu_aligned.rename(None).reshape(D)
+
+        # 3) Align covar =&gt; shape(*self.wrt.edges, *mapped_wrt_edges)
+        #    For example: (i, j, i2, j2).  Let&#39;s define the order explicitly:
+        #    first the &#34;row&#34; edges (i, j), then the &#34;column&#34; edges (i2, j2).
+        col_edges = [self.covar_names[e] for e in self.wrt.edges]
+        covar_aligned = covar_torch.align_to(*self.wrt.edges, *col_edges)
+        # Flatten to (D, D)
+        covar_reshaped = covar_aligned.rename(None).reshape(D, D)
+
+        # 4) Number of samples
+        num_samples = dims.get(&#34;samples&#34;, 1000)
+        if &#34;seed&#34; in dims:
+            torch.manual_seed(dims[&#34;seed&#34;])
+
+        # 5) Cholesky
+        L = torch.linalg.cholesky(covar_reshaped)
+
+        # 6) Sample =&gt; shape (samples, D)
+        z = torch.randn(num_samples, D, device=mu_flat.device, dtype=mu_flat.dtype)
+        x_flat = mu_flat + (z @ L.T)  # shape (samples, D)
+
+        # 7) Reshape =&gt; (samples, *wrt.shape)  =&gt; name the leading dim &#34;samples&#34;
+        wrt_shape = mu_aligned.shape  # e.g. (2,3)
+        x_batched = x_flat.reshape(num_samples, *wrt_shape)
+        x_batched_named = x_batched.refine_names(&#34;samples&#34;, *self.wrt.edges)
+
+        # 8) Insert into values =&gt; call self.tensor.evaluate
+        temp_values = dict(values)
+        temp_values[self.wrt] = x_batched_named  # Now wrt has a leading &#39;samples&#39; dimension
+        out_batched = self.tensor.evaluate(temp_values, dims)  # =&gt; shape (samples, ...)
+
+        # 9) Take mean over the &#34;samples&#34; dimension
+        out_batched_unnamed = out_batched.rename(None)  # drop named dims to index them
+        out_mean = out_batched_unnamed.mean(dim=0)  # remove &#39;samples&#39; from the front
+
+        # 10) Rename the result to the free edges =&gt; i.e. self.tensor.edges
+        #     but &#34;out_batched&#34; might have shape (samples, E...) =&gt; after mean =&gt; shape(E...).
+        #     So we can do:
+        out_named = out_mean.refine_names(*self.tensor.edges)
+
+        # Cache
+        values[self] = out_named
+        return out_named
+
+    def simplify(self, args=None):
+        # We don&#39;t currently support pow() functions directly, so we prefer to expand them.
+        args = self._check_simplify(args) | {&#34;combine_products&#34;: False}
+        inner = self.tensor.simplify(args=args)
+
+        # Just a small optimization
+        if not inner.depends_on(self.wrt):
+            return inner
+
+        if args[&#34;grad_steps&#34;] == 0:
+            # We just steal the grad_steps name for now
+            res = Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
+        else:
+            args[&#34;grad_steps&#34;] -= 1
+
+        if isinstance(inner, Sum):
+            return Sum(
+                [Expectation(t, self.wrt, self.mu, self.covar, self.covar_names) for t in inner.tensors],
+                inner.weights,
+            )
+
+        if isinstance(inner, Constant):
+            return inner.simplify(args=args)
+
+        if isinstance(inner, Variable):
+            assert inner == self.wrt, &#34;A variable can only depend on wrt if they are the same&#34;
+            iso_rename = next(self.wrt.isomorphisms(inner))
+            return self.mu.rename(**iso_rename)
+
+        if isinstance(inner, Product):
+            prod = inner
+            # Right now we only support expectations of products where wrt is directly in the product.
+            if self.wrt in prod.tensors:
+                # 1) Look for an instance of wrt in the product
+                x = next(x for x in prod.tensors if x == self.wrt)
+
+                # Rename the mu and covar to match the actual edges of x
+                # E.g. if x is actually the transpose of wrt
+                iso_rename = next(self.wrt.isomorphisms(x))
+                mu = self.mu.rename(**iso_rename)
+
+                # 2) Form x * rest by removing x from the product
+                # Note subs.remove will only remove _the first_ occurrence of x, not all of them.
+                subs = prod.tensors[:]
+                subs.remove(x)
+                rest = Product(subs)
+
+                # 3) Expand: x * rest = (x - mu + mu) * rest = mu * rest + (x - mu) * rest
+                res = mu @ Expectation(rest, self.wrt, self.mu, self.covar, self.covar_names)
+                assert res.edges == self.edges, f&#34;{res.edges=} != {self.edges=}&#34;
+
+                # Before we can rename covar with iso_rename, we have to make sure it there&#39;s
+                # no clash with the covar_names.
+                out_rename = _unused_edge_names(self.covar_names.values(), x.edges | rest.edges)
+                covar = self.covar.rename(**(out_rename | iso_rename))
+                expected = x.shape | {out_rename[self.covar_names[k]]: s for k, s in self.wrt.shape.items()}
+                assert covar.shape == expected, f&#34;{covar.shape=} != {expected=}&#34;
+
+                # With derivatives, we have to use the original names of the variables
+                # new_edges = {x.orig[iso_rename[k]]: out_rename[v] for k, v in self.covar_names.items()}
+                new_edges = {self.wrt.orig[k]: out_rename[v] for k, v in self.covar_names.items()}
+
+                # We use the covar_names as the new_names for the derivative. Note that these will eventually
+                # be consumed by the multiplication with @ covar.
+                res += covar @ Expectation(
+                    # We have to take the derivative wrt x, not wrt. Or maybe it works with wrt too?
+                    # I guess derivatives don&#39;t really care about renamings of the variable, as long as the
+                    # new edges are consistent
+                    # Derivative(rest, x, new_edges),
+                    Derivative(rest, self.wrt, new_edges),
+                    self.wrt,
+                    self.mu,
+                    self.covar,
+                    self.covar_names,
+                )
+                assert res.edges == self.edges, f&#34;{res.edges=} != {self.edges=}&#34;
+                return res.simplify(args=args)
+
+            # Look for a power function with exponent &gt;= 1 and pull out a factor
+            if (
+                fn := next(
+                    (
+                        t
+                        for t in prod.tensors
+                        if isinstance(t, Function)
+                        and isinstance(t.signature, _PowerFunction)
+                        and t.signature.k &gt;= 1
+                    ),
+                    None,
+                )
+            ) is not None:
+                assert isinstance(fn, Function)
+                subs = prod.tensors[:]
+                subs.remove(fn)
+                (inner,) = fn.inputs
+                subs.append(inner * fn.weight)  # We pull the weight out as well
+                if fn.signature.k &gt; 1:
+                    subs.append(pow(inner, fn.signature.k - 1))
+                return Expectation(Product(subs), self.wrt, self.mu, self.covar, self.covar_names).simplify(
+                    args=args
+                )
+
+            # Otherwise we look for constant factors to pull out
+            elif args.get(&#34;extract_constants_from_expectation&#34;) and any(
+                not t.depends_on(self.wrt) for t in prod.tensors
+            ):
+                # Separate into constant and wrt-dependent factors
+                constant_terms, wrt_terms = [], []
+                for t in prod.tensors:
+                    if t.depends_on(self.wrt):
+                        wrt_terms.append(t)
+                    else:
+                        constant_terms.append(t)
+                assert len(wrt_terms) &gt; 0
+                assert len(constant_terms) &gt; 0
+
+                # Pull out the constant terms.
+                # Note we need to avoid introducing a Product with a single element,
+                # so we don&#39;t get an infinite loop in the simplify method.
+                constant_prod = Product(constant_terms).simplify(args=args)
+                wrt_prod = Product(wrt_terms).simplify(args=args)
+
+                # Compute E[wrt-dependent part] and multiply by constants
+                return (
+                    constant_prod @ Expectation(wrt_prod, self.wrt, self.mu, self.covar, self.covar_names)
+                ).simplify(args=args)
+
+            # Finally check if any factors contain sums that we can expand
+            if False and (
+                sum_idx := next(
+                    (i for i, t in enumerate(prod.tensors) if isinstance(t, Sum) and t.depends_on(self.wrt)),
+                    None,
+                )
+                is not None
+            ):
+                sum_term = prod.tensors[sum_idx]
+                assert isinstance(sum_term, Sum)
+                other_terms = prod.tensors[:sum_idx] + prod.tensors[sum_idx + 1 :]
+
+                # Distribute the product over the sum
+                return Sum(
+                    [
+                        Expectation(
+                            Product([t] + other_terms), self.wrt, self.mu, self.covar, self.covar_names
+                        )
+                        for t in sum_term.tensors
+                    ],
+                    sum_term.weights,
+                ).simplify(args=args)
+
+        # If nothing was found that we know how to simplify, we just return the original
+        return Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
+
+    def grad(self, x: Variable, new_names: dict[str, str] | None = None) -&gt; Tensor:
+        new_names = self._check_grad(x, new_names)
+        # TODO: There&#39;s some issue here if x == self.wrt
+        res = Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.covar, self.covar_names)
+        assert res.shape == self.shape | {new_names[k]: s for k, s in x.shape.items()}
+        return res
+
+    def __repr__(self):
+        return f&#34;E[{self.tensor}]&#34;
+
+    def structural_graph(self) -&gt; tuple[nx.MultiDiGraph, dict[str, int]]:
+        G = nx.MultiDiGraph()
+        G.add_node(0, name=type(self).__name__, tensor=self)
+        G, t_edges = _add_structural_graph(G, self.tensor, root_edge_label=&#34;self.tensor&#34;)
+        G, _ = _add_structural_graph(G, self.wrt, root_edge_label=&#34;self.wrt&#34;)
+        G, _ = _add_structural_graph(G, self.mu, root_edge_label=&#34;self.mu&#34;)
+        # TODO: We should add the covar_names here
+        G, _ = _add_structural_graph(G, self.covar, root_edge_label=&#34;self.covar&#34;)
+        return G, t_edges
+
+    def rename(self, **kwargs: dict[str, str]):
+        kwargs = self._check_rename(kwargs)
+        # The variables, wrt, mu, covar shouldn&#39;t influence our free edge names
+        res = Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
+        assert res.edges == {kwargs.get(e, e) for e in self.edges}
+        return res
+
+    def depends_on(self, x: &#34;Variable&#34;) -&gt; bool:
+        return self.tensor.depends_on(x)</code></pre>
+</details>
+<div class="desc"><p>Helper class that provides a standard way to create an ABC using
+inheritance.</p>
+<p>Take the Expectation of a tensor with respect to a variable, assumed to have a multi-normal
+distribution with the given expectation and covariance.</p>
+<h2 id="note">Note</h2>
+<p>The covariance tensor should be the expectation, covar = E[x x^T - mu mu^T].
+The edges of covar should include the edges of x, as well as a disjoint copy
+of the same edges. The mapping from the original edges to the new edges should be
+given in covar_names.</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>tensor</code></strong> :&ensp;<code>Tensor</code></dt>
+<dd>The input tensor.</dd>
+<dt><strong><code>wrt</code></strong> :&ensp;<code>Variable</code></dt>
+<dd>The variable with respect to which the expectation is computed.</dd>
+<dt><strong><code>mu</code></strong> :&ensp;<code>Tensor</code></dt>
+<dd>The mean tensor. Defaults to the zero tensor.</dd>
+<dt><strong><code>covar</code></strong> :&ensp;<code>Tensor</code></dt>
+<dd>The covariance tensor. Defaults to the identity tensor.</dd>
+<dt><strong><code>covar_names</code></strong> :&ensp;<code>dict[str, str]</code></dt>
+<dd>Map from original (wrt) name to covar name.</dd>
+<dt><strong><code>Note</code></strong></dt>
+<dd>It is not a map from wrt.original name, like in the Derivative class.</dd>
+</dl></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="tensorgrad.tensor.Tensor" href="../tensor.html#tensorgrad.tensor.Tensor">Tensor</a></li>
+<li>abc.ABC</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="tensorgrad.extras.expectation.Expectation.evaluate"><code class="name flex">
+<span>def <span class="ident">evaluate</span></span>(<span>self,<br>values: dict['Variable', torch.Tensor],<br>dims: dict[sympy.core.symbol.Symbol, int] | None = None) ‑> torch.Tensor</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def evaluate(
+    self,
+    values: dict[&#34;Variable&#34;, torch.Tensor],
+    dims: dict[Symbol, int] | None = None,
+) -&gt; torch.Tensor:
+    &#34;&#34;&#34;
+    Numerically approximate E[tensor] via Monte Carlo sampling from N(mu, covar),
+    storing a *batch* dimension (&#34;samples&#34;) in wrt and taking the mean over that dimension.
+
+    Steps:
+    - Evaluate mu, covar =&gt; align/flatten =&gt; sample in R^D
+    - Reshape to (samples, *wrt.shape)
+    - Insert that into values[self.wrt]
+    - Evaluate self.tensor(...) =&gt; shape (samples, *rest)
+    - .mean over &#39;samples&#39; =&gt; final result
+    &#34;&#34;&#34;
+
+    # If we already computed this Expectation, return cached value:
+    if self in values:
+        return values[self]
+
+    # If user pinned a specific wrt =&gt; just evaluate the tensor directly
+    if self.wrt in values:
+        out = self.tensor.evaluate(values, dims)
+        values[self] = out
+        return out
+
+    if dims is None:
+        dims = {}
+
+    # 1) Evaluate mu and covar numerically
+    mu_torch = self.mu.evaluate(values, dims)  # named edges = same as self.mu.edges
+    covar_torch = self.covar.evaluate(values, dims)
+
+    # 2) Align mu =&gt; shape(*self.wrt.edges)
+    #    Example: if wrt.edges = (i, j), we call mu_torch.align_to(&#34;i&#34;,&#34;j&#34;).
+    #    That ensures the dimension order matches wrt&#39;s order.
+    mu_aligned = mu_torch.align_to(*self.wrt.edges)
+    # Flatten to (D,)
+    D = mu_aligned.numel()
+    mu_flat = mu_aligned.rename(None).reshape(D)
+
+    # 3) Align covar =&gt; shape(*self.wrt.edges, *mapped_wrt_edges)
+    #    For example: (i, j, i2, j2).  Let&#39;s define the order explicitly:
+    #    first the &#34;row&#34; edges (i, j), then the &#34;column&#34; edges (i2, j2).
+    col_edges = [self.covar_names[e] for e in self.wrt.edges]
+    covar_aligned = covar_torch.align_to(*self.wrt.edges, *col_edges)
+    # Flatten to (D, D)
+    covar_reshaped = covar_aligned.rename(None).reshape(D, D)
+
+    # 4) Number of samples
+    num_samples = dims.get(&#34;samples&#34;, 1000)
+    if &#34;seed&#34; in dims:
+        torch.manual_seed(dims[&#34;seed&#34;])
+
+    # 5) Cholesky
+    L = torch.linalg.cholesky(covar_reshaped)
+
+    # 6) Sample =&gt; shape (samples, D)
+    z = torch.randn(num_samples, D, device=mu_flat.device, dtype=mu_flat.dtype)
+    x_flat = mu_flat + (z @ L.T)  # shape (samples, D)
+
+    # 7) Reshape =&gt; (samples, *wrt.shape)  =&gt; name the leading dim &#34;samples&#34;
+    wrt_shape = mu_aligned.shape  # e.g. (2,3)
+    x_batched = x_flat.reshape(num_samples, *wrt_shape)
+    x_batched_named = x_batched.refine_names(&#34;samples&#34;, *self.wrt.edges)
+
+    # 8) Insert into values =&gt; call self.tensor.evaluate
+    temp_values = dict(values)
+    temp_values[self.wrt] = x_batched_named  # Now wrt has a leading &#39;samples&#39; dimension
+    out_batched = self.tensor.evaluate(temp_values, dims)  # =&gt; shape (samples, ...)
+
+    # 9) Take mean over the &#34;samples&#34; dimension
+    out_batched_unnamed = out_batched.rename(None)  # drop named dims to index them
+    out_mean = out_batched_unnamed.mean(dim=0)  # remove &#39;samples&#39; from the front
+
+    # 10) Rename the result to the free edges =&gt; i.e. self.tensor.edges
+    #     but &#34;out_batched&#34; might have shape (samples, E...) =&gt; after mean =&gt; shape(E...).
+    #     So we can do:
+    out_named = out_mean.refine_names(*self.tensor.edges)
+
+    # Cache
+    values[self] = out_named
+    return out_named</code></pre>
+</details>
+<div class="desc"><p>Numerically approximate E[tensor] via Monte Carlo sampling from N(mu, covar),
+storing a <em>batch</em> dimension ("samples") in wrt and taking the mean over that dimension.</p>
+<p>Steps:
+- Evaluate mu, covar =&gt; align/flatten =&gt; sample in R^D
+- Reshape to (samples, <em>wrt.shape)
+- Insert that into values[self.wrt]
+- Evaluate self.tensor(&hellip;) =&gt; shape (samples, </em>rest)
+- .mean over 'samples' =&gt; final result</p></div>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="tensorgrad.tensor.Tensor" href="../tensor.html#tensorgrad.tensor.Tensor">Tensor</a></b></code>:
+<ul class="hlist">
+<li><code><a title="tensorgrad.tensor.Tensor.depends_on" href="../tensor.html#tensorgrad.tensor.Tensor.depends_on">depends_on</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edge_structural_graph" href="../tensor.html#tensorgrad.tensor.Tensor.edge_structural_graph">edge_structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.edges" href="../tensor.html#tensorgrad.tensor.Tensor.edges">edges</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.full_simplify" href="../tensor.html#tensorgrad.tensor.Tensor.full_simplify">full_simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.grad" href="../tensor.html#tensorgrad.tensor.Tensor.grad">grad</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.graph_to_string" href="../tensor.html#tensorgrad.tensor.Tensor.graph_to_string">graph_to_string</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.isomorphisms" href="../tensor.html#tensorgrad.tensor.Tensor.isomorphisms">isomorphisms</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.order" href="../tensor.html#tensorgrad.tensor.Tensor.order">order</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.rename" href="../tensor.html#tensorgrad.tensor.Tensor.rename">rename</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.simplify" href="../tensor.html#tensorgrad.tensor.Tensor.simplify">simplify</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.structural_graph" href="../tensor.html#tensorgrad.tensor.Tensor.structural_graph">structural_graph</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.symmetries" href="../tensor.html#tensorgrad.tensor.Tensor.symmetries">symmetries</a></code></li>
+<li><code><a title="tensorgrad.tensor.Tensor.weisfeiler_lehman" href="../tensor.html#tensorgrad.tensor.Tensor.weisfeiler_lehman">weisfeiler_lehman</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="tensorgrad.extras" href="index.html">tensorgrad.extras</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="tensorgrad.extras.expectation.Expectation" href="#tensorgrad.extras.expectation.Expectation">Expectation</a></code></h4>
+<ul class="">
+<li><code><a title="tensorgrad.extras.expectation.Expectation.evaluate" href="#tensorgrad.extras.expectation.Expectation.evaluate">evaluate</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.5</a>.</p>
+</footer>
+</body>
+</html>
