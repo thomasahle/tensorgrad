@@ -1,57 +1,160 @@
 
 
 \chapter{Functions}\label{chapter:functions}
+
+
+In this chapter we explore general functions from tensors into other tensors.
+While not quite as elegant as linear functions, they are important for many applications, such as non-linearities in neural networks.
+The main goal is to make the vector chain rule intuitive and easy to apply, but we also cover Taylor series, determinants and other topics.
+
+Standard notation for function over vectors can be quite ambiguous when the function broadcasts over some dimensions.
+If $x\in\R^n$ is a vector, it's not clear whether $f(x)$ applies to each element of $x$ independently or if it's a function of the whole vector.
+With tensor diagrams, we make this distinction clear by explicitly showing the edges of $x$ that go into $f$, and which don't.
+We use the notation 
+%If the result of $f(x)$ is itself a vector $\in\R^m$, we can write
+\tikz[baseline=-.25em, inner sep=2pt]{
+   \draw[->] (.5,0) node[right]{$x$} -- node[above, font=\tiny]{$n$} (0,0) node(f)[left]{$f$};
+   \draw (f) -- ++(-.5,0) node[midway, above, font=\tiny] {$m$};
+}
+when $f$ is a function from $\R^n$ to $\R^m$.
+If $f$ is element-wise, we write
+$(\tikz[baseline=-.25em, inner sep=2pt]{
+   \draw[->, densely dotted] (.3,0) node[right](x){$x$} -- (0,0) node(f)[left]{$f$};
+   \draw (x) -- ++(.5,0) node[midway, above, font=\tiny] {$n$};
+}) \in \R^n$.
+We always assume that the function (arrow) edges are contracted before normal edges.
+If we want something else, like $f(Mx)$, we can use brackets:
+\tikz[baseline=(f.base), inner xsep=2pt, inner ysep=0pt]{
+   \node (f) at (0,0) {$f$};
+   \draw (f) -- ++(-.5,0);
+   \node (group) at (1.5,0) {$(
+      \tikz {
+         \node (M) at (0.5,0) {$M$};%
+         \draw (0,0) -- (M) -- ++(.5,0) node[right]{$x$};%
+      }%
+      )$
+   };
+   \draw[->] (group) -- (f);
+}.
+It may be helpful with some more examples:
+%In the examples below, $x\in \R^n$:
+\vspace{-1.5em}
 \begin{center}
-\begin{tabular}[h]{lccc}
-   Function to scalar
-   & $f : \mathbb R^n \to \mathbb R$
+\begingroup
+\renewcommand{\arraystretch}{2.5}
+\begin{tabular}[h]{cccc}
+   $f : \mathbb R^n \to \mathbb R$
    & $f(x) \in \mathbb R$
-   & $\{f \leftarrow x\}$
+   & \tikz[baseline=-.25em]{\draw[->] (.5,0) node[right]{$x$} -- node[above, font=\tiny]{$n$} (0,0) node[left]{$f$}}
+   & (Scalar function)
    \\
-   Function to vector
-   & $g : \mathbb R^n \to \mathbb R^m$
+   $g : \mathbb R^n \to \mathbb R^m$
    & $g(x) \in \mathbb R^m$
-   & \begin{tikzpicture}[baseline=-.25em]
-      \node (0,0) {$\{g \leftarrow x\}$};
-      \draw (-.25, .15) -- ++(.1,.2);
-   \end{tikzpicture}
+   & \tikz[baseline=(x.base)]{
+      \node (x) at (0,0) {$x$};
+      \node (g) at (-.75,0) {$g$};
+      \draw[->] (x) -- (g) node[midway, above, font=\tiny] {$n$};
+      \draw (g) -- ++(-.5,0) node[midway, above, font=\tiny] {$m$};
+   }
+   & (Vector function)
    \\
-   Element-wise function
-   & $h : \mathbb R^n \to \mathbb R$
-   & $h(x) \in \mathbb R^m$
-   & \begin{tikzpicture}[baseline=-.25em]
-      \node (0,0) {$\{h \quad x\}$};
-      \draw (.3, .15) -- ++(.1,.2);
-   \end{tikzpicture}
+   $h : \mathbb R \to \mathbb R$
+   & $h(x) \in \mathbb R^n$
+   & \tikz[baseline=(x.base)]{
+      \node (x) at (0,0) {$x$};
+      \node (h) at (-.75,0) {$h$};
+      \draw[->, densely dotted] (x) -- (h);
+      \draw (x) -- ++(.5,0) node[right, font=\tiny] {$n$};
+   }
+   & (Element-wise function)
    \\
-   Vector times vector function
-   & $u : \mathbb R^n \to \mathbb R^m, v \in \mathbb R^m$
+   \makecell[c]{$u : \mathbb{R}^n \to \mathbb{R}^m$ \\ $v \in \mathbb{R}^m$}
    & $v^T u(x) \in \mathbb R$
-   & \begin{tikzpicture}[baseline=-.25em]
-      \node (v) at (0,0) {$v$};
-      \node (u) at (1,0) {$\{u \leftarrow x\}$};
-      \path (v) edge [out=140, in=40, looseness=1] ($(u.west) + (1.5em,.5em)$);
-   \end{tikzpicture}
+   & \tikz[baseline=(x.base)]{
+      \node (x) at (0,0) {$x$};
+      \node (v) at (-.75,0) {$v$};
+      \node (u) at (-1.5,0) {$u$};
+      \draw[->] (x) -- (v) node[midway, above, font=\tiny] {$n$};
+      \draw (v) -- (u) node[midway, above, font=\tiny] {$m$};
+   }
+   & (Vector times vector function)
    \\
-   Vector times matrix function
-   & $A : \mathbb R^n \to \mathbb R^{m\times n}, v \in \mathbb R^n$
+   \makecell[c]{$A : \mathbb R^n \to \mathbb R^{m\times n},$\\$v \in \mathbb R^n$}
    & $A(x)v \in \mathbb R^m$
-   & \begin{tikzpicture}[baseline=-.25em]
-      \node (A) at (0,0) {$\{A \leftarrow x\}$};
-      \node (x) at (1,0) {$v$};
-      \draw (-.27, .25) edge[out=60, in=120, looseness=1] (x);
-      \draw (-.45, .2) -- ++(-.2,.2) node[midway, above, font=\tiny] {m};
+   & \begin{tikzpicture}[baseline=(A.base)]
+      \node (A) at (0,0) {$A$};
+      \draw (A) -- ++(-.5,0) node[midway, above, font=\tiny] {$m$};
+      \node (x) at (.7,-.25) {$x$};
+      \draw[->] (x) -- (A) node[midway, below, font=\tiny] {$n$};
+      \node (v) at (.7,.25) {$v$};
+      \draw (v) -- (A) node[midway, above, font=\tiny] {$n$};
    \end{tikzpicture}
+   & (Vector times matrix function)
    \\
-   Batch function application
-   & $f : \mathbb R^d \to \mathbb R, X \in \mathbb R^{b\times d}$
+   \makecell[c]{$A : \mathbb R^{n\times m} \to \mathbb R,$\\$X \in \mathbb R^{n\times m}$}
+   & $A(X) \in \R$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (A) at (0,0) {$A$};
+      \node (X) at (1,0) {$X$};
+      \draw[->] (X) edge[bend left] (A) node[midway, above, font=\tiny] {m};
+      \draw[->] (X) edge[bend right] (A) node[midway, below, font=\tiny] {n};
+   \end{tikzpicture}
+   & (Matrix function)
+   \\
+   \makecell[c]{$f : \mathbb R^d \to \mathbb R,$\\$X \in \mathbb R^{b\times d}$}
    & $f(X) \in \mathbb R^b$
    & \begin{tikzpicture}[baseline=-.25em]
-      \node (f) at (0,0) {$\{f \leftarrow X\}$};
-      \draw ($(f.east) + (-.35, .25)$) --  ++(.1,.2) node[midway, above, font=\tiny] {b};
+      \node (f) at (0,0) {$f$};
+      \node (X) at (1,0) {$X$};
+      \draw[->] (X) -- (f) node[midway, above, font=\tiny] {d};
+      \draw (X) --  ++(.5,0) node[midway, above, font=\tiny] {b};
    \end{tikzpicture}
+   & (Batch function application)
+   \\
+   \makecell[c]{
+      $f : \mathbb R^n\times \R^m \to \R^d$
+      ,\\$u \in \mathbb R^{b\times n}
+      , v \in \R^{b\times m}$
+   }
+   & $f(u, v) \in \R^{b \times d}$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (f) at (0,0) {$f$};
+      \draw (f) -- ++(-.5,0) node[midway, above, font=\tiny] {$d$};
+      \node (u) at (.7,.25) {$u$};
+      \draw[->] (u) -- (f) node[midway, above, font=\tiny] {$n$};
+      \node (v) at (.7,-.25) {$v$};
+      \draw[->] (v) -- (f) node[midway, below, font=\tiny] {$m$};
+      \node[inner sep=1pt] (d) at (1.25,0) {$\sbullet$};
+      \draw (u) -- (d);
+      \draw (v) -- (d);
+      \draw (d) -- ++(.4,0) node[midway, above, font=\tiny] {$b$};
+   \end{tikzpicture}
+   & (Two inputs, batched)
 \end{tabular}
+\endgroup
 \end{center}
+
+To make it more concrete, let's consider some well known functions:
+Let $\mathrm{pow}(n) : \mathbb R \to \mathbb R$ be the element-wise power function, and $\mathrm{exp} : \mathbb R \to \mathbb R$ be the element-wise exponential function.
+Then we can write $\mathrm{softmax}:\mathbb R^d \to \mathbb R^d$ as the tensor diagram:
+\[
+   \mathrm{softmax}(x) =
+   \begin{tikzpicture}[baseline=-.25em]
+      \node (ex) at (0,0) {$\{\mathrm{exp} \quad x\}$};
+      \node[right=1em of ex] (p) {$\{\mathrm{pow}(-1) \quad \{\mathrm{exp} \quad x\}\quad \sbullet\,\}$};
+      \draw ($(p.east)+(-1.1,.15)$) edge[out=90, in=90, looseness=1] ($(p.east)+(-.4,.15)$);
+      \draw ($(ex) + (.5, .15)$) -- ++(.1,.2);
+   \end{tikzpicture}
+   .
+\]
+
+
+\begin{align*}
+   \mathrm{pow}^{-1} x
+\end{align*}
+
+In the diagrams above the “curved” or “straight” edges indicate the flow of indices. When an edge is left free, it represents an output index of the function; a connected edge denotes a contracted (summed over) index. For example, applying a scalar function $f$ to a vector $x$ is written as $\{f\leftarrow x\}$, meaning the $n$-dimensional $x$ flows into $f$ and the result, being a scalar, has no free edges.
+
 
 As an example of a more complicated function, let $\exp : \mathbb R \to \mathbb R$ be the element-wise exponential function,
 and $\mathrm{pow}^{-1} : \mathbb R \to \mathbb R$ be the element-wise inverse power function.
@@ -496,3 +599,245 @@ TODO: Examples based on idempotent matrices etc.
 
 
 
+\section{Exercises}
+\begin{exercise}
+   Draw the tensor diagram for a function $f:\mathbb{R}^n\to\mathbb{R}$ that applies an element-wise nonlinearity (for instance, $\exp$) followed by a summation over the components. Verify that the diagram corresponds to the conventional formula for the softmax denominator.
+\end{exercise}
+
+\begin{exercise}
+   Represent the composition of two functions 
+   \[
+      f:\mathbb{R}^m\to\mathbb{R} \quad \text{and} \quad v:\mathbb{R}^n\to\mathbb{R}^m,
+   \]
+   using tensor diagrams. Then, using the diagrammatic chain rule, derive the expression for the derivative of $f\circ v$ with respect to $x\in\mathbb{R}^n$.
+\end{exercise}
+
+\begin{exercise}
+   For a matrix function $A(x)$ that depends on a vector $x$, use tensor diagrams to illustrate the derivative 
+   \[
+      \frac{\partial}{\partial x}[A(x)x],
+   \]
+   and explain how the product rule is implemented in the diagram.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Adapted from StackExchange VAE backpropagation questions (e.g., by greg).
+   % Answer: Using the chain rule and elementwise differentiation, one obtains 
+   % $\nabla_W KL = \frac{1}{2}\Big(e^{Wx+c} - 1\Big)x^T$, where the exponential is applied elementwise.
+   Represent the KL-divergence term for a Variational Autoencoder (VAE) as
+   \[
+      KL(\mu,\sigma) = -\frac{1}{2}\Big(1 + \log\sigma^2 - \mu^2 - \sigma^2\Big),
+   \]
+   with parameters given by 
+   \[
+      \mu = W x + c \quad \text{and} \quad \log\sigma^2 = W x + c.
+   \]
+   Derive the gradient $\nabla_W KL$ with respect to the weight matrix $W$. Be sure to keep track of dimensions and account for elementwise operations.
+\end{exercise}
+\begin{exercise}
+   % Source: A well-known result in machine learning; see many SE posts (e.g., greg's answers).
+   % Answer: The Jacobian is given by 
+   % $\displaystyle \frac{\partial s_i}{\partial z_j} = s_i\big(\delta_{ij} - s_j\big)$.
+   Let the softmax function $s:\mathbb{R}^n \to \mathbb{R}^n$ be defined by
+   \[
+      s_i(z) = \frac{e^{z_i}}{\sum_{j=1}^n e^{z_j}}, \quad i=1,\dots,n.
+   \]
+   Prove that the Jacobian matrix of $s$ is given by
+   \[
+      \frac{\partial s_i}{\partial z_j} = s_i\big(\delta_{ij} - s_j\big),
+   \]
+   where $\delta_{ij}$ is the Kronecker delta.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Standard derivations found in textbooks and the Matrix Cookbook.
+   % Answer: Differentiation yields $\nabla_\mu \ell = \Sigma^{-1}\sum_{i}(x^{(i)}-\mu)$ and 
+   % $\nabla_\Sigma \ell = -\frac{n}{2}\Sigma^{-1} + \frac{1}{2}\Sigma^{-1}S\Sigma^{-1}$; setting these to zero leads to 
+   % $\hat\mu = \frac{1}{n}\sum_{i=1}^n x^{(i)}$ and $\hat\Sigma = \frac{1}{n}\sum_{i=1}^n (x^{(i)}-\hat\mu)(x^{(i)}-\hat\mu)^T$.
+   Suppose $x^{(1)},\dots,x^{(n)} \in \mathbb{R}^d$ are independent samples from a multivariate normal distribution $N(\mu,\Sigma)$. Write the log-likelihood function and derive the gradients $\nabla_\mu \ell$ and $\nabla_\Sigma \ell$. Then, by setting these gradients to zero, show that the maximum likelihood estimators are
+   \[
+      \hat\mu = \frac{1}{n}\sum_{i=1}^n x^{(i)} \quad \text{and} \quad \hat\Sigma = \frac{1}{n}\sum_{i=1}^n (x^{(i)} - \hat\mu)(x^{(i)} - \hat\mu)^T.
+   \]
+\end{exercise}
+
+\begin{exercise}
+   % Source: Derived from Gaussian process literature and related SE discussions.
+   % Answer: The derivative is 
+   % $\displaystyle \frac{\partial L}{\partial \theta} = \frac{1}{2}\operatorname{tr}\!\Big(\Big(K^{-1}yy^T K^{-1} - K^{-1}\Big)\frac{\partial K}{\partial \theta}\Big)$.
+   Consider a Gaussian process with covariance matrix $K(\theta)$ and the log-marginal likelihood defined as
+   \[
+      L(\theta) = -\frac{1}{2}\Big(y^T K(\theta)^{-1} y + \log\det K(\theta)\Big).
+   \]
+   Derive the gradient of $L$ with respect to $\theta$, showing that
+   \[
+      \frac{\partial L}{\partial \theta} = \frac{1}{2}\operatorname{tr}\!\Big(\Big(K^{-1}yy^T K^{-1} - K^{-1}\Big)\frac{\partial K}{\partial \theta}\Big).
+   \]
+\end{exercise}
+
+\begin{exercise}
+   % Source: Standard logistic regression derivations and multiple SE posts.
+   % Answer: One obtains $\nabla_w J = \sum_{i=1}^n (p_i - y_i)x_i$ and the Hessian 
+   % $H = \sum_{i=1}^n p_i(1-p_i)x_i x_i^T$.
+   In logistic regression, let 
+   \[
+      p_i = \sigma(w^T x_i) \quad \text{with} \quad \sigma(z)=\frac{1}{1+e^{-z}},
+   \]
+   and consider the negative log-likelihood
+   \[
+      J(w) = -\sum_{i=1}^n \Big[y_i\ln p_i + (1-y_i)\ln(1-p_i)\Big].
+   \]
+   Derive the gradient $\nabla_w J$ and the Hessian $H = \nabla^2_w J$. In particular, show that
+   \[
+      \nabla_w J = \sum_{i=1}^n (p_i - y_i)x_i, \quad \text{and} \quad H = \sum_{i=1}^n p_i(1-p_i)\,x_i x_i^T.
+   \]
+\end{exercise}
+
+\begin{exercise}
+   % Source: Matrix Cookbook and classic derivations in matrix calculus.
+   % Answer: The derivative is $\nabla_X \det(X) = \det(X)\,(X^{-1})^T$.
+   Let $X \in \mathbb{R}^{n\times n}$ be an invertible matrix. Prove that
+   \[
+      \frac{\partial\,\det(X)}{\partial X} = \det(X)\,(X^{-1})^T.
+   \]
+   In other words, show that the gradient of $\det(X)$ with respect to $X$ is $\det(X)$ times the transpose of $X^{-1}$.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Standard result from the Matrix Cookbook.
+   % Answer: $\nabla_X \ln\det(X) = (X^{-1})^T$.
+   For an invertible matrix $X \in \mathbb{R}^{n\times n}$, prove that
+   \[
+      \frac{\partial}{\partial X}\ln\det(X) = (X^{-1})^T.
+   \]
+   Briefly discuss why this result is useful in statistical applications such as Gaussian likelihoods.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Matrix Cookbook and related SE discussions.
+   % Answer: By differentiating $I = A^{-1}A$, we find 
+   % $d(A^{-1}) = -A^{-1}(dA)A^{-1}$.
+   Let $A \in \mathbb{R}^{n\times n}$ be an invertible matrix (which may depend on a parameter). Starting from the identity $I = A^{-1}A$, differentiate both sides to show that
+   \[
+      d(A^{-1}) = -A^{-1}\,(dA)\,A^{-1}.
+   \]
+   Deduce an expression for the partial derivative $\frac{\partial A^{-1}}{\partial A_{ij}}$.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Derived from the differentiation of an inverse matrix (see Matrix Cookbook).
+   % Answer: The gradient is given by 
+   % $\nabla_A f(A) = -A^{-T}(a\,b^T)A^{-T}$.
+   Define the scalar function
+   \[
+      f(A)=a^T A^{-1} b,
+   \]
+   where $a,b\in\mathbb{R}^n$ are fixed vectors and $A\in\mathbb{R}^{n\times n}$ is invertible. Using the result from differentiating the inverse, show that
+   \[
+      \nabla_A f(A) = -A^{-T}(a\,b^T)A^{-T}.
+   \]
+\end{exercise}
+
+\begin{exercise}
+   % Source: A classical perturbation result found in textbooks and SE posts.
+   % Answer: For a simple eigenvalue $\lambda$ with unit eigenvector $v$, 
+   % $\nabla_X \lambda = v\,v^T$. This result does not hold when $\lambda$ is multiple.
+   Let $X\in\mathbb{R}^{n\times n}$ be a symmetric matrix with a simple eigenvalue $\lambda$ and corresponding unit eigenvector $v$. Prove that the derivative of $\lambda$ with respect to $X$ is given by
+   \[
+      \nabla_X \lambda = v\,v^T.
+   \]
+   Additionally, discuss why this result does not hold when $\lambda$ has multiplicity greater than one.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Classical result using Lagrange multipliers; see standard textbooks.
+   % Answer: The stationary condition yields $Ax = \lambda x$, so the extrema of the Rayleigh quotient are the eigenvalues of $A$, with the maximizer (minimizer) corresponding to the largest (smallest) eigenvalue.
+   For a symmetric matrix $A\in\mathbb{R}^{n\times n}$, consider the Rayleigh quotient
+   \[
+      R(x) = \frac{x^T A x}{x^T x}, \quad x\in\mathbb{R}^n\setminus\{0\}.
+   \]
+   Using Lagrange multipliers, show that the stationary values of $R(x)$ correspond to the eigenvalues of $A$, and that the maximizer (minimizer) is the eigenvector associated with the largest (smallest) eigenvalue.
+\end{exercise}
+\begin{exercise}
+   % Source: Matrix Cookbook and common SE answers.
+   % Answer: The derivative is 
+   % $\nabla_X\,\operatorname{Tr}(X^T A X B) = A X B^T + A^T X B$.
+   Let $A\in\mathbb{R}^{m\times m}$ and $B\in\mathbb{R}^{n\times n}$ be constant matrices, and let $X\in\mathbb{R}^{m\times n}$ be a variable matrix. Prove that
+   \[
+      \nabla_X\,\operatorname{Tr}(X^T A X B) = A X B^T + A^T X B.
+   \]
+   (Hint: Use the cyclic property of the trace to rearrange terms.)
+\end{exercise}
+
+\begin{exercise}
+   % Source: Direct differentiation of trace forms; see also the Matrix Cookbook.
+   % Answer: (a) $\frac{\partial}{\partial X} \operatorname{Tr}(A^T X) = A$, (b) $\nabla_X\,\operatorname{Tr}(A X B) = A^T B^T$.
+   \textbf{(a)} Show that for a constant matrix $A\in\mathbb{R}^{m\times n}$ and variable $X\in\mathbb{R}^{m\times n}$,
+   \[
+      \frac{\partial}{\partial X} \operatorname{Tr}(A^T X) = A.
+   \]
+   \textbf{(b)} More generally, for constant matrices $A\in\mathbb{R}^{p\times m}$ and $B\in\mathbb{R}^{n\times q}$, prove that
+   \[
+      \nabla_X\,\operatorname{Tr}(A X B) = A^T B^T.
+   \]
+\end{exercise}
+
+\begin{exercise}
+   % Source: Inspired by tensor diagram techniques and SE discussions.
+   % Answer: By differentiating $F(s)=\Diag(s)C\Diag(s)$, one obtains 
+   % $dF = \Diag(ds)C\,\Diag(s) + \Diag(s)C\,\Diag(ds)$, leading to 
+   % $\nabla_s F(s)$ that relates (after suitable vectorization) to $2\,\Diag(C\,s)$.
+   Let $s\in\mathbb{R}^n$ be a vector and $C\in\mathbb{R}^{n\times n}$ be a fixed matrix. Define the matrix function 
+   \[
+      F(s) = \diag(s)\,C\,\diag(s),
+   \]
+   where $\diag(s)$ denotes the diagonal matrix with the entries of $s$. Express the differential $dF$ in terms of $s$, $ds$, and $C$, and hence derive an expression for the derivative $\nabla_s F(s)$.
+\end{exercise}
+
+\begin{exercise}
+   % Source: Standard vectorization identities from the Matrix Cookbook.
+   % Answer: The identity is 
+   % $\operatorname{vec}(A\,X\,B^T) = (B \otimes A)\,\operatorname{vec}(X)$.
+   Let $A\in\mathbb{R}^{p\times m}$, $X\in\mathbb{R}^{m\times n}$, and $B\in\mathbb{R}^{n\times q}$. Prove the identity
+   \[
+      \operatorname{vec}(A\,X\,B^T) = (B \otimes A)\,\operatorname{vec}(X).
+   \]
+   Discuss how this identity can be used to convert certain matrix derivative problems into vectorized forms.
+\end{exercise}
+\begin{exercise}
+   % Source: Standard differentiation of quadratic forms.
+   % Answer: The gradient is $\nabla_x f(x) = (A+A^T)x$, and the Hessian is $\nabla^2_x f(x) = A+A^T$. For symmetric $A$, this simplifies to $2A$.
+   Let 
+   \[
+      f(x) = x^T A x,
+   \]
+   where $x\in\mathbb{R}^n$ and $A\in\mathbb{R}^{n\times n}$ is not necessarily symmetric. Show that
+   \[
+      \nabla_x f(x) = (A + A^T)x.
+   \]
+   Then, compute the Hessian $\nabla^2_x f(x)$ and discuss what simplification occurs when $A$ is symmetric.
+\end{exercise}
+\begin{exercise}
+   % Source: Standard convex analysis and properties of the Frobenius norm.
+   % Answer: For $X\neq 0$, $\nabla_X \|X\|_F = \frac{X}{\|X\|_F}$. At $X=0$, the gradient is not unique; any matrix $G$ with $\|G\|_F\le 1$ is a subgradient.
+   Consider the Frobenius norm
+   \(
+      \|X\|_F = \sqrt{\operatorname{Tr}(X^T X)},
+   \)
+   for $X\in\mathbb{R}^{m\times n}$.
+
+   Show that
+   \[
+      \nabla_X \|X\|_F = \frac{X}{\|X\|_F}
+   \]
+   for $X\neq 0$.
+\end{exercise}
+\begin{exercise}
+   % Source: Based on discussions of spectral function differentiability on SE.
+   % Answer: When the largest eigenvalue has multiplicity $k>1$, any matrix of the form 
+   % $G = \sum_{i=1}^k u_i v_i^T$, where $\{u_i\}$ is an orthonormal basis for the eigenspace, is a valid subgradient. The gradient is not unique in this case.
+   Let $Y\in\mathbb{R}^{n\times n}$ be a symmetric matrix, and define $\phi(Y)$ to be its largest eigenvalue. If this eigenvalue has multiplicity $k>1$, show that the derivative of $\phi(Y)$ is not unique. In particular, demonstrate that any matrix of the form
+   \[
+      G = \sum_{i=1}^k u_i v_i^T,
+   \]
+   where $\{u_i\}_{i=1}^k$ is any orthonormal basis for the eigenspace corresponding to the largest eigenvalue, is a valid subgradient of $\phi(Y)$. Explain the challenges that arise in defining a unique gradient in this setting.
+\end{exercise}
