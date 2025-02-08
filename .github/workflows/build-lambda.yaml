@@ -1,0 +1,110 @@
+name: Update AWS Lambda with ECR Image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  update_lambda:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      LAMBDA_FUNCTION_NAME: drawTensors
+      ECR_REPOSITORY: tensorgrad
+      TEST_PAYLOAD: >
+        {"code":
+        "i = sp.symbols('i');
+        x = tg.Delta(i, 'i', 'j');
+        y = x * 2;
+        save_steps(y);
+        "}
+    steps:
+      # Checkout the repository (fetches Dockerfile and code)
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Build the Docker image locally using Docker Buildx
+      - name: Build Docker image
+        run: docker buildx build -t tensorgrad -f docker/Dockerfile .
+
+      # Test the Docker image by running it locally and invoking the function
+      - name: Test Lambda container locally
+        run: |
+          docker run -d --name lambda_local_test -p 9000:8080 tensorgrad
+          sleep 5
+          curl --fail -X POST \
+            "http://localhost:9000/2015-03-31/functions/function/invocations" \
+            -H "Content-Type: application/json" \
+            -d "$TEST_PAYLOAD"
+          docker stop lambda_local_test
+
+      # Configure AWS credentials (from GitHub Secrets) for AWS CLI and Docker actions
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      # Retrieve AWS account ID dynamically (avoids hard-coding the account ID in the workflow)
+      - name: Retrieve AWS Account ID
+        id: get-account-id
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
+
+      # Log in to Amazon ECR (authenticates Docker to the AWS ECR registry)
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR_REGISTRY environment variable
+        run: echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+
+      # Set up Docker Buildx (builder) for multi-architecture image building
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Build and push the Docker image for ARM64 with caching enabled.
+      - name: Build and push Docker image (ARM64) with caching
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha,scope=update-lambda-cache
+          cache-to: type=gha,scope=update-lambda-cache,mode=max,ignore-error=true
+          provenance: false
+
+      # Update the Lambda function to use the new image from ECR
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --image-uri ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+
+      # (Optional) Invoke the Lambda function and fetch logs to verify the new code
+      - name: Invoke Lambda function (and fetch logs)
+        run: |
+          echo "Invoking function '${{ env.LAMBDA_FUNCTION_NAME }}' and printing logs:"
+          aws lambda invoke \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --cli-binary-format raw-in-base64-out \
+            --payload "$TEST_PAYLOAD" /tmp/response.json \
+            --log-type Tail \
+            --query 'LogResult' \
+            --output text \
+            | base64 -d
+
+      # (Optional) Test the deployed API endpoint via cURL
+      - name: Test API Gateway endpoint
+        run: |
+          sleep 5
+          echo "Testing API Gateway endpoint for function..."
+          curl -f -X POST \
+            https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors \
+            -H 'Content-Type: application/json' \
+            -d "$TEST_PAYLOAD"

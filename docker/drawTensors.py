@@ -31,6 +31,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             "compile",
             "__import__",
             "open",
+            "importlib",
         }
 
     def visit_Import(self, node):
@@ -53,19 +54,6 @@ class CodeAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def validate_code(code: str) -> bool:
-    """
-    Validate user code for safety
-    Returns True if code is safe, False otherwise
-    """
-    try:
-        tree = ast.parse(code)
-        analyzer = CodeAnalyzer()
-        analyzer.visit(tree)
-        return not analyzer.has_unsafe_ops
-    except SyntaxError:
-        return False
-
 
 def safe_execute(code: str) -> Dict[str, Any]:
     """
@@ -78,17 +66,20 @@ def safe_execute(code: str) -> Dict[str, Any]:
     output_path = "/tmp/steps.png"
 
     try:
-        # Validate code
-        if not validate_code(code):
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            result["error"] = str(e)
+            return result
+
+        analyzer = CodeAnalyzer()
+        analyzer.visit(tree)
+        if analyzer.has_unsafe_ops:
             result["error"] = "Code contains unsafe operations"
             return result
 
         # Create a restricted globals dictionary
         restricted_globals = {
-            # '__builtins__': {
-            #     name: getattr(__builtins__, name)
-            #     for name in ['len', 'range', 'int', 'float', 'str', 'list', 'dict']
-            # },
             "tg": tensorgrad,
             "F": functions,
             "sp": sympy,

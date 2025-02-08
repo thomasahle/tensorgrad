@@ -21,49 +21,23 @@ jobs:
           python-version: '3.x'
 
       # 3. Install pydoctor.
-      - name: Install pydoctor
+      - name: Install pdoc
         run: |
           #pip install pydoctor
+          pip install .  # Install deps
           pip install pdoc
 
       # 4. Build the API documentation using pydoctor.
       #    This command tells pydoctor to generate HTML docs in docs/api for the module tensorgrad.
-      - name: Build API Documentation with Pydoctor
+      - name: Build API Documentation with Pdoc
         run: |
           # pydoctor --html-output=docs/api tensorgrad/
-          pdoc --html tensorgrad -o docs/api
+          pdoc tensorgrad -o docs/api
 
-      # 5. Deploy the generated documentation to the gh-pages branch.
-      - name: Deploy API Documentation to gh-pages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GIT_USER: "GitHub Action"
-          GIT_EMAIL: "action@github.com"
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          # Directory with newly built API docs.
-          DOCS_API_DIR=docs/api
-
-          # Clone the gh-pages branch into a temporary folder.
-          git clone --branch gh-pages "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages-temp
-          cd gh-pages-temp
-
-          # Remove the old API documentation folder.
-          rm -rf docs/api
-
-          # Ensure the docs folder exists.
-          mkdir -p docs
-
-          # Copy in the newly built API documentation.
-          cp -R ../${DOCS_API_DIR} docs/api
-
-          # Configure Git.
-          git config user.name "${GIT_USER}"
-          git config user.email "${GIT_EMAIL}"
-
-          # Stage and commit the changes.
-          git add docs/api
-          git commit -m "Update API documentation [skip ci]" || echo "No changes to commit"
-
-          # Push the updated gh-pages branch.
-          git push origin gh-pages
+      - name: Deploy API Documentation to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/api
+          publish_branch: gh-pages
+          destination_dir: docs/api
