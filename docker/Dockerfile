@@ -1,27 +1,6 @@
 # Use AWS Lambda base image for Python 3.12
 FROM public.ecr.aws/lambda/python:3.12
 
-# Install necessary Linux packages (TeX Live, Poppler)
-# RUN microdnf update -y \
-#     && microdnf install -y \
-#         texlive-luatex \
-#         texlive-scheme-basic \
-#         poppler-utils \
-#     && microdnf clean all \
-#     && rm -rf /var/cache/dnf
-# 
-# RUN tlmgr update --self \
-#     && tlmgr install \
-#     scheme-basic \
-#     luatex \
-#     pgf \
-#     standalone \
-#     comicneue \
-#     geometry \
-#     graphics \
-#     latex-bin
-
-
 # Install microdnf for lightweight package management
 RUN microdnf update -y \
    && microdnf install -y \
