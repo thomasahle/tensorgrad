@@ -1,0 +1,146 @@
+%% Creator: Inkscape 1.3 (0e150ed, 2023-07-21), www.inkscape.org
+%% PDF/EPS/PS + LaTeX output extension by Johan Engelen, 2010
+%% Accompanies image file 'chain_rule_broadcast.pdf' (pdf, eps, ps)
+%%
+%% To include the image in your LaTeX document, write
+%%   \input{<filename>.pdf_tex}
+%%  instead of
+%%   \includegraphics{<filename>.pdf}
+%% To scale the image, write
+%%   \def\svgwidth{<desired width>}
+%%   \input{<filename>.pdf_tex}
+%%  instead of
+%%   \includegraphics[width=<desired width>]{<filename>.pdf}
+%%
+%% Images with a different path to the parent latex file can
+%% be accessed with the `import' package (which may need to be
+%% installed) using
+%%   \usepackage{import}
+%% in the preamble, and then including the image with
+%%   \import{<path to file>}{<filename>.pdf_tex}
+%% Alternatively, one can specify
+%%   \graphicspath{{<path to file>/}}
+%% 
+%% For more information, please see info/svg-inkscape on CTAN:
+%%   http://tug.ctan.org/tex-archive/info/svg-inkscape
+%%
+\begingroup%
+  \makeatletter%
+  \providecommand\color[2][]{%
+    \errmessage{(Inkscape) Color is used for the text in Inkscape, but the package 'color.sty' is not loaded}%
+    \renewcommand\color[2][]{}%
+  }%
+  \providecommand\transparent[1]{%
+    \errmessage{(Inkscape) Transparency is used (non-zero) for the text in Inkscape, but the package 'transparent.sty' is not loaded}%
+    \renewcommand\transparent[1]{}%
+  }%
+  \providecommand\rotatebox[2]{#2}%
+  \newcommand*\fsize{\dimexpr\f@size pt\relax}%
+  \newcommand*\lineheight[1]{\fontsize{\fsize}{#1\fsize}\selectfont}%
+  \ifx\svgwidth\undefined%
+    \setlength{\unitlength}{188.48713312bp}%
+    \ifx\svgscale\undefined%
+      \relax%
+    \else%
+      \setlength{\unitlength}{\unitlength * \real{\svgscale}}%
+    \fi%
+  \else%
+    \setlength{\unitlength}{\svgwidth}%
+  \fi%
+  \global\let\svgwidth\undefined%
+  \global\let\svgscale\undefined%
+  \makeatother%
+  \begin{picture}(1,0.26765479)%
+    \lineheight{1}%
+    \setlength\tabcolsep{0pt}%
+    \put(0,0){\includegraphics[width=\unitlength,page=1]{chain_rule_broadcast.pdf}}%
+    \put(0.74476599,0.10706075){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}=\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=2]{chain_rule_broadcast.pdf}}%
+    \put(0.66778841,0.20068468){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=3]{chain_rule_broadcast.pdf}}%
+    \put(0.0599205,0.10697877){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=4]{chain_rule_broadcast.pdf}}%
+    \put(0.02811567,0.14638908){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}f\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=5]{chain_rule_broadcast.pdf}}%
+    \put(0.09863944,0.06100002){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=6]{chain_rule_broadcast.pdf}}%
+    \put(0.27288212,0.0671762){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=7]{chain_rule_broadcast.pdf}}%
+    \put(0.24107729,0.10658651){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}f\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=8]{chain_rule_broadcast.pdf}}%
+    \put(0.31160106,0.02119745){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=9]{chain_rule_broadcast.pdf}}%
+    \put(0.36598135,0.1476823){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=10]{chain_rule_broadcast.pdf}}%
+    \put(0.40470029,0.10170355){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=11]{chain_rule_broadcast.pdf}}%
+    \put(0.45827411,0.10706075){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}=\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=12]{chain_rule_broadcast.pdf}}%
+    \put(0.54686734,0.05813378){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=13]{chain_rule_broadcast.pdf}}%
+    \put(0.5150625,0.0975441){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}f\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=14]{chain_rule_broadcast.pdf}}%
+    \put(0.58558628,0.01215503){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=15]{chain_rule_broadcast.pdf}}%
+    \put(0.63996658,0.13863988){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=16]{chain_rule_broadcast.pdf}}%
+    \put(0.67868552,0.09266113){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=17]{chain_rule_broadcast.pdf}}%
+    \put(0.05918296,0.17268549){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}i\end{tabular}}}}%
+    \put(0.09422279,0.14058043){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}j\end{tabular}}}}%
+    \put(0.1272103,0.08972466){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k\end{tabular}}}}%
+    \put(0.27312882,0.13680773){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}i\end{tabular}}}}%
+    \put(0.33461896,0.08899022){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}j\end{tabular}}}}%
+    \put(0.37026117,0.04113704){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=18]{chain_rule_broadcast.pdf}}%
+    \put(0.17374957,0.15722799){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k'\end{tabular}}}}%
+    \put(0.39086902,0.20308612){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k'\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=19]{chain_rule_broadcast.pdf}}%
+    \put(0.61186857,0.07842687){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}j\end{tabular}}}}%
+    \put(0.64478494,0.03308989){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=20]{chain_rule_broadcast.pdf}}%
+    \put(0.10209576,0.09753809){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.05047125,0.12795466){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0.31487072,0.0555409){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.26324633,0.08595747){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0.40706107,0.13716502){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.30048568,0.17315224){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0.58871686,0.04691226){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.53754659,0.0768747){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0.57478595,0.16406947){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=21]{chain_rule_broadcast.pdf}}%
+    \put(0.16194188,0.1722146){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b'\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=22]{chain_rule_broadcast.pdf}}%
+    \put(0.36563413,0.2069669){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b'\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=23]{chain_rule_broadcast.pdf}}%
+    \put(0.68515137,0.25440393){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k'\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=24]{chain_rule_broadcast.pdf}}%
+    \put(0.65991659,0.25828472){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b'\end{tabular}}}}%
+    \put(0.54972121,0.12727083){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}i\end{tabular}}}}%
+    \put(0.64503025,0.18451658){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.68107151,0.1296848){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=25]{chain_rule_broadcast.pdf}}%
+    \put(0.83990326,0.08215184){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=26]{chain_rule_broadcast.pdf}}%
+    \put(0.80809843,0.12156216){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}f\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=27]{chain_rule_broadcast.pdf}}%
+    \put(0.8786222,0.03617309){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=28]{chain_rule_broadcast.pdf}}%
+    \put(0.93300249,0.16265794){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}g\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=29]{chain_rule_broadcast.pdf}}%
+    \put(0.97172143,0.11667919){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}x\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=30]{chain_rule_broadcast.pdf}}%
+    \put(0.90486734,0.10357422){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}j\end{tabular}}}}%
+    \put(0.9337649,0.04430105){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=31]{chain_rule_broadcast.pdf}}%
+    \put(0.88175234,0.07093035){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.8305822,0.1008928){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0.86782155,0.18808757){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}a\end{tabular}}}}%
+    \put(0.84275681,0.15128892){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}i\end{tabular}}}}%
+    \put(0.93893408,0.21417933){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b'\end{tabular}}}}%
+    \put(0.974107,0.1537029){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}b\end{tabular}}}}%
+    \put(0.96229943,0.06609576){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}k'\end{tabular}}}}%
+    \put(0,0){\includegraphics[width=\unitlength,page=32]{chain_rule_broadcast.pdf}}%
+    \put(0.18110802,0.10706075){\makebox(0,0)[lt]{\lineheight{1.25}\smash{\begin{tabular}[t]{l}=\end{tabular}}}}%
+  \end{picture}%
+\endgroup%

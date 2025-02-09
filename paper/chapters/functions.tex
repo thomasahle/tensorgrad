@@ -91,16 +91,6 @@ It may be helpful with some more examples:
    \end{tikzpicture}
    & (Vector times matrix function)
    \\
-   \makecell[c]{$A : \mathbb R^{n\times m} \to \mathbb R,$\\$X \in \mathbb R^{n\times m}$}
-   & $A(X) \in \R$
-   & \begin{tikzpicture}[baseline=-.25em]
-      \node (A) at (0,0) {$A$};
-      \node (X) at (1,0) {$X$};
-      \draw[->] (X) edge[bend left] (A) node[midway, above, font=\tiny] {m};
-      \draw[->] (X) edge[bend right] (A) node[midway, below, font=\tiny] {n};
-   \end{tikzpicture}
-   & (Matrix function)
-   \\
    \makecell[c]{$f : \mathbb R^d \to \mathbb R,$\\$X \in \mathbb R^{b\times d}$}
    & $f(X) \in \mathbb R^b$
    & \begin{tikzpicture}[baseline=-.25em]
@@ -109,7 +99,17 @@ It may be helpful with some more examples:
       \draw[->] (X) -- (f) node[midway, above, font=\tiny] {d};
       \draw (X) --  ++(.5,0) node[midway, above, font=\tiny] {b};
    \end{tikzpicture}
-   & (Batch function application)
+   & (Vector function, batched)
+   \\
+   \makecell[c]{$A : \mathbb R^{n\times m} \to \mathbb R,$\\$X \in \mathbb R^{n\times m}$}
+   & $A(X) \in \R$
+   & \begin{tikzpicture}[baseline=-.25em]
+      \node (A) at (0,0) {$A$};
+      \node (X) at (1,0) {$X$};
+      \draw[->] (X) edge[bend right] node[midway, above, font=\tiny] {n} (A);
+      \draw[->] (X) edge[bend left] node[midway, above, font=\tiny] {m} (A);
+   \end{tikzpicture}
+   & (Matrix input function)
    \\
    \makecell[c]{
       $f : \mathbb R^n\times \R^m \to \R^d$
@@ -135,102 +135,134 @@ It may be helpful with some more examples:
 \end{center}
 
 To make it more concrete, let's consider some well known functions:
-Let $\mathrm{pow}(n) : \mathbb R \to \mathbb R$ be the element-wise power function, and $\mathrm{exp} : \mathbb R \to \mathbb R$ be the element-wise exponential function.
-Then we can write $\mathrm{softmax}:\mathbb R^d \to \mathbb R^d$ as the tensor diagram:
+(1) The determinant function, $\det : \mathbb R^{n\times n} \to \mathbb R$ is a scalar function, and we can apply it to a batch of matrices by \tikz[baseline=(det.base), inner sep=2pt, every node/.append style={anchor=base}]{
+      \node (det) {$\det$};
+      \node[right=1.5em of det] (X) {$X$};
+      \draw[->] (X) edge[bend right] node[midway, above, font=\tiny] {n} (det);
+      \draw[->] (X) edge[bend left] node[midway, above, font=\tiny] {m} (det);
+      \draw (X) -- ++(.5,0) node[right, font=\tiny] {$b$};
+   } which results in a single vector $\in\R^b$.
+%
+   (2)
+   Cosine similarity, $\mathrm{cossim} : \mathbb R^n \times \mathbb R^n \to \mathbb R$ is a scalar function, and we can apply it to two vectors by \tikz[baseline=(cos.base), inner sep=2pt, every node/.append style={anchor=base}]{
+      \node (cos) at (0,0) {$\mathrm{cossim}$};
+      \node (u) at (1,.15) {$u$};
+      \draw[->] (u) -- (cos) node[midway, above, font=\tiny] {$n$};
+      \node (v) at (1,-.15) {$v$};
+      \draw[->] (v) -- (cos) node[midway, below, font=\tiny] {$n$};
+   } which results in a single value $\in\R$.
+% 
+   (3)
+  If the element-wise power function, $\mathrm{pow}_n : \mathbb R \to \mathbb R$
+      is be applied to two vectors, they simplify under the Hadamard product:
+      \[
+         \begin{tikzpicture}[baseline=(s.base), inner sep=2pt, every node/.append style={anchor=base}]
+            \node (pown) {$\mathrm{pow}_n$};
+            \node[right=1em of pown] (u1) {$u$};
+            \node[below=.5em of pown] (powm) {$\mathrm{pow}_m$};
+            \node[below=.5em of u1] (u2) {$u$};
+            \draw (u1) edge[->, densely dotted] (pown);
+            \draw (u2) edge[->, densely dotted] (powm);
+            \node (s) at (1.5, -.25) {$\sbullet$};
+            \draw (u1) -- (s);
+            \draw (u2) -- (s);
+            \draw (s) -- ++(.5,0);
+         \end{tikzpicture}
+         =
+         \begin{tikzpicture}[baseline=(pow.base), inner sep=2pt, every node/.append style={anchor=base}]
+            \node (pow) {$\mathrm{pow}_{n+m}$};
+            \node[right=1em of pow] (u) {$u$};
+            \draw (u) edge[->, densely dotted] (pow);
+            \draw (u) -- ++(.5,0);
+         \end{tikzpicture}
+      \]
+
+For a more advanced example, consider the softmax function:
+\tikz[baseline=(sm.base), inner sep=2pt, every node/.append style={anchor=base}]{
+   \node (sm) {$\mathrm{softmax}$};
+   \node[right=1em of sm] (x) {$x$};
+   \draw[->] (x) -- (sm) node[midway, above, font=\tiny] {$d$};
+   \draw (sm) -- ++(-1,0) node[midway, above, font=\tiny] {$d$};
+}.
+We can write this using elementary functions as:
 \[
-   \mathrm{softmax}(x) =
-   \begin{tikzpicture}[baseline=-.25em]
-      \node (ex) at (0,0) {$\{\mathrm{exp} \quad x\}$};
-      \node[right=1em of ex] (p) {$\{\mathrm{pow}(-1) \quad \{\mathrm{exp} \quad x\}\quad \sbullet\,\}$};
-      \draw ($(p.east)+(-1.1,.15)$) edge[out=90, in=90, looseness=1] ($(p.east)+(-.4,.15)$);
-      \draw ($(ex) + (.5, .15)$) -- ++(.1,.2);
+   \mathrm{softmax}(x)
+   =
+   \frac{\mathrm{exp}(x)}{\mathrm{sum}(\mathrm{exp}(x))}
+   =
+   \begin{tikzpicture}[baseline=-1em, every node/.append style={anchor=base}]
+      \node (ex1) at (0,0) {$\mathrm{exp}$};
+      \node (x1) at (1,0) {$x$};
+      \draw (ex1) edge[<-, densely dotted] (x1);
+      \draw (x1) -- ++(.5,0);
+      % Second row
+      \node (pow) at (-1,-.6) {$\mathrm{pow}_{-1}$};
+      \node[right=1em of pow] (b1) {$($};
+      \node[right=0em of b1] (exp2) {$\mathrm{exp}$};
+      \node[right=1em of exp2] (x2) {$x$};
+      \node[right=1em of x2, inner sep=1pt] (s) {$\sbullet$};
+      \draw (x2) edge[->, densely dotted] (exp2);
+      \draw (b1) edge[->, densely dotted] (pow);
+      \draw (x2) -- (s);
+      \node[right=0em of s] (b2) {$)$};
    \end{tikzpicture}
-   .
 \]
+It looks a bit complicated at first, but let us break it down step by step:
+$(\tikz[baseline=(ex1.base), every node/.append style={anchor=base}]{
+   \node (ex1) at (0,0) {$\mathrm{exp}$};
+   \node (x1) at (1,0) {$x$};
+   \draw (ex1) edge[<-, densely dotted] (x1);
+   \draw (x1) -- ++(.5,0);
+}) \in \R^n$ is the element-wise exponential function.
+If we contract it with $\tikz[baseline=(s.base)] {
+   \node[inner sep=1pt] (s) {$\sbullet$};
+   \draw (s) -- ++(-.4,0);
+}$, we get the sum $s=\sum_i \exp(x_i)$.
+Finally, we apply $\mathrm{pow}_{-1}$ to $s$ and multiply it with the exponential function to get the softmax function.
 
-
-\begin{align*}
-   \mathrm{pow}^{-1} x
-\end{align*}
-
-In the diagrams above the “curved” or “straight” edges indicate the flow of indices. When an edge is left free, it represents an output index of the function; a connected edge denotes a contracted (summed over) index. For example, applying a scalar function $f$ to a vector $x$ is written as $\{f\leftarrow x\}$, meaning the $n$-dimensional $x$ flows into $f$ and the result, being a scalar, has no free edges.
-
-
-As an example of a more complicated function, let $\exp : \mathbb R \to \mathbb R$ be the element-wise exponential function,
-and $\mathrm{pow}^{-1} : \mathbb R \to \mathbb R$ be the element-wise inverse power function.
-Then we can write $\mathrm{softmax}:\mathbb R^d \to \mathbb R^d$ as the tensor diagram:
+One situation where things may get a bit confusing if the output tensor is contracted with the broadcasting edges of an input tensor.
+But as long as we remember to contract the function edges first, things work out.
+For example, for a function $f : \R^n \to \R$ and a matrix $x \in \R^{m \times n}$:
 \[
-   \mathrm{softmax}(x) =
-   \begin{tikzpicture}[baseline=-.25em]
-      \node (ex) at (0,0) {$\{\mathrm{exp} \quad x\}$};
-      \node[right=1em of ex] (p) {$\{\mathrm{pow}^{-1} \quad \{\mathrm{exp} \quad x\}\quad \sbullet\,\}$};
-      \draw ($(p.east)+(-1.1,.15)$) edge[out=90, in=90, looseness=1] ($(p.east)+(-.4,.15)$);
-      \draw ($(ex) + (.5, .15)$) -- ++(.1,.2);
-   \end{tikzpicture}
-   .
-\]
-Note in particular how
-\begin{tikzpicture}[baseline=-.25em]
-   \node (p) {$\{\mathrm{exp} \quad x\}\quad \sbullet$};
-   \path ($(p.east)+(-.9,.15)$) edge [out=90, in=90, looseness=1] ($(p.east)+(-.2,.15)$);
-\end{tikzpicture}
-is the diagram way of writing $\sum_i \exp(x_i)$.
-Alternatively we could have used a function $\mathrm{sum} : \mathbb R^n \to \mathbb R$, but the more we can express in terms of tensor diagrams, the more we can use the powerful tensor diagram calculus.
-
-
-
-Stuff about analytical matrix functions.
-Such as Exponential Matrix Function.
-I'd rather talk about my general function notation.
-And maybe about taylor series?
-
-
-\newpage
-\section{The Chain Rule}
-Sometimes the objective is to find the derivative of a matrix which is a function of another matrix.
-
-E.g. $f : \R^n -> \R^n$
-
-Standard chain rule.
-Here we let $f\in\mathbb R^d\to \mathbb R$ be a scalar function, and $v\in\mathbb R^d\to \mathbb R^d$ be a vector function as used in backprop.
-
-Visualization of the Chain Rule: $J_{f\circ v}(x) = \nabla_{\!f}(v(x)) J_v(x)$.
-
-\[
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (n1) {$(\quad\{$};
-      \node[right=.5em of n1] (n2) {$f$};
-      \node[right=.5em of n2] (n3) {$\{$};
-      \node[right=0em of n3] (n4) {$v$};
-      \node[right=1em of n4] (n5) {$x$};
-      \node[right=0em of n5] (n6) {$\}\}\quad)$};
-      \draw (n4) edge[out=90, in=90, looseness=1, ->] (n2);
-      \draw (n5) edge[->] (n4);
-      \draw[d] (n6.east) -- ++(.2,.2);
+   \begin{tikzpicture}[baseline=(f.base), inner sep=2pt]
+      \node (f) {$f$};
+      \node (x) at (1,0) {$x$};
+      \draw (x) edge[bend right] node[midway, above, font=\tiny] {$m$} (f);
+      \draw (x) edge[->, bend left] node[midway, above, font=\tiny] {$n$} (f);
    \end{tikzpicture}
    =
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (n1) {$\{$};
-      \node[right=.5em of n1] (n2) {$f$};
-      \node[right=.5em of n2] (n3) {$\{$};
-      \node[right=0em of n3] (n4) {$v$};
-      \node[right=1em of n4] (n5) {$x$};
-      \node[right=0em of n5] (n6) {$\}\}$};
-      \node[right=1em of n6] (n7) {$\{$};
-      \node[right=0em of n7] (n8) {$v$};
-      \node[right=1em of n8] (n9) {$x$};
-      \node[right=0em of n9] (n10) {$\}$};
-      \draw (n4) edge[out=90, in=90, looseness=1, ->] (n2);
-      \draw (n5) edge[->] (n4);
-      \draw (n9) edge[->] (n8);
-      \draw[d1] (n2) edge[out=-30, in=-120, looseness=1] (n8);
-      \draw[d1] (n8) -- ++(.3,.3);
+   \hspace{-2.3em}
+   \begin{tikzpicture}[baseline=(f.base), inner sep=2pt]
+      \node (f) {$f(x)$};
+      \path (f) edge [out=160, in=20, looseness=3] node[midway, above, font=\tiny] {$m$} (f);
    \end{tikzpicture}
+   \hspace{-2.3em}
+   =
+   \Tr(f(x))
+   .
 \]
 
-\subsection{The Chain Rule}
-Let $f\in\mathbb R^d\to \mathbb R$ be a scalar function, and $v\in\mathbb R^d\to \mathbb R^d$ be a vector function, as used in backprop.
-Then we can write the chain rule as:
+\section{The Chain Rule}
+One of the most attractive features of tensor diagrams is the transparency of the chain rule. For two functions
+\(
+   f: \mathbb{R}^m \to \mathbb{R} \quad \text{and} \quad v: \mathbb{R}^n \to \mathbb{R}^m,
+\)
+the composite function $f\circ v: \mathbb{R}^n \to \mathbb{R}$ is diagrammed simply by feeding the output of $v$ into $f$:
+\[
+   \tikz[baseline=(f.base), inner sep=2pt, every node/.append style={anchor=base}]{
+      \node (f) {$f$};
+      \node[right=1em of f] (v) {$v$};
+      \node[right=1em of v] (x) {$x$};
+      \draw[->] (x) -- (v);
+      \draw[->] (v) -- (f);
+   }
+\]
+In traditional notation, the chain rule is written
+\(
+   J_{f\circ v}(x)=\nabla f(v(x))\,J_v(x),
+\)
+where $J_v(x)$ is the Jacobian of $v$ and $\nabla f(v(x))$ is the gradient of $f$ at $v(x)$.
+With tensor diagrams \emph{the chain rule is actually a chain!}
 \[
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node (n0) {$f$};
@@ -254,14 +286,73 @@ Then we can write the chain rule as:
       \draw[d0] (n0) -- (n3);
       \draw[d0] (n3) -- ++(.5,0);
    \end{tikzpicture}
+   \hspace{3em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \drawellipse{0}{-.75}{.5}{1.5}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \node[right=1em of n0] (n4) {$v$};
+      \node[below=1em of n4] (n5) {$u$};
+      \node[below=1em of n5] (n6) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n6) -- (n5);
+      \draw[->] (n5) -- (n4);
+      \draw[d0] (n0) -- (n4);
+      \drawellipse{.75}{-.55}{.5}{1}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.5em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \node[right=1em of n0, dn] (n4) {$v$};
+      \node[below=1em of n4] (n5) {$u$};
+      \node[below=1em of n5] (n6) {$x$};
+      \node[right=1em of n4, dn] (n7) {$u$};
+      \node[below=1em of n7] (n8) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n6) -- (n5);
+      \draw[->] (n5) -- (n4);
+      \draw[->] (n8) -- (n7);
+      \draw[d0] (n0) -- (n4);
+      \draw[d0] (n4) -- (n7);
+      \draw[d0] (n7) -- ++(.5,0);
+   \end{tikzpicture}
 \]
-Using standard notation:
-$J_{f\circ v}(x) = \nabla_{\!f}(v(x)) J_v(x)$.
+This clearly follows the classical mnemonic: ``the derivative of the outer function times the derivative of the inner function''.
+The only refinement we need is that the ``outer function'' is connected to the ``inner function'' using the new edge created by taking the derivative.
 
-\vspace{1em}
+We could further simplify \tikz[baseline=(f.base), inner sep=2pt]{\node[dn](f){$f$}; \draw[d0](f)--++(.6,0);} to \tikz[baseline=(f.base), inner sep=2pt]{\node(f){$f'$}; \draw(f)--++(.5,0);}, where $f'$ is the derivative of $f$.
+For example, if $f$ was $\cos-$, then $f'$ would be $\sin-$.
+But we can also just keep the circled $f$ as an easy to recognize symbol for the derivative.
 
-The second derivative, (or Hessian Chain rule):
+\subsection{The Hessian Chain Rule}
+Things get even more interesting when we consider the second derivative.
+Using standard notation, the Hessian of $f\circ v$ is
 \[
+H_{f\circ v}(x) = Dv(x)^T \cdot D^2f(v(x)) \cdot Dv(x) + \sum_{k=1}^d \frac{\partial f}{\partial u_k}(v(x)) \frac{\partial^2 v_k}{\partial x \partial x^T}(x).
+\]
+This ``Hessian Chain Rule'' is much easier to derive using tensor diagrams:
+\begin{align*}
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node (n0) {$f$};
       \node[below=1em of n0] (n1) {$v$};
@@ -271,7 +362,7 @@ The second derivative, (or Hessian Chain rule):
       \drawellipse{0}{-.55}{.5}{1}{180/4}
       \drawellipse{0}{-.55}{.7}{1.2}{180/4}
    \end{tikzpicture}
-   =
+   &=
    \hspace{.5em}
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node[dn] (n0) {$f$};
@@ -286,7 +377,7 @@ The second derivative, (or Hessian Chain rule):
       \draw[d0] (n3) -- ++(.5,0);
       \drawellipse{.4}{-.55}{1}{1.2}{180/4}
    \end{tikzpicture}
-   =
+ \\&=
    \hspace{.5em}
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node[dn] (n0) {$f$};
@@ -316,7 +407,7 @@ The second derivative, (or Hessian Chain rule):
       \draw[d0] (n3) -- ++(.5,0);
       \drawellipse{1}{-.25}{.5}{.7}{180/4}
    \end{tikzpicture}
-   =
+ \\&=
    \hspace{.5em}
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node[ddn] (n0) {$f$};
@@ -350,75 +441,145 @@ The second derivative, (or Hessian Chain rule):
       \draw[d0] (n3) -- ++(.5,0);
       \draw[d0] ($(n3)+(.166,.15)$) -- ++(.4,0);
    \end{tikzpicture}
-\]
-Using standard notation:
-\(
-H_{f\circ v}(x) = Dv(x)^T \cdot D^2f(v(x)) \cdot Dv(x) + \sum_{k=1}^d \frac{\partial f}{\partial u_k}(v(x)) \frac{\partial^2 v_k}{\partial x \partial x^T}(x).
-\)
-
-
-\begin{align*}
-\hspace{-2em}
-   \frac{\partial A(x)x}{\partial x}
-   &= (x^T \otimes I) \frac{\partial}{\partial x}  \mathrm{vec}[A(x)] + A(x)
-   &
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (n0) at (0,0) {$($};
-      \node[right=.5em of n0] (x0) {$x$};
-      \node[right=.5em of x0] (n2) {$\{$};
-      \node[right=.5em of n2] (A) {$A$};
-      \node[right=1em of A] (x1) {$x$};
-      \node[right=.5em of x1] (n5) {$\})$};
-      \draw[->] (x1) -- (A);
-      \draw (x0) edge[out=90, in=90, looseness=1] (A);
-      \draw[d] (n5.east) -- ++(.2,.2);
-   \end{tikzpicture}
-   &=
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (x0) {$x$};
-      \node [right=.5em of x0] (n2) {$(\{$};
-      \node [right=.5em of n2] (A) {$A$};
-      \node [right=1em of A] (x1) {$x$};
-      \node [right=.5em of x1] (n5) {$\})$};
-      \draw[->] (x1) -- (A);
-      \draw (x0) edge[out=90, in=90, looseness=1] (A);
-      \draw[d] (n5.east) -- ++(.2,.2);
-   \end{tikzpicture}
- +
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (n0) at (0,0) {$($};
-      \node [right=.5em of n0] (x0) {$x$};
-      \node [right=.5em of x0] (n1) {$)$};
-      \node [right=.5em of n1] (n2) {$\{$};
-      \node [right=.5em of n2] (A) {$A$};
-      \node [right=1em of A] (x1) {$x$};
-      \node [right=.5em of x1] (n5) {$\}$};
-      \draw[->] (x1) -- (A);
-      \draw (x0) edge[out=90, in=90, looseness=1] (A);
-      \draw[d] (n1.east) -- ++(.2,.2);
-   \end{tikzpicture}
- \\&&&=
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (x0) {$x$};
-      \node [right=.5em of x0] (n2) {$\{$};
-      \node [right=.5em of n2] (A) {$A$};
-      \node [right=1em of A] (x1) {$x$};
-      \node [right=.5em of x1] (n5) {$\}$};
-      \draw[->] (x1) -- (A);
-      \draw (x0) edge[out=90, in=90, looseness=1] (A);
-      \draw[d] ($(A.east)+(.1,.1)$) -- ++(.3,.2);
-   \end{tikzpicture}
- +
-   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (n2) {$\{$};
-      \node [right=.5em of n2] (A) {$A$};
-      \node [right=1em of A] (x1) {$x$};
-      \node [right=.5em of x1] (n5) {$\}$};
-      \draw[->] (x1) -- (A);
-      \draw (A) -- ++(.4,.3);
-   \end{tikzpicture}
 \end{align*}
+If we continue to expand this way, we see there is a simple pattern in the chain rule for more functions:
+\[\makebox[\textwidth][c]{
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \drawellipse{0}{-.75}{.5}{1.4}{180/4}
+      \drawellipse{0}{-.75}{.6}{1.5}{180/4}
+   \end{tikzpicture}
+   =
+   \hspace{.2em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[ddn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+%
+      \node[right=1em of n0, yshift=-1em, dn] (n4) {$v$};
+      \draw[d0] (n0) -- (n4);
+      \node[below=1em of n4] (n5) {$u$};
+      \node[below=1em of n5] (n6) {$x$};
+      \draw[->] (n6) -- (n5);
+      \draw[->] (n5) -- (n4);
+      \node[right=1em of n4, dn] (u1) {$u$};
+      \node[below=1em of u1] (u2) {$x$};
+      \draw[->] (u2) -- (u1);
+      \draw[d0] (n4) -- (u1);
+      \draw[d0] (u1) -- ++(.5,0);
+%
+      \node[right=3.5em of n4, yshift=1em, dn] (n7) {$v$};
+      \draw[d0] (n0) -- (n7);
+      \node[below=1em of n7] (n8) {$u$};
+      \node[below=1em of n8] (n9) {$x$};
+      \draw[->] (n9) -- (n8);
+      \draw[->] (n8) -- (n7);
+      \node[right=1em of n7, dn] (u3) {$u$};
+      \node[below=1em of u3] (u4) {$x$};
+      \draw[->] (u4) -- (u3);
+      \draw[d0] (n7) -- (u3);
+      \draw[d0] (u3) -- ++(.5,0);
+   \end{tikzpicture}
+   +
+   \hspace{.2em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \node[right=1.5em of n0, ddn] (n4) {$v$};
+      \node[below=1em of n4] (n5) {$u$};
+      \node[below=1em of n5] (n6) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n6) -- (n5);
+      \draw[->] (n5) -- (n4);
+      \draw[d0] (n0) -- (n4);
+      %
+      \node[right=1em of n4, yshift=-1em, dn] (r1) {$u$};
+      \node[below=1em of r1] (r2) {$x$};
+      \draw[->] (r2) -- (r1);
+      %
+      \node[right=1.5em of r1, yshift=1em, dn] (r3) {$u$};
+      \node[below=1em of r3] (r4) {$x$};
+      \draw[->] (r4) -- (r3);
+      %
+      \draw[d0] (n4) -- (r1);
+      \draw[d0] (n4) -- (r3);
+      \draw[d0] (r1) -- ++(.5,0);
+      \draw[d0] ($(r3)+(.166,.15)$) -- ++(.4,0);
+   \end{tikzpicture}
+   +
+   \hspace{.2em}
+   \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+      \node[dn] (n0) {$f$};
+      \node[below=1em of n0] (n1) {$v$};
+      \node[below=1em of n1] (n2) {$u$};
+      \node[below=1em of n2] (n3) {$x$};
+      \node[right=1.5em of n0, dn] (n4) {$v$};
+      \node[below=1em of n4] (n5) {$u$};
+      \node[below=1em of n5] (n6) {$x$};
+      \node[right=1.5em of n4, ddn] (n7) {$u$};
+      \node[below=1em of n7] (n8) {$x$};
+      \draw[->] (n3) -- (n2);
+      \draw[->] (n2) -- (n1);
+      \draw[->] (n1) -- (n0);
+      \draw[->] (n6) -- (n5);
+      \draw[->] (n5) -- (n4);
+      \draw[->] (n8) -- (n7);
+      \draw[d0] (n0) -- (n4);
+      \draw[d0] (n4) -- (n7);
+      \draw[d0] (n7) -- ++(.5,0);
+      \draw[d0] ($(n7)+(.166,.15)$) -- ++(.4,0);
+   \end{tikzpicture}
+}\]
+Yaroslav Bulatov has written extensively on the Hessian Chain Rule, and how to evaluate it efficiently for deep learning applications.
+Interested readers may refer to his blog post on the topic.
 
+\subsection{Chain Rule with Broadcasting}
+When the chain rule is applied to functions with broadcasting, the result still follows the ``outer derivative times inner derivative'' mnemonic, but the meaning of ``times'' is expanded to take the Hadamard product of the broadcasted edges.
+\[
+   \includegraphics[width=.8\textwidth]{figures/chain_rule_broadcast.pdf}
+\]
+
+\subsection{Functions with multiple inputs}
+If $f : \mathbb{R}^m \times \mathbb{R}^n \to \mathbb{R}$ is a function with two inputs, the derivative of $f(x,y)$ is simply $\frac{\partial f}{\partial x}\partial x + \frac{\partial f}{\partial y}\partial y$,
+or in tensor diagram notation:
+\[
+   \includegraphics[width=.45\textwidth]{figures/multi_input_functions.pdf}
+\]
+
+\section{Examples}
+
+\subsection{Known derivatives}
+Two examples where we can expand \tikz[baseline=(f.base), inner sep=2pt]{\node[dn](f){$f$}; \draw[d0](f)--++(.6,0);} with known derivatives:
+\[
+   \includegraphics[width=\textwidth]{figures/other_functions.pdf}
+\]
+Here $\mathrm{inv}(X)$ is the matrix inverse function, taking a matrix $X$ to its inverse $X^{-1}$.
+In the case of the determinant, one may continue taking derivatives to find the
+simple pattern
+\[
+   \frac{\partial^k \det(X)}{\partial X^k} = \det(X) (X^{-1})^{\otimes k}.
+\]
+
+
+\subsection{Pseudo-linear forms}
+
+Pseudo-linear forms, $A(x)x$, are common.
+All pixel-adaptive filters like non-local means, bilateral, etc, and the so-called attention mechanism in transformers can be written this way.
+According to Peyman Milanfar, the gradient of this function is important and has a form worth remembering:
 \[
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node (n0) {$A$};
@@ -472,75 +633,50 @@ H_{f\circ v}(x) = Dv(x)^T \cdot D^2f(v(x)) \cdot Dv(x) + \sum_{k=1}^d \frac{\par
       \draw (n0) -- ++(-.5,0);
    \end{tikzpicture}
 \]
-
-
-are common. All pixel-adaptive filters like non-local means, bilateral, etc, and the so-called attention mechanism in transformers can be written this way
-
-Gradient of this f(x) is important \& has a form worth remembering…
-
-
-\subsubsection{Trace identity}
-Assume F(X) to be a differentiable function of each of the elements of X. It
-then holds that
-\[\frac{d \mathrm{Tr}(F(x))}{dX} = f(X)^T,\]
-where $f(\cdot)$ is the scalar derivative of $F(\cdot)$.
-
-TODO: To show this with tensor diagrams, we first need to introduce our notation for functions.
-
-For example
-$$
-\frac{\partial \operatorname{Tr}(\sin (\mathbf{X}))}{\partial \mathbf{X}}=\cos (\mathbf{X})^T
-$$
-% Many more examples here: https://mbustamanter.github.io/ssg-blog/matder1/
-
-
-\subsubsection{Pseudo-linear form}
-Maybe this should just be an example in a table?
-
-Derivation of Peyman Milanfar's gradient
+We may appreciate the simplicity of this expression, when we consider the following derivation given by Peyman Milanfar using classical notation:
 \begin{align*}
-\mathrm{d}[\mathbf{f}(\mathbf{x})] & =\mathrm{d}[\mathbf{A}(\mathbf{x}) \mathbf{x}] \\
-& =\mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\operatorname{vec}\{\mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\operatorname{vec}\{\mathbf{I} \mathrm{d}[\mathbf{A}(\mathbf{x})] \mathbf{x}\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\left(\mathbf{x}^T \otimes \mathbf{I}\right) \operatorname{vec}\{\mathrm{d}[\mathbf{A}(\mathbf{x})]\}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})] \mathrm{d} \mathbf{x}+\mathbf{A}(\mathbf{x}) \mathrm{d} \mathbf{x} \\
-& =\left[\left(\mathbf{x}^T \otimes \mathbf{I}\right) \mathrm{D} \operatorname{vec}[\mathbf{A}(\mathbf{x})]+\mathbf{A}(\mathbf{x})\right] \mathrm{d} \mathbf{x}
+   \mathrm{d}[A(x) x]
+   & =\mathrm{d}[A(x)] x+A(x) \mathrm{d} x 
+   \\& =\operatorname{vec}{\mathrm{d}[A(x)] x}+A(x) \mathrm{d} x 
+   \\& =\operatorname{vec}{I \mathrm{d}[A(x)] x}+A(x) \mathrm{d} x 
+   \\& =(x^T \otimes I) \operatorname{vec}{\mathrm{d}[A(x)]}+A(x) \mathrm{d} x 
+   \\& =(x^T \otimes I) \mathrm{D} \operatorname{vec}[A(x)] \mathrm{d} x+A(x) \mathrm{d} x 
+   \\& =[(x^T \otimes I) \mathrm{D} \operatorname{vec}[A(x)]+A(x)] \mathrm{d} x
 \end{align*}
+Which finally implies:
+\begin{align*}
+\hspace{-2em}
+   \frac{\partial A(x)x}{\partial x}
+   &= (x^T \otimes I) \frac{\partial}{\partial x}  \mathrm{vec}[A(x)] + A(x)
+   .
+\end{align*}
+
+\subsection{Trace identity}
+The Matrix Cookbook has the formula:
+\begin{align}
+   \tag{128}
+   \frac{\partial \Tr(\sin(x))}{\partial x}
+   &= \cos(x)^T
+\end{align}
+If we attempt to derive this using tensor diagrams, we get the following different result,
+\[
+   \includegraphics[width=.5\textwidth]{figures/cos.pdf}
+\]
+which is equivalent to $\cos(x) \circ I$.
+That is, $\cos(x)$ but zero everywhere except the diagonal.
+
+The reason is that the matrix cookbook actually uses a slightly different definition of ``function applied to matrix''.
+If $F$ can be written as a power series, then one way to define $F(X)$ is the matrix power series:
+\[
+   F(X) = \sum_{k=0}^\infty a_k X^k.
+\]
+In this case, the derivative of $\Tr(F(X))$ is
+$f(X)^T$, where $f(X)$ is the scalar derivative of $F(X)$,
+matching the Matrix Cookbook's formula.
+
 
 \subsection{Taylor}
 For an n-times differentiable function $v: \R^d\to\R^d$ we can write the Taylor expansion:
-\begin{align*}
-    v(x + \eps)
-    &\approx
-    v(x)
-    + \left[\frac{\partial}{\partial x} v(x)\right]\eps
-    + \frac{1}{2}\left[\frac{\partial}{\partial x}\left[\frac{\partial}{\partial x} v(x)\right]\eps\right]\eps
-    + \frac{1}{6}\left[\frac{\partial}{\partial x}\left[\frac{\partial}{\partial x} \left[\frac{\partial}{\partial x} v(x)\right]\eps\right]\eps\right]\eps
-    + \dots
-    \\
-    &=
-    v(x)
-    + \left[\frac{\partial}{\partial x} v(x)\right]\eps
-    +
-    \frac{1}{2}
-    (I \otimes \eps)
-    \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial v(x)}{\partial x} \right]\right]\eps
-    + \frac{1}{6}
-    (I \otimes \eps \otimes \eps)
-    \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial\mathrm{vec}}{\partial x} \left[\frac{\partial v(x)}{\partial x} \right]\right]\right]\eps
-    + \dots
-\end{align*}
-Or with indices:
-\begin{align*}
-    v_i(x + \eps)
-    &\approx
-    v_i(x)
-    + \sum_j \frac{\partial v_i(x)}{\partial x_j} \eps_j
-    + \frac12 \sum_{j,k} \frac{\partial^2 v_i(x)}{\partial x_j\partial x_k} \eps_j \eps_k
-   + \frac16 \sum_{j,k,\ell} \frac{\partial^3 v_i(x)}{\partial x_j\partial x_k\partial x_\ell} \eps_j \eps_k \eps_\ell
-\end{align*}
-Or diagrams:
 \[
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node (n0) {$v$};
@@ -595,7 +731,38 @@ Or diagrams:
    \dots
 \]
 
-TODO: Examples based on idempotent matrices etc.
+Writing this using classical notation is quite messy:
+\begin{align*}
+    v(x + \eps)
+    &\approx
+    v(x)
+    + \left[\frac{\partial}{\partial x} v(x)\right]\eps
+    + \frac{1}{2}\left[\frac{\partial}{\partial x}\left[\frac{\partial}{\partial x} v(x)\right]\eps\right]\eps
+    + \frac{1}{6}\left[\frac{\partial}{\partial x}\left[\frac{\partial}{\partial x} \left[\frac{\partial}{\partial x} v(x)\right]\eps\right]\eps\right]\eps
+    + \dots
+    \\
+    &=
+    v(x)
+    + \left[\frac{\partial}{\partial x} v(x)\right]\eps
+    +
+    \frac{1}{2}
+    (I \otimes \eps)
+    \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial v(x)}{\partial x} \right]\right]\eps
+    + \frac{1}{6}
+    (I \otimes \eps \otimes \eps)
+    \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial\mathrm{vec}}{\partial x} \left[\frac{\partial v(x)}{\partial x} \right]\right]\right]\eps
+    + \dots
+\end{align*}
+With index notation it's ok:
+\begin{align*}
+    v_i(x + \eps)
+    &\approx
+    v_i(x)
+    + \sum_j \frac{\partial v_i(x)}{\partial x_j} \eps_j
+    + \frac12 \sum_{j,k} \frac{\partial^2 v_i(x)}{\partial x_j\partial x_k} \eps_j \eps_k
+   + \frac16 \sum_{j,k,\ell} \frac{\partial^3 v_i(x)}{\partial x_j\partial x_k\partial x_\ell} \eps_j \eps_k \eps_\ell
+\end{align*}
+% TODO: Examples based on idempotent matrices etc.
 
 
 
