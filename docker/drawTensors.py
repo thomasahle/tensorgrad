@@ -7,16 +7,58 @@ from typing import Dict, Any
 import os
 import base64
 import traceback
+import hashlib
 
 import tensorgrad
 import sympy
 from tensorgrad import functions
 from tensorgrad.imgtools import save_steps
 
+import boto3
+from botocore.exceptions import ClientError
+
+# Use the environment variable for the DynamoDB table name, with a default value.
+DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "CodeCache")
+
+# Set up the DynamoDB resource and table.
+dynamodb = boto3.resource("dynamodb")
+cache_table = dynamodb.Table(DYNAMODB_TABLE)
+
+
+def get_code_hash(code: str) -> str:
+    """Generate a SHA256 hash for the given code."""
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def get_cached_result(code: str):
+    """Retrieve cached result from DynamoDB if available."""
+    code_hash = get_code_hash(code)
+    try:
+        response = cache_table.get_item(Key={"code_hash": code_hash})
+        if "Item" in response:
+            return json.loads(response["Item"]["result"])
+    except ClientError as e:
+        print("DynamoDB get_item error:", e.response["Error"]["Message"])
+    return None
+
+
+def cache_result(code: str, result: dict):
+    """Store the result in DynamoDB."""
+    code_hash = get_code_hash(code)
+    try:
+        cache_table.put_item(
+            Item={
+                "code_hash": code_hash,
+                "result": json.dumps(result)
+                # Optionally, add a TTL attribute here if needed.
+            }
+        )
+    except ClientError as e:
+        print("DynamoDB put_item error:", e.response["Error"]["Message"])
+
 
 class CodeAnalyzer(ast.NodeVisitor):
     """Analyzes AST to detect potentially unsafe operations"""
-
     def __init__(self):
         self.has_unsafe_ops = False
         self.blacklist = {
@@ -35,29 +77,26 @@ class CodeAnalyzer(ast.NodeVisitor):
         }
 
     def visit_Import(self, node):
-        """Check for blacklisted imports"""
         for alias in node.names:
             if alias.name in self.blacklist:
                 self.has_unsafe_ops = True
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
-        """Check for blacklisted from imports"""
         if node.module in self.blacklist:
             self.has_unsafe_ops = True
         self.generic_visit(node)
 
     def visit_Call(self, node):
-        """Check for calls to blacklisted functions"""
         if isinstance(node.func, ast.Name) and node.func.id in self.blacklist:
             self.has_unsafe_ops = True
         self.generic_visit(node)
 
 
-
 def safe_execute(code: str) -> Dict[str, Any]:
     """
-    Safely execute user code with restrictions
+    Safely execute user code with restrictions.
+    Pre-generates any necessary files and captures stdout/stderr.
     """
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -91,12 +130,12 @@ def safe_execute(code: str) -> Dict[str, Any]:
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             exec(code, restricted_globals, local_namespace)
 
-        # Read the generated image
+        # Read the generated image (if any)
         if os.path.exists(output_path):
             with open(output_path, "rb") as f:
                 image_data = f.read()
             result["image"] = base64.b64encode(image_data).decode("utf-8")
-            os.remove(output_path)  # Clean up
+            os.remove(output_path)
         else:
             result["image"] = None
 
@@ -113,21 +152,20 @@ def safe_execute(code: str) -> Dict[str, Any]:
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    AWS Lambda handler function
+    AWS Lambda handler function with DynamoDB caching.
     """
-    # Common headers for all responses
     headers = {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "https://tensorcookbook.com",  # Allow CORS
+        "Access-Control-Allow-Origin": "https://tensorcookbook.com",
         "Access-Control-Allow-Headers": "content-type",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Cache-Control": "max-age=86400, public",  # 24 hours
-        "Vary": "Origin"  # Important when using specific CORS origins
+        "Cache-Control": "max-age=86400, public",
+        "Vary": "Origin"
     }
 
     try:
         print(event)
-        # For API Gateway requests, the payload is in event['body']
+        # For API Gateway, the payload is in event['body']
         if isinstance(event, dict) and "body" in event:
             try:
                 payload = json.loads(event["body"])
@@ -145,8 +183,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not code:
             return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "No code provided"})}
 
-        # Execute code safely
+        # Check if a cached result exists
+        cached_result = get_cached_result(code)
+        if cached_result:
+            print("Returning cached result")
+            return {"statusCode": 200, "headers": headers, "body": json.dumps(cached_result)}
+
+        # Execute code safely if no cache is found
         result = safe_execute(code)
+
+        # Cache the result if execution was successful
+        if result.get("success"):
+            cache_result(code, result)
 
         return {"statusCode": 200, "headers": headers, "body": json.dumps(result)}
 

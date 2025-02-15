@@ -12,6 +12,7 @@ jobs:
       AWS_REGION: us-east-1
       LAMBDA_FUNCTION_NAME: drawTensors
       ECR_REPOSITORY: tensorgrad
+      DYNAMODB_TABLE: TensorgradCache
       TEST_PAYLOAD: >
         {"code":
         "i = sp.symbols('i');
@@ -26,7 +27,11 @@ jobs:
 
       # Build the Docker image locally using Docker Buildx
       - name: Build Docker image
-        run: docker buildx build -t tensorgrad -f docker/Dockerfile .
+        run: docker buildx build -t tensorgrad -f docker/Dockerfile . \
+            --build-arg AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
+            --build-arg AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
+            --build-arg AWS_REGION=${{ env.AWS_REGION }} \
+            --build-arg DYNAMODB_TABLE=${{ env.DYNAMODB_TABLE }}
 
       # Test the Docker image by running it locally and invoking the function
       - name: Test Lambda container locally
@@ -78,6 +83,11 @@ jobs:
           cache-from: type=gha,scope=update-lambda-cache
           cache-to: type=gha,scope=update-lambda-cache,mode=max,ignore-error=true
           provenance: false
+          build-args: |
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            AWS_DEFAULT_REGION=${{ env.AWS_DEFAULT_REGION }}
+            DYNAMODB_TABLE=${{ env.DYNAMODB_TABLE }}
 
       # Update the Lambda function to use the new image from ECR
       - name: Update Lambda function code
