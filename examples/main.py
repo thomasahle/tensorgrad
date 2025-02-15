@@ -287,5 +287,14 @@ def main17():
     save_steps(expr)
     print(to_tikz(expr))
 
+def main18():
+    b, x, y = symbols("b x y")
+    X = Variable("X", x)
+    eps = Variable("eps", x)
+    Y = F.softmax(X, dim='x').simplify({'expand_functions': True})
+    expr = F.taylor(Y, X, eps, n=2)
+    expr = expr / Y
+    save_steps(expr)
+
 if __name__ == "__main__":
-    main17()
+    main18()
