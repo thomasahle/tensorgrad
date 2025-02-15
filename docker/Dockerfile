@@ -20,7 +20,8 @@ ENV TEXMFVAR=/tmp
 
 # Pre-generate format files during build
 RUN mkdir -p /tmp && \
-    fmtutil-sys --all
+    fmtutil-sys --all && \
+    luaotfload-tool --update
 
 # Install Python dependencies
 COPY tensorgrad/ tensorgrad/
