@@ -17,8 +17,10 @@ from tensorgrad.imgtools import save_steps
 import boto3
 from botocore.exceptions import ClientError
 
+print(os.environ)
+
 # Use the environment variable for the DynamoDB table name, with a default value.
-DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "CodeCache")
+DYNAMODB_TABLE = os.environ["DYNAMODB_TABLE"]
 
 # Set up the DynamoDB resource and table.
 dynamodb = boto3.resource("dynamodb")
