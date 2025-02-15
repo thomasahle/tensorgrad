@@ -28,16 +28,15 @@ jobs:
       # Build the Docker image locally using Docker Buildx
       - name: Build Docker image
         run: |
-          docker buildx build -t tensorgrad -f docker/Dockerfile . \
-            --build-arg AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-            --build-arg AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-            --build-arg AWS_DEFAULT_REGION=${{ env.AWS_REGION }} \
-            --build-arg DYNAMODB_TABLE=${{ env.DYNAMODB_TABLE }}
+          docker buildx build -t tensorgrad -f docker/Dockerfile .
 
       # Test the Docker image by running it locally and invoking the function
       - name: Test Lambda container locally
         run: |
-          docker run -d --name lambda_local_test -p 9000:8080 tensorgrad
+          docker run -d --name lambda_local_test -p 9000:8080 \
+            -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
+            -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
+            tensorgrad
           sleep 5
           curl --fail -X POST \
             "http://localhost:9000/2015-03-31/functions/function/invocations" \
