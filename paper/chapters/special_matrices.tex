@@ -1,24 +1,11 @@
 
-\chapter{Special Matrices}
-\subsection{Block matrices}
-Stuff like Schur complements is interesting.
-But can we say anything useful using tensor diagrams?
+\chapter{Special Tensors}
 
-\subsection{The Discrete Fourier Transform Matrix}
-I think FFT can be nicely described with diagrams
-
-Let's start with the Hadamard matrix:
-$H_n = \smat{1 & 1 \\ 1 & -1}^{\otimes n}$.
-Hm. It's just a bunch of matrices below each other, kinda boring.
-
-What about the FFT?
-Does that require a bit more?
+Some tensors have special structure, other than rank/order, that give them nice properties, like fast contraction.
+Below are some examples.
 
 
-
-
-
-\subsection{Fast Kronecker Multiplication}
+\section{Fast Kronecker Multiplication}
 
 Say we want to compute $(A_1\otimes A_2\cdots A_n)x$,
 where $A_i$ is a $a_i \times a_i$ matrix, and $x \in \R^{a_1 a_2 \cdots a_n}$.
@@ -42,7 +29,7 @@ perform the multiplication
       \draw ($(C.east)+(0,-.1)$) -- (x);
       \draw (D) -- (x) node[midway, below right, font=\tiny] {$a_n$};
    \end{tikzpicture}
-%\quad\text{in time}
+%\quad\text{in time} lv
 \]
 by contracting the $a_i$ edges one by one.
 This takes time
@@ -55,7 +42,7 @@ a_1^2(a_2\cdots a_n)
 \]
 which is the basis of many fast algorithm as we will see.
 
-\subsubsection{Hadamard}
+\section{Hadamard Transform}
 
 The Hadamard matrix is defined as
 $
@@ -123,7 +110,7 @@ Alternatively we could just use the general fact, as described above, where $a_i
 Then the ``fast Kronecker multiplication'' method takes time $(a_1 a_2\cdots a_n)(a_1+a_2+\cdots a_n) = 2 n \log_2 n$.
 
 
-\subsubsection{Fourier}
+\section{Fourier Transform}
 
 % A more common matrix is the Discrete Fourier Matrix.
 %\\
@@ -143,18 +130,26 @@ F_N =
    \end{bmatrix}
 .
 \]
+Using the function syntax from earlier, and assuming $n$ is the vector $[1, 2, \dots, N]$, an alternative way to write this would be:
 \[
-   =
-   \begin{tikzpicture}[baseline=-.25em, y=1.3em, inner sep=1pt]
-      \node at (0,0) {$\bigg\{\mathrm{exp} \,\, 2\pi i/N$};
-      \node (a) at (1,1) {$\mathrm{arange}(N)$};
-      \node (b) at (1,-1) {$\mathrm{arange}(N)$};
-      \node at (2,0) {$\bigg\}$};
-      \draw (a.north) -- ++(0, .5);
-      \draw (b.south) -- ++(0, -.5);
-   \end{tikzpicture}
+\begin{tikzpicture}
+    % Place the exp text
+    \node (exp) at (-.2,0) {$\exp$};
+    
+    \begin{scope}[xshift=1cm]
+        % Draw the dashed rectangle
+        \draw[dashed, rounded corners] (-.3,-0.5) rectangle (.5,0.5);
+        % Add the n labels
+        \node(n1) at (0,0.2) {$n$};
+        \node(n2) at (0,-0.2) {$n$};
+        \draw (n1) -- ++(.7,0);
+        \draw (n2) -- ++(.7,0);
+    \end{scope}
+    
+    % Draw the dotted arrow
+    \draw[densely dotted, <-] (exp.east) -- ++(0.5,0);
+\end{tikzpicture}
 \]
-TODO: Show how the matrix can be written with the function notation.
 
 The Good-Thomas Fast Fourier Transformer (FFT) uses a decomposition based on the Chinese Remainder Theorem:
 \[
@@ -425,20 +420,110 @@ The tensor diagram only has $n$ rows (or $\log_2 N$).
 \subsubsection{Multi-dimensional Fourier Transform}
 This is just taking the Fourier transform along each axis.
 
-\newpage
+\subsection{Vandermonde Matrices}
+We can define the ``Vandermonde Function'', $\mathrm{vm}_N(x) = (1, x, x^2, \dots, x^{N-1})$.
+Then the Vandermonde Matrix, $V_{i,j}=x_i^j$ is defined:
+\[
+   \begin{tikzpicture}
+      \node(vm) at (0,0) {vm};
+      \node(x) at (.9,0) {$x$};
+      \draw[densely dotted, ->] (x) -> (vm);
+      \draw (x) -- ++(.5,0);
+      \draw (vm) -- ++(-.6,0);
+   \end{tikzpicture}
+\]
+If $a\in\R^N$ is a vector with the coefficients of the polynomial $P(x)=a_0 + a_1 x + \dots$, we can get the ``batch evaluation'' vector, $(P(x_1), P(x_2), \dots)$ as:
+\[
+   \begin{tikzpicture}
+      \node(a) at (-.75,0) {$a$};
+      \node(vm) at (0,0) {vm};
+      \node(x) at (.9,0) {$x$};
+      \draw[densely dotted, ->] (x) -> (vm);
+      \draw (x) -- ++(.5,0);
+      \draw (vm) -- (a);
+   \end{tikzpicture}
+\]
+
+This can be done fast (in $O(n(\log n)^2)$ time) using the FFT described above.
+% <ref>{{cite book |last1=Von Zur Gathen |first1=Joachim |title=Modern computer algebra |last2=Jürgen |first2=Gerhard |publisher=[[Cambridge University Press]] |year=2013 |isbn=9781139856065 |at=Chapter 10 |author-link=Joachim von zur Gathen}}</ref>
+The idea is to define two polynomials that are zero in respectively the first and second half of the points:
+\begin{align*}
+   m_0(x)&=(x-x_1)\cdots(x-x_{n/2}) \quad\text{and}\\
+   m_1(x)&=(x-x_{n/2+1})\cdots(x-x_{n}).
+\end{align*}
+We then compute $R_0 = P \bmod m_0$ and $R_1 = P \bmod m_1$ using the Polynomial remainder theorem, which can be done in $O(n\log n)$ time using a FFT.
+This means
+\begin{align*}
+   P(x) &= Q_0(x)m_0(x) + R_0(x) \quad\text{and}\\
+   P(x) &= Q_1(x)m_1(x) + R_1(x)
+\end{align*}
+by construction, where $R_0$ and $R_1$ are polynomials of degree at most $n/2$.
+Because of how $m_0$ and $m_1$ were defined, we have
+\begin{align*}
+R_0(x_i) &= P(x_i) \quad\text{for } i \le n/2 \quad\text{and}\\
+R_1(x_i) &= P(x_i) \quad\text{for } i > n/2.
+\end{align*}
+Thus to compute $P$ on all $n$ of the $x_i$, it suffices to compute the smaller polynomials $R_0$ and $R_1$ on each half of the points.
+(The $Q_0$ and $Q_1$ polynomials can be ignored.)
+This gives us a divide-and-conquer algorithm with $T(n) = 2T(n/2) + n\log n$, which implies $T(n)=O(n(\log n)^2)$.
 
 
-\subsection{Hermitian Matrices and skew-Hermitian}
-Complex. Skip
-\subsection{Idempotent Matrices}
-Skip
-\subsection{Orthogonal matrices}
-Skip
-\subsection{Positive Definite and Semi-definite Matrices}
-Skip
-\subsection{Singleentry Matrix, The}
-Describes the matrix $J$.
-All of this is trivial with diagrams.
+
+\subsection{Block matrices}
+Stuff like Schur complements is interesting.
+But can we say anything useful using tensor diagrams?
+
+From the Matrix Cookbook:
+Regard the matrix
+
+\[
+   \left[ \begin{array}{c|c} A_{11} & A_{12} \\ \hline A_{21} & A_{22} \end{array} \right]
+\]
+
+The Schur complement of block $A_{11}$ of the matrix above is the matrix (denoted $C_2$ in the text above)
+
+\[
+   A_{22} - A_{21}A_{11}^{-1}A_{12}
+\]
+
+The Schur complement of block $A_{22}$ of the matrix above is the matrix (denoted $C_1$ in the text above)
+
+\[
+   A_{11} - A_{12}A_{22}^{-1}A_{21}
+\]
+
+Using the Schur complement, one can rewrite the inverse of a block matrix
+
+\[
+   \left[ \begin{array}{c|c} A_{11} & A_{12} \\ \hline A_{21} & A_{22} \end{array} \right]^{-1}
+= \left[ \begin{array}{c|c} I & 0 \\ \hline -A_{22}^{-1}A_{21} & I \end{array} \right] \left[ \begin{array}{c|c} (A_{11} - A_{12}A_{22}^{-1}A_{21})^{-1} & 0 \\ \hline 0 & A_{22}^{-1} \end{array} \right] \left[ \begin{array}{c|c} I & -A_{12}A_{22}^{-1} \\ \hline 0 & I \end{array} \right]
+\]
+
+The Schur complement is useful when solving linear systems of the form
+
+\[
+   \left[ \begin{array}{c|c} A_{11} & A_{12} \\ \hline A_{21} & A_{22} \end{array} \right] \left[ \begin{array}{c} x_1 \\ x_2 \end{array} \right] = \left[ \begin{array}{c} b_1 \\ b_2 \end{array} \right]
+\]
+
+which has the following equation for $x_1$
+
+\[
+   (A_{11} - A_{12}A_{22}^{-1}A_{21})x_1 = b_1 - A_{12}A_{22}^{-1}b_2
+\]
+
+When the appropriate inverses exists, this can be solved for $x_1$ which can then be inserted in the equation for $x_2$ to solve for $x_2$.
+
+%\subsection{Hermitian Matrices and skew-Hermitian}
+%Complex. Skip
+%\subsection{Idempotent Matrices}
+%Skip
+%\subsection{Orthogonal matrices}
+%Skip
+%\subsection{Positive Definite and Semi-definite Matrices}
+%Skip
+%\subsection{Singleentry Matrix, The}
+%Describes the matrix $J$.
+%All of this is trivial with diagrams.
 \subsection{Symmetric, Skew-symmetric/Antisymmetric}
 \label{sec:symmetric}
 
@@ -450,8 +535,4 @@ Could introduce Penrose's symmetric tensors here?
 Could talk about the convolution tensor here...
 \subsection{Units, Permutation and Shift}
 Not that interesting...
-\subsection{Vandermonde Matrices}
-Does this have a nice description?
-Not a lot of properties are given in the Cookbook.
-
 
