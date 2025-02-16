@@ -108,7 +108,11 @@
                 const payload = {
                     code: codeInput.value
                 };
-                const response = await fetch('https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors', {
+
+                const response = await fetch(
+                   // 'https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors'
+                   'https://4kqy5zmzdi3aghjn32orugt7vm0kgzts.lambda-url.us-east-1.on.aws/execute'
+                   , {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
