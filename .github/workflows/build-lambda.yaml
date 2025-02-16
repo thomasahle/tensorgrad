@@ -109,6 +109,6 @@ jobs:
           sleep 5
           echo "Testing API Gateway endpoint for function..."
           curl -f -X POST \
-            https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors \
+            https://4kqy5zmzdi3aghjn32orugt7vm0kgzts.lambda-url.us-east-1.on.aws/execute \
             -H 'Content-Type: application/json' \
             -d "$TEST_PAYLOAD"
