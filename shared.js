@@ -30,6 +30,28 @@ const examples = [
     `)
    },
    {
+      title: "Derivative of ‖ AᵀA − I ‖_F²",
+      code: dedent(`
+      # Define A to be a square matrix
+      i = sp.symbols("i")
+      A = tg.Variable("A", i, j=i)
+
+      # Compute A.T @ A - I
+      AT = A.rename(j='k')
+      I = tg.Delta(i, 'j', 'k')
+      error = AT @ A - I
+
+      # Contract with itself to take Frobenius norm square
+      frob = error @ error
+
+      # Take the derivative with respect to A
+      expr = tg.Derivative(frob, A)
+
+      # Simplify the expression and save the steps
+      save_steps(expr)
+    `)
+   },
+   {
       title: "Derivative of L2 Loss",
       code: dedent(`
       # Define sizes for the tensor edges and variables
