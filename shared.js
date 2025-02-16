@@ -132,7 +132,7 @@ const examples = [
       # Define the symmetric covariance matrix
       C = tg.Variable(f"C", i, j=i).with_symmetries("i j")
 
-      # Take the expectation of `prod` wrt u
+      # Take the expectation of 'prod' wrt u
       expr = tg.Expectation(prod, u, mu=tg.Zero(i), covar=C, covar_names={"i": "j"})
       save_steps(expr.full_simplify())
       `)
