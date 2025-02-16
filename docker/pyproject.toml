@@ -6,4 +6,7 @@ dependencies = [
     "pdf2image",
     "sympy",
     "boto3",
+    "moto",
+    "fastapi",
+    "mangum",
 ]

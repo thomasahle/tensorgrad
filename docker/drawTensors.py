@@ -1,39 +1,117 @@
-from functools import partial
+# app.py
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from mangum import Mangum
 import json
+import uuid
+from datetime import datetime
+import traceback
+import os
+import hashlib
+import base64
 import ast
 import contextlib
 import io
-from typing import Dict, Any
-import os
-import base64
-import traceback
-import hashlib
+from typing import Optional
+import tempfile
+
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
 
 import tensorgrad
 import sympy
 from tensorgrad import functions
 from tensorgrad.imgtools import save_steps
+from functools import partial
 
-import boto3
-from botocore.exceptions import ClientError
+app = FastAPI()
 
-print(os.environ)
+# ----------------- Pydantic Models -----------------
 
-# Use the environment variable for the DynamoDB table name, with a default value.
-DYNAMODB_TABLE = os.environ["DYNAMODB_TABLE"]
 
-# Set up the DynamoDB resource and table.
-dynamodb = boto3.resource("dynamodb")
-cache_table = dynamodb.Table(DYNAMODB_TABLE)
+# Request Payload Model
+class CodePayload(BaseModel):
+    code: str
+
+
+# Response model for code execution results
+class ExecutionResult(BaseModel):
+    success: bool
+    output: str = ""
+    error: str = ""
+    image: Optional[str] = None
+    stacktrace: Optional[str] = None
+
+
+# Response model for snippet creation
+class SnippetCreationResponse(BaseModel):
+    snippet_id: str
+    message: str = "Snippet created"
+
+
+# Response model for snippet retrieval
+class Snippet(BaseModel):
+    snippet_id: str
+    code: str
+    created_at: str
+    author_id: str
+
+
+# ----------------- DynamoDB Setup -----------------
+
+
+# Don't try to authenticate if not running as a Lambda function
+if "DYNAMODB_CACHE_TABLE" in os.environ and "DYNAMODB_SNIPPET_TABLE" in os.environ:
+
+    def check_aws_credentials() -> bool:
+        """
+        Try to use the STS service to check if AWS credentials are available.
+        """
+        try:
+            client = boto3.client("sts")
+            called_id = client.get_caller_identity()
+            print("AWS Account ID:", called_id["Account"])
+            return True
+        except Exception:
+            return False
+
+    if check_aws_credentials():
+        # Use DynamoDB if credentials are available
+        dynamodb = boto3.resource("dynamodb")
+        print(os.environ)
+        cache_table = dynamodb.Table(os.environ["DYNAMODB_CACHE_TABLE"])
+        snippet_table = dynamodb.Table(os.environ["DYNAMODB_SNIPPET_TABLE"])
+    else:
+        # Fallback: Use an in-memory "database"
+        print("No AWS credentials available, using in-memory database.")
+
+        class InMemoryTable:
+            def __init__(self, key_name="id"):
+                self.data = {}
+                self.key_name = key_name
+
+            def get_item(self, Key: dict) -> dict:
+                key = Key[self.key_name]
+                result = self.data.get(key)
+                if result is None:
+                    return {}
+                return {"Item": self.data[key]}
+
+            def put_item(self, Item: dict):
+                key = Item[self.key_name]
+                self.data[key] = Item
+
+        cache_table = InMemoryTable(key_name="code_hash")
+        snippet_table = InMemoryTable(key_name="snippet_id")
+
+# ----------------- Helper Functions for Caching -----------------
 
 
 def get_code_hash(code: str) -> str:
-    """Generate a SHA256 hash for the given code."""
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
 def get_cached_result(code: str):
-    """Retrieve cached result from DynamoDB if available."""
     code_hash = get_code_hash(code)
     try:
         response = cache_table.get_item(Key={"code_hash": code_hash})
@@ -41,26 +119,62 @@ def get_cached_result(code: str):
             return json.loads(response["Item"]["result"])
     except ClientError as e:
         print("DynamoDB get_item error:", e.response["Error"]["Message"])
+    except NoCredentialsError:
+        print("No AWS credentials found")
     return None
 
 
 def cache_result(code: str, result: dict):
-    """Store the result in DynamoDB."""
     code_hash = get_code_hash(code)
     try:
         cache_table.put_item(
-            Item={
-                "code_hash": code_hash,
-                "result": json.dumps(result)
-                # Optionally, add a TTL attribute here if needed.
-            }
+            Item={"code_hash": code_hash, "result": json.dumps(result)}
         )
     except ClientError as e:
         print("DynamoDB put_item error:", e.response["Error"]["Message"])
+    except NoCredentialsError:
+        print("No AWS credentials found")
+
+
+# ----------------- Helper Functions for Snippet Sharing -----------------
+
+
+def create_snippet(code: str, author_id: str = None) -> str:
+    snippet_id = str(uuid.uuid4())
+    try:
+        snippet_table.put_item(
+            Item={
+                "snippet_id": snippet_id,
+                "code": code,
+                "created_at": datetime.utcnow().isoformat(),
+                "author_id": author_id or "anonymous",
+            }
+        )
+    except ClientError as e:
+        print("DynamoDB put_item error (snippet):", e.response["Error"]["Message"])
+        raise e
+    except NoCredentialsError as e:
+        print("No AWS credentials found", e)
+        # We just return the snippet_id even if the save failed, helpful for testing
+    return snippet_id
+
+
+def get_snippet(snippet_id: str) -> dict:
+    try:
+        response = snippet_table.get_item(Key={"snippet_id": snippet_id})
+        return response.get("Item")
+    except ClientError as e:
+        print("DynamoDB get_item error (snippet):", e.response["Error"]["Message"])
+        return None
+    except NoCredentialsError as e:
+        print("No AWS credentials found", e)
+        return None
+
+
+# ----------------- Code Execution Safety Functions -----------------
 
 
 class CodeAnalyzer(ast.NodeVisitor):
-    """Analyzes AST to detect potentially unsafe operations"""
     def __init__(self):
         self.has_unsafe_ops = False
         self.blacklist = {
@@ -78,128 +192,139 @@ class CodeAnalyzer(ast.NodeVisitor):
             "importlib",
         }
 
+    def get_full_name(self, node):
+        if isinstance(node, ast.Name):
+            return node.id
+        elif isinstance(node, ast.Attribute):
+            value = self.get_full_name(node.value)
+            return f"{value}.{node.attr}" if value else node.attr
+        return ""
+
+    def is_blacklisted(self, name: str) -> bool:
+        # Split the name by dots and check each part.
+        return any(part in self.blacklist for part in name.split("."))
+
     def visit_Import(self, node):
         for alias in node.names:
-            if alias.name in self.blacklist:
+            # alias.name might be something like "os" or "os.path"
+            if self.is_blacklisted(alias.name):
                 self.has_unsafe_ops = True
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
-        if node.module in self.blacklist:
+        if node.module and self.is_blacklisted(node.module):
             self.has_unsafe_ops = True
         self.generic_visit(node)
 
     def visit_Call(self, node):
-        if isinstance(node.func, ast.Name) and node.func.id in self.blacklist:
-            self.has_unsafe_ops = True
+        # Check both direct function calls and attribute calls (e.g., os.system)
+        if isinstance(node.func, (ast.Name, ast.Attribute)):
+            full_name = self.get_full_name(node.func)
+            if self.is_blacklisted(full_name):
+                self.has_unsafe_ops = True
         self.generic_visit(node)
 
 
-def safe_execute(code: str) -> Dict[str, Any]:
-    """
-    Safely execute user code with restrictions.
-    Pre-generates any necessary files and captures stdout/stderr.
-    """
+def safe_execute(code: str) -> ExecutionResult:
     stdout = io.StringIO()
     stderr = io.StringIO()
 
-    result = {"success": False, "output": "", "error": "", "result": None}
-    output_path = "/tmp/steps.png"
-
     try:
+        # Parse the code
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
-            result["error"] = str(e)
-            return result
+            return ExecutionResult(success=False, error=str(e))
 
+        # Analyze for unsafe operations
         analyzer = CodeAnalyzer()
         analyzer.visit(tree)
         if analyzer.has_unsafe_ops:
-            result["error"] = "Code contains unsafe operations"
-            return result
+            return ExecutionResult(
+                success=False,
+                error="Code contains unsafe operations",
+            )
 
-        # Create a restricted globals dictionary
-        restricted_globals = {
-            "tg": tensorgrad,
-            "F": functions,
-            "sp": sympy,
-            "save_steps": partial(save_steps, output_path=output_path),
-        }
+        # Create a temporary file for image output.
+        with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+            # Set up a restricted execution environment, passing the temporary file's path
+            restricted_globals = {
+                "tg": tensorgrad,
+                "F": functions,
+                "sp": sympy,
+                "save_steps": partial(save_steps, output_path=tmp.name),
+            }
+            local_namespace = {}
 
-        local_namespace = {}
-        # Execute code with stdout/stderr capture
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            exec(code, restricted_globals, local_namespace)
+            # Execute the user code while capturing output and errors
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exec(code, restricted_globals, local_namespace)
 
-        # Read the generated image (if any)
-        if os.path.exists(output_path):
-            with open(output_path, "rb") as f:
-                image_data = f.read()
-            result["image"] = base64.b64encode(image_data).decode("utf-8")
-            os.remove(output_path)
-        else:
-            result["image"] = None
+            # Check if an image was generated
+            image = None
+            if os.path.exists(tmp.name):
+                with open(tmp.name, "rb") as f:
+                    image_data = f.read()
+                # If the image is empty, we leave the image field as None
+                if image_data:
+                    base64data = base64.b64encode(image_data).decode('utf-8')
+                    image = f"data:image/png;base64,{base64data}"
 
-        result["success"] = True
-        result["output"] = stdout.getvalue()
-        result["error"] = stderr.getvalue()
+        return ExecutionResult(
+            success=True,
+            output=stdout.getvalue(),
+            error=stderr.getvalue(),
+            image=image,
+        )
 
     except Exception as e:
-        result["error"] = str(e)
-        result["stacktrace"] = traceback.format_exc()
+        return ExecutionResult(
+            success=False,
+            error=str(e),
+            stacktrace=traceback.format_exc()
+        )
+
+# ----------------- FastAPI Endpoints -----------------
+
+
+@app.post("/execute", response_model=ExecutionResult)
+async def execute_code(payload: CodePayload):
+    code = payload.code
+    if not code:
+        raise HTTPException(status_code=400, detail="No code provided")
+
+    # Check for a cached result.
+    cached = get_cached_result(code)
+    if cached:
+        return ExecutionResult(**cached)
+
+    # Execute the code.
+    result = safe_execute(code)
+
+    # Cache the result if execution was successful.
+    if result.success:
+        cache_result(code, result.dict())
 
     return result
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    AWS Lambda handler function with DynamoDB caching.
-    """
-    headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "https://tensorcookbook.com",
-        "Access-Control-Allow-Headers": "content-type",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Cache-Control": "max-age=86400, public",
-        "Vary": "Origin"
-    }
+@app.post("/snippets", response_model=SnippetCreationResponse)
+async def post_snippet(payload: CodePayload):
+    code = payload.code
+    if not code:
+        raise HTTPException(status_code=400, detail="No code provided")
+    snippet_id = create_snippet(code)
+    return SnippetCreationResponse(snippet_id=snippet_id)
 
-    try:
-        print(event)
-        # For API Gateway, the payload is in event['body']
-        if isinstance(event, dict) and "body" in event:
-            try:
-                payload = json.loads(event["body"])
-                code = payload.get("code")
-            except json.JSONDecodeError:
-                return {
-                    "statusCode": 400,
-                    "headers": headers,
-                    "body": json.dumps({"error": "Invalid JSON payload"}),
-                }
-        else:
-            # Direct Lambda invocation
-            code = event.get("code")
 
-        if not code:
-            return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "No code provided"})}
+@app.get("/snippets/{snippet_id}", response_model=Snippet)
+async def fetch_snippet(snippet_id: str):
+    snippet = get_snippet(snippet_id)
+    if snippet is None:
+        raise HTTPException(status_code=404, detail=f"Snippet {snippet_id} not found")
+    return Snippet(**snippet)
 
-        # Check if a cached result exists
-        cached_result = get_cached_result(code)
-        if cached_result:
-            print("Returning cached result")
-            return {"statusCode": 200, "headers": headers, "body": json.dumps(cached_result)}
 
-        # Execute code safely if no cache is found
-        result = safe_execute(code)
+# ----------------- Lambda Handler -----------------
 
-        # Cache the result if execution was successful
-        if result.get("success"):
-            cache_result(code, result)
-
-        return {"statusCode": 200, "headers": headers, "body": json.dumps(result)}
-
-    except Exception as e:
-        return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": str(e)})}
-
+handler = Mangum(app)

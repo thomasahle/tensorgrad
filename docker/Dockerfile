@@ -2,7 +2,8 @@
 FROM public.ecr.aws/lambda/python:3.12
 
 ENV AWS_DEFAULT_REGION="us-east-1"
-ENV DYNAMODB_TABLE="TensorgradCache"
+ENV DYNAMODB_CACHE_TABLE="TensorgradCache"
+ENV DYNAMODB_SNIPPET_TABLE="CodeSnippets"
 
 # Install microdnf for lightweight package management
 RUN microdnf update -y \
@@ -29,4 +30,4 @@ COPY docker/ docker/
 RUN pip install ./docker
 
 # Command to start the Lambda function
-CMD ["docker.drawTensors.lambda_handler"]
+CMD ["docker.drawTensors.handler"]
