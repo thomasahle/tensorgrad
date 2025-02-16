@@ -9,4 +9,6 @@ dependencies = [
     "moto",
     "fastapi",
     "mangum",
+    "requests",
+    "pydantic",
 ]
