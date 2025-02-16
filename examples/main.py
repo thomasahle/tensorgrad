@@ -1,7 +1,7 @@
 from tensorgrad import Variable, Product, Function, Derivative, Sum, Delta, Zero, Ones, function
 from collections import defaultdict
 import tensorgrad.functions as F
-from tensorgrad.extras import Expectation
+from tensorgrad import Expectation
 from tensorgrad.extras.to_tikz import to_tikz
 from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
 from tensorgrad.imgtools import save_steps, save_as_image
@@ -297,4 +297,4 @@ def main18():
     save_steps(expr)
 
 if __name__ == "__main__":
-    main18()
+    main4()

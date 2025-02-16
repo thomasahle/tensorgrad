@@ -11,5 +11,6 @@ from .tensor import (
     _make_distinct,  # noqa: F401
     function,  # noqa: F401
 )
+from .extras.expectation import Expectation  # noqa: F401
 from .functions import frobenius2, kronecker, diag, sum, log, pow, trace  # noqa: F401
 from sympy import symbols  # noqa: F401
