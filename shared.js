@@ -116,6 +116,31 @@ const examples = [
       save_steps(E.full_simplify())
     `)
    },
+   {
+      title: "Isserlis' Theorem",
+      code: dedent(`
+      i = sp.symbols("i")
+      eps = sp.symbols("e")
+      u = tg.Variable(f"u", i)
+      C = tg.Variable(f"C", i, j=i).with_symmetries("i j")
+      prod = tg.Product([u.rename(i=f"i{k}") for k in range(4)])
+      expr = tg.Expectation(prod, u, mu=tg.Zero(i), covar=C, covar_names={"i": "j"})
+      expr = prod.full_simplify()
+      save_steps(expr)
+      `)
+   },
+   {
+      title: "Tensor Taylor Approximation",
+      code: dedent(`
+      b, x, y = sp.symbols("b x y")
+      X = tg.Variable("X", x)
+      eps = tg.Variable("eps", x)
+      Y = F.softmax(X, dim='x').simplify({'expand_functions': True})
+      expr = F.taylor(Y, X, eps, n=2)
+      expr = expr / Y
+      save_steps(expr)
+      `)
+   },
 ];
 
 // Server endpoints (adjust to your environment)
