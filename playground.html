@@ -1,0 +1,68 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tensorgrad Playground</title>
+  
+  <!-- Shared CSS -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- CodeMirror CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css" />
+</head>
+<body>
+  <h1><a href="index.html">The Tensor Cookbook</a></h1>
+  <div class="container" style="column-gap: 20px">
+    <!-- Main content: the code editor and output/error -->
+    <div class="main-content">
+       <h2>Tensorgrad Playground</h2>
+      <textarea id="playgroundCode"></textarea>
+      <div id="error"></div>
+      <div id="imageContainer" class="image-container"></div>
+    </div>
+    <!-- Sidebar: controls for examples/snippet URL and Run/Format/Share buttons -->
+    <div class="sidebar">
+      <div id="controlContainer">
+        <h2></h2>
+        <!-- This section will show either the examples dropdown or the snippet URL -->
+        <select id="exampleSelectSidebar" style="display:block; visibility:hidden"></select>
+        <input type="text" id="snippetUrlInput" readonly style="display:none" />
+        <!-- Control buttons -->
+        <button class="button" id="shareBtn">Share</button>
+        <button class="button" id="runBtn">Run</button>
+        <!--<button class="button" id="formatBtn">Format</button>-->
+      </div>
+    </div>
+  </div>
+  <footer>
+    <hr />
+    <p>© 2025 Tensorgrad Playground</p>
+  </footer>
+
+  <!-- CodeMirror JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+  
+  <!-- Shared JS (which includes initializePage and our examples object) -->
+  <script src="shared.js"></script>
+
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      // Initialize the page. All controls are in the sidebar.
+      initializePage({
+        textareaId: "playgroundCode",
+        runBtnId: "runBtn",
+        shareBtnId: "shareBtn",
+        formatBtnId: "formatBtn",
+        outputId: "output",
+        errorId: "error",
+        exampleSelectId: "exampleSelectSidebar",
+        snippetInputId: "snippetUrlInput",
+        imageContainerId: "imageContainer",
+        autoLoadSnippetFromURL: true
+      });
+    });
+  </script>
+</body>
+</html>

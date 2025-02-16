@@ -1,0 +1,230 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+/* Body and Layout */
+body {
+  font-family: Verdana, Helvetica, sans-serif;
+  line-height: 1.4;
+  color: #353549;
+  max-width: 1000px;
+  margin: 0 auto;
+  background-color: #fafafa;
+}
+p, ul, pre {
+   margin: 1em 0;
+}
+
+.container {
+  column-gap: 30px;
+  background-color: white;
+  padding: 0 40px;
+  display: grid;
+}
+
+.main-content {
+  flex: 3;
+  padding: 0;
+}
+
+.sidebar {
+  background-color: #fff;
+}
+
+/* Header and Titles */
+h1 {
+  color: #555588;
+  font-size: xxx-large;
+  background: white;
+  margin: 0;
+  padding: 40px 0 0 40px;
+}
+h1 a {
+   color: #555588;
+   text-decoration: none;
+}
+footer {
+    background: white;
+    padding: 10px 40px;
+}
+h2 {
+  color: #555588;
+  font-size: 1em;
+  font-weight: bold;
+  margin-right: 5px;
+  display: inline;
+}
+h2 + p {
+  display: inline;
+}
+h2::before {
+  content: "";
+  display: block;
+  margin-bottom: 2em;
+}
+
+/* Links and Lists */
+a {
+  color: #3b3bb2;
+  text-decoration: none;
+}
+
+/* Diagrams, images, code blocks */
+.diagram img {
+  max-width: 90%;
+}
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background-color: #fff;
+  padding: 10px;
+  border: 1px solid #ccc;
+  font-size: 80%;
+  width: 250px;
+}
+ul {
+    padding-left: 2em;
+}
+/* Buttons and Utility Classes */
+.button, button {
+  display: block;
+  padding: 5px 20px;
+  margin: 10px 0;
+  text-align: center;
+  background-color: #3f3fcd;
+  color: white;
+  text-decoration: none;
+  border-radius: 5px;
+  font-size: 1.2em;
+  cursor: pointer;
+}
+button {
+  line-height: 1.4;
+  border: none;
+  width: 100%;
+}
+button:disabled {
+  background-color: #ccc;
+  cursor: default;
+}
+#code-buttons {
+   display: flex;
+   flex-direction: row-reverse;
+}
+.small-button {
+   display: inline-block;
+   width: auto;
+   padding: 5px 30px;
+   margin: 5px 0 0 10px;
+}
+
+/* Wide layout for large screens */
+.container {
+    grid-template-columns: 4fr 1fr;
+    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas:
+      "main access"
+      "main topics"
+      "main author"
+      "main citation"
+      "main other"
+      "main .";
+    padding: 0 20px;
+}
+h1 {
+    padding: 30px 0 0 20px;
+}
+footer {
+    padding: 10px 20px;
+}
+
+.main-content { grid-area: main; }
+#topics { grid-area: topics; }
+#access-paper { grid-area: access; }
+#author-info { grid-area: author; }
+#citation-info { grid-area: citation; }
+#other-resources { grid-area: other; }
+#mobile-top { display: none; }
+
+.inline-list li { display: inline; }
+.inline-list { display: inline; padding: 0 }
+.inline-list li::before {
+    content: " • ";
+}
+
+/* Mobile layout */
+@media (max-width: 768px) {
+  h1 {
+    font-size: xx-large;
+  }
+  .container {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-areas:
+      "access"
+      "author"
+      "main"
+      "topics"
+      "citation"
+      "other";
+  }
+  #access-paper { display: none; }
+  #author-info { display: none; }
+  #mobile-top { display: block; }
+}
+
+/* CodeMirror Editor */
+.CodeMirror {
+  width: 100%;
+  height: 150px;
+  margin: .5rem 0 0 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: text;
+}
+#snippetUrlInput, #exampleSelectSidebar {
+   width: 100%;
+   padding: 0.5rem;
+   border: 1px solid #ccc;
+   border-radius: 4px;
+   font-size: 1.1em;
+   margin: 0.5rem 0 0 0;
+}
+/* Error and Image Container */
+#error {
+  color: #dc2626;
+  margin-top: 1rem;
+  padding: 0.5rem;
+  border: none;
+  background-color: #fee2e2;
+  display: none;
+  width: 100%;
+}
+.image-container {
+  margin-top: 1rem;
+  text-align: center;
+}
+.image-container img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Loading Spinner */
+.loading {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

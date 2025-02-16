@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,201 +22,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Tensor Cookbook</title>
 
+    <!-- Use the shared stylesheet -->
+    <link rel="stylesheet" href="styles.css" />
+
     <!-- 1. CodeMirror CSS -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
     />
-    <!-- (Optional) Add a CodeMirror theme for styling. Example: 
-         <link
-           rel="stylesheet"
-           href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/dracula.min.css"
-         />
-    -->
-
-    <style>
-      body {
-         font-family: Verdana, Helvetica, sans-serif;
-         line-height: 1.4;
-         color: #353549;
-         max-width: 1000px;
-         margin: 0 auto;
-         background-color: #fafafa;
-      }
-      .container {
-         column-gap: 40px;
-         background-color: white;
-         padding: 0 40px;
-         display: grid;
-      }
-      .main-content {
-         flex: 3;
-         padding: 0;
-      }
-      .sidebar {
-         background-color: #fff;
-      }
-      h1 {
-         color: #555588;
-         font-size: xxx-large;
-         background: white;
-         margin: 0;
-         padding: 40px 0 0 40px;
-      }
-      footer {
-         background: white;
-         padding: 10px 40px;
-      }
-      h2 {
-         color: #555588;
-         font-size: 1em;
-         font-weight: bold;
-         margin-right: 5px;
-         display: inline;
-      }
-      h2 + p {
-         display: inline;
-      }
-      h2::before {
-         content: "";
-         display: block;
-         margin-bottom: 2em;
-      }
-      a {
-         color: #3b3bb2;
-         text-decoration: none;
-      }
-      .diagram img {
-         max-width: 90%;
-      }
-      pre {
-         white-space: pre-wrap;
-         word-wrap: break-word;
-         background-color: #fff;
-         padding: 10px;
-         border: 1px solid #ccc;
-         font-size: 80%;
-         width: 250px;
-      }
-      ul {
-         padding-left: 2em;
-      }
-      .button {
-         display: block;
-         padding: 5px 20px;
-         margin: 10px 0;
-         text-align: center;
-         background-color: #3f3fcd;
-         color: white;
-         text-decoration: none;
-         border-radius: 5px;
-         font-size: 1.2em;
-      }
-
-      /* Wide layout for large screens */
-      .container {
-         grid-template-columns: 4fr 1fr;
-         grid-template-rows: auto auto auto auto 1fr;
-         grid-template-areas:
-            "main access"
-            "main topics"
-            "main author"
-            "main citation"
-            "main other"
-            "main .";
-         padding: 0 20px;
-      }
-      h1 {
-         padding: 30px 0 0 20px;
-      }
-      footer {
-         padding: 10px 20px;
-      }
-
-      .main-content { grid-area: main; }
-      #topics { grid-area: topics; }
-      #access-paper { grid-area: access; }
-      #author-info { grid-area: author; }
-      #citation-info { grid-area: citation; }
-      #other-resources { grid-area: other; }
-      #mobile-top { display: none; }
-
-      .inline-list li { display: inline; }
-      .inline-list { display: inline; padding: 0 }
-      .inline-list li::before {
-         content: " • ";
-      }
-
-      /* Mobile layout */
-      @media (max-width: 768px) {
-         h1 {
-            font-size: xx-large;
-         }
-         .container {
-            grid-template-columns: 1fr;
-            grid-template-rows: auto auto 1fr auto auto;
-            grid-template-areas:
-                "access"
-                "author"
-                "main"
-                "topics"
-                "citation"
-                "other";
-         }
-         #access-paper { display: none; }
-         #author-info { display: none; }
-         #mobile-top { display: block; }
-      }
-
-      /* CodeMirror & button styling for the demo */
-      .CodeMirror {
-        width: 100%;
-        height: 150px;
-        margin-bottom: 1rem;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-      }
-      button {
-        line-height: 1.4;
-        border: none;
-        width: 100%;
-      }
-      button:disabled {
-        background-color: #ccc;
-        cursor: not-allowed;
-      }
-      #error {
-        color: #dc2626;
-        margin-top: 1rem;
-        padding: 0.5rem;
-        border-radius: 4px;
-        background-color: #fee2e2;
-        display: none;
-      }
-      .image-container {
-        margin-top: 1rem;
-        text-align: center;
-      }
-      .image-container img {
-        max-width: 100%;
-        height: auto;
-      }
-      .loading {
-        display: inline-block;
-        width: 1rem;
-        height: 1rem;
-        margin-right: 0.5rem;
-        border: 2px solid #ffffff;
-        border-radius: 50%;
-        border-top-color: transparent;
-        animation: spin 1s linear infinite;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-    </style>
 </head>
 <body>
     <h1>The Tensor Cookbook</h1>
@@ -235,31 +49,52 @@
           </div>
           <p>
             In short, each edge is the index of a tensor, and connecting two edges contracts the tensors over this dimension. After a bit of practice, this becomes incredibly intuitive.
-            </p>
-           <p>
+          </p>
+          <p>
             The Tensor Cookbook aims to <strong>popularize tensor diagrams by rewriting the classical
             "<a href="https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf">Matrix Cookbook</a>"</strong>.
-               You can think of it as a reference book, skip around for some cool diagrams,
-               or a crash course full of exercises to practice your skill.
+            You can think of it as a reference book, skip around for some cool diagrams,
+            or a crash course full of exercises to practice your skill.
+          </p>
+
           <h2>Tensorgrad</h2>
-          <p>is a <a href="https://github.com/thomasahle/tensorgrad/">python library</a>
+          <p>
+            is a <a href="https://github.com/thomasahle/tensorgrad/">python library</a>
             for symbolic tensor manipulation and derivatives using tensor diagrams.
-            Try it here:</p>
+            Try it here:
+            <select id="exampleSelect"></select>
+          </p>
 
-<textarea id="codeInput">
-b, x, y = sp.symbols("b x y")
-X = tg.Variable("X", b, x)
-Y = tg.Variable("Y", b, y)
-W = tg.Variable("W", x, y)
-error = X @ W - Y
-loss = error @ error
-expr = tg.Derivative(loss, W)
-save_steps(expr)
-</textarea>
 
-          <button class="button" id="submitButton" onclick="generateVisualization()">Simplify Step by Step</button>
+          <textarea id="codeInput"></textarea>
+
+          <!-- Buttons and output area -->
+          <div id="code-buttons">
+             <button class="button small-button" id="runBtn" onclick="runCode(indexEditor, 'runBtn', 'output', 'error')">Run</button>
+             <button class="button small-button" id="shareBtn">Share</button>
+          </div>
+
+
           <div id="error"></div>
           <div id="imageContainer" class="image-container"></div>
+
+         <!-- Code -->
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+          <script src="shared.js"></script>
+          <script>
+             window.addEventListener("DOMContentLoaded", () => {
+               initializePage({
+                  textareaId: "codeInput",
+                  runBtnId: "runBtn",
+                  shareBtnId: "shareBtn",
+                  outputId: "output",
+                  errorId: "error",
+                  exampleSelectId: "exampleSelect",
+                  imageContainerId: "imageContainer",
+               });
+             });
+          </script>
        </div>
 
        <!-- SIDEBAR SECTIONS -->
@@ -273,7 +108,7 @@ save_steps(expr)
 
        <div id="author-info">
           <h2>Author:</h2>
-          <p>Thomas Dybdahl Ahle<br />
+          <p>Thomas Dybdahl Ahle
              <a href="https://thomasahle.com">thomasahle.com</a> and <a href="https://x.com/thomasahle">twitter.com/thomasahle</a>.
           </p>
        </div>
@@ -334,90 +169,6 @@ save_steps(expr)
        </p>
        <p>&copy; 2024 Thomas Dybdahl Ahle. All rights reserved.</p>
     </footer>
-
-    <!-- 2. CodeMirror JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
-    <!-- For Python syntax highlighting, use: -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
-    <!-- For JS, you could do:
-         <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script> -->
-
-    <script>
-      // Initialize CodeMirror in the Demo section
-      const editor = CodeMirror.fromTextArea(
-        document.getElementById('codeInput'),
-        {
-          mode: 'python',  // or 'javascript', etc.
-          lineNumbers: true,
-          // theme: 'dracula', // if you included a theme above
-        }
-      );
-
-      async function generateVisualization() {
-        const submitButton = document.getElementById('submitButton');
-        const errorDiv = document.getElementById('error');
-        const imageContainer = document.getElementById('imageContainer');
-
-        // Clear any previous error and image
-        errorDiv.style.display = 'none';
-        errorDiv.textContent = '';
-        imageContainer.innerHTML = '';
-
-        // Disable button + show loading indicator
-        submitButton.disabled = true;
-        submitButton.innerHTML = '<div class="loading"></div>Processing...';
-
-        try {
-          const code = editor.getValue();
-          const response = await fetch(
-            // 'https://08vyi4oqmf.execute-api.us-east-1.amazonaws.com/drawTensors',
-            'https://4kqy5zmzdi3aghjn32orugt7vm0kgzts.lambda-url.us-east-1.on.aws/execute',
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ code })
-            }
-          );
-
-          if (!response.ok) {
-            // E.g., network or server error (non-200 status)
-            throw new Error(`Server returned status ${response.status}`);
-          }
-
-          const data = await response.json();
-          // data = { success, output, error, stacktrace, image? }
-
-          if (!data.success) {
-            // If success is false, we may have "error" or "stacktrace" or both
-            let errorMsg = data.error || 'Failed to generate tensor visualization.';
-            if (data.stacktrace) {
-              errorMsg += '\n\nStack Trace:\n' + data.stacktrace;
-            }
-            throw new Error(errorMsg);
-          }
-
-          // If success is true:
-          if (data.image) {
-            const img = document.createElement('img');
-            img.src = data.image;
-            img.alt = 'Tensor visualization';
-            imageContainer.appendChild(img);
-          } else {
-            // Possibly no image was generated
-            throw new Error('No image returned from server.');
-          }
-
-        } catch (err) {
-          // Display error from server or network
-          errorDiv.textContent = 'Error: ' + err.message;
-          errorDiv.style.display = 'block';
-        } finally {
-          // Re-enable button
-          submitButton.disabled = false;
-          submitButton.innerHTML = 'Generate Visualization';
-        }
-      }
-    </script>
 
 </body>
 </html>
