@@ -399,7 +399,7 @@ save_steps(expr)
           // If success is true:
           if (data.image) {
             const img = document.createElement('img');
-            img.src = `data:image/png;base64,${data.image}`;
+            img.src = data.image;
             img.alt = 'Tensor visualization';
             imageContainer.appendChild(img);
           } else {
