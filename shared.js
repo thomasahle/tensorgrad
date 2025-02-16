@@ -119,26 +119,42 @@ const examples = [
    {
       title: "Isserlis' Theorem",
       code: dedent(`
+      # Isserlis' Theorem tells us that E[u ⊗ u ⊗ u ⊗ u], where u is Gaussian
+      # with mean 0 and covariance matrix C, is "roughly" 3 C ⊗ C, but symmetrized
+
+      # Define u as a vector
       i = sp.symbols("i")
-      eps = sp.symbols("e")
       u = tg.Variable(f"u", i)
-      C = tg.Variable(f"C", i, j=i).with_symmetries("i j")
+
+      # Take the tensor product
       prod = tg.Product([u.rename(i=f"i{k}") for k in range(4)])
+
+      # Define the symmetric covariance matrix
+      C = tg.Variable(f"C", i, j=i).with_symmetries("i j")
+
+      # Take the expectation of `prod` wrt u
       expr = tg.Expectation(prod, u, mu=tg.Zero(i), covar=C, covar_names={"i": "j"})
-      expr = prod.full_simplify()
-      save_steps(expr)
+      save_steps(expr.full_simplify())
       `)
    },
    {
       title: "Tensor Taylor Approximation",
       code: dedent(`
-      b, x, y = sp.symbols("b x y")
-      X = tg.Variable("X", x)
-      eps = tg.Variable("eps", x)
-      Y = F.softmax(X, dim='x').simplify({'expand_functions': True})
-      expr = F.taylor(Y, X, eps, n=2)
-      expr = expr / Y
-      save_steps(expr)
+      # Compute the Taylor Approximation
+      # softmax(x + eps) = softmax(x) + eps * ...
+
+      # First define two vectors of the same shape
+      i = sp.symbols("i")
+      x = tg.Variable("x", i)
+      eps = tg.Variable("eps", i)
+
+      # Take the softmax and expand it in terms of simple functions
+      y = F.softmax(x, dim='i').simplify({'expand_functions': True})
+
+      # Take the second order tensor approximation of Y wrt (x, eps)
+      expr = F.taylor(y, x, eps, n=2)
+
+      save_steps(expr.full_simplify())
       `)
    },
 ];
@@ -182,6 +198,7 @@ async function initializePage(config) {
          }
          if (exampleSelect) {
             exampleSelect.style.display = "block";
+            exampleSelect.style.visibility = "visible";
          }
       }
    }
@@ -234,6 +251,7 @@ async function initializePage(config) {
                const img = document.createElement('img');
                img.src = data.image;
                img.alt = 'Tensor visualization';
+               imageContainer.innerHTML = '';
                imageContainer.appendChild(img);
             } else {
                console.log("No image returned.");

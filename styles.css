@@ -30,10 +30,6 @@ p, ul, pre {
   padding: 0;
 }
 
-.sidebar {
-  background-color: #fff;
-}
-
 /* Header and Titles */
 h1 {
   color: #555588;
@@ -228,3 +224,7 @@ footer {
     transform: rotate(360deg);
   }
 }
+
+/* Playground */
+#control-container { grid-area: topics; }
+#tensorgrad-info { grid-area: other; }
