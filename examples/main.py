@@ -296,5 +296,17 @@ def main18():
     expr = expr / Y
     save_steps(expr)
 
+def main19():
+    i = symbols("i")
+    M = Variable("M", i, j=i).with_symmetries("i j")
+    u = Variable("u", i)
+    U = Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i)
+    TrUMs = F.graph("*1 -i- U1 -j-i- M1 -j-i- U2 -j-i- M2 -j- *1",
+                    U1=U, U2=U, M1=M, M2=M)
+    # UMs = F.multi_dot([U, M]*2, dims=("i", "j"))
+    # TrUMs = F.trace(UMs)
+    expr = Expectation(TrUMs, u)
+    save_steps(expr.full_simplify())
+
 if __name__ == "__main__":
-    main4()
+    main19()
