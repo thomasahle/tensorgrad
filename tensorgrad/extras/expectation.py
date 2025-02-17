@@ -105,9 +105,22 @@ class Expectation(Tensor):
 
     def _simplify_product(self, prod: Product, args: dict[str, str]):
         # Right now we only support expectations of products where wrt is directly in the product.
-        if self.wrt in prod.tensors:
+        assert isinstance(prod, Product), f"{prod=}"
+        constants = []
+        dependents = []
+        for t in prod.tensors:
+            if not t.depends_on(self.wrt):
+                constants.append(t)
+            else:
+                dependents.append(t)
+        assert dependents, "Should have at least one dependent variable in the product"
+        if len(dependents) == 1:
+            x, = dependents
+            return Product(constants) @ Expectation(x, self.wrt, self.mu, self.covar, self.covar_names)
+
+        if self.wrt in dependents:
             # 1) Look for an instance of wrt in the product
-            x = next(x for x in prod.tensors if x == self.wrt)
+            x = next(x for x in dependents if x == self.wrt)
 
             # Rename the mu and covar to match the actual edges of x
             # E.g. if x is actually the transpose of wrt
@@ -116,13 +129,13 @@ class Expectation(Tensor):
 
             # 2) Form x * rest by removing x from the product
             # Note subs.remove will only remove _the first_ occurrence of x, not all of them.
-            subs = prod.tensors[:]
+            subs = dependents[:]
             subs.remove(x)
             rest = Product(subs)
 
             # 3) Expand: x * rest = (x - mu + mu) * rest = mu * rest + (x - mu) * rest
             res = mu @ Expectation(rest, self.wrt, self.mu, self.covar, self.covar_names)
-            assert res.edges == self.edges, f"{res.edges=} != {self.edges=}"
+            assert res.edges == Product(dependents).edges
 
             # Before we can rename covar with iso_rename, we have to make sure it there's
             # no clash with the covar_names.
@@ -134,7 +147,7 @@ class Expectation(Tensor):
 
             # We use the covar_names as the new_names for the derivative. Note that these will eventually
             # be consumed by the multiplication with @ covar.
-            return res + covar @ Expectation(
+            res = res + covar @ Expectation(
                 # We have to take the derivative wrt x, not wrt. Or maybe it works with wrt too?
                 # I guess derivatives don't really care about renamings of the variable, as long as the
                 # new edges are consistent
@@ -144,14 +157,19 @@ class Expectation(Tensor):
                 self.covar,
                 self.covar_names,
             )
+            if constants:
+                res = Product(constants) @ res
+            return res
 
         # Unable to simplify
-        return prod
+        return Expectation(prod, self.wrt, self.mu, self.covar, self.covar_names)
 
     def _simplify_function(self, fn: Function, args: dict[str, str]):
+        # If the function is a power function with a positive exponent, we can simplify it
         if isinstance(fn.signature, _PowerFunction) and fn.signature.k >= 0:
             (inner,) = fn.inputs
-            prod = F.prod(*[inner] * fn.signature.k).simplify(args | {"factor_components": False})
+            prod = F.prod(*[inner] * fn.signature.k)
+            assert isinstance(prod, Product), f"{prod=}"
             res = self._simplify_product(prod, args)
             return res
         return fn
