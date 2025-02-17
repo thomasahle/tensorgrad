@@ -175,6 +175,29 @@ const examples = [
       save_steps(grad)
       `)
    },
+   {
+      title: "Expectation of Tr((UM)^2)",
+      code: dedent(`
+      # Compute E[Tr((UM)^2)] where U = I - gg^T/d, and g ~ N(0,I_d)^d
+      d = sp.symbols("d")
+      u = tg.Variable("u", i=d)
+      U = tg.Delta(d, "i", "j") - u @ u.rename(i="j") / tg.Delta(d)
+
+      # We assume M is symmetric
+      M = tg.Variable("M", i=d, j=d).with_symmetries("i j")
+
+      # F.graph is an easy way to string tensor diagrams together
+      TrUMs = F.graph("*1 -i- U1 -j-i- M1 -j-i- U2 -j-i- M2 -j- *1",
+                      U1=U, U2=U, M1=M, M2=M)
+
+      # Alternatively we can use F.multi_dot and F.trace, which
+      # follow their siblings in torch.linalg:
+      # TrUMs = F.trace(F.multi_dot([U, M]*2, dims=("i", "j")))
+
+      expr = tg.Expectation(TrUMs, u)
+      save_steps(expr.full_simplify())
+      `)
+   },
 ];
 
 // Server endpoints (adjust to your environment)
