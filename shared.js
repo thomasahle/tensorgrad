@@ -12,7 +12,7 @@ function dedent(str) {
 // Updated examples object using dedent:
 const examples = [
    {
-      title: "Product Derivative",
+      title: "Derivative of Product: =T-M-",
       code: dedent(`
       # Define sizes for the tensor edges and variables
       i, j, k, l = sp.symbols("i j k l")
@@ -30,29 +30,8 @@ const examples = [
     `)
    },
    {
-      title: "Derivative of ‖ AᵀA − I ‖_F²",
-      code: dedent(`
-      # Define A to be a square matrix
-      i = sp.symbols("i")
-      A = tg.Variable("A", i, j=i)
-
-      # Compute A.T @ A - I
-      AT = A.rename(j='k')
-      I = tg.Delta(i, 'j', 'k')
-      error = AT @ A - I
-
-      # Contract with itself to take Frobenius norm square
-      frob = error @ error
-
-      # Take the derivative with respect to A
-      expr = tg.Derivative(frob, A)
-
-      # Simplify the expression and save the steps
-      save_steps(expr)
-    `)
-   },
-   {
-      title: "Derivative of L2 Loss",
+      // title: "Derivative of L2 Loss",
+      title: "Derivative of ‖ X Wᵀ − Y ‖²_F",
       code: dedent(`
       # Define sizes for the tensor edges and variables
       b, x, y = sp.symbols("b x y")
@@ -75,7 +54,29 @@ const examples = [
     `)
    },
    {
-      title: "Hessian of CE Loss",
+      title: "Derivative of ‖ AᵀA − I ‖²_F",
+      code: dedent(`
+      # Define A to be a square matrix
+      i = sp.symbols("i")
+      A = tg.Variable("A", i, j=i)
+
+      # Compute A.T @ A - I
+      AT = A.rename(j='k')
+      I = tg.Delta(i, 'j', 'k')
+      error = AT @ A - I
+
+      # Contract with itself to take Frobenius norm square
+      frob = error @ error
+
+      # Take the derivative with respect to A
+      expr = tg.Derivative(frob, A)
+
+      # Simplify the expression and save the steps
+      save_steps(expr)
+    `)
+   },
+   {
+      title: "Hessian of Cross Entropy Loss",
       code: dedent(`
       # Define the logits and targets as vectors
       i = sp.symbols("i")
@@ -85,7 +86,7 @@ const examples = [
       # Define the softmax cross-entropy loss
       e = F.exp(logits)
       softmax = e / F.sum(e)
-      ce = -F.sum(target * F.log(softmax))
+      ce = -target @ F.log(softmax)
 
       # Compute the Hessian by taking the gradient of the gradient
       H = ce.grad(logits).grad(logits)
@@ -95,7 +96,7 @@ const examples = [
     `)
    },
    {
-      title: "Expectation of L2 Loss",
+      title: "Expectation of L2 Loss: E[‖ XW − Y ‖²_F]",
       code: dedent(`
       # Define sizes for the tensor edges and variables
       b, x, y = sp.symbols("b x y")
@@ -117,7 +118,7 @@ const examples = [
     `)
    },
    {
-      title: "Isserlis' Theorem",
+      title: "Isserlis' Theorem: E[u ⊗ u ⊗ u ⊗ u]",
       code: dedent(`
       # Isserlis' Theorem tells us that E[u ⊗ u ⊗ u ⊗ u], where u is Gaussian
       # with mean 0 and covariance matrix C, is "roughly" 3 C ⊗ C, but symmetrized
@@ -138,7 +139,7 @@ const examples = [
       `)
    },
    {
-      title: "Tensor Taylor Approximation",
+      title: "Taylor Approximation: softmax(x + eps)",
       code: dedent(`
       # Compute the Taylor Approximation
       # softmax(x + eps) = softmax(x) + eps * ...
@@ -155,6 +156,23 @@ const examples = [
       expr = F.taylor(y, x, eps, n=2)
 
       save_steps(expr.full_simplify())
+      `)
+   },
+   {
+      title: "Chain Rule: d/dx f(v(x))",
+      code: dedent(`
+      i, j = sp.symbols("i j")
+      x = tg.Variable("x", i)
+
+      # Define a function from vectors R^i to vectors R^j
+      v = tg.function("v", {"y": j}, (x, "i"))
+
+      # Define a function from vectors R^j to scalars
+      f = tg.function("f", {}, (v, "y"))
+
+      # Compute the gradient of f wrt x using the chain rule
+      grad = tg.Derivative(f, x)
+      save_steps(grad)
       `)
    },
 ];
