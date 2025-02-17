@@ -15,7 +15,8 @@ It performs any simplification described in the [Tensor Cookbook (draft)](https:
 
 ## Examples
 
-To run the examples for yourself, see [this colab notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
+To run the examples for yourself, use [the playground](https://tensorcookbook.com/playground.html) or
+see [this notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
 
 Install tensorgrad with
 ```bash
