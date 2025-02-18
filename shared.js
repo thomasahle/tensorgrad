@@ -201,13 +201,17 @@ const examples = [
    {
       title: "Pseudo Linear Form: d/dx A(x)x",
       code: dedent(`
+      # Functions f : ℝⁿ→ℝⁿ of the “pseudo-linear” form  f(x) = A(x) x are common.
+      # For example: pixel-adaptive filters like non-local means; attention mechanism
+      # in transformers; even a convolutional layer with relu nonlinearity.
+      
       i, j = sp.symbols("i j")
       x = tg.Variable("x", i)
       
-      # Define a function from vectors R^i to vectors R^{i x j}
+      # Define a function from vectors R^i to vectors R^{i×j}
       Ax = tg.function("A", {"i": i, "j": j}, (x, "i"))
       
-      # d/dx A(x)x
+      # Compute derivative with respect to x
       expr = tg.Derivative(Ax @ x, x)
       
       save_steps(expr)
