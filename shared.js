@@ -347,7 +347,7 @@ async function initializePage(config) {
 
             // If we're already on playground.html, update the URL and input field.
             const urlWithoutQuery = window.location.href.split('?')[0];
-            if (urlWithoutQuery.endsWith("playground.html")) {
+            if (urlWithoutQuery.endsWith("playground.html") || urlWithoutQuery.endsWith("playground")) {
                const url = new URL(window.location.href);
                url.searchParams.set("snippet", data.snippet_id);
                history.pushState(null, "", url); // update the URL without a page reload
@@ -356,8 +356,8 @@ async function initializePage(config) {
                // Also hide the examples dropdown if needed.
                setSnippet(url.toString());
             } else {
-               console.log("Redirecting to playground.html?snippet=" + data.snippet_id);
-               window.location.href = `playground.html?snippet=${data.snippet_id}`;
+               console.log("Redirecting to playground?snippet=" + data.snippet_id);
+               window.location.href = `playground?snippet=${data.snippet_id}`;
             }
          } finally {
             // Set button back to normal
