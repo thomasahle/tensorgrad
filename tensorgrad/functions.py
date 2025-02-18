@@ -624,6 +624,12 @@ class _MatrixInverseFunction(FunctionSignature):
         ):
             (inner_inner,) = inner.inputs
             return inner_inner
+
+        # Inverse of Identity is Identity
+        if isinstance(inner, Delta):
+            assert inner.order >= 2, "Both edges should be fed to the inverse"
+            return inner
+
         return func
 
     @classmethod
@@ -695,11 +701,28 @@ def exp(t: Tensor) -> Tensor:
     return Function(_ExpFunction(), [t], {})
 
 
-def _LogFunction() -> FunctionSignature:
-    # If we want to support more complicated simplification rules,
-    # like expanding log(a*b) into log(a) + log(b),
-    # we should define a custom function signature.
-    return _SimpleFunction("log", _PowerFunction(-1))
+class _LogFunction(FunctionSignature):
+    def __init__(self):
+        super().__init__("log", frozenset(), (frozenset(),))
+
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+        return _PowerFunction(-1)
+
+    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
+        (inner,) = f.inputs
+        # log(1) = 0
+        if isinstance(inner, Product) and all(isinstance(t, Delta) and t.order != 0 for t in inner.tensors):
+            return Zero(**inner.shape)
+        if isinstance(inner, Delta) and inner.order >= 1:
+            return Zero(**inner.shape)
+        # log(exp(x)) = x
+        # if isinstance(inner, Function) and isinstance(inner.signature, _ExpFunction):
+        # return inner.inputs[0]
+        # Other simplifications we could do:
+        # - log(1/x) = -log(x)
+        # - log(x^k) = k log(x)
+        # - log(x y) = log(x) + log(y)
+        return f
 
 
 def log(t: Tensor) -> Tensor:
@@ -1024,6 +1047,16 @@ class _DeterminantFunction(FunctionSignature):
         # "implementation" of the determinant, using the Levi-Civita tensor.
         # However, that requires making "size" many copies of f.inner, which is
         # still symbolic for us.
+
+        (edges,) = self.inputs
+        (inner,) = f.inputs
+
+        # det(I) = 1
+        if isinstance(inner, Delta):
+            assert inner.order >= 2
+            if inner.order == 2:
+                return Ones()
+            return Delta(inner._size, *[e for e in inner.edges if e not in edges])
 
         return f
 

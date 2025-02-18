@@ -7,7 +7,7 @@ import torch.nn.functional as tF
 from sympy import symbols
 from tensorgrad import Variable
 import tensorgrad.functions as F
-from tensorgrad.tensor import Delta
+from tensorgrad.tensor import Delta, Tensor, Zero
 from tensorgrad.testutils import rand_values, assert_close
 from tensorgrad.extras.evaluate import evaluate
 
@@ -490,6 +490,30 @@ def test_taylor_exp():
         taylor = taylor.full_simplify()
         exp = exp.full_simplify()
         assert taylor == exp
+
+
+def test_taylor_cgf():
+    d = symbols("d")
+    T = Variable("T", i=d, j=d)
+    eps = Variable("eps", i=d, j=d)
+
+    # This is the cumulant generating function of (I - gg^t/d).
+    # which is Tr(T) - log(det(I + 2T/d))/2
+    I = Delta(d, "i", "j")
+    expr = F.trace(T) - F.log(F.det(I + 2 * T / Delta(d))) / 2
+
+    tayl = F.taylor(expr, T, eps, n=2)
+    tayl = tayl.full_simplify()  # Need this, since we can't sub through grad
+    tayl = tayl.substitute(T, Zero(i=d, j=d))
+
+    res = tayl.full_simplify()
+
+    # The expansion should be Tr(eps)(1-1/d) + eps^2/d^2
+    ete = eps.rename(i="j", j="i") @ eps
+    expected = F.trace(eps) * (1 - 1 / Tensor(d)) + ete / Tensor(d) ** 2
+    expected = expected.full_simplify()
+
+    assert res == expected
 
 
 def test_symmetrize():

@@ -514,7 +514,9 @@ class CodegenContext:
 
         if isinstance(signature, F._PowerFunction):
             fun_expr = f"torch.pow({child_names[0]}, {signature.k}){permute(t.inputs[0], t)}"
-        elif signature.name in ("exp", "log", "relu"):
+        elif isinstance(signature, F._LogFunction):
+            fun_expr = f"torch.log({child_names[0]}){permute(t.inputs[0], t)}"
+        elif signature.name in ("exp", "relu"):
             fun_expr = f"torch.{signature.name}({child_names[0]}){permute(t.inputs[0], t)}"
         elif signature.name == "gt0":
             fun_expr = f"({child_names[0]} >= 0).float(){permute(t.inputs[0], t)}"

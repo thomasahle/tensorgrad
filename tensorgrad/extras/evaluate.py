@@ -6,6 +6,7 @@ from sympy import Symbol
 from tensorgrad import Tensor, Variable, Derivative, Function, Product
 from tensorgrad.functions import (
     _DeterminantFunction,
+    _LogFunction,
     _PowerFunction,
     _RenameFunction,
     _ScaleFunction,
@@ -305,11 +306,14 @@ def _(func: _PowerFunction, x: torch.Tensor) -> torch.Tensor:
 
 
 @evaluate_function.register
+def _(func: _LogFunction, x: torch.Tensor) -> torch.Tensor:
+    return torch.log(x)
+
+
+@evaluate_function.register
 def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
     if func.name == "exp":
         return torch.exp(x)
-    if func.name == "log":
-        return torch.log(x)
     if func.name == "sign":
         return torch.sign(x)
     if func.name == "relu":

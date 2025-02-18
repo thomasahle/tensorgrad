@@ -186,6 +186,21 @@ class Tensor(metaclass=TensorMeta):
                 expr = new
         return expr
 
+    @final
+    def substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        """Substitute a variable with a tensor"""
+        # Ideally we'd like y to be able to have extra edges that are not in x
+        # but which will be broadcasted as new edges of the tensor. This will
+        # allow us to implement numerical expectation, and other situations where
+        # we originally didn't have broadcasting, but we want to add it.
+        # Maybe we could even remove broadcasted edges of x as well.
+        # The tricky thing is to ensure it doesn't clash with the existing edges.
+        return self._substitute(x, y)
+
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        """Override this method to implement substitution"""
+        raise NotImplementedError
+
     def __hash__(self) -> int:
         return hash(self.weisfeiler_lehman)
 
@@ -556,6 +571,11 @@ class Variable(Tensor):
             return self
         return Rename(self, kwargs)
 
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        if x == self:
+            return y
+        return self
+
     def depends_on(self, x: "Variable") -> bool:
         return x == self
 
@@ -638,6 +658,9 @@ class Rename(Tensor):
     def _rename(self, **kwargs: str) -> Tensor:
         return Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
 
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        return Rename(self.tensor.substitute(x, y), self.mapping)
+
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         # Rename is the only tensor that doesn't actually create its own node in the graph
         # This allows Variable(i, j=i).with_symmetries("i j") to be isomorphic to
@@ -693,6 +716,9 @@ class Constant(Tensor, ABC):
                 for e in orbit:
                     edges[e] = orbit_node
         return G, edges
+
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        return self
 
     def _rename(self, **kwargs: str) -> Tensor:
         return type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
@@ -1181,6 +1207,9 @@ class Function(Tensor):
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.inputs)
 
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        return Function(self.signature, [t.substitute(x, y) for t in self.inputs], self.shape_out)
+
 
 class Derivative(Tensor):
     """
@@ -1331,6 +1360,9 @@ class Product(Tensor):
                 for i, t in enumerate(new_prod.tensors)
             ]
         )
+
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        return Product([t.substitute(x, y) for t in self.tensors])
 
     def __repr__(self) -> str:
         if len(self.tensors) <= 1:
@@ -1549,6 +1581,9 @@ class Sum(Tensor):
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         return Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
+
+    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+        return Sum([t.substitute(x, y) for t in self.tensors], self.weights)
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
         terms = [t.simplify(args=args) for t in self.tensors]

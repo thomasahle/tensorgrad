@@ -308,5 +308,25 @@ def main19():
     expr = Expectation(TrUMs, u)
     save_steps(expr.full_simplify())
 
+def main20():
+    # Define sizes for the tensor edges and variables
+    d = symbols("d")
+    T = Variable("T", i=d, j=d)
+    eps = Variable("eps", i=d, j=d)
+
+    # This is the cumulant generating function of (I - gg^t/d).
+    # which is Tr(T) - log(det(I + 2T/d))/2
+    I = Delta(d, 'i', 'j')
+    expr = F.trace(T) - F.log(F.det(I+2*T/Delta(d)))/2
+
+    tayl = F.taylor(expr, T, eps, n=2)
+    tayl = tayl.full_simplify()  # Need this, since we can't sub through grad
+    tayl = tayl.substitute(T, Zero(i=d, j=d))
+
+    # Simplify the expression and save the steps
+    save_steps(tayl)
+
+    # Press "Run" to see the result!
+
 if __name__ == "__main__":
-    main19()
+    main20()
