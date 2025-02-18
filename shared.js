@@ -198,6 +198,21 @@ const examples = [
       save_steps(expr.full_simplify())
       `)
    },
+   {
+      title: "Pseudo Linear Form: d/dx A(x)x",
+      code: dedent(`
+      i, j = sp.symbols("i j")
+      x = tg.Variable("x", i)
+      
+      # Define a function from vectors R^i to vectors R^{i x j}
+      Ax = tg.function("A", {"i": i, "j": j}, (x, "i"))
+      
+      # d/dx A(x)x
+      expr = tg.Derivative(Ax @ x, x)
+      
+      save_steps(expr)
+      `)
+   },
 ];
 
 // Server endpoints (adjust to your environment)
