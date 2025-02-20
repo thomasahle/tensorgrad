@@ -1,8 +1,6 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-E8JHF8QM6N"></script>
     <script>
        window.dataLayer = window.dataLayer || [];
@@ -11,20 +9,35 @@
        gtag('config', 'G-E8JHF8QM6N');
     </script>
 
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <link rel="icon" type="image/png" href="media/favicon.png">
 
+    <title>The Tensor Cookbook</title>
+    <meta name="title" content="The Tensor Cookbook">
     <meta name="description"
           content="The Tensor Cookbook is a comprehensive guide to tensors,
                    using the visual language of tensor diagrams. It closely follows
                    the legendary 'Matrix Cookbook' while providing a new way to understand
                    and appreciate tensor operations through diagrams.">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Tensor Cookbook</title>
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://tensorcookbook.com">
+    <meta property="og:title" content="The Tensor Cookbook">
+    <meta property="og:description" content="A comprehensive guide to tensors using visual tensor diagrams. Learn tensor operations through intuitive graphical notation.">
+    <meta property="og:image" content="https://tensorcookbook.com/media/front.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://tensorcookbook.com">
+    <meta property="twitter:title" content="The Tensor Cookbook">
+    <meta property="twitter:description" content="A comprehensive guide to tensors using visual tensor diagrams. Learn tensor operations through intuitive graphical notation.">
+    <meta property="twitter:image" content="https://tensorcookbook.com/media/front.png">
 
     <!-- Use the shared stylesheet -->
     <link rel="stylesheet" href="styles.css" />
-
     <!-- 1. CodeMirror CSS -->
     <link
       rel="stylesheet"
@@ -45,7 +58,7 @@
             Graphical notation (first introduced by <a href="https://en.wikipedia.org/wiki/Penrose_graphical_notation">Roger Penrose in 1971</a>) reduces the mental overhead and makes the connections "come alive":
           </p>
           <div class="diagram">
-             <img src="front.png" alt="Tensor Diagram Example" />
+             <img src="media/front.png" alt="Tensor Diagram Example" />
           </div>
           <p>
             In short, each edge is the index of a tensor, and connecting two edges contracts the tensors over this dimension. After a bit of practice, this becomes incredibly intuitive.
