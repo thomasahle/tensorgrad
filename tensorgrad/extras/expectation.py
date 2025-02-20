@@ -115,7 +115,7 @@ class Expectation(Tensor):
                 dependents.append(t)
         assert dependents, "Should have at least one dependent variable in the product"
         if len(dependents) == 1:
-            x, = dependents
+            (x,) = dependents
             return Product(constants) @ Expectation(x, self.wrt, self.mu, self.covar, self.covar_names)
 
         if self.wrt in dependents:
@@ -172,7 +172,8 @@ class Expectation(Tensor):
             assert isinstance(prod, Product), f"{prod=}"
             res = self._simplify_product(prod, args)
             return res
-        return fn
+        # Give up
+        return Expectation(fn, self.wrt, self.mu, self.covar, self.covar_names)
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         if x == self.wrt:

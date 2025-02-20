@@ -985,9 +985,9 @@ class FunctionSignature(ABC):
             new_edges = {}
         if self.inputs[i] != new_edges.keys():
             raise ValueError(f"Expected {self.inputs[i]} but got {new_edges.keys()}")
-        if self.edges & new_edges.values():
+        if self.edges & set(new_edges.values()):
             raise ValueError(f"New edges {new_edges.values()} clash with {self.edges=}")
-        return FunctionSignature(f"D_{i}{self.name}", self.edges | new_edges.values(), self.inputs)
+        return FunctionSignature(f"D_{i}{self.name}", self.edges | set(new_edges.values()), self.inputs)
 
     def simplify(self, t: "Function", args: dict[str, Any]) -> Tensor:
         """

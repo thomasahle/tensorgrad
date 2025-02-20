@@ -323,7 +323,8 @@ class TikzGraph:
 
         # Return edges for the function's outputs
         # plus the leftover free edges from the inputs
-        out_dict = {e: NodeRef(func_node) for e in tensor.shape_out}
+
+        out_dict = {e: NodeRef(func_node, edge_label=e) for e in tensor.shape_out}
         return {**out_dict, **free_edges}
 
     @_to_tikz.register

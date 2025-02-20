@@ -301,10 +301,10 @@ def main19():
     M = Variable("M", i, j=i).with_symmetries("i j")
     u = Variable("u", i)
     U = Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i)
-    TrUMs = F.graph("*1 -i- U1 -j-i- M1 -j-i- U2 -j-i- M2 -j- *1",
-                    U1=U, U2=U, M1=M, M2=M)
-    # UMs = F.multi_dot([U, M]*2, dims=("i", "j"))
-    # TrUMs = F.trace(UMs)
+    #TrUMs = F.graph("*1 -i- U1 -j-i- M1 -j-i- U2 -j-i- M2 -j- *1",
+                    #U1=U, U2=U, M1=M, M2=M)
+    UMs = F.multi_dot([U, M]*4, dims=("i", "j"))
+    TrUMs = F.trace(UMs)
     expr = Expectation(TrUMs, u)
     save_steps(expr.full_simplify())
 
@@ -328,5 +328,20 @@ def main20():
 
     # Press "Run" to see the result!
 
+def main21():
+    # Define sizes for the tensor edges and variables
+    d = symbols("d")
+    g = Variable("g", i=d)
+    A = Variable("A", i=d, j=d)
+    B = function("B", {"i": d, "j": d}, (g, "i"))
+
+    U = Delta(d, "i", "j") - g @ g.rename(i="j") / Delta(d)
+
+    expr = F.multi_dot([A, U, B], ("i", "j"))
+    expr = F.trace(expr)
+
+    e = Expectation(expr, g)
+    save_steps(e)
+
 if __name__ == "__main__":
-    main20()
+    main21()
