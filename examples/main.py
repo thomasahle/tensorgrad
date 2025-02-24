@@ -296,14 +296,16 @@ def main18():
     expr = expr / Y
     save_steps(expr)
 
-def main19():
+def main19(n=2, symmetric=True):
     i = symbols("i")
-    M = Variable("M", i, j=i).with_symmetries("i j")
+    M = Variable("M", i, j=i)
+    if symmetric:
+        M = M.with_symmetries("i j")
     u = Variable("u", i)
     U = Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i)
     #TrUMs = F.graph("*1 -i- U1 -j-i- M1 -j-i- U2 -j-i- M2 -j- *1",
                     #U1=U, U2=U, M1=M, M2=M)
-    UMs = F.multi_dot([U, M]*4, dims=("i", "j"))
+    UMs = F.multi_dot([U, M]*n, dims=("i", "j"))
     TrUMs = F.trace(UMs)
     expr = Expectation(TrUMs, u)
     save_steps(expr.full_simplify())
@@ -343,5 +345,37 @@ def main21():
     e = Expectation(expr, g)
     save_steps(e)
 
+
+def main22(signature:str):
+    i = symbols("i")
+    M = Variable("M", i, j=i)
+    T = M.rename(i="j", j="i")
+    u = Variable("u", i)
+    U = Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i)
+    cycles = [[]]
+    for s in signature:
+        assert s in 'MT|'
+        if s == 'M':
+            cycles[-1] += [U, M]
+        elif s == 'T':
+            cycles[-1] += [T, U]
+        elif s == '|':
+            cycles.append([])
+    print(cycles)
+    traces = [F.trace(F.multi_dot(cycle, dims=("i", "j"))) for cycle in cycles]
+    prod = Product(traces)
+    expr = Expectation(prod, u)
+    save_steps(expr.full_simplify())
+
+def main23(n:int, m:int):
+    # n is the number of cycles, m is the number of indep. variables
+    i = symbols("i")
+    us = [Variable(f"u{k}", i) for k in range(m)]
+    Us = [Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i) for u in us]
+    tr = F.trace(F.multi_dot(Us * n, dims=("i", "j"))) / Delta(i)
+    for u in us:
+        tr = Expectation(tr, u)
+    save_steps(tr.full_simplify())
+
 if __name__ == "__main__":
-    main21()
+    main23(3, 2)

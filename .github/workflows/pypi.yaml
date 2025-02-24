@@ -1,9 +1,11 @@
 name: Build and Publish to PyPI
 
 on:
-  push:
-    paths:
-      - 'pyproject.toml'
+  # Trigger when the python-tests workflow completes.
+  workflow_run:
+    workflows: ["python-tests"]
+    types: [completed]
+  # Also allow manual triggering.
   workflow_dispatch:
     inputs:
       force:
@@ -13,17 +15,21 @@ on:
 
 jobs:
   build-and-publish:
+    # Only run if the triggering workflow (python-tests) succeeded.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
+        with:
+          # Check out the commit that triggered the tests.
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Check if new version compared to PyPI
+      - name: Check if new version compared to PyPI or force publish
         id: version_check
         run: |
-          # Define your package name as published on PyPI.
-          PACKAGE_NAME="tensorgrad"  # Change this if your PyPI package name differs.
+          PACKAGE_NAME="tensorgrad"  # Update this if your PyPI package name is different.
           FORCE="${{ github.event.inputs.force }}"
           if [ "$FORCE" = "true" ]; then
             echo "Force publish enabled."
@@ -32,16 +38,14 @@ jobs:
             # Extract the version from pyproject.toml (expects a line like: version = "1.2.3")
             current_version=$(grep '^version' pyproject.toml | head -n 1 | cut -d'"' -f2)
             echo "Current version in pyproject.toml: $current_version"
-
-            # Query PyPI for the latest published version.
+            # Get the latest version from PyPI using its JSON API.
             latest_pypi_version=$(curl -s "https://pypi.org/pypi/${PACKAGE_NAME}/json" | jq -r '.info.version')
-            # If the package isn’t found or no version exists, default to 0.0.0.
+            # Default to 0.0.0 if nothing is returned.
             if [ "$latest_pypi_version" = "null" ] || [ -z "$latest_pypi_version" ]; then
               latest_pypi_version="0.0.0"
             fi
             echo "Latest version on PyPI: $latest_pypi_version"
-
-            # Compare versions using dpkg's version comparison.
+            # Compare versions using dpkg (ensures proper version ordering).
             if dpkg --compare-versions "$current_version" gt "$latest_pypi_version"; then
               echo "New version detected, ready to publish."
               echo "version_changed=true" >> $GITHUB_OUTPUT
