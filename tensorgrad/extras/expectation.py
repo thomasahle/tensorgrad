@@ -104,8 +104,9 @@ class Expectation(Tensor):
         return Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
 
     def _simplify_product(self, prod: Product, args: dict[str, str]):
-        # Right now we only support expectations of products where wrt is directly in the product.
         assert isinstance(prod, Product), f"{prod=}"
+
+        # See if there are constant terms we can pull out
         constants = []
         dependents = []
         for t in prod.tensors:
@@ -118,6 +119,7 @@ class Expectation(Tensor):
             (x,) = dependents
             return Product(constants) @ Expectation(x, self.wrt, self.mu, self.covar, self.covar_names)
 
+        # Handle the case where wrt is directly in the product, suing Stein's lemma
         if self.wrt in dependents:
             # 1) Look for an instance of wrt in the product
             x = next(x for x in dependents if x == self.wrt)
