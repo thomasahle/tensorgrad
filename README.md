@@ -20,7 +20,7 @@ see [this notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe
 
 Install tensorgrad with
 ```bash
-pip install tensorg
+pip install tensorgrad
 ```
 
 For visualizations we need some latex packages:
