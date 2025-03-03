@@ -355,13 +355,13 @@ class TikzGraph:
     @_to_tikz.register
     def _(self, tensor: Product):
         # If empty product, return an identity node
-        if len(tensor.tensors) == 0:
+        if len(tensor.factors) == 0:
             self.add_node(self.namer.fresh_name("id"), "identity", label="1")
             return {}
 
         # Gather sub-ids for each edge
         sub_ids = defaultdict(list)
-        for t in tensor.tensors:
+        for t in tensor.factors:
             t_edges = self._to_tikz(t)
             for e, ref in t_edges.items():
                 sub_ids[e].append(ref)
@@ -392,7 +392,7 @@ class TikzGraph:
         subgraph = self.subgraph()
         free_edges = {}
 
-        for i, (w, t) in enumerate(zip(tensor.weights, tensor.tensors)):
+        for i, (w, t) in enumerate(zip(tensor.weights, tensor.terms)):
             # Each term is itself a sub-sub-graph
             term_graph = self.subgraph()
 

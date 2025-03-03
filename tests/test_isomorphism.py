@@ -201,7 +201,7 @@ def test_symmetries_simplify_sum():
     graph2 = graph1.rename(j="k", k="j")
 
     # Flipping j and k we can still combine the two graphs.
-    assert len((graph1 + graph2).simplify().tensors) == 1
+    assert len((graph1 + graph2).simplify().terms) == 1
 
     #    A   B
     #    |   ⅄
@@ -209,7 +209,7 @@ def test_symmetries_simplify_sum():
     graph3 = graph1.rename(i="k", k="i")
 
     # Flipping i and k we can't combine the two graphs.
-    assert len((graph1 + graph3).simplify().tensors) == 2
+    assert len((graph1 + graph3).simplify().terms) == 2
 
     #    A   B
     #    |   ⅄
@@ -217,7 +217,7 @@ def test_symmetries_simplify_sum():
     graph4 = graph1.rename(i="m")
 
     # Even if graph1 and graph4 are isomorphic, we can't combine them.
-    assert len((graph1 + graph4).simplify().tensors) == 2
+    assert len((graph1 + graph4).simplify().terms) == 2
 
 
 def test_empty_graphs():
@@ -391,12 +391,12 @@ def test_symmetries_simplify_sum2():
             ),
         ],
     )
-    assert sorted(expr.tensors[0].edges) == sorted(expr.tensors[1].edges)
-    assert len({hash(t) for t in expr.tensors}) == 1
+    assert sorted(expr.terms[0].edges) == sorted(expr.terms[1].edges)
+    assert len({hash(t) for t in expr.terms}) == 1
     assert expr.symmetries == {frozenset({"C_", "C__"})}
-    for t in expr.tensors:
+    for t in expr.terms:
         assert t.symmetries == {frozenset({"C_", "C__"})}
-    assert len(expr.simplify().tensors) == 1
+    assert len(expr.simplify().terms) == 1
 
 
 def _test_links():

@@ -1,6 +1,6 @@
 from sympy import symbols
 
-from tensorgrad import Variable, Function
+from tensorgrad import Variable
 from tensorgrad import functions as F
 from tensorgrad.tensor import function
 

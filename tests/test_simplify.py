@@ -27,7 +27,7 @@ def test_copy_iso():
     # edge dimensions linked to different variables.
     i, j = symbols("i j")
     X = Variable("X", i, j)
-    c1, c2 = X.grad(X).tensors
+    c1, c2 = X.grad(X).factors
     assert c1 != c2
 
 
@@ -36,7 +36,7 @@ def test_copy_iso_sym():
     # created are the same.
     i = symbols("i")
     X = Variable("X", i=i, j=i).with_symmetries("i j")
-    c1, c2 = X.grad(X).tensors
+    c1, c2 = X.grad(X).factors
     assert c1 == c2
 
 

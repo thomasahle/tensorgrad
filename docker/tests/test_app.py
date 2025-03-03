@@ -1,10 +1,7 @@
 import os
-import json
-import base64
 import pytest
 import uuid
 import textwrap
-from datetime import datetime
 
 from fastapi.testclient import TestClient
 from moto import mock_aws  # Use the generic AWS mock
@@ -14,7 +11,7 @@ os.environ["DYNAMODB_CACHE_TABLE"] = "TensorgradCache"
 os.environ["DYNAMODB_SNIPPET_TABLE"] = "CodeSnippets"
 
 # Now import the app and helper functions from your FastAPI application.
-from drawTensors import app, safe_execute, create_snippet, get_snippet, ExecutionResult
+from drawTensors import app, safe_execute, ExecutionResult
 
 # Create a TestClient for FastAPI
 client = TestClient(app)

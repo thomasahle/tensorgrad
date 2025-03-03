@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 from tensorgrad.functions import frobenius2
-from tensorgrad.tensor import Variable, Function, Delta, Zero, Product, Sum, Ones, function
+from tensorgrad.tensor import Variable, Delta, Zero, Product, Sum, Ones, function
 from tensorgrad.testutils import assert_close, rand_values
 from tensorgrad.extras.evaluate import evaluate
 
@@ -131,7 +131,7 @@ def test_subtraction():
     y = Variable("y", i)
     z = x - y
     assert isinstance(z, Sum)
-    assert len(z.tensors) == 2
+    assert len(z.terms) == 2
     assert z.weights == [1, -1]
     assert z.edges == {"i"}
 

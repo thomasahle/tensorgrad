@@ -1105,7 +1105,7 @@ class Function(Tensor):
         for t, es in zip(new_inputs, self.signature.inputs):
             if isinstance(t, Product):
                 new_prod = []
-                for u in t.tensors:
+                for u in t.factors:
                     if (
                         isinstance(u, Delta)
                         and u.order == 1
@@ -1216,7 +1216,7 @@ class Derivative(Tensor):
     A tensor representing the derivative of another tensor with respect to a variable.
     """
 
-    def __init__(self, tensor: Tensor, x: Variable, new_names: Optional[dict[str, str]] = None):
+    def __init__(self, tensor: Tensor, wrt: Variable, new_names: Optional[dict[str, str]] = None):
         """
         A tensor representing the derivative of another tensor.
 
@@ -1226,10 +1226,10 @@ class Derivative(Tensor):
             new_names: A mapping for renaming edges (if not provided, it will be generated).
         """
         self.tensor = tensor
-        self.x = x
+        self.x = wrt
         # If no edges were given, pick some names based on x, but avoid clashes with tensor.
-        self.new_names = tensor._check_grad(x, new_names)
-        self._shape = tensor.shape | {self.new_names[e]: x.shape[e] for e in x.edges}
+        self.new_names = tensor._check_grad(wrt, new_names)
+        self._shape = tensor.shape | {self.new_names[e]: wrt.shape[e] for e in wrt.edges}
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
         if not self.tensor.depends_on(self.x):
@@ -1288,16 +1288,16 @@ class Product(Tensor):
     A tensor representing the product (contraction) of several tensors.
     """
 
-    def __init__(self, tensors: Iterable[Tensor]):
+    def __init__(self, factors: Iterable[Tensor]):
         """
         Initialize a Product tensor.
 
         Args:
-            tensors: An iterable of tensors to be multiplied/contracted.
+            factors: An iterable of tensors to be multiplied/contracted.
         """
-        self.tensors = list(tensors)
+        self.factors = list(factors)
         self._shape = {}
-        for edge, ts in _group_edges(self.tensors).items():
+        for edge, ts in _group_edges(self.factors).items():
             if len(ts) == 1:
                 self._shape[edge] = ts[0].shape[edge]
             elif len(ts) == 2:
@@ -1313,14 +1313,14 @@ class Product(Tensor):
         # Rename the inner edges (contractions) to avoid the new names introduced
         # by the renaming of the free edges.
         new_names = {kwargs.get(e, e) for e in self.edges}
-        contractions = {e for t in self.tensors for e in t.edges} - self.edges
+        contractions = {e for t in self.factors for e in t.edges} - self.edges
         # Note the `unused_edge_names` function avoids introducing new clashes
         # between the edges being renamed.
         rename = _unused_edge_names(contractions, new_names)
         # It's safe to add the kwargs to rename, since self._check_rename restricts kwargs to only
         # contain keys that are in self.edges.
         rename |= kwargs
-        return Product([t.rename(**rename) for t in self.tensors])
+        return Product([t.rename(**rename) for t in self.factors])
 
     @staticmethod
     def merge(products: list["Product"]) -> "Product":
@@ -1337,9 +1337,9 @@ class Product(Tensor):
         res = []
         for p in products:
             # Maybe this could also be expressed in terms of avoid_internal_edges
-            inner_edges = {e for t in p.tensors for e in t.edges if e not in p.edges}
+            inner_edges = {e for t in p.factors for e in t.edges if e not in p.edges}
             rename = _unused_edge_names(inner_edges, used_edges)
-            for t in p.tensors:
+            for t in p.factors:
                 res.append(t.rename(**rename))
             used_edges.update(rename.values())  # Later renames should not clash with this one
         return Product(res)
@@ -1347,32 +1347,32 @@ class Product(Tensor):
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         # Since we are adding new edges to an internal tensor in the product, we need to make sure
         # none of the other tensors in the product have edges that clash with these new edges.
-        inner_names = {e for t in self.tensors for e in t.edges if e not in self.edges}
+        inner_names = {e for t in self.factors for e in t.edges if e not in self.edges}
         new_edges = set(new_names.values()) | self.edges
         rename = _unused_edge_names(inner_names, new_edges)
-        new_prod = Product([t.rename(**rename) for t in self.tensors])
+        new_prod = Product([t.rename(**rename) for t in self.factors])
         assert new_prod.shape == self.shape, "Renaming should not change the product"
 
         # The classic product rule of Calculus: d/dx (f * g) = f' * g + f * g'
         return Sum(
             [
-                Product(new_prod.tensors[:i] + [Derivative(t, x, new_names)] + new_prod.tensors[i + 1 :])
-                for i, t in enumerate(new_prod.tensors)
+                Product(new_prod.factors[:i] + [Derivative(t, x, new_names)] + new_prod.factors[i + 1 :])
+                for i, t in enumerate(new_prod.factors)
             ]
         )
 
     def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        return Product([t.substitute(x, y) for t in self.tensors])
+        return Product([t.substitute(x, y) for t in self.factors])
 
     def __repr__(self) -> str:
-        if len(self.tensors) <= 1:
-            return f"Product({self.tensors})"
+        if len(self.factors) <= 1:
+            return f"Product({self.factors})"
         else:
-            inner = "    " + ",\n    ".join(map(repr, self.tensors)) + ","
+            inner = "    " + ",\n    ".join(map(repr, self.factors)) + ","
             return f"Product([\n{inner}\n])"
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
-        tensors = [t.simplify(args=args) for t in self.tensors]
+        tensors = [t.simplify(args=args) for t in self.factors]
 
         # If any tensor in a product is 0, so is the whole product
         if any(isinstance(t, Zero) for t in tensors):
@@ -1387,13 +1387,13 @@ class Product(Tensor):
         # "natural" contraction order. This can speed up evaluation, since sub-tensors can be reused.
         if args["associative_products"]:
             sub_products = [t if isinstance(t, Product) else Product([t]) for t in tensors]
-            tensors = Product.merge(sub_products).tensors
+            tensors = Product.merge(sub_products).factors
 
         # We can do a "small" kind of distributed products, which is handling children that are single sums
         # Also, if a child is a sum with a single element, we can pull the weight up.
         # In general, we can pull out the least common multiple of the weights of the children.
-        if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.tensors) == 1]:
-            tensors = [t if t not in single_sums else t.tensors[0] for t in tensors]
+        if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.terms) == 1]:
+            tensors = [t if t not in single_sums else t.terms[0] for t in tensors]
             res_weight = math.prod(t.weights[0] for t in single_sums)
         else:
             res_weight = 1
@@ -1425,7 +1425,7 @@ class Product(Tensor):
             for t in tensors:
                 if isinstance(t, Sum):
                     # Create cartesian product
-                    terms = [term + [t0] for term in terms for t0 in t.tensors]
+                    terms = [term + [t0] for term in terms for t0 in t.terms]
                     weights = [w * w0 for w in weights for w0 in t.weights]
                 else:
                     for term in terms:
@@ -1449,15 +1449,15 @@ class Product(Tensor):
         """
         # Create graph of tensor connections
         G = nx.Graph()
-        G.add_nodes_from(range(len(self.tensors)))
-        for i, t1 in enumerate(self.tensors):
-            for j, t2 in enumerate(self.tensors[i + 1 :], i + 1):
+        G.add_nodes_from(range(len(self.factors)))
+        for i, t1 in enumerate(self.factors):
+            for j, t2 in enumerate(self.factors[i + 1 :], i + 1):
                 if set(t1.edges) & set(t2.edges):
                     G.add_edge(i, j)
 
         # Find connected components
         component_sets = list(nx.connected_components(G))
-        components = [Product([self.tensors[i] for i in comp]) for comp in component_sets]
+        components = [Product([self.factors[i] for i in comp]) for comp in component_sets]
         assert Product(components).edges == self.edges
         return components
 
@@ -1466,7 +1466,7 @@ class Product(Tensor):
         G.add_node(0, name=self.__class__.__name__, tensor=self)
         edges = {}
         inner_edges = defaultdict(list)
-        for t in self.tensors:
+        for t in self.factors:
             G, t_edges = _add_structural_graph(G, t)
             for e, node in t_edges.items():
                 inner_edges[e].append(node)
@@ -1486,7 +1486,7 @@ class Product(Tensor):
         return G, edges
 
     def depends_on(self, x: "Variable") -> bool:
-        return any(t.depends_on(x) for t in self.tensors)
+        return any(t.depends_on(x) for t in self.factors)
 
     def _to_einsum_eq(self) -> tuple[list[Tensor], str]:
         """
@@ -1503,14 +1503,14 @@ class Product(Tensor):
         Raises:
             ValueError: If there are too many unique edges.
         """
-        unique_edges = {e for t in self.tensors for e in t.edges}
+        unique_edges = {e for t in self.factors for e in t.edges}
         if (n := len(unique_edges)) > 52:
             raise ValueError(f"Too many unique edges ({n} > 52) to convert to einsum equation")
         name_to_idx = defaultdict(lambda: ascii_letters[len(name_to_idx)])
 
         # The main challenge is to convert Delta tensors to hyper edges
         factors = []
-        for ft in self.tensors:
+        for ft in self.factors:
             if isinstance(ft, Delta) and ft.order >= 1:
                 output_edges = ft.edges & self.edges
                 input_edges = ft.edges - output_edges
@@ -1546,19 +1546,19 @@ class Sum(Tensor):
     A weighted sum of several tensors.
     """
 
-    def __init__(self, tensors: Iterable[Tensor], weights: Optional[Iterable[Number]] = None):
+    def __init__(self, terms: Iterable[Tensor], weights: Optional[Iterable[Number]] = None):
         """
         A weighted sum of multiple tensors.
 
         Args:
-            tensors: The tensors to add together.
+            terms: The tensors to add together.
             weights: The weights of each tensor in the sum. If not provided, all weights are 1.
         """
-        tensors = list(tensors)
+        terms = list(terms)
 
         # Broadcasting means we always upgrade to the super set of edges
         self._shape = {}
-        for e, ts in _group_edges(tensors).items():
+        for e, ts in _group_edges(terms).items():
             s = ts[0].shape[e]
             if not all(t.shape[e] == s for t in ts):
                 raise ValueError(f"Edge {e} had different sizes in tensors: {ts}")
@@ -1566,32 +1566,32 @@ class Sum(Tensor):
 
         # Any tensors that lacks an edge will be broadcasted to have that edge.
         all_edges = self._shape.keys()
-        self.tensors = []
-        for t in tensors:
+        self.terms = []
+        for t in terms:
             missing = {e: self._shape[e] for e in all_edges - t.edges}
             # Note: don't broadcast if the tensor is already full, since that would create new
             # Ones([]) objects after simplification is supposed to have completed.
-            self.tensors.append(t @ Ones(**missing) if missing else t)
+            self.terms.append(t @ Ones(**missing) if missing else t)
 
-        self.weights = [1] * len(tensors) if weights is None else list(weights)
-        assert len(tensors) == len(self.weights)
+        self.weights = [1] * len(terms) if weights is None else list(weights)
+        assert len(terms) == len(self.weights)
 
     def _rename(self, **kwargs: str) -> Tensor:
-        return Sum([t.rename(**kwargs) for t in self.tensors], self.weights)
+        return Sum([t.rename(**kwargs) for t in self.terms], self.weights)
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        return Sum([Derivative(t, x, new_names) for t in self.tensors], self.weights)
+        return Sum([Derivative(t, x, new_names) for t in self.terms], self.weights)
 
     def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        return Sum([t.substitute(x, y) for t in self.tensors], self.weights)
+        return Sum([t.substitute(x, y) for t in self.terms], self.weights)
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
-        terms = [t.simplify(args=args) for t in self.tensors]
+        terms = [t.simplify(args=args) for t in self.terms]
 
         term_counter = Counter()
         for w, t in zip(self.weights, terms):
             if args["associative_sums"] and isinstance(t, Sum):
-                for w1, t1 in zip(t.weights, t.tensors):
+                for w1, t1 in zip(t.weights, t.terms):
                     term_counter[_MatchEdgesKey(t1)] += w * w1
             else:
                 term_counter[_MatchEdgesKey(t)] += w
@@ -1622,7 +1622,7 @@ class Sum(Tensor):
         return Sum(tensors, weights)
 
     def __repr__(self) -> str:
-        return f"Sum({self.tensors}, {self.weights})"
+        return f"Sum({self.terms}, {self.weights})"
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
@@ -1633,7 +1633,7 @@ class Sum(Tensor):
             # Note: No need to add the shape here. It's already in the sub-tensors
             G.add_node(i + 1, name="Plus Node")
             edges[e] = i + 1
-        for t, w in zip(self.tensors, self.weights):
+        for t, w in zip(self.terms, self.weights):
             # The weights are a little akward. There a lot of options for how to handle them.
             # E.g. the idea of just using a weighted Delta([]) somehow. But this works.
             G, t_edges = _add_structural_graph(G, t, root_edge_label=f"Weight {w}")
@@ -1644,7 +1644,7 @@ class Sum(Tensor):
         return G, edges
 
     def depends_on(self, x: "Variable") -> bool:
-        return any(t.depends_on(x) for t in self.tensors)
+        return any(t.depends_on(x) for t in self.terms)
 
 
 ################################################################################
@@ -1717,39 +1717,3 @@ def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: 
         rename[e] = candidate
         used_names.add(candidate)
     return rename
-
-
-def _make_distinct(
-    *tensors: Tensor, used_names: Optional[Iterable[str]] = None
-) -> tuple[list[Tensor], list[dict[str, str]]]:
-    """
-    Ensure that the tensors have distinct edge names.
-
-    Args:
-        *tensors: A sequence of tensors.
-        used_names: Additional names that must be avoided.
-
-    Returns:
-        A tuple containing:
-        - List of tensors with renamed edges
-        - List of rename mappings used for each tensor
-    """
-    # Delta the set, so we don't modify the input
-    used_names = set() if used_names is None else set(used_names)
-    # No reason to rename the names that are unique
-    cnt = Counter(e for t in tensors for e in t.edges)
-    unique_names = {e for e, c in cnt.items() if c == 1}
-    # Unless the names are already used, then we can't save them
-    unique_names -= used_names
-    used_names |= unique_names
-
-    res, renames = [], []
-    for i, t in enumerate(tensors):
-        edges = t.edges - unique_names
-        rename = _unused_edge_names(edges, used_names, suffix=f"_{i}")
-        # Make sure all t.edges are present in rename
-        rename.update({e: e for e in unique_names})
-        used_names.update(rename.values())
-        res.append(t.rename(**rename))
-        renames.append(rename)
-    return res, renames

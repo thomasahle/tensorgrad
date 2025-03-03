@@ -71,7 +71,7 @@ def _(expr: Rename) -> str:
 @to_latex_indexed.register
 def _(expr: Sum) -> str:
     parts = []
-    for w, t in zip(expr.weights, expr.tensors):
+    for w, t in zip(expr.weights, expr.terms):
         sign = "+" if w >= 0 else "-"
         factor = abs(w)
         sub = to_latex_indexed(t)
@@ -91,7 +91,7 @@ def _(expr: Product) -> str:
     Just multiply => A_{i,j} B_{j,k} ...
     If your library expands trace(X) => X_{i} Delta_{i}, you see that directly.
     """
-    subs = [to_latex_indexed(t) for t in expr.tensors]
+    subs = [to_latex_indexed(t) for t in expr.factors]
     return " ".join(subs)
 
 
@@ -190,7 +190,7 @@ def _(expr: Rename) -> str:
 @to_latex_index_free.register
 def _(expr: Sum) -> str:
     parts = []
-    for w, t in zip(expr.weights, expr.tensors):
+    for w, t in zip(expr.weights, expr.terms):
         sign = "+" if w >= 0 else "-"
         factor = abs(w)
         sub = to_latex_index_free(t)
@@ -209,7 +209,7 @@ def _(expr: Product) -> str:
     """
     e.g. "A B"
     """
-    parts = [to_latex_index_free(t) for t in expr.tensors]
+    parts = [to_latex_index_free(t) for t in expr.factors]
     return " ".join(parts)
 
 

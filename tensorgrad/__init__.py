@@ -8,7 +8,6 @@ from .tensor import (
     Delta,  # noqa: F401
     Ones,  # noqa: F401
     Derivative,  # noqa: F401
-    _make_distinct,  # noqa: F401
     function,  # noqa: F401
 )
 from .extras.expectation import Expectation  # noqa: F401

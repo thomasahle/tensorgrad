@@ -1,7 +1,6 @@
 from tensorgrad import Variable
 import tensorgrad.functions as F
 from sympy import symbols
-from tensorgrad.extras.evaluate import evaluate
 
 # Various tests from matrix calculus
 

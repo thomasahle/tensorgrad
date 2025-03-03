@@ -1,7 +1,6 @@
 from sympy import symbols
 import tensorgrad.functions as F
 from tensorgrad import Delta
-from tensorgrad.extras.evaluate import evaluate
 
 
 def test_combine_powers():

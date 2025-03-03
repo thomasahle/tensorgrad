@@ -1,4 +1,3 @@
-import os
 import sys
 import subprocess
 import time
@@ -6,7 +5,6 @@ import requests
 import pytest
 import json
 import socket
-import time
 from typing import Optional
 from pydantic import BaseModel
 

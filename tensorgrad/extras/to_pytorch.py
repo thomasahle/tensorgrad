@@ -346,7 +346,7 @@ class CodegenContext:
         var_name = self.fresh_name("sum_")
         self.emit(f"{var_name} = 0  # ({', '.join(t.edges)})")
 
-        for w, st in zip(t.weights, t.tensors):
+        for w, st in zip(t.weights, t.terms):
             c_name = self._emit_tensor(st)
             # We need to permute the tensor to match the parent's order
             c_name += permute(st, t)
@@ -365,17 +365,17 @@ class CodegenContext:
         var_name = self.fresh_name("prod_")
 
         # Handle empty product
-        if not prod.tensors:
+        if not prod.factors:
             self.emit(f"{var_name} = torch.tensor(1.0)  # empty product")
             return var_name
 
         # Handle single tensor case
-        if len(prod.tensors) == 1:
-            single_name = self._emit_tensor(prod.tensors[0])
+        if len(prod.factors) == 1:
+            single_name = self._emit_tensor(prod.factors[0])
             self.emit(f"{var_name} = {single_name}  # single tensor product")
             return var_name
 
-        self.emit(f"# Product of {len(prod.tensors)} tensors")
+        self.emit(f"# Product of {len(prod.factors)} tensors")
 
         method = "einsum_opt"
         if method == "einsum_opt":
@@ -385,7 +385,7 @@ class CodegenContext:
             # Compress Delta tensors
             # contracted_edges = set.union(*[set(t.edges) for t in t.tensors]) - t.edges
             factor_names, factors = [], []
-            for ft in prod.tensors:
+            for ft in prod.factors:
                 if isinstance(ft, F.Convolution):
                     factors.append(ft)
                     shape = [
@@ -447,10 +447,10 @@ class CodegenContext:
             return var_name
 
         if method == "pytorch":
-            edge_numbers = {e: i for i, e in enumerate({e for child in prod.tensors for e in child.edges})}
+            edge_numbers = {e: i for i, e in enumerate({e for child in prod.factors for e in child.edges})}
 
             parts = []
-            for inner in prod.tensors:
+            for inner in prod.factors:
                 torch_var = self._emit_tensor(inner)
                 parts.append(
                     f"{torch_var}, {[edge_numbers[e] for e in inner.edges]},  # ({', '.join(inner.edges)})"
@@ -465,7 +465,7 @@ class CodegenContext:
             arrays = []
             inputs = []
 
-            for inner in prod.tensors:
+            for inner in prod.factors:
                 torch_var = self._emit_tensor(inner)
                 arrays.append(torch_var)
                 inputs.append(tuple(inner.edges))
@@ -483,8 +483,8 @@ class CodegenContext:
             self.emit(f"    arrays=[{arrays_str}],")
             self.emit(f"    inputs={inputs_str},")
             self.emit(f"    output={output_str},")
-            self.emit(f"    optimize='auto'")
-            self.emit(f")")
+            self.emit("    optimize='auto'")
+            self.emit(")")
 
         return var_name
 

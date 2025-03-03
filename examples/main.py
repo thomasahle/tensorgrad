@@ -1,15 +1,12 @@
-from tensorgrad import Variable, Product, Function, Derivative, Sum, Delta, Zero, Ones, function
-from collections import defaultdict
+from tensorgrad import Variable, Product, Derivative, Delta, Zero, function
 import tensorgrad.functions as F
 from tensorgrad import Expectation
 from tensorgrad.extras.to_tikz import to_tikz
-from tensorgrad.testutils import generate_random_tensor_expression, make_random_tree
 from tensorgrad.imgtools import save_steps, save_as_image
 from tensorgrad.extras.to_pytorch import compile_to_callable
+from tensorgrad.extras.to_index import to_index, to_index_free
 from tensorgrad.testutils import assert_close, rand_values
 from sympy import symbols
-import torch
-import tqdm
 
 # Examples from the notebook
 
@@ -66,6 +63,7 @@ def main():
     ce = -F.sum(target * F.log(softmax))
     expr = ce.grad(logits).grad(logits)
     print(expr)
+    #print(to_index_free(expr.full_simplify()))
 
     # Just softmax grad
     C = symbols("C")
@@ -75,6 +73,7 @@ def main():
     softmax = e / F.sum(e)
     expr = Derivative(softmax @ target, logits)
     print(expr)
+    #print(to_index_free(expr.full_simplify()))
 
     save_steps(expr)
 
@@ -104,9 +103,8 @@ def main4():
     # Showcase Isserlis theorem
     K = 4
     i = symbols("i")
-    eps = symbols("e")
-    u = Variable(f"u", i)
-    C = Variable(f"C", i, j=i).with_symmetries("i j")
+    u = Variable("u", i)
+    C = Variable("C", i, j=i).with_symmetries("i j")
     prod = Product([u.rename(i=f"i{k}") for k in range(K)])
     expr = Expectation(prod, u, mu=Zero(i), covar=C, covar_names={"i": "j"})
     expr = expr.full_simplify()
@@ -116,8 +114,7 @@ def main4():
 def main5():
     K = 3
     i = symbols("i")
-    eps = symbols("e")
-    u = Variable(f"u", i)
+    u = Variable("u", i)
     X = Delta(i, "i", "j") + u @ u.rename(i="j")  # * Copy(eps)
     # X = u @ u.rename(i="j") @ Copy(eps)
     M = Variable("M", i, j=i).with_symmetries("i j")
@@ -255,7 +252,7 @@ def main15():
 
 def main16():
     d = symbols("d")
-    g = Variable(f"g", i=d)
+    g = Variable("g", i=d)
     A = Delta(d, "i", "j") - g @ g.rename(i='j') / Delta(d)
     M = Variable("M", i=d, j=d).with_symmetries("i j")
 
@@ -369,6 +366,7 @@ def main22(signature:str):
 
 def main23(n:int, m:int):
     # n is the number of cycles, m is the number of indep. variables
+    # eg.. (3, 2) is Tr(MMM) where each M is U1 U2
     i = symbols("i")
     us = [Variable(f"u{k}", i) for k in range(m)]
     Us = [Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i) for u in us]
@@ -377,5 +375,64 @@ def main23(n:int, m:int):
         tr = Expectation(tr, u)
     save_steps(tr.full_simplify())
 
+def main24(signature:tuple[str], m:int=2):
+    i = symbols("i")
+    us = [Variable(f"u{k}", i) for k in range(m)]
+    Us = [Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i) for u in us]
+    M = F.multi_dot(Us, dims=("i", "j"))
+    cycles = []
+    for part in signature:
+        cycle = []
+        for s in part:
+            if s == 'M':
+                cycle.append(M)
+            elif s == 'T':
+                cycle.append(M.rename(i="j", j="i"))
+        cycles.append(F.trace(F.multi_dot(cycle, dims=("i", "j"))))
+    prod = Product(cycles)
+    for u in us:
+        prod = Expectation(prod, u)
+    save_steps(prod.full_simplify())
+
+
+def tg_to_signature(tensor):
+    signature = []
+    for w, term in zip(tensor.weights, tensor.tensors):
+        part = []
+        for f in term.factors:
+            if f.name == "M":
+                part.append("M")
+            elif f.name == "T":
+                part.append("T")
+        signature.append(part)
+    return tuple(signature)
+
+def main25(signature:tuple[str]):
+    i = symbols("i")
+    u = Variable("u", i)
+    U = Delta(i, "i", "j") - u @ u.rename(i="j") / Delta(i)
+    M = Variable("M", i, j=i)
+    UM = F.dot(U, M, dim=('j', 'i'))
+    UM2 = F.graph("U -j-i- M", U=U, M=M)
+    assert UM.simplify() == UM2.simplify()
+    cycles = []
+    for part in signature:
+        cycle = []
+        for s in part:
+            if s == 'M':
+                cycle.append(UM)
+            elif s == 'T':
+                cycle.append(UM.rename(i="j", j="i"))
+        cycles.append(F.trace(F.multi_dot(cycle, dims=("i", "j"))))
+    prod = Product(cycles)
+    prod = Expectation(prod, u).full_simplify()
+    print(to_index(prod))
+    print(to_index_free(prod))
+    save_steps(prod)
+
 if __name__ == "__main__":
-    main23(3, 2)
+    #main24(("MMM",), m=2)
+    #main24(("MMTT",), m=2)
+    #main23(n=3, m=2)
+    #main25(("MMTT",))
+    main()

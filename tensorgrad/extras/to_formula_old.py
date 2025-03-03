@@ -7,7 +7,7 @@ def to_simple_matrix_formula(expr):
     assert isinstance(expr, Sum)
     res = []
     e0 = list(expr.edges)[0]
-    for prod in expr.tensors:
+    for prod in expr.terms:
         assert isinstance(prod, Product)
         mat = []
         for comp in prod.components():

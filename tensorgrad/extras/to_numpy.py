@@ -355,7 +355,7 @@ class CodegenContext:
 
         self.emit(f"{var_name} = np.zeros(({shape_str},), dtype=np.float32)  # edges: {', '.join(t.edges)}")
 
-        for w, st in zip(t.weights, t.tensors):
+        for w, st in zip(t.weights, t.terms):
             c_name = self._emit_tensor(st)
             c_name += permute_code(st, t)  # if we need a transpose
             if w == 1:
@@ -378,13 +378,13 @@ class CodegenContext:
         var_name = self.fresh_name("prod_")
 
         # Handle edge case: empty product
-        if not prod.tensors:
+        if not prod.factors:
             self.emit(f"{var_name} = np.array(1.0, dtype=np.float32)  # empty product")
             return var_name
 
         # Single tensor product
-        if len(prod.tensors) == 1:
-            single_name = self._emit_tensor(prod.tensors[0])
+        if len(prod.factors) == 1:
+            single_name = self._emit_tensor(prod.factors[0])
             self.emit(f"{var_name} = {single_name}  # single tensor product")
             return var_name
 

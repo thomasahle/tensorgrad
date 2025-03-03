@@ -182,8 +182,8 @@ def test_simplify_sum_of_products():
     simplified_expr = expr.simplify()
 
     assert isinstance(simplified_expr, Sum)
-    assert len(simplified_expr.tensors) == 2
-    assert all(isinstance(t, Product) for t in simplified_expr.tensors)
+    assert len(simplified_expr.terms) == 2
+    assert all(isinstance(t, Product) for t in simplified_expr.terms)
 
     assert_close(evaluate(expr, values), evaluate(simplified_expr, values))
 

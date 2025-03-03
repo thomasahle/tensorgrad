@@ -1,5 +1,4 @@
 import pytest
-import networkx as nx
 from sympy import symbols
 from tensorgrad import Variable, Delta, Product, Zero
 
@@ -31,10 +30,10 @@ def test_variable_grad():
     v = Variable("x", i=i, j=j)
     grad_v = v.grad(v, {"i": "di", "j": "dj"})
     assert isinstance(grad_v, Product)
-    assert len(grad_v.tensors) == 2
-    assert all(isinstance(t, Delta) for t in grad_v.tensors)
-    assert grad_v.tensors[0].edges == {"i", "di"}
-    assert grad_v.tensors[1].edges == {"j", "dj"}
+    assert len(grad_v.factors) == 2
+    assert all(isinstance(t, Delta) for t in grad_v.factors)
+    assert grad_v.factors[0].edges == {"i", "di"}
+    assert grad_v.factors[1].edges == {"j", "dj"}
 
     w = Variable("y", k)
     grad_w = v.grad(w, {"k": "dk"})

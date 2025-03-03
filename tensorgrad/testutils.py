@@ -74,7 +74,7 @@ def generate_random_tensor_expression(
                     left_aligned, right_aligned = broadcast_tensors(left_torch, right_torch)
                     try:
                         return left_tensor + right_tensor, left_aligned + right_aligned
-                    except RuntimeError as e:
+                    except RuntimeError:
                         # print(e)
                         continue
                 else:
@@ -83,7 +83,7 @@ def generate_random_tensor_expression(
                     eq = f"{''.join(left_torch.names)},{''.join(right_torch.names)}->{rhs}"
                     try:
                         torch_result = torch.einsum(eq, left_torch.rename(None), right_torch.rename(None))
-                    except RuntimeError as e:
+                    except RuntimeError:
                         # print(eq, e)
                         continue
                     return left_tensor @ right_tensor, torch_result.rename(*rhs)

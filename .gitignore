@@ -173,3 +173,4 @@ data/
 out
 examples/mnist_torch.py
 steps.png
+*.prof

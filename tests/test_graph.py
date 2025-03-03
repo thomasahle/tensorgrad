@@ -3,7 +3,6 @@ from sympy import symbols
 
 from tensorgrad.tensor import Delta, Variable
 import tensorgrad.functions as F
-from tensorgrad.extras.evaluate import evaluate
 
 
 def test_trace():

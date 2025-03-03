@@ -79,7 +79,7 @@ class Expectation(Tensor):
 
         if isinstance(inner, Sum):
             return Sum(
-                [Expectation(t, self.wrt, self.mu, self.covar, self.covar_names) for t in inner.tensors],
+                [Expectation(t, self.wrt, self.mu, self.covar, self.covar_names) for t in inner.terms],
                 inner.weights,
             )
 
@@ -109,7 +109,7 @@ class Expectation(Tensor):
         # See if there are constant terms we can pull out
         constants = []
         dependents = []
-        for t in prod.tensors:
+        for t in prod.factors:
             if not t.depends_on(self.wrt):
                 constants.append(t)
             else:

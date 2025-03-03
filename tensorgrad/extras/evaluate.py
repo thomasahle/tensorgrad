@@ -153,18 +153,18 @@ class Context:
     def _(self, prod: Product):
         # TODO: Keep track of how many contractions we made
         # extras["contractions"] = extras.get("contractions", 0) + len(prod.contractions)
-        if not prod.tensors:
+        if not prod.factors:
             return torch.tensor(1.0)
         # We use "operator" einsum interface, which doesn't require single letter names.
         # e.g.  einsum('i,i', b, b)  =  einsum(b, [0], b, [0])
         # and   einsum('ij,jk->ik', b, c)  =  einsum(b, [0, 1], c, [1, 2], [0, 2])
-        edge_numbers = {e: i for i, e in enumerate({e for t in prod.tensors for e in t.edges})}
+        edge_numbers = {e: i for i, e in enumerate({e for t in prod.factors for e in t.edges})}
 
         # TODO: Merging copies is currently broken, because einsum doesn't allow us
         # to use the same index twice in the output.
         merge_copies = False
         # We can't remove copies, if that's all we have
-        if all(isinstance(t, Delta) for t in prod.tensors):
+        if all(isinstance(t, Delta) for t in prod.factors):
             merge_copies = False
         # We can't merge when there are repeated edges in the output, due to einsum
         # limmitations
@@ -173,13 +173,13 @@ class Context:
 
         # We can make this more efficient by removing Delta tensors.
         if merge_copies:
-            for t in prod.tensors:
+            for t in prod.factors:
                 if isinstance(t, Delta):
                     i0 = len(edge_numbers)
                     for i, e in enumerate(t.edges):
                         edge_numbers[e] = i0
         parts = []
-        for t in prod.tensors:
+        for t in prod.factors:
             if not merge_copies or not isinstance(t, Delta):
                 torch_tensor = self.evaluate(t)
                 parts.append(torch_tensor.rename(None))
@@ -189,7 +189,7 @@ class Context:
 
     @_evaluate.register
     def _(self, sum_: Sum):
-        values = [self.evaluate(t).align_to(*sum_.edges) for t in sum_.tensors]
+        values = [self.evaluate(t).align_to(*sum_.edges) for t in sum_.terms]
         return sum(float(w) * v for w, v in zip(sum_.weights, values))
 
     ################################################################################

@@ -1,10 +1,10 @@
 import itertools
 import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from fractions import Fraction
 from numbers import Number
-from typing import Any, Iterable, Iterator, Sequence, Union
+from typing import Any, Iterable, Iterator, Optional, Sequence, Union
 
 from sympy import Symbol
 
@@ -20,7 +20,6 @@ from tensorgrad.tensor import (
     Tensor,
     Variable,
     Zero,
-    _make_distinct,
     _MatchEdgesKey,
     _unused_edge_names,
 )
@@ -335,6 +334,42 @@ def sum(tensor: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     return out
 
 
+def _make_distinct(
+    *tensors: Tensor, used_names: Optional[Iterable[str]] = None
+) -> tuple[list[Tensor], list[dict[str, str]]]:
+    """
+    Ensure that the tensors have distinct edge names.
+
+    Args:
+        *tensors: A sequence of tensors.
+        used_names: Additional names that must be avoided.
+
+    Returns:
+        A tuple containing:
+        - List of tensors with renamed edges
+        - List of rename mappings used for each tensor
+    """
+    # Delta the set, so we don't modify the input
+    used_names = set() if used_names is None else set(used_names)
+    # No reason to rename the names that are unique
+    cnt = Counter(e for t in tensors for e in t.edges)
+    unique_names = {e for e, c in cnt.items() if c == 1}
+    # Unless the names are already used, then we can't save them
+    unique_names -= used_names
+    used_names |= unique_names
+
+    res, renames = [], []
+    for i, t in enumerate(tensors):
+        edges = t.edges - unique_names
+        rename = _unused_edge_names(edges, used_names, suffix=f"_{i}")
+        # Make sure all t.edges are present in rename
+        rename.update({e: e for e in unique_names})
+        used_names.update(rename.values())
+        res.append(t.rename(**rename))
+        renames.append(rename)
+    return res, renames
+
+
 def prod(*tensors: Tensor) -> Tensor:
     """Element-wise product of tensors."""
     shared_edges = set.intersection(*[set(t.edges) for t in tensors])
@@ -458,14 +493,14 @@ class _PowerFunction(FunctionSignature):
                 return Product(new_comps).simplify(args)
 
         # We can pull out the weight of a sum if it's just a single tensor
-        if isinstance(inner, Sum) and len(inner.tensors) == 1:
+        if isinstance(inner, Sum) and len(inner.terms) == 1:
             (w,) = inner.weights
-            (t,) = inner.tensors
+            (t,) = inner.terms
             return Function(self, (t,), {}) * (w**self.k)
 
         # Base cases. We could add Copy(d)**k = Copy(d**k) here, but we're trying to keep the
         # mathematical expressions in tensorgrad space, rather than in sympy space.
-        if isinstance(inner, Zero) or isinstance(inner, Product) and not inner.tensors:
+        if isinstance(inner, Zero) or isinstance(inner, Product) and not inner.factors:
             return inner
 
         # Combine nested pows
@@ -496,7 +531,7 @@ class _PowerFunction(FunctionSignature):
             assert Product(tensors).edges == original_edges
 
         # We have to merge products here because we might otherwise have undone part of the simplification
-        tensors = Product.merge([Product([t]) if not isinstance(t, Product) else t for t in tensors]).tensors
+        tensors = Product.merge([Product([t]) if not isinstance(t, Product) else t for t in tensors]).factors
 
         assert Product(tensors).edges == original_edges
         return tensors
@@ -543,8 +578,8 @@ class _PowerFunction(FunctionSignature):
             others = [t for t in others if not (isinstance(t, Delta) and t.edges & inner.edges)]
             for comp in Product(others).components():
                 power = 1
-                if len(comp.tensors) == 1:
-                    comp = comp.tensors[0]
+                if len(comp.factors) == 1:
+                    comp = comp.factors[0]
                     if isinstance(comp, Function) and isinstance(comp.signature, _PowerFunction):
                         power = comp.signature.k
                         (comp,) = comp.inputs
@@ -572,8 +607,8 @@ class _PowerFunction(FunctionSignature):
         partition = defaultdict(int)
         for p in Product(tensors).components():
             power = 1
-            if len(p.tensors) == 1:
-                (t,) = p.tensors
+            if len(p.factors) == 1:
+                (t,) = p.factors
                 if isinstance(t, Function) and isinstance(t.signature, _PowerFunction):
                     power = t.signature.k
                     (t,) = t.inputs
@@ -711,7 +746,7 @@ class _LogFunction(FunctionSignature):
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         (inner,) = f.inputs
         # log(1) = 0
-        if isinstance(inner, Product) and all(isinstance(t, Delta) and t.order != 0 for t in inner.tensors):
+        if isinstance(inner, Product) and all(isinstance(t, Delta) and t.order != 0 for t in inner.factors):
             return Zero(**inner.shape)
         if isinstance(inner, Delta) and inner.order >= 1:
             return Zero(**inner.shape)
@@ -858,9 +893,9 @@ def _SignFunction() -> FunctionSignature:
 
 def sign(t: Tensor) -> Tensor:
     """Returns a tensor that's
-    a)  1 where t > 0
-    a)  0 where t = 0
-    a) -1 where t < 0
+    1 where t > 0
+    0 where t = 0
+    -1 where t < 0
     like torch.sign"""
     return Function(_SignFunction(), (t,), {})
 
