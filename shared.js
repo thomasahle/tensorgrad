@@ -9,7 +9,6 @@ function dedent(str) {
    return lines.map(line => line.slice(minIndent)).join('\n');
 }
 
-// Updated examples object using dedent:
 const examples = [
    {
       title: "Derivative of Product: =T-M-",
@@ -20,7 +19,7 @@ const examples = [
       M = tg.Variable("M", k, l)
 
       # Define the expression and its derivative wrt M
-      P = T @ M  #
+      P = T @ M
       expr = tg.Derivative(P, M)
 
       # Simplify the expression and save the steps
@@ -30,7 +29,6 @@ const examples = [
     `)
    },
    {
-      // title: "Derivative of L2 Loss",
       title: "Derivative of ‖ X Wᵀ − Y ‖²_F",
       code: dedent(`
       # Define sizes for the tensor edges and variables
