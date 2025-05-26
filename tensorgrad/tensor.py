@@ -446,6 +446,11 @@ class Tensor(metaclass=TensorMeta):
             raise ValueError("Shape0 must be a tuple of sympy symbols")
         if not isinstance(shape1, dict) or not all(isinstance(s, Symbol) for s in shape1.values()):
             raise ValueError("Shape1 must be a dict of sympy symbols")
+        # Check for duplicate positional dimension names
+        names = [s.name for s in shape0]
+        duplicates = {n for n in names if names.count(n) > 1}
+        if duplicates:
+            raise ValueError(f"Duplicate positional dimension names: {duplicates}")
         shape0 = {s.name: s for s in shape0}
         if double_keys := shape0.keys() & shape1.keys():
             raise ValueError(f"Duplicate edge names: {double_keys}")

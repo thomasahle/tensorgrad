@@ -85,3 +85,15 @@ def test_transpose_not_equal():
     Mt = M.rename(i="j", j="i")
     assert M == Mt  # Nomal equality allows for transposes
     assert not M.is_isomorphic(Mt, match_edges=True)
+
+
+def test_duplicate_positional_dims_error():
+    """
+    Creating a Variable with duplicate positional dimensions should raise an error.
+    """
+    from tensorgrad import Variable
+
+    i = symbols("i")
+    with pytest.raises(ValueError, match="Duplicate positional dimension names"):
+        Variable("x", i, i)
+
