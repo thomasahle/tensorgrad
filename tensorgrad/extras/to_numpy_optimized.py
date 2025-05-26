@@ -120,7 +120,7 @@ def {function_name}({signature}) -> {out_type}:
         for v, arr in values.items():
             if not isinstance(v, Variable):
                 continue
-            for dim_symbol, size in zip(v.shape.keys(), arr.shape):
+            for dim_symbol, size in zip(v.shape.values(), arr.shape):
                 # `dim_symbol` is a sympy.Symbol for that dimension
                 if dim_symbol not in shapes:
                     shapes[dim_symbol] = size

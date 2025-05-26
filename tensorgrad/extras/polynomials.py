@@ -65,16 +65,39 @@ def _(expr: Function, x: Tensor) -> dict[int, Tensor]:
                 return {k1 * k: c1**k}
             raise NotImplementedError("Cannot collect negative powers of sums")
 
-        # Otherwise, use repeated convolution
-        res = {0: 1}
-        for _ in range(k):
-            new_res = defaultdict(int)
-            for k1, c1 in res.items():
-                for k2, c2 in inner.items():
-                    new_res[k1 + k2] += c1 * c2  # mul instead of prod, since pow is hadamard
-            res = new_res
-        return res
+        # For positive integer powers, use repeated convolution
+        if isinstance(k, int) and k > 0:
+            res = {0: 1}
+            for _ in range(k):
+                new_res = defaultdict(int)
+                for k1, c1 in res.items():
+                    for k2, c2 in inner.items():
+                        new_res[k1 + k2] += c1 * c2  # mul instead of prod, since pow is hadamard
+                res = new_res
+            return res
+        
+        # For fractional powers, only handle simple case
+        if len(inner) == 1:
+            ((k1, c1),) = inner.items()
+            if c1 == 1:  # Only x^k where k is fractional
+                return {k1 * k: 1}
+        
+        raise NotImplementedError(f"Cannot collect fractional powers of sums or complex expressions")
 
+    # Handle matrix inverse as x^(-1)
+    if isinstance(expr.signature, F._MatrixInverseFunction):
+        inner = collect(expr.inputs[0], x)
+        if len(inner) == 1:
+            ((k1, c1),) = inner.items()
+            if c1 == 1:  # Only handle simple case where inner is just x
+                return {-1: 1}
+        raise NotImplementedError("Cannot collect inverse of sums or complex expressions")
+
+    # For other functions like exp, log, etc., treat them as constants if they don't depend on x
+    if not expr.depends_on(x):
+        return {0: expr}
+    
+    # Otherwise, we can't handle it as a polynomial
     raise NotImplementedError(f"Function {expr.signature} not implemented for polynomial collection")
 
 

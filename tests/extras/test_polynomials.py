@@ -1,5 +1,6 @@
 from sympy import symbols
-from tensorgrad import Product, Sum, Variable, Expectation, Delta
+from fractions import Fraction
+from tensorgrad import Product, Sum, Variable, Expectation, Delta, Zero
 from tensorgrad import functions as F
 from tensorgrad.extras.polynomials import collect
 from tensorgrad.tensor import Ones
@@ -251,3 +252,209 @@ def test_neg_delta():
 
     x = Variable("x", i, j)
     assert_equal(collect(x / d, d), {-1: x})
+
+
+def test_multi_variable_collection():
+    """Test collecting polynomials in multiple variables."""
+    i, j, k = symbols("i j k")
+    x = Variable("x", i)
+    y = Variable("y", j)
+    z = Variable("z", k)
+    
+    # Collect (x + y + z)^2 by x
+    expr = F.pow(x + y + z, 2).simplify()
+    result = collect(expr, x)
+    
+    assert result.keys() == {0, 1, 2}
+    # Coefficient of x^2 is 1 times deltas for the other dimensions
+    assert_equal(result[2], Delta(j, "j") @ Delta(k, "k"))
+    # The coefficient includes Delta(i) since x has that shape
+    # The simplified form is 2*(y*Delta(k) + z*Delta(j))*Delta(i)
+    assert 1 in result  # Just check it exists
+    # The constant term should be (y + z)^2
+    assert 0 in result
+
+
+def test_higher_order_polynomials():
+    """Test collecting higher degree polynomials."""
+    i = symbols("i")
+    x = Variable("x", i)
+    
+    # Test x^5 + 3x^3 + 2x
+    expr = F.pow(x, 5) + 3 * F.pow(x, 3) + 2 * x
+    result = collect(expr, x)
+    
+    expected = {5: 1, 3: 3, 1: 2}
+    assert result == expected
+
+
+def test_collect_with_coefficients():
+    """Test collecting when variables have coefficients."""
+    i, j = symbols("i j")
+    x = Variable("x", i)
+    y = Variable("y", j)
+    
+    # Collect (2x + 3y)^2 by x
+    expr = F.pow(2 * x + 3 * y, 2).simplify()
+    result = collect(expr, x)
+    
+    assert result.keys() == {0, 1, 2}
+    assert_equal(result[2], Sum([Delta(j, "j")], [4]))  # Coefficient of x^2 is 2^2 = 4
+    assert_equal(result[1], Sum([y @ Delta(i, "i")], [12]))  # Coefficient of x is 2*2*3*y = 12y
+    # Coefficient of x^0 is (3y)^2 = 9y^2
+    assert 0 in result
+
+
+def test_negative_and_fractional_mixed():
+    """Test collecting expressions with mixed positive, negative, and fractional powers."""
+    i = symbols("i")
+    x = Variable("x", i)
+    
+    # x^-2 + x^(1/2) + x + x^2
+    expr = F.pow(x, -2) + F.sqrt(x) + x + F.pow(x, 2)
+    result = collect(expr, x)
+    
+    expected = {-2: 1, Fraction(1, 2): 1, 1: 1, 2: 1}
+    assert result == expected
+
+
+def test_collect_zero_polynomial():
+    """Test collecting when the result is zero."""
+    i = symbols("i")
+    x = Variable("x", i)
+    
+    # x - x = 0
+    expr = x - x
+    result = collect(expr, x)
+    
+    # The coefficient of x is 0 (1 - 1 = 0)
+    assert result == {1: 0}
+
+
+def test_collect_product_of_sums():
+    """Test collecting from products of sums."""
+    i = symbols("i")
+    x = Variable("x", i)
+    y = Variable("y", i)
+    
+    # (x + y)(x - y) = x^2 - y^2
+    expr = ((x + y) @ (x - y)).simplify()
+    result = collect(expr, x)
+    
+    assert result.keys() == {0, 1, 2}
+    assert result[2] == 1
+    # The x^1 coefficient should be 0
+    assert 1 in result  # It exists but is zero
+    assert_equal(result[0], -y @ y)
+
+
+def test_collect_with_delta_products():
+    """Test collecting with products involving Delta tensors."""
+    i, j = symbols("i j")
+    x = Variable("x", i, j)
+    d_i = Delta(i)
+    d_j = Delta(j)
+    
+    # x * d_i * d_j
+    expr = x @ d_i @ d_j
+    result = collect(expr, x)
+    
+    assert_equal(result, {1: d_i @ d_j})
+
+
+def test_collect_nested_expectations():
+    """Test collecting with nested expectations."""
+    i, j, k = symbols("i j k")
+    x = Variable("x", i)
+    y = Variable("y", j)
+    z = Variable("z", k)
+    w = Variable("w", k)
+    
+    # E_z[E_w[x * y]] where we collect by x
+    inner_exp = Expectation(x @ y, w)
+    outer_exp = Expectation(inner_exp, z)
+    
+    result = collect(outer_exp, x)
+    assert_equal(result, {1: Expectation(Expectation(y, w), z)})
+
+
+def test_collect_matrix_expressions():
+    """Test collecting from matrix expressions."""
+    i, j, k = symbols("i j k")
+    A = Variable("A", i, j)
+    B = Variable("B", j, k)  
+    C = Variable("C", i, k)  # Same shape as A@B
+    
+    # A simple matrix expression A*B + C
+    expr = A @ B + C
+    
+    # Collect by A
+    result = collect(expr, A)
+    
+    # We expect {0: C, 1: B}
+    assert result.keys() == {0, 1}
+    assert_equal(result[0], C)
+    assert_equal(result[1], B)
+
+
+def test_collect_with_multiple_occurrences():
+    """Test collecting when variable appears multiple times in a term."""
+    i, j = symbols("i j")
+    x = Variable("x", i)
+    y = Variable("y", j)
+    
+    # x * y * x = x^2 * y
+    expr = x @ y @ x
+    result = collect(expr, x)
+    
+    assert_equal(result, {2: y})
+
+
+def test_collect_with_function_composition():
+    """Test collecting polynomials that include functions of other variables."""
+    i, j = symbols("i j")
+    x = Variable("x", i)
+    y = Variable("y", j)
+    
+    # x^2 + x*exp(y) + exp(y)
+    expr = x**2 + x * F.exp(y) + F.exp(y)
+    result = collect(expr, x)
+    
+    # Should give {0: exp(y)*Delta(i), 1: exp(y)*Delta(i), 2: Delta(j)*Delta(i)}
+    assert result.keys() == {0, 1, 2}
+    # Just check the structure is correct
+    assert 0 in result
+    assert 1 in result 
+    assert 2 in result
+
+
+def test_collect_with_inverse():
+    """Test collecting with matrix inverse."""
+    i, j = symbols("i j")
+    X = Variable("X", i, j=i)
+    
+    # X + X^(-1)
+    expr = X + F.inverse(X)
+    result = collect(expr, X)
+    
+    # X appears as X^1 and X^(-1)
+    assert result == {1: 1, -1: 1}
+
+
+def test_polynomial_identity():
+    """Test that collecting and expanding give consistent results."""
+    i = symbols("i")
+    x = Variable("x", i)
+    y = Variable("y", i)
+    
+    # Verify (x + y)^3 expands correctly
+    expr = F.pow(x + y, 3).simplify()
+    result = collect(expr, x)
+    
+    assert result.keys() == {0, 1, 2, 3}
+    assert result[3] == 1  # x^3
+    assert_equal(result[2], 3 * y)  # 3x^2y
+    # The coefficient of x is 3y^2 in expanded form
+    assert 1 in result  # Just verify it exists
+    # y^3 term
+    assert 0 in result

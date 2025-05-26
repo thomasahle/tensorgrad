@@ -38,9 +38,9 @@ def test_basic_operations():
     print("✓ Matrix multiplication test passed")
     
     # Test 2: Sum of tensors
-    A = Variable('A', shape=(d, d))
-    B = Variable('B', shape=(d, d))
-    C = Variable('C', shape=(d, d))
+    A = Variable('A', i=d, j=d)
+    B = Variable('B', i=d, j=d)
+    C = Variable('C', i=d, j=d)
     S = A + 2*B - C
     
     values = {
@@ -76,7 +76,7 @@ def test_functions():
     print("\nTesting functions...")
     
     d = sympy.Symbol('d')
-    X = Variable('X', shape=(d, d))
+    X = Variable('X', i=d, j=d)
     
     # Test ReLU
     R = F.relu(X)
@@ -150,11 +150,11 @@ def test_complex_expression():
     batch = sympy.Symbol('batch')
     d = sympy.Symbol('d')
     
-    X = Variable('X', shape=(batch, d))
-    W1 = Variable('W1', shape=(d, d))
-    W2 = Variable('W2', shape=(d, d))
-    b1 = Variable('b1', shape=(d,))
-    b2 = Variable('b2', shape=(d,))
+    X = Variable('X', batch, d)
+    W1 = Variable('W1', i=d, j=d)
+    W2 = Variable('W2', i=d, j=d)
+    b1 = Variable('b1', d)
+    b2 = Variable('b2', d)
     
     # Two-layer neural network with ReLU
     hidden = F.relu(X @ W1 + b1['j'] * Delta('i', size=batch))
@@ -183,8 +183,8 @@ def test_multiple_outputs():
     print("\nTesting multiple outputs...")
     
     d = sympy.Symbol('d')
-    X = Variable('X', shape=(d, d))
-    Y = Variable('Y', shape=(d, d))
+    X = Variable('X', i=d, j=d)
+    Y = Variable('Y', i=d, j=d)
     
     A = X + Y
     B = X - Y
@@ -225,7 +225,7 @@ def test_edge_cases():
     
     # Single factor product
     d = sympy.Symbol('d')
-    X = Variable('X', shape=(d,))
+    X = Variable('X', d)
     single = Product([X])
     
     values = {X: torch.randn(5)}
