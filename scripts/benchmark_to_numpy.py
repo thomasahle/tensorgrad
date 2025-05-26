@@ -104,8 +104,8 @@ def benchmark_matrix_multiply():
     d = sympy.Symbol('d')
     
     def tensor_fn():
-        X = Variable('X', shape=(d, d))
-        Y = Variable('Y', shape=(d, d))
+        X = Variable('X', i=d, j=d)
+        Y = Variable('Y', i=d, j=d)
         return X @ Y
     
     fn_orig, fn_opt = benchmark_compilation("Matrix Multiplication - Compilation", tensor_fn)
@@ -114,8 +114,8 @@ def benchmark_matrix_multiply():
     for size in [10, 50, 100, 200]:
         def values_fn():
             return {
-                Variable('X', shape=(d, d)): torch.randn(size, size),
-                Variable('Y', shape=(d, d)): torch.randn(size, size)
+                Variable('X', i=d, j=d): torch.randn(size, size),
+                Variable('Y', i=d, j=d): torch.randn(size, size)
             }
         
         benchmark_execution(f"Matrix Multiplication ({size}x{size})", 
@@ -130,15 +130,19 @@ def benchmark_neural_network():
     d_out = sympy.Symbol('d_out')
     
     def tensor_fn():
-        X = Variable('X', shape=(batch, d_in))
-        W1 = Variable('W1', shape=(d_in, d_hidden))
-        W2 = Variable('W2', shape=(d_hidden, d_out))
-        b1 = Variable('b1', shape=(d_hidden,))
-        b2 = Variable('b2', shape=(d_out,))
+        X = Variable('X', i=batch, j=d_in)
+        W1 = Variable('W1', i=d_in, j=d_hidden)
+        W2 = Variable('W2', i=d_hidden, j=d_out)
+        b1 = Variable('b1', d_hidden)
+        b2 = Variable('b2', d_out)
         
         # Two-layer network
-        hidden = F.relu(X @ W1 + b1['j'] * Delta('i', size=batch))
-        output = hidden @ W2 + b2['j'] * Delta('i', size=batch)
+        # X @ W1 has edges (i=batch, j=d_hidden)
+        bias1_expanded = Product([Delta(batch, 'i'), b1.rename(d_hidden='j')])
+        hidden = F.relu(X @ W1 + bias1_expanded)
+        # hidden @ W2 has edges (i=batch, j=d_out)
+        bias2_expanded = Product([Delta(batch, 'i'), b2.rename(d_out='j')])
+        output = hidden @ W2 + bias2_expanded
         return output
     
     fn_orig, fn_opt = benchmark_compilation("Neural Network - Compilation", tensor_fn)
@@ -147,11 +151,11 @@ def benchmark_neural_network():
     for batch_size in [32, 128, 512]:
         def values_fn():
             return {
-                Variable('X', shape=(batch, d_in)): torch.randn(batch_size, 128),
-                Variable('W1', shape=(d_in, d_hidden)): torch.randn(128, 256),
-                Variable('W2', shape=(d_hidden, d_out)): torch.randn(256, 10),
-                Variable('b1', shape=(d_hidden,)): torch.randn(256),
-                Variable('b2', shape=(d_out,)): torch.randn(10)
+                Variable('X', i=batch, j=d_in): torch.randn(batch_size, 128),
+                Variable('W1', i=d_in, j=d_hidden): torch.randn(128, 256),
+                Variable('W2', i=d_hidden, j=d_out): torch.randn(256, 10),
+                Variable('b1', d_hidden): torch.randn(256),
+                Variable('b2', d_out): torch.randn(10)
             }
         
         benchmark_execution(f"Neural Network (batch={batch_size})", 
@@ -165,8 +169,7 @@ def benchmark_convolution():
     w_out = sympy.Symbol('w_out')
     
     def tensor_fn():
-        return F.Convolution('input', 'kernel', 'output',
-                           shape={'input': w_in, 'kernel': k_size, 'output': w_out})
+        return F.Convolution(input=w_in, kernel=k_size, output=w_out)
     
     fn_orig, fn_opt = benchmark_compilation("Convolution - Compilation", tensor_fn)
     
@@ -189,10 +192,10 @@ def benchmark_complex_expression():
     d = sympy.Symbol('d')
     
     def tensor_fn():
-        A = Variable('A', shape=(d, d))
-        B = Variable('B', shape=(d, d))
-        C = Variable('C', shape=(d, d))
-        D = Variable('D', shape=(d, d))
+        A = Variable('A', i=d, j=d)
+        B = Variable('B', i=d, j=d)
+        C = Variable('C', i=d, j=d)
+        D = Variable('D', i=d, j=d)
         
         # Complex expression: (A @ B + C) @ D + A - 2*B
         temp = A @ B + C
@@ -205,10 +208,10 @@ def benchmark_complex_expression():
     for size in [20, 50, 100]:
         def values_fn():
             return {
-                Variable('A', shape=(d, d)): torch.randn(size, size),
-                Variable('B', shape=(d, d)): torch.randn(size, size),
-                Variable('C', shape=(d, d)): torch.randn(size, size),
-                Variable('D', shape=(d, d)): torch.randn(size, size)
+                Variable('A', i=d, j=d): torch.randn(size, size),
+                Variable('B', i=d, j=d): torch.randn(size, size),
+                Variable('C', i=d, j=d): torch.randn(size, size),
+                Variable('D', i=d, j=d): torch.randn(size, size)
             }
         
         benchmark_execution(f"Complex Expression ({size}x{size})",
@@ -221,8 +224,8 @@ def benchmark_sparse_operations():
     
     def tensor_fn():
         # Sum of delta tensors
-        I = Delta('i', 'j', size=d)
-        X = Variable('X', shape=(d, d))
+        I = Delta(d, 'i', 'j')
+        X = Variable('X', i=d, j=d)
         return I + X + 2*I - X
     
     fn_orig, fn_opt = benchmark_compilation("Sparse Operations - Compilation", tensor_fn)
@@ -231,7 +234,7 @@ def benchmark_sparse_operations():
     for size in [50, 100, 200]:
         def values_fn():
             return {
-                Variable('X', shape=(d, d)): torch.randn(size, size)
+                Variable('X', i=d, j=d): torch.randn(size, size)
             }
         
         shapes = {d: size}
@@ -245,13 +248,16 @@ def benchmark_permutations():
     
     def tensor_fn():
         # Create tensors that will require transpositions
-        X = Variable('X', shape=(a, b, c))
-        Y = Variable('Y', shape=(b, c, d))
-        Z = Variable('Z', shape=(c, d, a))
+        X = Variable('X', i=a, j=b, k=c)
+        Y = Variable('Y', i=b, j=c, k=d)
+        Z = Variable('Z', i=c, j=d, k=a)
         
         # Operations that require permutations
-        temp1 = X['i', 'j', 'k'] * Y['j', 'k', 'l']  # Result: [a, d]
-        temp2 = temp1['i', 'l'] * Z['k', 'l', 'i']   # Result: [c]
+        # X has edges (i, j, k), Y has edges (i, j, k) 
+        # Contract over j and k to get shape (a, d)
+        temp1 = Product([X, Y.rename(i='j', j='k', k='l')])  # Result edges: i, l
+        # Contract temp1 (i, l) with Z (i, j, k) over i and l (renamed)
+        temp2 = Product([temp1, Z.rename(i='k', j='l')])  # Result edges: k
         return temp2
     
     fn_orig, fn_opt = benchmark_compilation("Permutation Heavy - Compilation", tensor_fn)
@@ -259,9 +265,9 @@ def benchmark_permutations():
     # Test
     def values_fn():
         return {
-            Variable('X', shape=(a, b, c)): torch.randn(10, 20, 30),
-            Variable('Y', shape=(b, c, d)): torch.randn(20, 30, 40),
-            Variable('Z', shape=(c, d, a)): torch.randn(30, 40, 10)
+            Variable('X', i=a, j=b, k=c): torch.randn(10, 20, 30),
+            Variable('Y', i=b, j=c, k=d): torch.randn(20, 30, 40),
+            Variable('Z', i=c, j=d, k=a): torch.randn(30, 40, 10)
         }
     
     benchmark_execution("Permutation Heavy Operations",

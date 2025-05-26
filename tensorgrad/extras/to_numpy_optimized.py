@@ -139,8 +139,8 @@ def {function_name}({signature}) -> {out_type}:
         args = [None] * (len(all_symbols_sorted) + len(context.seen_variables))
         
         # Insert dimension sizes
-        for sym, val in shapes.items():
-            args[arg_positions[sym]] = val
+        for sym in all_symbols_sorted:
+            args[arg_positions[sym]] = shapes[sym]
         
         # Insert variable arrays (with optimization to avoid unnecessary conversions)
         for var in context.seen_variables:
@@ -169,7 +169,11 @@ def {function_name}({signature}) -> {out_type}:
         wrapped = []
         for numpy_array, original_tensor in zip(outputs, tensors):
             if not isinstance(numpy_array, np.ndarray):
-                numpy_array = np.array(numpy_array)
+                # Handle sparse arrays
+                if hasattr(numpy_array, 'todense'):
+                    numpy_array = numpy_array.todense()
+                else:
+                    numpy_array = np.array(numpy_array)
             wrapped.append(torch.from_numpy(numpy_array).refine_names(*original_tensor.edges))
 
         # Return as a tuple or a single array
@@ -193,7 +197,12 @@ class CodegenContext:
         self.name_counters = defaultdict(int)
         self.var_types = {}
         self.dtype = dtype
-        self.dtype_str = str(dtype).split("'")[1]  # e.g., 'float32'
+        # Extract just the dtype name
+        if hasattr(dtype, '__name__'):
+            self.dtype_str = f"np.{dtype.__name__}"
+        else:
+            # Handle numpy dtype instances
+            self.dtype_str = f"np.{np.dtype(dtype).name}"
 
     def emit(self, line: str):
         self.lines.append(line)
@@ -258,6 +267,10 @@ class CodegenContext:
         var_name = self.fresh_name(f"var_{tensor.name}")
         placeholder_name = f"_var_{id(tensor)}"
         self.emit(f"{var_name} = {placeholder_name}  # shape: {', '.join(tensor.edges)}")
+        # Track symbols from variable shapes
+        for symbol in tensor.shape.values():
+            if isinstance(symbol, sympy.Symbol):
+                self.declare_dimension(symbol)
         return var_name
 
     @_emit_tensor_impl.register
@@ -303,20 +316,17 @@ class CodegenContext:
         k_size = self.declare_dimension(t.shape[t.kernel_name])
         w_out = self.declare_dimension(t.shape[t.output_name])
 
-        # More efficient sparse convolution using scipy
+        # Generate sparse convolution - same as original
         coords = self.fresh_name("coords")
         data = self.fresh_name("data")
-        indices = self.fresh_name("indices")
+        k = self.fresh_name("k")
+        j = self.fresh_name("j")
         self.emit(
             textwrap.dedent(f"""\
-            # Efficient sparse convolution
-            {indices} = np.arange({w_out})[:, None] + np.arange({k_size})
-            valid_mask = {indices} < {w_in}
-            {coords} = np.column_stack([
-                {indices}[valid_mask].ravel(),
-                np.repeat(np.arange({k_size}), {w_out})[valid_mask.ravel()],
-                np.tile(np.arange({w_out}), {k_size})[valid_mask.ravel()]
-            ])
+            {coords} = np.array([[{k}+{j}, {j}, {k}]
+                               for {j} in range({k_size})
+                               for {k} in range({w_out})
+                               if {j} + {k} < {w_in}])
             {data} = np.ones({coords}.shape[0], dtype={self.dtype_str})
             {var_name} = sparse.COO({coords}.T, {data}, shape=({w_in}, {k_size}, {w_out}))
             """)

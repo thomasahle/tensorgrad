@@ -34,7 +34,7 @@ def test_basic_operations():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt, rtol=1e-5), "Matrix multiplication results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None), rtol=1e-5), "Matrix multiplication results differ"
     print("✓ Matrix multiplication test passed")
     
     # Test 2: Sum of tensors
@@ -55,11 +55,11 @@ def test_basic_operations():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt, rtol=1e-5), "Sum results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None), rtol=1e-5), "Sum results differ"
     print("✓ Sum test passed")
     
     # Test 3: Delta tensor
-    I = Delta('i', 'j', size=d)
+    I = Delta(d, 'i', 'j')
     
     fn_orig = compile_orig(I)
     fn_opt = compile_opt(I)
@@ -67,7 +67,7 @@ def test_basic_operations():
     result_orig = fn_orig({}, {d: 5})
     result_opt = fn_opt({}, {d: 5})
     
-    assert torch.allclose(result_orig, result_opt), "Delta results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None)), "Delta results differ"
     print("✓ Delta test passed")
 
 
@@ -88,7 +88,7 @@ def test_functions():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt), "ReLU results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None)), "ReLU results differ"
     print("✓ ReLU test passed")
     
     # Test exp
@@ -99,7 +99,7 @@ def test_functions():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt, rtol=1e-5), "Exp results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None), rtol=1e-5), "Exp results differ"
     print("✓ Exp test passed")
     
     # Test power
@@ -110,7 +110,7 @@ def test_functions():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt, rtol=1e-5), "Power results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None), rtol=1e-5), "Power results differ"
     print("✓ Power test passed")
 
 
@@ -122,8 +122,7 @@ def test_convolution():
     k_size = sympy.Symbol('k_size')
     w_out = sympy.Symbol('w_out')
     
-    Conv = F.Convolution('input', 'kernel', 'output',
-                        shape={'input': w_in, 'kernel': k_size, 'output': w_out})
+    Conv = F.Convolution(input=w_in, kernel=k_size, output=w_out)
     
     shapes = {w_in: 10, k_size: 3, w_out: 8}
     
@@ -139,7 +138,7 @@ def test_convolution():
     if hasattr(result_opt, 'todense'):
         result_opt = torch.from_numpy(result_opt.todense())
     
-    assert torch.allclose(result_orig, result_opt), "Convolution results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None)), "Convolution results differ"
     print("✓ Convolution test passed")
 
 
@@ -150,15 +149,21 @@ def test_complex_expression():
     batch = sympy.Symbol('batch')
     d = sympy.Symbol('d')
     
-    X = Variable('X', batch, d)
-    W1 = Variable('W1', i=d, j=d)
-    W2 = Variable('W2', i=d, j=d)
-    b1 = Variable('b1', d)
-    b2 = Variable('b2', d)
+    X = Variable('X', i=batch, j=d)
+    W1 = Variable('W1', j=d, k=d)
+    W2 = Variable('W2', j=d, k=d)
+    b1 = Variable('b1', j=d)
+    b2 = Variable('b2', j=d)
     
     # Two-layer neural network with ReLU
-    hidden = F.relu(X @ W1 + b1['j'] * Delta('i', size=batch))
-    output = hidden @ W2 + b2['j'] * Delta('i', size=batch)
+    # X @ W1 results in shape (batch, d) with edges i, k
+    # Broadcast bias: need to expand b1 from shape (d,) to (batch, d)
+    bias1 = Product([Delta(batch, 'i'), b1.rename(j='k')])
+    hidden = F.relu(X @ W1 + bias1)
+    
+    # hidden @ W2 also results in shape (batch, d) with edges i, k  
+    bias2 = Product([Delta(batch, 'i'), b2.rename(j='k')])
+    output = hidden @ W2 + bias2
     
     values = {
         X: torch.randn(32, 64),
@@ -174,7 +179,7 @@ def test_complex_expression():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt, rtol=1e-4), "Complex expression results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None), rtol=1e-4), "Complex expression results differ"
     print("✓ Complex expression test passed")
 
 
@@ -203,7 +208,7 @@ def test_multiple_outputs():
     
     assert len(results_orig) == len(results_opt) == 3
     for i, (orig, opt) in enumerate(zip(results_orig, results_opt)):
-        assert torch.allclose(orig, opt, rtol=1e-5), f"Output {i} differs"
+        assert torch.allclose(orig.rename(None), opt.rename(None), rtol=1e-5), f"Output {i} differs"
     
     print("✓ Multiple outputs test passed")
 
@@ -220,7 +225,7 @@ def test_edge_cases():
     result_orig = fn_orig({})
     result_opt = fn_opt({})
     
-    assert torch.allclose(result_orig, result_opt), "Empty product results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None)), "Empty product results differ"
     print("✓ Empty product test passed")
     
     # Single factor product
@@ -236,7 +241,7 @@ def test_edge_cases():
     result_orig = fn_orig(values)
     result_opt = fn_opt(values)
     
-    assert torch.allclose(result_orig, result_opt), "Single factor product results differ"
+    assert torch.allclose(result_orig.rename(None), result_opt.rename(None)), "Single factor product results differ"
     print("✓ Single factor product test passed")
 
 

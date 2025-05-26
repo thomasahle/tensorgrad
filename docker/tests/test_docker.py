@@ -8,7 +8,7 @@ import socket
 from typing import Optional
 from pydantic import BaseModel
 
-from drawTensors import CodePayload, ExecutionResult, SnippetCreationResponse, Snippet
+from docker.drawTensors import CodePayload, ExecutionResult, SnippetCreationResponse, Snippet
 
 PORT = 9000  # Host port
 LAMBDA_URL = f"http://localhost:{PORT}/2015-03-31/functions/function/invocations"
@@ -34,11 +34,26 @@ def docker_container():
     """
 
     # Run the build command with live output.
+    # We need to run from the tensorgrad root directory
+    import os
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Try buildx first, fall back to regular build
+    build_cmd = ["docker", "buildx", "build"]
+    
+    # Check if buildx is available
+    buildx_check = subprocess.run(
+        ["docker", "buildx", "version"],
+        capture_output=True,
+        text=True
+    )
+    
+    if buildx_check.returncode != 0:
+        print("Note: docker buildx not available, using regular docker build")
+        build_cmd = ["docker", "build"]
+    
     build_proc = subprocess.run(
-        [
-            "docker",
-            "buildx",
-            "build",
+        build_cmd + [
             "-t",
             "tensorgrad",
             "-f",
@@ -47,7 +62,7 @@ def docker_container():
         ],
         capture_output=True,
         text=True,
-        cwd="..",
+        cwd=repo_root,
     )
     assert build_proc.returncode == 0, f"Docker build failed:\n{build_proc.stderr}"
 
@@ -65,7 +80,7 @@ def docker_container():
         ],
         capture_output=True,
         text=True,
-        cwd="..",
+        cwd=repo_root,
     )
     assert run_proc.returncode == 0, f"Docker run failed:\n{run_proc.stderr}"
     container_id = run_proc.stdout.strip()

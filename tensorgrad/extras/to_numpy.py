@@ -107,7 +107,7 @@ def {function_name}({signature}) -> {out_type}:
         for v, arr in values.items():
             if not isinstance(v, Variable):
                 continue
-            for dim_symbol, size in zip(v.shape.keys(), arr.shape):
+            for dim_symbol, size in zip(v.shape.values(), arr.shape):
                 # `dim_symbol` is a sympy.Symbol for that dimension
                 if dim_symbol not in shapes:
                     shapes[dim_symbol] = size
@@ -156,7 +156,11 @@ def {function_name}({signature}) -> {out_type}:
         wrapped = []
         for numpy_array, original_tensor in zip(outputs, tensors):
             if not isinstance(numpy_array, np.ndarray):
-                numpy_array = np.array(numpy_array)
+                # Handle sparse arrays
+                if hasattr(numpy_array, 'todense'):
+                    numpy_array = numpy_array.todense()
+                else:
+                    numpy_array = np.array(numpy_array)
             wrapped.append(torch.from_numpy(numpy_array).refine_names(*original_tensor.edges))
 
         # Return as a tuple or a single array
@@ -247,6 +251,10 @@ class CodegenContext:
         var_name = self.fresh_name(f"var_{tensor.name}")
         placeholder_name = f"_var_{id(tensor)}"
         self.emit(f"{var_name} = {placeholder_name}  # shape: {', '.join(tensor.edges)}")
+        # Track symbols from variable shapes
+        for symbol in tensor.shape.values():
+            if isinstance(symbol, sympy.Symbol):
+                self.declare_dimension(symbol)
         return var_name
 
     @_emit_tensor_impl.register

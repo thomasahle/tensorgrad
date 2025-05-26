@@ -11,7 +11,7 @@ os.environ["DYNAMODB_CACHE_TABLE"] = "TensorgradCache"
 os.environ["DYNAMODB_SNIPPET_TABLE"] = "CodeSnippets"
 
 # Now import the app and helper functions from your FastAPI application.
-from drawTensors import app, safe_execute, ExecutionResult
+from docker.drawTensors import app, safe_execute, ExecutionResult
 
 # Create a TestClient for FastAPI
 client = TestClient(app)
