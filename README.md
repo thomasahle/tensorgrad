@@ -137,11 +137,11 @@ Another source of inspiration was Yaroslav Bulatov's [derivation of the hessian 
 
 The main ingredient in CNNs are the linear operations Fold and Unfold. 
 Unfold takes an image, with dimensions HxW and outputs P "patches" of size K^2, where K is the kernel size. Fold is the reverse operation. 
-Since they are linear operations (they consists only of copying/adding) we can express them as a tensor with shape (H, W, P, K^2).
+Since they are linear operations (they consist only of copying/adding) we can express them as a tensor with shape (H, W, P, K^2).
 
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/uCrOg.png" widht="80%">
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/uCrOg.png" width="80%">
 
-<a href="https://arxiv.org/abs/1908.04471">Hayashi et al.</a> show that if you define a tensor `(∗)_{i,j,k} = [i=j+k]`, then the "Unfold" operator factors along the spacial dimensions, and you can write a bunch of different convolutional neural networks easily as tensor networks:
+<a href="https://arxiv.org/abs/1908.04471">Hayashi et al.</a> show that if you define a tensor `(∗)_{i,j,k} = [i=j+k]`, then the "Unfold" operator factors along the spatial dimensions, and you can write a bunch of different convolutional neural networks easily as tensor networks:
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/68747470733a2f2f64726976652e676f6f676c652e636f6d2f75633f6578706f72743d766965772669643d3141305235795371446e48715939624650677163546f6b347735416a516c666572.png">
 
 With tensorgrad you can write the "standard" convolutional neural network like this:
@@ -158,7 +158,7 @@ And then easily find the jacobian symbolically with `expr.grad(kernel)`:
 ## Tensor Sketch
 
 Taken from [this Twitter thread](https://twitter.com/thomasahle/status/1674572437953089536):
-I wish I had know about Tensor Graphs back when i worked on Tensor-sketching.
+I wish I had known about Tensor Graphs back when I worked on Tensor-sketching.
 Let me correct this now and explain dimensionality reduction for tensors using Tensor Networks:
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/ts_simple.png" width="66%">
