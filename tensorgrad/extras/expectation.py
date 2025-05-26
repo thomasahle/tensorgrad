@@ -58,9 +58,13 @@ class Expectation(Tensor):
             covar = Product([Delta(wrt.shape[e], e, e2) for e, e2 in covar_names.items()])
         elif covar_names is None:
             raise ValueError("If covar is not given, covar_names must be given.")
-        if covar.shape != wrt.shape | {covar_names[k]: s for k, s in wrt.shape.items()}:
-            co_size = {covar_names[k]: s for k, s in wrt.shape.items()}
-            raise ValueError(f"{covar.shape=} != {wrt.shape=} | {co_size=}")
+        # Check that covar has at least the required edges (wrt edges + renamed edges)
+        required_edges = wrt.shape | {covar_names[k]: s for k, s in wrt.shape.items()}
+        for edge, size in required_edges.items():
+            if edge not in covar.shape:
+                raise ValueError(f"Covariance missing required edge {edge}")
+            if covar.shape[edge] != size:
+                raise ValueError(f"Covariance edge {edge} has wrong size: {covar.shape[edge]} != {size}")
         assert covar.order % 2 == 0, f"{covar.order=}"
 
         assert covar_names.keys() == wrt.edges, f"{covar_names.keys()=} != {wrt.edges=}"
@@ -200,4 +204,8 @@ class Expectation(Tensor):
         return Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
 
     def depends_on(self, x: "Variable") -> bool:
-        return self.tensor.depends_on(x)
+        return (
+            self.tensor.depends_on(x) 
+            or self.mu.depends_on(x) 
+            or self.covar.depends_on(x)
+        )

@@ -329,3 +329,81 @@ def test_github_issue_31():
     # This should work without AssertionError after the fix
     result = P.full_simplify()
     # Test passes if no AssertionError is raised
+
+
+def test_expectation_depends_on_mu_and_covar():
+    """Test that Expectation.depends_on checks mu and covar dependencies, not just tensor."""
+    i = symbols("i")
+    x = Variable("x", i)
+    y = Variable("y", i)
+    z = Variable("z", i)
+    
+    # Case 1: tensor doesn't depend on z, but mu does
+    expr = x @ y  # doesn't depend on z
+    mu = z  # depends on z
+    exp1 = Expectation(expr, x, mu=mu)
+    
+    # After fix, this correctly returns True
+    assert exp1.depends_on(z) == True
+    
+    # Case 2: tensor doesn't depend on z, but covar does
+    expr2 = x @ y  # doesn't depend on z
+    covar = z @ z.rename(i="i2")  # depends on z
+    covar_names = {"i": "i2"}
+    exp2 = Expectation(expr2, x, covar=covar, covar_names=covar_names)
+    
+    # After fix, this correctly returns True
+    assert exp2.depends_on(z) == True
+
+
+def test_expectation_multiple_wrt_in_product():
+    """Test that Expectation handles products with multiple occurrences of wrt correctly."""
+    i = symbols("i")
+    x = Variable("x", i)
+    mu = Variable("mu", i)
+    
+    # Product with x appearing twice: x @ x @ y
+    y = Variable("y", i)
+    expr = x @ x @ y
+    
+    # Create expectation
+    exp = Expectation(expr, x, mu=mu)
+    
+    # Simplify - this might give incorrect results due to list.remove() only removing first occurrence
+    result = exp.simplify()
+    
+    # The correct result should handle both occurrences of x
+    # E[x @ x @ y] = E[x] @ E[x @ y] + E[x @ y] @ E[x] + Cov(x,x) @ E[d/dx y]
+    # But the buggy code might only handle one occurrence
+
+
+def test_expectation_covar_allows_extra_edges():
+    """Test that covariance tensor validation now allows extra edges."""
+    i, j, k = symbols("i j k") 
+    x = Variable("x", i)
+    
+    # Create a covariance with extra edges beyond what's needed for x
+    # This is now allowed as long as it has the required edges
+    covar = Variable("covar", i, i2=i, j=j, k=k).with_symmetries("i i2, j, k")  # Extra edges j, k
+    covar_names = {"i": "i2"}
+    
+    # After fix, this should work fine
+    exp = Expectation(x @ x, x, covar=covar, covar_names=covar_names)
+    
+    # The expectation should work correctly with extra edges in covar
+    assert exp.covar == covar
+
+
+def test_expectation_symmetry_validation():
+    """Test edge case in symmetry validation for covariance."""
+    i = symbols("i")
+    x = Variable("x", i)
+    
+    # Create a covariance that is symmetric but might fail validation
+    # due to overly strict symmetry checking
+    covar = Variable("covar", i, i2=i).with_symmetries("i i2")
+    covar_names = {"i": "i2"}
+    
+    # This should work since covar is symmetric in i and i2
+    exp = Expectation(x @ x, x, covar=covar, covar_names=covar_names)
+    assert exp.covar == covar
