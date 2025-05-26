@@ -8,7 +8,7 @@ import socket
 from typing import Optional
 from pydantic import BaseModel
 
-from server.drawTensors import CodePayload, ExecutionResult, SnippetCreationResponse, Snippet
+from server.drawTensors import CodePayload, ExecutionResult, SnippetCreationResponse, Snippet, safe_execute
 
 PORT = 9000  # Host port
 LAMBDA_URL = f"http://localhost:{PORT}/2015-03-31/functions/function/invocations"
@@ -171,3 +171,15 @@ def test_docker_snippet_endpoints(docker_container):
     assert snippet_obj.code == payload_obj.code
     assert snippet_obj.created_at is not None
     assert snippet_obj.author_id is not None
+
+
+def test_safe_execute_dynamic_import():
+    """
+    Ensure that calls to __import__ are detected as unsafe and blocked by safe_execute.
+    """
+    code = "__import__('os')"
+    result = safe_execute(code)
+    # Execution should be rejected as unsafe
+    assert not result.success
+    assert "unsafe" in (result.error or "").lower()
+

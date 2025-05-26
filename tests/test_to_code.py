@@ -419,15 +419,3 @@ def test_mnist(model):
         # We just hope it learned a little bit
         assert corr / batches > 0.15, f"Accuracy too low: {corr / batches}"
 
-
-def test_safe_execute_dynamic_import():
-    """
-    Ensure that calls to __import__ are detected as unsafe and blocked by safe_execute.
-    """
-    from server.drawTensors import safe_execute
-    code = "__import__('os')"
-    result = safe_execute(code)
-    # Execution should be rejected as unsafe
-    assert not result.success
-    assert "unsafe" in (result.error or "").lower()
-
