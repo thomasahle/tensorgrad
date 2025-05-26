@@ -180,7 +180,7 @@ class Expectation(Tensor):
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         if x == self.wrt:
             raise ValueError("Cannot take the gradient wrt the variable we're taking the expectation over")
-        return Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.covar, self.covar_names)
+        return Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.mu, self.covar, self.covar_names)
 
     def __repr__(self):
         return f"E[{self.tensor}]"

@@ -683,7 +683,7 @@ def test_max(keepdim, dims):
         names = tuple(n for n in names if n not in dims and dims)
 
     # Test max operation
-    res = evaluate(F.max(X, dims, keepdim=keepdim), ts)
+    res = evaluate(F.max(X, dims, keepdims=keepdim), ts)
     adims = tuple(ts[X].names.index(d) for d in dims)
     expected = tX.amax(dim=adims, keepdim=keepdim)
     expected = expected.rename(*names)
@@ -693,7 +693,7 @@ def test_max(keepdim, dims):
     # Note that if we used F.sum/torch.sum we would get a factor i*j off,
     # since our version of keepdim also _keeps the size of the dimensions_
     # where pytorch just uses dummy/size-1 dimensions.
-    res_max = F.max(X, dims, keepdim=keepdim)
+    res_max = F.max(X, dims, keepdims=keepdim)
     res = evaluate(F.mean(res_max).grad(X).simplify(), ts)
     x = tX.clone().detach().requires_grad_(True)
     y = x.amax(dim=adims, keepdim=keepdim).rename(*names)
@@ -740,3 +740,28 @@ def test_multi_dot():
     assert grad == expected
 
     # TODO: Add symmetric tests from section "2.5.3 Higher Order" in matrix cookbook
+
+
+def test_keepdim_keepdims_consistency():
+    """Test that sum, mean, and max all use keepdims consistently."""
+    i, j = symbols("i j")
+    x = Variable("x", i, j)
+    
+    # sum and mean use 'keepdims'
+    sum_result = F.sum(x, dim="i", keepdims=True)
+    assert "i" in sum_result.edges
+    
+    mean_result = F.mean(x, dim="i", keepdims=True)
+    assert "i" in mean_result.edges
+    
+    # max now also uses 'keepdims' (consistent)
+    max_result = F.max(x, dim="i", keepdims=True)
+    assert "i" in max_result.edges
+    
+    # Test that wrong parameter names fail
+    import pytest
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        F.sum(x, dim="i", keepdim=True)  # Wrong parameter name
+    
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        F.max(x, dim="i", keepdim=True)  # Wrong parameter name (now fixed)

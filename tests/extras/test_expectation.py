@@ -6,6 +6,7 @@ from tensorgrad import functions as F
 from tensorgrad.extras.expectation import Expectation
 from tensorgrad.testutils import assert_close, rand_values
 from tensorgrad.extras.evaluate import evaluate
+import pytest
 
 
 def simple_variables():
@@ -282,3 +283,49 @@ def test_cancelation():
     u = Variable("u", i)
     u2 = u @ u
     assert Expectation(u2 / u2, u).full_simplify() == Product([])
+
+
+def test_expectation_gradient_preserves_mu():
+    """Test for bug in expectation.py line 183 - gradient should preserve mu parameter."""
+    i = symbols("i")
+    x = Variable("x", i)
+    y = Variable("y", i)
+    mu = Variable("mu", i)
+    
+    # Create expectation with mu but no covar
+    expr = x @ y
+    exp = Expectation(expr, x, mu=mu, covar=None)
+    
+    # Take gradient wrt y - this should preserve mu
+    grad = exp.grad(y)
+    
+    # Check that gradient is an Expectation that preserves mu
+    assert isinstance(grad, Expectation)
+    assert grad.mu == mu, "mu parameter should be preserved when taking gradient"
+
+
+def test_github_issue_31():
+    """Test for GitHub issue #31 - expectation simplification bug."""
+    from tensorgrad import Delta
+    import tensorgrad.functions as F
+    
+    i = symbols("i")
+    g1 = Variable("g1", a=i)
+    g2 = Variable("g2", b=i)
+    
+    # Simple function that depends on both variables
+    f = g1 @ g2
+    
+    U1 = Delta(i, "a", "c") - g1@g1.rename(a="c")/Delta(i)
+    U2 = Delta(i, "b", "c") - g2@g2.rename(b="c")/Delta(i)
+    
+    P = U1 @ U2
+    assert P.edges == {'a', 'b'}
+    P = P @ f
+    P = P.full_simplify()
+    P = Expectation(P, g1).simplify()
+    P = Expectation(P, g2).simplify()
+    
+    # This should work without AssertionError after the fix
+    result = P.full_simplify()
+    # Test passes if no AssertionError is raised

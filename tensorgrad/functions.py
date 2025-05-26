@@ -1003,7 +1003,7 @@ class _MaxFunction(FunctionSignature):
         return _RenameFunction(_MaxGradFunction(dims), new_edges)
 
 
-def max(t: Tensor, dim: DimType = None, keepdim: bool = False) -> Tensor:
+def max(t: Tensor, dim: DimType = None, keepdims: bool = False) -> Tensor:
     """
     Return the max along 'dim'. If dim=(), it's the global max (0D).
     The derivative is tie-splitting, handled by gt(...).
@@ -1015,7 +1015,7 @@ def max(t: Tensor, dim: DimType = None, keepdim: bool = False) -> Tensor:
         dim = tuple(t.edges)
 
     fn = Function(_MaxFunction(dim), [t], {})
-    if keepdim:
+    if keepdims:
         fn = fn @ Ones(**{e: t.shape[e] for e in dim})
     return fn
 
