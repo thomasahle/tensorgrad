@@ -82,7 +82,7 @@ def main():
     if not checks[1]:  # Image doesn't exist
         print("\nThe Docker image needs to be built first.")
         print("This can take 10-20 minutes due to TeX installation.")
-        print("Run: docker build -t tensorgrad -f docker/Dockerfile .")
+        print("Run: docker build -t tensorgrad -f server/Dockerfile .")
         
     if not checks[2]:  # Port in use
         print("\nPort 9000 is in use. Kill the process or use a different port.")

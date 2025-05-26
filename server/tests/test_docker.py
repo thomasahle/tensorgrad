@@ -8,7 +8,7 @@ import socket
 from typing import Optional
 from pydantic import BaseModel
 
-from docker.drawTensors import CodePayload, ExecutionResult, SnippetCreationResponse, Snippet
+from server.drawTensors import CodePayload, ExecutionResult, SnippetCreationResponse, Snippet
 
 PORT = 9000  # Host port
 LAMBDA_URL = f"http://localhost:{PORT}/2015-03-31/functions/function/invocations"
@@ -51,13 +51,14 @@ def docker_container():
     if buildx_check.returncode != 0:
         print("Note: docker buildx not available, using regular docker build")
         build_cmd = ["docker", "build"]
-    
+
+    # Build the Docker image
     build_proc = subprocess.run(
         build_cmd + [
             "-t",
             "tensorgrad",
             "-f",
-            "docker/Dockerfile",
+            "server/Dockerfile",
             ".",
         ],
         capture_output=True,

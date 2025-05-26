@@ -26,8 +26,8 @@ RUN mkdir -p /tmp && \
 
 # Install Python dependencies
 COPY tensorgrad/ tensorgrad/
-COPY docker/ docker/
-RUN pip install ./docker
+COPY server/ server/
+RUN pip install ./server
 
 # Command to start the Lambda function
-CMD ["docker.drawTensors.handler"]
+CMD ["server.drawTensors.handler"]

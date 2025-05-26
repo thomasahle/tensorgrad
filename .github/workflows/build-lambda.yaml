@@ -27,7 +27,7 @@ jobs:
       # Build the Docker image locally using Docker Buildx
       - name: Build Docker image
         run: |
-          docker buildx build -t tensorgrad -f docker/Dockerfile .
+          docker buildx build -t tensorgrad -f server/Dockerfile .
 
       # Test the Docker image by running it locally and invoking the function
       - name: Test Lambda container locally
@@ -75,7 +75,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile
+          file: server/Dockerfile
           platforms: linux/arm64
           push: true
           tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest

@@ -95,7 +95,9 @@ class Expectation(Tensor):
                 # If inner expectation simplified to something that's not an expectation,
                 # take expectation of that
                 if not isinstance(inner_simplified, Expectation):
-                    return Expectation(inner_simplified, self.wrt, self.mu, self.covar, self.covar_names).simplify(args)
+                    # Create the new expectation but don't immediately simplify it
+                    # to avoid infinite recursion
+                    return Expectation(inner_simplified, self.wrt, self.mu, self.covar, self.covar_names)
                 
                 # Special case: E_Y[E_X[X|Y]] where inner simplifies to mu_X(Y)
                 if isinstance(inner.tensor, Variable) and inner.tensor == inner.wrt:

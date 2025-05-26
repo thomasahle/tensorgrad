@@ -1,5 +1,6 @@
 import os
 import pytest
+pytest.importorskip("moto")  # Skip AWS tests if moto is not installed
 import uuid
 import textwrap
 
@@ -11,7 +12,7 @@ os.environ["DYNAMODB_CACHE_TABLE"] = "TensorgradCache"
 os.environ["DYNAMODB_SNIPPET_TABLE"] = "CodeSnippets"
 
 # Now import the app and helper functions from your FastAPI application.
-from docker.drawTensors import app, safe_execute, ExecutionResult
+from server.drawTensors import app, safe_execute, ExecutionResult
 
 # Create a TestClient for FastAPI
 client = TestClient(app)

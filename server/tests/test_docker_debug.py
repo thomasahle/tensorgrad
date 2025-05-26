@@ -48,7 +48,7 @@ def main():
         "docker", "build",
         "--progress=plain",  # Show detailed progress
         "-t", "tensorgrad",
-        "-f", "docker/Dockerfile",
+        "-f", "server/Dockerfile",
         "."
     ], cwd="..")
     
