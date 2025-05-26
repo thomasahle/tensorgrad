@@ -11,25 +11,27 @@
 A Tensor & Deep Learning framework - It's like PyTorch meets SymPy.
 
 Tensorgrad is an open-source python package for symbolic tensor manipulation.
-It performs any simplification described in the [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf)  automatically, and can even be used as a machine learning framework.
+It performs any simplification described in the [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) automatically, and can even be used as a machine learning framework.
+
+## Quickstart
+
+Install tensorgrad via pip:
+
+```bash
+pip install tensorgrad
+```
+
+(Optional) For diagram visualizations (LaTeX/TikZ), install:
+
+```bash
+apt-get install texlive-luatex texlive-latex-extra texlive-fonts-extra poppler-utils
+```
 
 ## Examples
 
 To run the examples for yourself, use [the playground](https://tensorcookbook.com/playground.html) or
 see [this notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
 
-Install tensorgrad with
-```bash
-pip install tensorgrad
-```
-
-For visualizations we need some latex packages:
-```bash
-apt-get install texlive-luatex
-apt-get install texlive-latex-extra
-apt-get install texlive-fonts-extra
-apt-get install poppler-utils
-```
 
 ### Derivative of L2 Loss
 
