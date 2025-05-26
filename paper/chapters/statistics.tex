@@ -995,17 +995,761 @@ E[x] &= \sum_k \rho_k m_k \tag{384} \\[1em]
 \subsection{Derivatives}
 Derivatives of moments with respect to $m$ or $M$ can be found by differentiating under the integral sign, and using Stein's lemma for Gaussian cases.
 
+\section{Free Probability for Vectors and Tensors}
+
+Free probability theory provides a non-commutative analogue of classical probability. We'll start with the simplest case—vectors with scalar entries—then progress to matrices and finally to higher-rank tensors.
+
+\subsection{Free Cumulants for Vectors}
+
+For a random vector $x \in \mathbb{R}^n$ with scalar entries, free cumulants are defined analogously to classical cumulants but using only non-crossing partitions.
+
+\subsubsection{R-Transform for Vectors}
+
+The R-transform (free cumulant generating function) is:
+\[
+   R_x(z) = \sum_{n=1}^{\infty} \kappa_n^{\text{free}} z^{n-1}
+\]
+
+This is the free analogue of the classical cumulant generating function $\log \mathrm{E}[e^{tz}] = \sum_{n=1}^{\infty} \frac{\kappa_n}{n!} t^n$.
+
+\subsubsection{Moment-Cumulant Relations}
+
+If each $x_i$ has free cumulants $\kappa_1^{\text{free}}, \kappa_2^{\text{free}}, \kappa_3^{\text{free}}, \kappa_4^{\text{free}} \in \mathbb{R}$, then:
+\[
+\begin{bmatrix}
+   \begin{tikzpicture}[
+      baseline=(T.base),
+      every node/.style={inner sep=1pt, circle, draw=none, fill=white},
+    ]
+    \draw (30:.2) node[label] {$x$} -- (30:.5);
+    \draw (120:.2) node[label] {$x$} -- (120:.5);
+    \draw (210:.2) node[label] {$x$} -- (210:.5);
+    \draw (300:.2) node[label] {$x$} -- (300:.5);
+   \end{tikzpicture}
+\end{bmatrix}_{\text{free}}
+=
+\begin{tikzpicture}[
+  every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
+  label/.style={draw=none, fill=none, text=black, font=\scriptsize},
+  crossing/.style={draw=red, fill=red!20},
+  declare function={
+    xgap=1;
+    ygap=.6;
+  },
+  baseline=-1cm
+  ]
+  
+  % Pattern {4} - 1 partition (non-crossing)
+  \drawPartitionAtAngle{(0,0)}{4}{$\kappa_4^{\text{free}}$}{{{1,2,3,4}}}
+
+  % Pattern {3,1} - 4 partitions total
+  \drawPartitionAtAngle{(0,-ygap)}{4}{$+\kappa_3^{\text{free}}\kappa_1^{\text{free}}\Big($}{{{1,2,3},{4}}}
+  \drawPartitionAtAngle[crossing]{(xgap,-ygap)}{4}{$\times$}{{{1,2,4},{3}}}
+  \drawPartitionAtAngle[crossing]{(2*xgap,-ygap)}{4}{$\times$}{{{2},{1,3,4}}}
+  \drawPartitionAtAngle{(3*xgap,-ygap)}{4}{$+$}{{{1},{2,3,4}}}
+  \node[label] at (3.5*xgap,-ygap) {$\Big)$};
+
+  % Pattern {2,2} - 3 partitions total
+  \drawPartitionAtAngle{(0,-2*ygap)}{4}{$+(\kappa_2^{\text{free}})^2\Big($}{{{1,2},{3,4}}}
+  \drawPartitionAtAngle[crossing]{(xgap,-2*ygap)}{4}{$\times$}{{{1,3},{2,4}}}
+  \drawPartitionAtAngle{(2*xgap,-2*ygap)}{4}{$+$}{{{1,4},{2,3}}}
+  \node[label] at (2.5*xgap,-2*ygap) {$\Big)$};
+
+  % Pattern {2,1,1} - 6 partitions total
+  \drawPartitionAtAngle{(0,-3*ygap)}{4}{$+\kappa_2^{\text{free}}(\kappa_1^{\text{free}})^2\Big($}{{{1,2},{3},{4}}}
+  \drawPartitionAtAngle[crossing]{(xgap,-3*ygap)}{4}{$\times$}{{{1,3},{2},{4}}}
+  \drawPartitionAtAngle[crossing]{(2*xgap,-3*ygap)}{4}{$\times$}{{{1,4},{2},{3}}}
+  \drawPartitionAtAngle[crossing]{(3*xgap,-3*ygap)}{4}{$\times$}{{{1},{2,3},{4}}}
+  \drawPartitionAtAngle[crossing]{(4*xgap,-3*ygap)}{4}{$\times$}{{{1},{3},{2,4}}}
+  \drawPartitionAtAngle{(5*xgap,-3*ygap)}{4}{$+$}{{{1},{2},{3,4}}}
+  \drawPartitionAtAngle{(6*xgap,-3*ygap)}{4}{$+$}{{{1,4},{2},{3}}}
+  \node[label] at (6.5*xgap,-3*ygap) {$\Big)$};
+
+  % Pattern {1,1,1,1} - 1 partition (non-crossing)
+  \drawPartitionAtAngle{(0,-4*ygap)}{4}{$+(\kappa_1^{\text{free}})^4$}{{{1},{2},{3},{4}}}
+
+  % Legend
+  \node[label, red] at (4,-5*ygap) {\small Red = crossing partitions (excluded in free probability)};
+
+\end{tikzpicture}
+\]
+
+Compare with classical: 15 partitions $\to$ 9 non-crossing partitions!
+
+\subsection{Free Cumulants for Matrices}
+
+For random matrices, we must consider traces of products. Unlike scalars, matrix products don't commute, adding complexity.
+\[
+\begin{tikzpicture}[baseline=-.5em, scale=0.8]
+   % Classical vs Free
+   \node at (-2,1) {\small Classical cumulants:};
+   \node at (-2,-1.5) {\small Free cumulants:};
+   
+   % Classical - all 5 partitions
+   \node at (0,1) {$\mathrm{E}[X^3] =$};
+   \node at (2,1) {$\kappa_3$};
+   \node at (3,1) {$+ 3\kappa_2\kappa_1$};
+   \node at (5,1) {$+ \kappa_1^3$};
+   \node at (7,1) {\small (5 partitions)};
+   
+   % Free - only 2 non-crossing
+   \node at (0,-1.5) {$\mathrm{E}[\mathrm{Tr}(X^3)] =$};
+   \node at (2.5,-1.5) {$\kappa_3^{\text{free}}$};
+   \node at (4.5,-1.5) {$+ \kappa_1^{\text{free}}\kappa_2^{\text{free}}$};
+   \node at (7,-1.5) {\small (2 NC partitions)};
+\end{tikzpicture}
+\]
+
+The partition $(1,3),(2)$ is crossing and thus excluded in free probability:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.7]
+   % Non-crossing partitions
+   \node at (-2,0) {\small Non-crossing:};
+   \foreach \i in {1,2,3} {
+      \node[circle, draw] (A\i) at (120-120*\i:1) {\tiny \i};
+   }
+   \draw[thick] (A1) to (A2);
+   \draw[thick] (A3) to (A3);
+   
+   \begin{scope}[xshift=4cm]
+      \foreach \i in {1,2,3} {
+         \node[circle, draw] (B\i) at (120-120*\i:1) {\tiny \i};
+      }
+      \draw[thick] (B1) to (B1);
+      \draw[thick] (B2) to (B3);
+   \end{scope}
+   
+   % Crossing partition
+   \begin{scope}[xshift=8cm]
+      \node at (-2,0) {\small Crossing:};
+      \foreach \i in {1,2,3} {
+         \node[circle, draw] (C\i) at (120-120*\i:1) {\tiny \i};
+      }
+      \draw[thick, red] (C1) to (C3);
+      \draw[thick] (C2) to (C2);
+      \node[red] at (0,-2) {\small $\times$};
+   \end{scope}
+\end{tikzpicture}
+\]
+
+Key insight: For matrices, we have ONE edge to match between elements. For higher-rank tensors, we have MULTIPLE edges (colors) to match.
+
+\subsection{Tensor Free Cumulants}
+
+For rank-$D$ tensors, the free cumulant theory becomes richer due to colored non-crossing partitions.
+
+\subsubsection{Colored Non-Crossing Partitions for Tensors}
+
+For rank-$D$ tensors, each element has $D$ "legs" or indices. A valid pairing must:
+\begin{itemize}
+\item Be non-crossing when elements are arranged on a circle
+\item Match ALL $D$ colors (one per leg) between paired elements
+\end{itemize}
+
+This dramatically reduces the number of valid partitions. For rank-3 tensors:
+\[
+\begin{tikzpicture}[baseline=-.5em, scale=0.8]
+   % Matrix case
+   \node at (-3,0) {\small Matrices:};
+   \node[draw, thick] (M1) at (-1,0) {$X$};
+   \node[draw, thick] (M2) at (0.5,0) {$X$};
+   \draw[thick] (M1.east) -- (M2.west) node[midway, above] {\tiny 1 edge};
+   
+   % Tensor case
+   \node at (2,0) {\small Rank-3 tensors:};
+   \node[draw, thick] (T1) at (4,0) {$T$};
+   \node[draw, thick] (T2) at (5.5,0) {$T$};
+   % Must connect all 3 colors
+   \draw[cyan, thick] (T1.north east) to[bend left=20] (T2.north west);
+   \draw[magenta, thick] (T1.east) -- (T2.west);
+   \draw[yellow, thick] (T1.south east) to[bend right=20] (T2.south west);
+   \node at (7.5,0) {\tiny 3 edges};
+\end{tikzpicture}
+\]
+
+\subsubsection{Invariant Traces for Tensors}
+
+Unlike matrices, higher-rank tensors have no single canonical trace. Instead, every way of contracting tensors to produce a scalar defines a different invariant:
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+Matrices ($D=2$) & Tensors ($D>2$) \\
+\hline
+Unique invariant $\mathrm{Tr}(X_1 \cdots X_n)$ & Family of invariants $\mathrm{Tr}_{\pi}(T_1,\ldots,T_n)$ \\
+& indexed by colored permutations $\pi \in \mathfrak{S}_{Dn}$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\textbf{Definition of $\mathrm{Tr}_{\pi}$:} Given tensors $T_1,\ldots,T_n$ each with $D$ legs (colored 1 through $D$), a colored permutation $\pi = (\pi^{(1)},\ldots,\pi^{(D)}) \in \mathfrak{S}_n^D$ specifies which legs connect:
+
+\[
+\mathrm{Tr}_{\pi}(T_1,\ldots,T_n) = 
+\begin{tikzpicture}[baseline=0, scale=0.8]
+   % Example for n=3, D=3
+   \node at (-2,0) {\small Example:};
+   % Three tensors
+   \node[draw, thick] (T1) at (90:1.2) {$T_1$};
+   \node[draw, thick] (T2) at (210:1.2) {$T_2$};
+   \node[draw, thick] (T3) at (330:1.2) {$T_3$};
+   
+   % Permutation pi^(1) for cyan: (1 2 3)
+   \draw[cyan, thick] (T1) to[bend right=30] node[midway, left] {\tiny $\pi^{(1)}$} (T2);
+   \draw[cyan, thick] (T2) to[bend right=30] (T3);
+   \draw[cyan, thick] (T3) to[bend right=30] (T1);
+   
+   % Permutation pi^(2) for magenta: (1 3 2)
+   \draw[magenta, thick] (T1) to[bend left=20] node[midway, right] {\tiny $\pi^{(2)}$} (T3);
+   \draw[magenta, thick] (T3) to[bend left=20] (T2);
+   \draw[magenta, thick] (T2) to[bend left=20] (T1);
+   
+   % Permutation pi^(3) for yellow: (1)(2)(3)
+   \draw[yellow, thick] (T1) to[out=60,in=120,looseness=8] (T1);
+   \draw[yellow, thick] (T2) to[out=180,in=240,looseness=8] (T2);
+   \draw[yellow, thick] (T3) to[out=300,in=360,looseness=8] (T3);
+\end{tikzpicture}
+\]
+
+For matrices ($D=2$), only the cyclic permutation gives a non-zero trace, recovering the usual $\mathrm{Tr}(X_1 X_2 \cdots X_n)$.
+
+\textbf{Normalization:} To obtain finite limits as $N \to \infty$, we normalize by $N^{-(D-1)n}$:
+\[
+   \frac{1}{N^{(D-1)n}} \mathrm{Tr}_{\pi}(T_1,\ldots,T_n) \xrightarrow{N \to \infty} \text{finite}
+\]
+
+\subsubsection{Moment-Cumulant Formula}
+
+The tensor moment-cumulant relation involves ALL invariant traces:
+\[
+   \boxed{\left( \mathrm{E}[\mathrm{Tr}_{\pi}(T_{i_1},\ldots,T_{i_n})] \right)_{\pi \in \mathrm{NC}_D(n)} = \sum_{\sigma \in \mathrm{NC}_D(n)} \kappa_{\sigma}^{(\mathrm{t})} \cdot (\text{pattern matching})}
+\]
+
+The moments form a vector indexed by colored non-crossing permutations, and tensor freeness acts on this entire family.
+
+Example for $n=2$: The second moment decomposes as
+\[
+\begin{tikzpicture}[baseline=-.5em, scale=0.8]
+   % Moment
+   \node at (-1,0) {$\mathrm{E}[\mathrm{Tr}(T_1 T_2)]$};
+   \node at (1,0) {$=$};
+   
+   % First term: partition (1,2)
+   \node at (2.5,0) {$\kappa_2^{(\mathrm{t})}$};
+   \node[circle, draw, inner sep=1pt] (A1) at (3.5,0.3) {\tiny 1};
+   \node[circle, draw, inner sep=1pt] (A2) at (3.5,-0.3) {\tiny 2};
+   \draw[thick] (A1) -- (A2);
+   \node at (4.2,0) {$\delta_{i_1,i_2}$};
+   
+   \node at (5.5,0) {$+$};
+   
+   % Second term: partition (1),(2)
+   \node at (6.5,0) {$(\kappa_1^{(\mathrm{t})})^2$};
+   \node[circle, draw, inner sep=1pt] (B1) at (7.5,0.3) {\tiny 1};
+   \node[circle, draw, inner sep=1pt] (B2) at (7.5,-0.3) {\tiny 2};
+\end{tikzpicture}
+\]
+
+For Gaussian tensors, $\kappa_1^{(\mathrm{t})} = 0$ and $\kappa_n^{(\mathrm{t})} = 0$ for $n > 2$, so:
+\[
+   \mathrm{E}[\mathrm{Tr}(T_1 T_2)] = \kappa_2^{(\mathrm{t})} \delta_{i_1,i_2} = \delta_{i_1,i_2}
+\]
+
+\subsection{Tensor Wick Theorem}
+
+For Gaussian tensors, a fundamental result analogous to Wick's theorem holds:
+
+Tensor Wick Factorization:
+Let $(T_i)_{i \in I}$ be i.i.d. standard Gaussian $D$-leg tensors of size $N$. As $N \to \infty$:
+\[
+   \mathrm{E}[T_{i_1} \cdots T_{i_{2k}}] = \sum_{\pi \in \mathrm{NC}_D(2k)} \prod_{(j,j') \in \pi} \delta_{i_j, i_{j'}} + O(N^{-1})
+\]
+
+This shows that Gaussian tensors are asymptotically tensor-free, with all cumulants beyond the second vanishing.
+
+For four rank-3 tensors, the valid colored non-crossing pairings are severely restricted:
+\[
+\begin{tikzpicture}[baseline=-.5em, scale=0.7]
+   % First row - tensors arranged in circle
+   \node at (-2,2) {\small Tensors arranged on circle:};
+   \foreach \i in {1,2,3,4} {
+      \node[draw, thick] (T\i) at (90-90*\i:1.5) {$T_{\i}$};
+   }
+   
+   % Second row - valid pairing (1,2)(3,4)
+   \begin{scope}[yshift=-4cm]
+      \node at (-2,0) {\small $(1,2)(3,4)$ valid:};
+      \foreach \i in {1,2,3,4} {
+         \node[draw, thick] (S\i) at (90-90*\i:1.5) {$T_{\i}$};
+      }
+      % Connect 1-2 with all three colors
+      \draw[cyan, thick] (S1) to[bend right=20] (S2);
+      \draw[magenta, thick] (S1) to (S2);
+      \draw[yellow, thick] (S1) to[bend left=20] (S2);
+      % Connect 3-4 with all three colors
+      \draw[cyan, thick] (S3) to[bend right=20] (S4);
+      \draw[magenta, thick] (S3) to (S4);
+      \draw[yellow, thick] (S3) to[bend left=20] (S4);
+   \end{scope}
+   
+   % Third row - invalid pairing (1,3)(2,4)
+   \begin{scope}[yshift=-8cm]
+      \node at (-2,0) {\small $(1,3)(2,4)$ invalid:};
+      \foreach \i in {1,2,3,4} {
+         \node[draw, thick] (R\i) at (90-90*\i:1.5) {$T_{\i}$};
+      }
+      % Try to connect 1-3
+      \draw[cyan, thick] (R1) to[bend left=45] (R3);
+      % This forces 2-4 to cross!
+      \draw[red, thick, dashed] (R2) to (R4) node[midway, above] {\tiny crosses!};
+   \end{scope}
+   
+   \node at (5,-4) {\small Only $(1,2)(3,4)$ and $(1,4)(2,3)$ are non-crossing};
+\end{tikzpicture}
+\]
+
+\subsection{Additivity Under Tensor Freeness}
+
+If two tensor algebras $\mathcal{A}_1$ and $\mathcal{A}_2$ are tensor-free, then for $A \in \mathcal{A}_1$ and $B \in \mathcal{A}_2$:
+\[
+   \kappa_n^{(\mathrm{t})}(A + B) = \kappa_n^{(\mathrm{t})}(A) + \kappa_n^{(\mathrm{t})}(B)
+\]
+
+This generalizes the additivity of classical cumulants for independent variables.
+
+Graphically, for the second cumulant (covariance):
+\[
+\begin{tikzpicture}[baseline=-.5em, scale=0.8]
+   % Left side
+   \node at (-1,0) {$\kappa_2^{(\mathrm{t})}\Big($};
+   \node[draw, thick] (A) at (0,.5) {$A$};
+   \node at (.5,0) {$+$};
+   \node[draw, thick] (B) at (1,-.5) {$B$};
+   \node at (1.5,0) {$\Big)$};
+   
+   % Equals
+   \node at (2.5,0) {$=$};
+   
+   % Right side
+   \node at (3.5,0) {$\kappa_2^{(\mathrm{t})}$};
+   \node[draw, thick] (A2) at (4.5,0) {$A$};
+   \draw[thick] (A2) -- ++(-.5,0);
+   \draw[thick] (A2) -- ++(.5,0);
+   
+   \node at (5.5,0) {$+$};
+   
+   \node at (6.5,0) {$\kappa_2^{(\mathrm{t})}$};
+   \node[draw, thick] (B2) at (7.5,0) {$B$};
+   \draw[thick] (B2) -- ++(-.5,0);
+   \draw[thick] (B2) -- ++(.5,0);
+\end{tikzpicture}
+\]
+
+\subsubsection{Vanishing Mixed Cumulants}
+
+For matrices, if $A$ and $B$ are free and one has zero trace, then $\kappa_n^{\text{free}}(AB\cdots) = 0$ for alternating products. For tensors, the analogous property depends on the contraction pattern.
+
+\textbf{Definition:} A tensor $T$ has \emph{zero first cumulant} if $\kappa_1^{(\mathrm{t})}(T) = 0$, which means $\mathrm{E}[\mathrm{Tr}_{\pi}(T)] = 0$ for ALL colored permutations $\pi \in \mathfrak{S}_D$.
+
+\textbf{Definition:} An \emph{alternating contraction pattern} is a way of connecting tensors in a sequence $A_1, B_1, A_2, B_2, \ldots$ where:
+\begin{itemize}
+\item Tensors appear in alternating order (A, B, A, B, ...)
+\item Each tensor's legs are contracted with neighbors (no tensor left isolated)
+\item The contraction respects the tensor structure
+\end{itemize}
+
+\textbf{Theorem:} If $A$ and $B$ are tensor-free and $\kappa_1^{(\mathrm{t})}(A) = 0$, then any alternating contraction has vanishing cumulants:
+\[
+   \kappa_n^{(\mathrm{t})}(A \otimes_C B \otimes_C A \otimes_C \cdots) = 0 \quad \text{for } n \geq 2
+\]
+
+Examples of alternating contractions for rank-3 tensors:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.7]
+   % Example 1: Linear chain
+   \node at (-2,1) {\small Linear chain:};
+   \node[draw, thick] (A1) at (0,1) {$A$};
+   \node[draw, thick] (B1) at (1.5,1) {$B$};
+   \node[draw, thick] (A2) at (3,1) {$A$};
+   \node[draw, thick] (B2) at (4.5,1) {$B$};
+   % Connect with one color
+   \draw[cyan, thick] (A1) -- (B1) -- (A2) -- (B2);
+   % Other legs free
+   \draw[magenta, thick] (A1) -- ++(0,.3);
+   \draw[yellow, thick] (A1) -- ++(0,-.3);
+   \draw[magenta, thick] (B1) -- ++(0,.3);
+   \draw[yellow, thick] (B1) -- ++(0,-.3);
+   
+   % Example 2: Cyclic
+   \node at (-2,-1) {\small Cyclic:};
+   \node[draw, thick] (A3) at (0,-1) {$A$};
+   \node[draw, thick] (B3) at (1.5,-1) {$B$};
+   \node[draw, thick] (A4) at (3,-1) {$A$};
+   \node[draw, thick] (B4) at (4.5,-1) {$B$};
+   % Connect in a more complex pattern
+   \draw[cyan, thick] (A3) -- (B3);
+   \draw[magenta, thick] (B3) -- (A4);
+   \draw[yellow, thick] (A4) -- (B4);
+   \draw[cyan, thick] (B4) to[bend right=30] (A3);
+   
+   % Example 3: Tree-like
+   \node at (-2,-3) {\small Tree:};
+   \node[draw, thick] (A5) at (1.5,-3) {$A$};
+   \node[draw, thick] (B5) at (0,-3.7) {$B$};
+   \node[draw, thick] (B6) at (3,-3.7) {$B$};
+   \draw[cyan, thick] (A5) -- (B5);
+   \draw[magenta, thick] (A5) -- (B6);
+   \draw[yellow, thick] (B5) -- ++(-.5,0);
+   \draw[yellow, thick] (B6) -- ++(.5,0);
+\end{tikzpicture}
+\]
+
+If $\kappa_1^{(\mathrm{t})}(A) = 0$, all these contractions yield $\kappa_n^{(\mathrm{t})} = 0$.
+
+This holds because any non-crossing partition must include a singleton block containing $A$, but $\kappa_1^{(\mathrm{t})}(A) = 0$.
+
+The key difference from matrices: for tensors, we must specify the contraction pattern, as different contractions can yield different results even for the same tensors.
+
+\subsection{Spectrum of Tensor Wishart Matrices}
+
+Consider a rank-3 tensor $T \in \mathbb{C}^{N \times N \times N}$ with i.i.d. Gaussian entries $\mathcal{N}_{\mathbb{C}}(0, N^{-3})$. The Wishart-type matrix $W = TT^{\dagger}$ (contracting one index) has limiting spectral distribution:
+
+\[
+\begin{tikzpicture}[baseline=-.5em, scale=0.8]
+   % Tensor contraction
+   \node[draw, thick] (T1) at (0,0) {$T$};
+   \node[draw, thick] (T2) at (2,0) {$T^{\dagger}$};
+   \draw[cyan, thick] (T1) -- ++(0,.5);
+   \draw[magenta, thick] (T1) to[out=-150,in=-30] (T2);
+   \draw[yellow, thick] (T1) -- ++(0,-.5);
+   \draw[cyan, thick] (T2) -- ++(0,.5);
+   \draw[magenta, thick] (T2) -- ++(0,-.5);
+   \draw[yellow, thick] (T2) -- ++(.5,0);
+   \node at (3.5,0) {$\xrightarrow{N \to \infty}$};
+   \node at (6,0) {$\mathrm{MP}(1) \boxtimes \mathrm{MP}(1) = \mathrm{MP}(1/2)$};
+\end{tikzpicture}
+\]
+
+where $\boxtimes$ denotes free multiplicative convolution and $\mathrm{MP}(c)$ is the Marchenko-Pastur distribution.
+
+\subsection{Tensor Networks and Free Probability}
+
+Free probability provides powerful tools for analyzing tensor network states, which arise naturally in quantum many-body physics and machine learning.
+
+\subsubsection{Graph Amalgamation}
+
+For a tensor network on a graph $G = (V, E)$ with random Gaussian tensors at each vertex, the boundary density matrix factorizes according to the graph's structure:
+
+Graph Amalgamation:
+Let $\rho_b$ be the boundary density matrix of a random tensor network. Then:
+\[
+   \rho_b = \underset{\gamma \in \mathcal{C}_{\min}}{*_{\mathcal{B}}} \rho_{\gamma}
+\]
+where $*_{\mathcal{B}}$ denotes free multiplicative convolution with amalgamation over the boundary algebra, and $\mathcal{C}_{\min}$ are the minimal cuts of $G$.
+
+For example, a simple two-vertex network:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.8]
+   % Two tensors
+   \node[draw, thick, circle] (T1) at (0,0) {$T_1$};
+   \node[draw, thick, circle] (T2) at (3,0) {$T_2$};
+   % Internal edge
+   \draw[thick] (T1) -- (T2) node[midway, above] {$e$};
+   % Boundary edges
+   \draw[thick] (T1) -- ++(-1,.5) node[left] {$\partial_1$};
+   \draw[thick] (T1) -- ++(-1,-.5) node[left] {$\partial_2$};
+   \draw[thick] (T2) -- ++(1,.5) node[right] {$\partial_3$};
+   \draw[thick] (T2) -- ++(1,-.5) node[right] {$\partial_4$};
+   % Minimal cut
+   \draw[dashed, red, thick] (1.5,-1) -- (1.5,1) node[above] {cut};
+\end{tikzpicture}
+\]
+
+\subsubsection{Entanglement and Max-Flow}
+
+The Rényi entropy of tensor network states connects to max-flow problems on the network graph:
+
+\[
+   S_q(\rho_b) = \frac{1}{1-q} \log \left[ \max_f \prod_{e \in E} w_e^{f(e)} \right] + o(1)
+\]
+
+where $f$ ranges over integer flows and $w_e$ are edge weights. For maximally entangled links ($w_e = 1$), this recovers the Ryu-Takayanagi formula from holography.
+
+\subsection{Examples with Higher-Order Tensors}
+
+\subsubsection{Star Network}
+Consider a star graph with one central vertex of degree $D = 4$:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.8]
+   \node[circle, draw, thick] (C) at (0,0) {$T$};
+   \foreach \i in {1,2,3,4} {
+      \node (B\i) at (90*\i:1.5) {$\partial_\i$};
+      \draw[thick] (C) -- (B\i);
+   }
+\end{tikzpicture}
+\]
+
+The boundary density matrix is $\rho_b = W_1 W_2 W_3 W_4$ with independent Wishart factors. By tensor freeness:
+\[
+   \mu_{\rho} = \mathrm{MP}(1)^{\boxtimes 4}, \quad R_{\rho}(w) = \frac{4w}{1-w}
+\]
+
+The von Neumann entropy per site equals $\log 4 - 3/4$.
+
+The free product decomposition:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.7]
+   % Central tensor with 4 Wishart factors
+   \node[circle, draw, thick] (C) at (0,0) {$T$};
+   \foreach \i in {1,2,3,4} {
+      \node[draw, thick] (W\i) at (90*\i:2) {$W_{\i}$};
+      \draw[thick] (C) -- (W\i);
+   }
+   % Free product symbol
+   \node at (3,0) {$=$};
+   \node at (4.5,0) {$W_1 \boxtimes W_2 \boxtimes W_3 \boxtimes W_4$};
+\end{tikzpicture}
+\]
+
+\subsubsection{Ladder Networks}
+For a $2 \times L$ ladder with periodic vertical boundary:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.6]
+   \foreach \i in {0,1,2} {
+      \node[circle, draw] (T\i) at (1.5*\i,0) {};
+      \node[circle, draw] (B\i) at (1.5*\i,-1.5) {};
+      \draw (T\i) -- (B\i);
+   }
+   \node at (4.5,0) {$\cdots$};
+   \node at (4.5,-1.5) {$\cdots$};
+   \foreach \i in {0,1} {
+      \draw (T\i) -- (T\the\numexpr\i+1);
+      \draw (B\i) -- (B\the\numexpr\i+1);
+   }
+\end{tikzpicture}
+\]
+
+The entanglement entropy scales as $S_2 = \lceil L/2 \rceil \log N + O(1)$, exhibiting area law scaling.
+
+The max-flow through the network:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.5]
+   % Flow network representation
+   \foreach \i in {0,1,2} {
+      \foreach \j in {0,1} {
+         \node[circle, draw, inner sep=1pt] (T\i\j) at (2*\i,1.5*\j) {};
+      }
+   }
+   % Horizontal edges with flow
+   \foreach \i in {0,1} {
+      \draw[thick, ->] (T\i0) -- (T\the\numexpr\i+1\relax0) node[midway, above, font=\tiny] {$f_1$};
+      \draw[thick, ->] (T\i1) -- (T\the\numexpr\i+1\relax1) node[midway, above, font=\tiny] {$f_2$};
+   }
+   % Vertical edges
+   \foreach \i in {0,1,2} {
+      \draw[thick] (T\i0) -- (T\i1);
+   }
+   % Source and sink
+   \node at (-1,0.75) {$s$};
+   \node at (5,0.75) {$t$};
+   \draw[thick, ->] (-0.5,0.75) -- (T00);
+   \draw[thick, ->] (-0.5,0.75) -- (T01);
+   \draw[thick, ->] (T20) -- (4.5,0.75);
+   \draw[thick, ->] (T21) -- (4.5,0.75);
+   % Max flow
+   \node at (6,0.75) {$f_{\max} = 2$};
+\end{tikzpicture}
+\]
+
+\subsection{D-ary Catalan Numbers}
+
+The colored Möbius function for $\mathrm{NC}_D(n)$ involves $D$-ary Catalan numbers:
+\[
+   \mu_{\mathrm{col}}(0_n, 1_n) = (-1)^{n-1} C_{n-1}^{(D)}
+\]
+
+where $C_n^{(D)} = \frac{1}{(D-1)n+1}\binom{Dn}{n}$ are the Fuss-Catalan numbers.
+
+The growth of $D$-ary Catalan numbers:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.6]
+   % Table of values
+   \node at (0,2) {$n$};
+   \node at (1.5,2) {$C_n^{(2)}$};
+   \node at (3,2) {$C_n^{(3)}$};
+   \node at (4.5,2) {$C_n^{(4)}$};
+   \draw[thick] (-0.5,1.7) -- (5,1.7);
+   \foreach \n/\c2/\c3/\c4 in {0/1/1/1, 1/1/1/1, 2/2/3/5, 3/5/12/35, 4/14/55/285} {
+      \node at (0,1.3-0.4*\n) {$\n$};
+      \node at (1.5,1.3-0.4*\n) {$\c2$};
+      \node at (3,1.3-0.4*\n) {$\c3$};
+      \node at (4.5,1.3-0.4*\n) {$\c4$};
+   }
+\end{tikzpicture}
+\]
+
+For $D = 2$ (matrices), we recover the standard Catalan numbers. For $D = 3$ (rank-3 tensors):
+\[
+   C_0^{(3)} = 1, \quad C_1^{(3)} = 1, \quad C_2^{(3)} = 3, \quad C_3^{(3)} = 12, \quad C_4^{(3)} = 55, \ldots
+\]
+
+\subsection{Melonic Diagrams}
+
+Melonic diagrams are the leading-order Feynman diagrams in the $1/N$ expansion of tensor models. They are named after their melon-like shape and have a special topological structure.
+
+\subsubsection{Definition and Structure}
+
+For rank-$D$ tensors, a melonic diagram is one that can be drawn on a 2-sphere where:
+\begin{itemize}
+\item Each face is colored by one of $D$ colors
+\item The diagram has a tree-like structure of "melons"
+\item No color appears twice around any vertex
+\end{itemize}
+
+The basic melon (2-point function) for rank-3 tensors:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.8]
+   % Basic melon
+   \node at (-2,0) {Basic melon:};
+   \node[circle, draw, thick] (L) at (0,0) {$T$};
+   \node[circle, draw, thick] (R) at (2,0) {$\bar{T}$};
+   % Three colored edges forming the melon
+   \draw[cyan, thick] (L) to[bend left=40] node[above] {\tiny cyan} (R);
+   \draw[magenta, thick] (L) to node[below] {\tiny magenta} (R);
+   \draw[yellow, thick] (L) to[bend right=40] node[below] {\tiny yellow} (R);
+\end{tikzpicture}
+\]
+
+\subsubsection{Higher-Order Melonic Diagrams}
+
+The 4-point melonic diagram (order $N^{-1}$):
+\[
+\begin{tikzpicture}[baseline=0, scale=0.7]
+   % 4-point melon
+   \node at (-3,0) {4-point:};
+   \node[circle, draw, fill=white] (T1) at (0,1) {$T$};
+   \node[circle, draw, fill=white] (T2) at (2,1) {$\bar{T}$};
+   \node[circle, draw, fill=white] (T3) at (2,-1) {$T$};
+   \node[circle, draw, fill=white] (T4) at (0,-1) {$\bar{T}$};
+   
+   % Internal face (white)
+   \draw[thick] (T1) -- (T2) -- (T3) -- (T4) -- (T1);
+   
+   % External colored faces
+   \draw[cyan, thick] (T1) to[bend left=45] (T2);
+   \draw[magenta, thick] (T2) to[bend left=45] (T3);
+   \draw[yellow, thick] (T3) to[bend left=45] (T4);
+   \draw[cyan, thick] (T4) to[bend left=45] (T1);
+\end{tikzpicture}
+\quad
+\begin{tikzpicture}[baseline=0, scale=0.7]
+   % Tree structure
+   \node at (-2,0) {Tree of melons:};
+   \node[circle, draw, fill=white] (C) at (0,0) {};
+   \foreach \i in {0,120,240} {
+      \node[circle, draw, fill=white] (T\i) at (\i:1.5) {};
+      \node[circle, draw, fill=white] (S\i) at (\i:2.5) {};
+   }
+   % Connect center to first layer
+   \foreach \i in {0,120,240} {
+      \draw[thick] (C) -- (T\i);
+   }
+   % Melons on outer layer
+   \draw[cyan, thick] (T0) to[bend left=30] (S0);
+   \draw[magenta, thick] (T0) to[bend right=30] (S0);
+   \draw[cyan, thick] (T120) to[bend left=30] (S120);
+   \draw[yellow, thick] (T120) to[bend right=30] (S120);
+   \draw[magenta, thick] (T240) to[bend left=30] (S240);
+   \draw[yellow, thick] (T240) to[bend right=30] (S240);
+   % Connect melons
+   \draw[yellow, thick, bend left=20] (T0) to (T120);
+   \draw[magenta, thick, bend left=20] (T120) to (T240);
+   \draw[cyan, thick, bend left=20] (T240) to (T0);
+\end{tikzpicture}
+\]
+
+\subsubsection{Counting Melonic Diagrams}
+
+The number of melonic diagrams grows much slower than general diagrams:
+
+Melonic Dominance:
+At order $n$ in the $1/N$ expansion:
+\begin{itemize}
+\item General diagrams: $\sim (D!)^n n!$ 
+\item Melonic diagrams: $\sim D^n \cdot C_{n-1}$ (Catalan numbers)
+\end{itemize}
+
+For rank-3 tensors at order 3:
+\[
+\begin{tikzpicture}[baseline=0, scale=0.6]
+   % First melonic diagram
+   \begin{scope}[xshift=0cm]
+      \node at (0,1.5) {\small Type 1};
+      \foreach \i in {0,1,2,3} {
+         \node[circle, draw, fill=white, inner sep=1pt] (T\i) at (90*\i:1) {};
+      }
+      \draw[thick] (T0) -- (T1) -- (T2) -- (T3) -- (T0);
+      \draw[cyan, thick, bend left=45] (T0) to (T1);
+      \draw[magenta, thick, bend left=45] (T1) to (T2);
+      \draw[yellow, thick, bend left=45] (T2) to (T3);
+      \draw[cyan, thick, bend left=45] (T3) to (T0);
+   \end{scope}
+   
+   % Second melonic diagram
+   \begin{scope}[xshift=5cm]
+      \node at (0,1.5) {\small Type 2};
+      \node[circle, draw, fill=white, inner sep=1pt] (C) at (0,0) {};
+      \foreach \i in {0,120,240} {
+         \node[circle, draw, fill=white, inner sep=1pt] (T\i) at (\i:0.8) {};
+         \node[circle, draw, fill=white, inner sep=1pt] (S\i) at (\i:1.6) {};
+      }
+      \foreach \i in {0,120,240} {
+         \draw[thick] (C) -- (T\i) -- (S\i);
+      }
+      \draw[cyan, thick, bend left=30] (T0) to (T120);
+      \draw[magenta, thick, bend left=30] (T120) to (T240);
+      \draw[yellow, thick, bend left=30] (T240) to (T0);
+   \end{scope}
+   
+   % Third melonic diagram  
+   \begin{scope}[xshift=10cm]
+      \node at (0,1.5) {\small Type 3};
+      \node[circle, draw, fill=white, inner sep=1pt] (L) at (-1,0) {};
+      \node[circle, draw, fill=white, inner sep=1pt] (C) at (0,0) {};
+      \node[circle, draw, fill=white, inner sep=1pt] (R) at (1,0) {};
+      \node[circle, draw, fill=white, inner sep=1pt] (T) at (0,1) {};
+      \draw[thick] (L) -- (C) -- (R);
+      \draw[thick] (C) -- (T);
+      \draw[cyan, thick, bend left=30] (L) to (T);
+      \draw[magenta, thick, bend right=30] (L) to (T);
+      \draw[yellow, thick, bend left=30] (R) to (T);
+      \draw[cyan, thick, bend right=30] (R) to (T);
+   \end{scope}
+\end{tikzpicture}
+\]
+
+\subsubsection{Melonic Universality}
+
+In the large-$N$ limit, tensor models are dominated by melonic diagrams, leading to:
+\begin{itemize}
+\item Spectral dimension $d_s = 2$ (like branched polymers)
+\item Critical exponents independent of $D$ for $D \geq 3$
+\item Connection to the Sachdev-Ye-Kitaev (SYK) model in physics
+\end{itemize}
+
+This universality is why melonic diagrams are central to understanding tensor models and their continuum limits.
+
 \section{Exercises}
 \begin{exercise}
    \begin{align*}
-   \mathbb{E}[(A\mathbf{x} + a)(A\mathbf{x} + a)^T (A\mathbf{x} + a)] = 
-   \text{Adiag}(A^T A) v_3 \\
+   \mathrm{E}[(A\mathbf{x} + a)(A\mathbf{x} + a)^T (A\mathbf{x} + a)] = 
+   \mathrm{Adiag}(A^T A) v_3 \\
    + [2 AMA^T + (A\mathbf{x} + a)(A\mathbf{x} + a)^T] (Am + a) \\
-   + \text{Tr}(AMA^T)(Am + a)
+   + \mathrm{Tr}(AMA^T)(Am + a)
    \end{align*}
 
    \begin{align*}
-   \mathbb{E}[(A\mathbf{x} + a) b^T (C\mathbf{x} + c)(D\mathbf{x} + d)^T] = 
+   \mathrm{E}[(A\mathbf{x} + a) b^T (C\mathbf{x} + c)(D\mathbf{x} + d)^T] = 
    (A\mathbf{x} + a) b^T (CMD^T + (Cm + c)(Dm + d)^T) \\
    + (AMC^T + (Am + a)(Cm + c)^T) b(Dm + d)^T \\
    + b^T (Cm + c)(AMD^T - (Am + a)(Dm + d)^T)
@@ -1014,4 +1758,32 @@ Derivatives of moments with respect to $m$ or $M$ can be found by differentiatin
 \begin{exercise}
    Find more identities in the \href{http://www.ee.ic.ac.uk/hp/staff/dmb/matrix/expect.html}{Matrix Reference Manual} and try to prove them.
    Also try to verify your derivations using tensorgrad.
+\end{exercise}
+\begin{exercise}
+   For rank-3 tensors $T_1, T_2, T_3$ with colored legs (cyan, magenta, yellow), draw all valid 3-colored non-crossing partitions of $\{1,2,3\}$. 
+   How many are there compared to the total number of set partitions?
+\end{exercise}
+\begin{exercise}
+   Consider a rank-4 Gaussian tensor $T \in \mathbb{R}^{N \times N \times N \times N}$. 
+   Compute $\mathrm{E}[\mathrm{Tr}_{12}(T) \mathrm{Tr}_{34}(T)]$ where $\mathrm{Tr}_{ij}$ denotes contraction of indices $i$ and $j$.
+   Use the tensor Wick theorem and draw the corresponding colored diagrams.
+\end{exercise}
+\begin{exercise}
+   For a tensor network on a binary tree of depth $d$, show that the boundary entanglement entropy scales as $S \sim d \log N$.
+   Use the graph amalgamation theorem and identify the minimal cuts.
+\end{exercise}
+\begin{exercise}
+   Verify that for rank-$D$ tensors, the number of melonic diagrams at order $n$ grows as $D^n n!$.
+   Draw all melonic diagrams for $D=3, n=3$.
+\end{exercise}
+\begin{exercise}
+   Show that the $D$-ary Catalan numbers satisfy the recursion:
+   \[
+      C_n^{(D)} = \sum_{k=0}^{n-1} C_k^{(D)} C_{n-1-k}^{(D-1)}
+   \]
+   What does this imply about the structure of colored non-crossing partitions?
+\end{exercise}
+\begin{exercise}
+   For two tensor-free rank-3 tensors $A$ and $B$, compute the third tensor cumulant $\kappa_3^{(\mathrm{t})}(A+B)$.
+   Verify the additivity property using colored partition diagrams.
 \end{exercise}

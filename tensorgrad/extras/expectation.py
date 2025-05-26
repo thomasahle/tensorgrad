@@ -81,6 +81,38 @@ class Expectation(Tensor):
         if not inner.depends_on(self.wrt):
             return inner
 
+        # Handle nested expectations first, before Rename
+        # E_Y[E_X[f(X,Y)|Y]] = E_X[f(X,Y)]
+        if isinstance(inner, Expectation):
+            # First simplify the inner expectation
+            inner_simplified = inner.simplify(args)
+            
+            # Check if the inner expectation is over a different variable
+            if inner.wrt != self.wrt:
+                # Law of total expectation applies
+                # E_Y[E_X[f(X,Y)|Y]] = E_{X,Y}[f(X,Y)]
+                
+                # If inner expectation simplified to something that's not an expectation,
+                # take expectation of that
+                if not isinstance(inner_simplified, Expectation):
+                    return Expectation(inner_simplified, self.wrt, self.mu, self.covar, self.covar_names).simplify(args)
+                
+                # Special case: E_Y[E_X[X|Y]] where inner simplifies to mu_X(Y)
+                if isinstance(inner.tensor, Variable) and inner.tensor == inner.wrt:
+                    # inner simplifies to inner.mu
+                    # So we have E_Y[mu_X(Y)]
+                    return Expectation(inner.mu, self.wrt, self.mu, self.covar, self.covar_names).simplify(args)
+                
+                # General case where inner doesn't depend on self.wrt
+                if not inner.tensor.depends_on(self.wrt):
+                    # E_Y[g(Y)] where g(Y) = E_X[f(X)|Y] and f doesn't depend on Y
+                    # This simplifies to the inner expectation
+                    return inner_simplified
+                # More complex cases would require joint expectations
+            else:
+                # E_X[E_X[f(X)]] = E_X[f(X)] (idempotent)
+                return inner_simplified
+
         if isinstance(inner, Sum):
             return Sum(
                 [Expectation(t, self.wrt, self.mu, self.covar, self.covar_names) for t in inner.terms],
@@ -92,6 +124,7 @@ class Expectation(Tensor):
                 Expectation(inner.tensor, self.wrt, self.mu, self.covar, self.covar_names),
                 inner.mapping,
             )
+
 
         if isinstance(inner, Variable):
             assert inner == self.wrt, "A variable can only depend on wrt if they are the same"
