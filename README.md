@@ -70,16 +70,17 @@ final_result = 2 * X_subtraction
 For a more complicated example, consider the following program for computing the Entropy of Cross Entropy Loss:
 
 ```python
-from tensorgrad import Variable
-import tensorgrad.functions as F
+# Define the logits and targets as vectors
+i = sp.symbols("i")
+logits = tg.Variable("logits", i)
+target = tg.Variable("target", i)
 
-logits = Variable("logits", ["C"])
-target = Variable("target", ["C"])
-
+# Define the softmax cross-entropy loss
 e = F.exp(logits)
 softmax = e / F.sum(e)
-ce = -F.sum(target * F.log(softmax))
+ce = -target @ F.log(softmax)
 
+# Compute the Hessian by taking the gradient of the gradient
 H = ce.grad(logits).grad(logits)
 
 display_pdf_image(to_tikz(H.full_simplify()))
@@ -95,14 +96,21 @@ Tensorgrad can also take expectations of arbitrary functions with respect to Gau
 
 As an example, consider the L2 Loss program from before:
 ```python
-X = Variable("X", "b, x")
-Y = Variable("Y", "b, y")
-W = Variable("W", "x, y")
-mu = Variable("mu", "x, y")
-C = Variable("C", "x, y, x2, y2")
+# Define sizes for the tensor edges and variables
+b, x, y = sp.symbols("b x y")
+X = tg.Variable("X", b, x)
+Y = tg.Variable("Y", b, y)
+W = tg.Variable("W", x, y)
+
+# Define the mean and covariance variables of the distribution
+mu = tg.Variable("mu", x, y)
+C = tg.Variable("C", x, y, x2=x, y2=y)
+
+# Take the expectation of the L2 loss if W was Gaussian
 XWmY = X @ W - Y
 l2 = F.sum(XWmY * XWmY)
-E = Expectation(l2, W, mu, C)
+E = tg.Expectation(l2, W, mu, C)
+
 display_pdf_image(to_tikz(E.full_simplify()))
 ```
 
