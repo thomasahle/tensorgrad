@@ -101,16 +101,16 @@ const examples = [
       X = tg.Variable("X", b, x)
       Y = tg.Variable("Y", b, y)
       W = tg.Variable("W", x, y)
-
+      
       # Define the mean and covariance variables of the distribution
       mu = tg.Variable("mu", x, y)
-      C = tg.Variable("C", x, y, x2=x, y2=y)
-
-      # Take the expectation of the L2 loss if W was Gaussian
-      XWmY = X @ W - Y
-      l2 = F.sum(XWmY * XWmY)
-      E = tg.Expectation(l2, W, mu, C)
-
+      # The coveriance of a matrix is a 4-tensor with two symmetries
+      C = tg.Variable("C", x, y, x2=x, y2=y).with_symmetries("x x2, y y2")
+      
+      # Take the expectation of the L2 loss, assuming W ~ Normal(mu, C)
+      l2 = F.sum((X @ W - Y)**2)
+      E = tg.Expectation(l2, W, mu, C, covar_names={"x": "x2", "y": "y2"})
+      
       # Simplify the expression and save the steps
       save_steps(E.full_simplify())
     `)
