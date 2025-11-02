@@ -38,15 +38,22 @@ see [this notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe
 ```python
 from tensorgrad import Variable
 import tensorgrad.functions as F
-# ||Ax - y||_2^2
+
+# Define sizes for the tensor edges and variables
 b, x, y = sp.symbols("b x y")
 X = tg.Variable("X", b, x)
 Y = tg.Variable("Y", b, y)
 W = tg.Variable("W", x, y)
-XWmY = X @ W - Y
-l2 = XWmY @ XWmY
-grad = l2.grad(W)
-display_pdf_image(to_tikz(grad.full_simplify()))
+
+# Define the error
+error = X @ W - Y
+
+# The Frobenius norm squared is just the contraction
+# of the all the edges of the tensor with itself
+loss = error @ error
+
+# Compute the derivative of the loss wrt W
+expr = tg.Derivative(loss, W)
 ```
 
 This will output the tensor diagram:
