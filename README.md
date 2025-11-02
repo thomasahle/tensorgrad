@@ -1,5 +1,7 @@
+# Tensorgrad and Tensor Cookbook
+
 <div align="center">
-<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="100%">
+<img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/basics.png" width="70%">
 <h3>
   
 [Book](https://tensorcookbook.com) | [Documentation](https://tensorcookbook.com/docs) | [API Reference](https://tensorcookbook.com/docs/api)
@@ -7,7 +9,7 @@
 </h3>
 </div>
 
-# Tensorgrad
+## Tensorgrad
 A Tensor & Deep Learning framework - It's like PyTorch meets SymPy.
 
 Tensorgrad is an open-source python package for symbolic tensor manipulation.
@@ -18,7 +20,7 @@ It performs any simplification described in the [Tensor Cookbook (draft)](https:
 Install tensorgrad via pip:
 
 ```bash
-pip install tensorgrad
+uv pip install tensorgrad
 ```
 
 (Optional) For diagram visualizations (LaTeX/TikZ), install:
@@ -111,12 +113,12 @@ W = tg.Variable("W", x, y)
 
 # Define the mean and covariance variables of the distribution
 mu = tg.Variable("mu", x, y)
-C = tg.Variable("C", x, y, x2=x, y2=y)
+# The coveriance of a matrix is a 4-tensor with two symmetries
+C = tg.Variable("C", x, y, x2=x, y2=y).with_symmetries("x x2, y y2")
 
-# Take the expectation of the L2 loss if W was Gaussian
-XWmY = X @ W - Y
-l2 = F.sum(XWmY * XWmY)
-E = tg.Expectation(l2, W, mu, C)
+# Take the expectation of the L2 loss, assuming W ~ Normal(mu, C)
+l2 = F.sum((X @ W - Y)**2)
+E = tg.Expectation(l2, W, mu, C, covar_names={"x": "x2", "y": "y2"})
 
 display_pdf_image(to_tikz(E.full_simplify()))
 ```
