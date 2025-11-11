@@ -209,7 +209,7 @@ e.g. a vector is a 1-dimensional list of numbers, while a matrix is a 2-dimensio
 The order also determines the degree of the node representing the variable in the tensor graph.
 
 Diagram notation becomes more interesting when you have tensors of order 3 and higher.
-An order 3 tensor is a cube or numbers, or stack of matrices.
+An order 3 tensor is a cube of numbers, or stack of matrices.
 E.g. we can write this as $T\in\R^{n\times m\times k}$, so $T_i\in\R^{m\times k}$ is a matrix for $i=1\dots n$.
 Of course we could slice $T$ along the other axes too, so $T_{:,j}\in\R^{n\times k}$ and $T_{:,:,\ell}\in\R^{n\times m}$ are matrices too.
 
