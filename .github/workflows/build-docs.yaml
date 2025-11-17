@@ -12,27 +12,29 @@ jobs:
     steps:
       # 1. Checkout the repository.
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 2. Set up Python.
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v4
+      # 2. Install uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.13'
+          enable-cache: true
 
-      # 3. Install pydoctor.
-      - name: Install pdoc
+      # 3. Set up Python.
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      # 4. Install dependencies
+      - name: Install dependencies
         run: |
-          #pip install pydoctor
-          pip install .  # Install deps
-          pip install pdoc
+          uv sync
+          uv add pdoc
 
-      # 4. Build the API documentation using pydoctor.
-      #    This command tells pydoctor to generate HTML docs in docs/api for the module tensorgrad.
+      # 5. Build the API documentation using pdoc.
+      #    This command tells pdoc to generate HTML docs in docs/api for the module tensorgrad.
       - name: Build API Documentation with Pdoc
         run: |
-          # pydoctor --html-output=docs/api tensorgrad/
-          pdoc tensorgrad -o docs/api
+          uv run pdoc tensorgrad -o docs/api
 
       - name: Deploy API Documentation to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

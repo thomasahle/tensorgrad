@@ -1,6 +1,6 @@
 [project]
 name = "tensorgrad"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
    "networkx==3.2.1",
    "numpy",
@@ -18,6 +18,8 @@ dependencies = [
    "fastapi>=0.115.12",
    "mangum>=0.19.0",
    "boto3>=1.38.23",
+   "torchvision>=0.22.0",
+   "tqdm>=4.67.1",
 ]
 requires-python = ">=3.10"
 authors = [
