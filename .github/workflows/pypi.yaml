@@ -3,7 +3,7 @@ name: Build and Publish to PyPI
 on:
   # Trigger when the python-tests workflow completes.
   workflow_run:
-    workflows: ["python-tests"]
+    workflows: ["Run Pytest on Push"]
     types: [completed]
   # Also allow manual triggering.
   workflow_dispatch:
