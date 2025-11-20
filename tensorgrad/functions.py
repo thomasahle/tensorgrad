@@ -917,6 +917,31 @@ def gt(x: Tensor, y: Tensor) -> Tensor:
     return (sign(x - y) + 1) / 2
 
 
+class _EqualFunction(FunctionSignature):
+    """Function signature for element-wise equality comparison."""
+
+    def __init__(self, edges: frozenset[str]) -> None:
+        # Equal takes two inputs with the same edges and outputs the same edges
+        # Both inputs consume all edges (element-wise operation)
+        super().__init__("equal", edges, (edges, edges))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        # The derivative of equal(x, y) is zero everywhere (it's a step function)
+        return _ZeroFunction()
+
+
+def equal(x: Tensor, y: Tensor) -> Tensor:
+    """Returns 1.0 where x == y, 0.0 elsewhere.
+
+    Direct implementation as a proper function signature for efficient code generation.
+    """
+    if x.shape != y.shape:
+        raise ValueError(f"Inputs must have same shape, got {x.shape=} != {y.shape=}")
+    # Create the equal function with the edges from the inputs
+    # The function consumes all edges from both inputs and outputs the same edges
+    return Function(_EqualFunction(frozenset(x.edges)), (x, y), x.shape)
+
+
 def maximum(x: Tensor, y: Tensor) -> Tensor:
     """Like torch.maximum"""
     mask = gt(x, y)

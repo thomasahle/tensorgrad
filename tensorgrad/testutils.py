@@ -19,6 +19,53 @@ def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}) ->
     return values
 
 
+def init_tensor(variable: Variable, dims: dict, method: str = "randn", **kwargs) -> torch.Tensor:
+    """Initialize a tensor with various strategies.
+
+    Args:
+        variable: The Variable to initialize
+        dims: Dictionary mapping Symbol -> int for dimensions
+        method: Initialization method ("randn", "zeros", "ones", "he", "xavier")
+        **kwargs: Additional parameters (not currently used, for future extensions)
+
+    Returns:
+        torch.Tensor with appropriate initialization and named dimensions
+    """
+    # Get shape and names from variable
+    if variable.order == 0:
+        # Scalar case
+        if method == "randn":
+            return torch.randn([])
+        elif method == "zeros":
+            return torch.zeros([])
+        elif method == "ones":
+            return torch.ones([])
+        else:
+            raise ValueError(f"Method {method} not supported for scalars")
+
+    shape = [dims[dim] for dim in variable.shape.values()]
+    dim_names = list(variable.shape.keys())
+
+    if method == "randn":
+        return torch.randn(*shape, names=dim_names)
+    elif method == "zeros":
+        return torch.zeros(*shape, names=dim_names)
+    elif method == "ones":
+        return torch.ones(*shape, names=dim_names)
+    elif method == "he":
+        # He initialization for ReLU networks
+        fan_in = shape[0] if len(shape) > 0 else 1
+        return torch.randn(*shape, names=dim_names) * (2.0 / fan_in) ** 0.5
+    elif method == "xavier":
+        # Xavier initialization for tanh/sigmoid networks
+        fan_in = shape[0] if len(shape) > 0 else 1
+        fan_out = shape[1] if len(shape) > 1 else 1
+        scale = (6.0 / (fan_in + fan_out)) ** 0.5
+        return (torch.rand(*shape, names=dim_names) * 2 - 1) * scale
+    else:
+        raise ValueError(f"Unknown initialization method: {method}")
+
+
 def assert_close(actual, expected, rtol=1e-4, atol=1e-5):
     assert set(actual.names) == set(expected.names), f"{actual.names=} != {expected.names=}"
     actual = actual.align_to(*expected.names).rename(None)

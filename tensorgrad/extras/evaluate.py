@@ -6,6 +6,7 @@ from sympy import Symbol
 from tensorgrad import Tensor, Variable, Derivative, Function, Product
 from tensorgrad.functions import (
     _DeterminantFunction,
+    _EqualFunction,
     _LogFunction,
     _PowerFunction,
     _RenameFunction,
@@ -322,6 +323,12 @@ def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
         return torch.abs(x)
     if func.name == "gt0":
         return torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names)
+
+
+@evaluate_function.register
+def _(func: _EqualFunction, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Evaluate element-wise equality comparison."""
+    return (x.rename(None) == y.rename(None)).float().rename(*x.names)
 
 
 @evaluate_function.register

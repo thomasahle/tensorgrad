@@ -29,6 +29,21 @@ uv pip install tensorgrad
 apt-get install texlive-luatex texlive-latex-extra texlive-fonts-extra poppler-utils
 ```
 
+### macOS: PyTorch Compilation Issue
+
+On macOS, if you encounter `'algorithm' file not found` errors when using PyTorch's `torch.compile` feature, you'll need to use Homebrew's LLVM compiler:
+
+```bash
+# Install LLVM if not already installed
+brew install llvm
+
+# Run Python with the correct compiler
+export CXX=/opt/homebrew/opt/llvm/bin/clang++
+python your_script.py
+```
+
+This issue affects scripts using `torch.compile` (e.g., examples with PyTorch backend). The default macOS clang++ is missing C++ standard library headers needed by PyTorch's compiler.
+
 ## Examples
 
 To run the examples for yourself, use [the playground](https://tensorcookbook.com/playground.html) or

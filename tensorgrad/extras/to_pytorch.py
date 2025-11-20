@@ -138,7 +138,16 @@ def {function_name}({signature}) -> {out_type}:
             outputs = (outputs,)
 
         # If people call compile(...) with just one tensor, they also assume to get back just one tensor
-        res = [output.refine_names(*tensor.edges) for tensor, output in zip(tensors, outputs)]
+        res = []
+        for tensor, output in zip(tensors, outputs):
+            named_output = output.refine_names(*tensor.edges)
+            # If this output has the same shape as an input variable but different edge order,
+            # align it to match the variable (common for gradients after simplification)
+            for var in context.seen_variables:
+                if set(tensor.edges) == set(var.edges) and list(tensor.edges) != list(var.edges):
+                    named_output = named_output.align_to(*var.edges)
+                    break
+            res.append(named_output)
         if len(res) == 1:
             return res[0]
         return tuple(res)
@@ -363,7 +372,6 @@ class CodegenContext:
     def _(self, prod: Product) -> str:
         """Emit code for a Product tensor."""
         var_name = self.fresh_name("prod_")
-
         # Handle empty product
         if not prod.factors:
             self.emit(f"{var_name} = torch.tensor(1.0)  # empty product")
@@ -516,19 +524,33 @@ class CodegenContext:
             fun_expr = f"torch.pow({child_names[0]}, {signature.k}){permute(t.inputs[0], t)}"
         elif isinstance(signature, F._LogFunction):
             fun_expr = f"torch.log({child_names[0]}){permute(t.inputs[0], t)}"
-        elif signature.name in ("exp", "relu"):
+        elif signature.name in ("exp", "relu", "sign", "abs"):
             fun_expr = f"torch.{signature.name}({child_names[0]}){permute(t.inputs[0], t)}"
         elif signature.name == "gt0":
             fun_expr = f"({child_names[0]} >= 0).float(){permute(t.inputs[0], t)}"
         elif signature.name == "argmax":
             edges = list(t.inputs[0].edges)
             dim = edges.index(signature.dim)
-            fun_expr = f"{child_names[0]}.argmax(dim={dim})"
+            fun_expr = f"{child_names[0]}.argmax(dim={dim}).float()"  # Convert to float for compatibility
             del edges[dim]
             perm = [edges.index(e) for e in t.edges]
             if perm != list(range(t.order)):
                 fun_expr += f".permute({', '.join(map(str, perm))})"
             assert not t.shape_out, "argmax should have no output dims"
+        elif signature.name == "equal":
+            # Direct equality comparison - much more efficient than 1 - |sign(x - y)|
+            fun_expr = f"({child_names[0]} == {child_names[1]}).float(){permute(t.inputs[0], t)}"
+        elif signature.name == "softmax":
+            # Softmax over specified dimensions
+            edges = list(t.inputs[0].edges)
+            dims_to_softmax = list(signature.inputs[0])  # The dimensions to apply softmax over
+            dim_indices = [edges.index(d) for d in dims_to_softmax]
+            if len(dim_indices) == 1:
+                fun_expr = f"torch.nn.functional.softmax({child_names[0]}, dim={dim_indices[0]}){permute(t.inputs[0], t)}"
+            else:
+                # For multi-dimensional softmax, flatten, apply softmax, then reshape
+                # This matches the evaluation in evaluate.py
+                raise NotImplementedError("Multi-dimensional softmax not yet supported in code generation")
         else:
             raise NotImplementedError(f"Don't know how to emit code for {t.signature}")
 

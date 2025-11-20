@@ -161,7 +161,14 @@ def {function_name}({signature}) -> {out_type}:
                     numpy_array = numpy_array.todense()
                 else:
                     numpy_array = np.array(numpy_array)
-            wrapped.append(torch.from_numpy(numpy_array).refine_names(*original_tensor.edges))
+            named_output = torch.from_numpy(numpy_array).refine_names(*original_tensor.edges)
+            # If this output has the same shape as an input variable but different edge order,
+            # align it to match the variable (common for gradients after simplification)
+            for var in context.seen_variables:
+                if set(original_tensor.edges) == set(var.edges) and list(original_tensor.edges) != list(var.edges):
+                    named_output = named_output.align_to(*var.edges)
+                    break
+            wrapped.append(named_output)
 
         # Return as a tuple or a single array
         if len(wrapped) == 1:
@@ -434,12 +441,29 @@ class CodegenContext:
         elif signature.name == "argmax":
             edges = list(t.inputs[0].edges)
             dim = edges.index(signature.dim)
-            code_str = f"np.argmax({child_names[0]}, axis={dim})"
+            code_str = f"np.argmax({child_names[0]}, axis={dim}).astype(np.float32)"
             del edges[dim]
             perm = [edges.index(e) for e in t.edges]
             if perm != list(range(t.order)):
                 code_str += f".transpose({', '.join(map(str, perm))})"
             assert not t.shape_out, "argmax should have no output dims"
+        elif signature.name == "equal":
+            # Direct equality comparison
+            code_str = f"({child_names[0]} == {child_names[1]}).astype(np.float32)"
+            code_str += permute_code(t.inputs[0], t)
+        elif signature.name == "softmax":
+            # Softmax over specified dimensions
+            edges = list(t.inputs[0].edges)
+            dims_to_softmax = list(signature.inputs[0])  # The dimensions to apply softmax over
+            dim_indices = [edges.index(d) for d in dims_to_softmax]
+            if len(dim_indices) == 1:
+                dim = dim_indices[0]
+                # Numerically stable softmax: softmax(x) = exp(x - max(x)) / sum(exp(x - max(x)))
+                code_str = f"np.exp({child_names[0]} - np.max({child_names[0]}, axis={dim}, keepdims=True))"
+                code_str = f"({code_str} / np.sum({code_str}, axis={dim}, keepdims=True))"
+                code_str += permute_code(t.inputs[0], t)
+            else:
+                raise NotImplementedError("Multi-dimensional softmax not yet supported in NumPy backend")
         else:
             raise NotImplementedError(f"Unknown function {t.signature}")
 
