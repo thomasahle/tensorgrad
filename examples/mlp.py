@@ -104,13 +104,13 @@ wine = load_wine()
 X = torch.tensor(wine.data, dtype=torch.float)
 y_labels = torch.tensor(wine.target, dtype=torch.long)
 
-# Eval backend has limitations with very large batch sizes due to Delta tensor materialization
-# Reduce dataset size for eval backend
+# Eval backend has limitations with very large batch sizes
+# With Delta optimization enabled, we can handle larger batches than before
 if args.backend == "eval":
-    max_samples = 24  # Limit to 24 samples for eval backend (same as before optimization)
+    max_samples = 64  # With optimization: can handle more samples
     X = X[:max_samples]
     y_labels = y_labels[:max_samples]
-    print(f"Note: Eval backend using reduced dataset ({max_samples} samples) to avoid memory issues with large Delta tensors")
+    print(f"Note: Eval backend using reduced dataset ({max_samples} samples)")
 
 # Normalize features for easier optimization
 X = (X - X.mean(dim=0)) / X.std(dim=0)

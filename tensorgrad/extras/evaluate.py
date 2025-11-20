@@ -161,32 +161,103 @@ class Context:
         # and   einsum('ij,jk->ik', b, c)  =  einsum(b, [0, 1], c, [1, 2], [0, 2])
         edge_numbers = {e: i for i, e in enumerate({e for t in prod.factors for e in t.edges})}
 
-        # TODO: Merging copies is currently broken, because einsum doesn't allow us
-        # to use the same index twice in the output.
-        merge_copies = False
+        # Optimize by skipping Delta tensors when possible
+        # We equate their edges to avoid materializing large identity matrices
+        merge_copies = True
         # We can't remove copies, if that's all we have
         if all(isinstance(t, Delta) for t in prod.factors):
             merge_copies = False
-        # We can't merge when there are repeated edges in the output, due to einsum
-        # limmitations
-        if len(set(edge_numbers[e] for e in prod.edges)) != len(prod.edges):
-            merge_copies = False
+
+        # Check if any output edge is only provided by Deltas
+        # If so, we can't skip those Deltas
+        if merge_copies:
+            non_delta_edges = {e for t in prod.factors if not isinstance(t, Delta) for e in t.edges}
+            for e in prod.edges:
+                if e not in non_delta_edges:
+                    # Output edge only provided by Deltas - can't merge
+                    merge_copies = False
+                    break
 
         # We can make this more efficient by removing Delta tensors.
+        # Equate all edges of each Delta to the same index
+        next_delta_idx = max(edge_numbers.values()) + 1 if edge_numbers else 0
         if merge_copies:
             for t in prod.factors:
                 if isinstance(t, Delta):
-                    i0 = len(edge_numbers)
-                    for i, e in enumerate(t.edges):
-                        edge_numbers[e] = i0
-        parts = []
-        for t in prod.factors:
-            if not merge_copies or not isinstance(t, Delta):
-                torch_tensor = self.evaluate(t)
-                parts.append(torch_tensor.rename(None))
-                parts.append([edge_numbers[e] for e in torch_tensor.names])
-        parts.append([edge_numbers[e] for e in prod.edges])
-        return torch.einsum(*parts).rename(*prod.edges)
+                    # Use a fresh index for this Delta's edges
+                    for e in t.edges:
+                        edge_numbers[e] = next_delta_idx
+                    next_delta_idx += 1
+
+        # Build output specification - may have repeated indices after Delta merging
+        output_indices = [edge_numbers[e] for e in prod.edges]
+
+        # Check if we have repeated indices in output (einsum doesn't support this)
+        has_repeated_output = len(set(output_indices)) != len(output_indices)
+
+        if has_repeated_output and merge_copies:
+            # Need to deduplicate output, run einsum, then expand with diagonal
+            # Track which output positions share the same index
+            dedup_output = []
+            seen = {}
+            for idx in output_indices:
+                if idx not in seen:
+                    seen[idx] = len(dedup_output)
+                    dedup_output.append(idx)
+
+            # Build parts for einsum with deduplicated output
+            parts = []
+            for t in prod.factors:
+                if not isinstance(t, Delta):
+                    torch_tensor = self.evaluate(t)
+                    parts.append(torch_tensor.rename(None))
+                    parts.append([edge_numbers[e] for e in torch_tensor.names])
+            parts.append(dedup_output)
+
+            # Run einsum with deduplicated output
+            result = torch.einsum(*parts)
+
+            # Now expand result to have repeated dimensions using diagonal
+            # Map from original output index -> position in deduplicated output
+            expansion_spec = []
+            for orig_idx in output_indices:
+                expansion_spec.append(seen[orig_idx])
+
+            # Build einsum to expand: for each repeated index, add an identity matrix
+            if expansion_spec != list(range(len(dedup_output))):
+                # Need to actually expand
+                expand_parts = [result, list(range(len(dedup_output)))]
+                next_idx = len(dedup_output)
+                final_output = []
+                idx_to_final = {}  # Maps dedup idx to final output idx
+
+                for dedup_idx in expansion_spec:
+                    if dedup_idx not in idx_to_final:
+                        # First use of this dedup index in output - use it directly
+                        idx_to_final[dedup_idx] = dedup_idx
+                        final_output.append(dedup_idx)
+                    else:
+                        # Repeated use - add identity matrix to create diagonal
+                        size = result.shape[dedup_idx]
+                        identity = torch.eye(size)
+                        expand_parts.extend([identity, [dedup_idx, next_idx]])
+                        final_output.append(next_idx)
+                        next_idx += 1
+
+                expand_parts.append(final_output)
+                result = torch.einsum(*expand_parts)
+
+            return result.rename(*prod.edges)
+        else:
+            # No repeated output or not merging - use standard path
+            parts = []
+            for t in prod.factors:
+                if not merge_copies or not isinstance(t, Delta):
+                    torch_tensor = self.evaluate(t)
+                    parts.append(torch_tensor.rename(None))
+                    parts.append([edge_numbers[e] for e in torch_tensor.names])
+            parts.append(output_indices)
+            return torch.einsum(*parts).rename(*prod.edges)
 
     @_evaluate.register
     def _(self, sum_: Sum):
