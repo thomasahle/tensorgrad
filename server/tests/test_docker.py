@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import time
+import shutil
 import requests
 import pytest
 import json
@@ -37,20 +38,32 @@ def docker_container():
     # We need to run from the tensorgrad root directory
     import os
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    docker_bin = shutil.which("docker")
+    if docker_bin is None:
+        pytest.skip("Docker CLI is not installed; skipping Docker integration tests.")
+
+    docker_info = subprocess.run(
+        [docker_bin, "info"],
+        capture_output=True,
+        text=True,
+    )
+    if docker_info.returncode != 0:
+        pytest.skip("Docker daemon is unavailable; skipping Docker integration tests.")
     
     # Try buildx first, fall back to regular build
-    build_cmd = ["docker", "buildx", "build"]
+    build_cmd = [docker_bin, "buildx", "build"]
     
     # Check if buildx is available
     buildx_check = subprocess.run(
-        ["docker", "buildx", "version"],
+        [docker_bin, "buildx", "version"],
         capture_output=True,
         text=True
     )
     
     if buildx_check.returncode != 0:
         print("Note: docker buildx not available, using regular docker build")
-        build_cmd = ["docker", "build"]
+        build_cmd = [docker_bin, "build"]
 
     # Build the Docker image
     build_proc = subprocess.run(
@@ -70,7 +83,7 @@ def docker_container():
     # Run the Docker container in detached mode (mapping host port PORT to container port 8080).
     run_proc = subprocess.run(
         [
-            "docker",
+            docker_bin,
             "run",
             "-d",
             "--name",
@@ -97,16 +110,16 @@ def docker_container():
     finally:
         print("Cleaning up Docker container...")
         logs = subprocess.run(
-            ["docker", "logs", container_id], capture_output=True, text=True
+            [docker_bin, "logs", container_id], capture_output=True, text=True
         )
         print("\nDocker container logs:\n", logs.stdout, logs.stderr)
 
         # Teardown: stop and remove the container.
         subprocess.run(
-            ["docker", "stop", container_id], stdout=sys.stdout, stderr=sys.stderr
+            [docker_bin, "stop", container_id], stdout=sys.stdout, stderr=sys.stderr
         )
         subprocess.run(
-            ["docker", "rm", container_id], stdout=sys.stdout, stderr=sys.stderr
+            [docker_bin, "rm", container_id], stdout=sys.stdout, stderr=sys.stderr
         )
 
 
@@ -182,4 +195,3 @@ def test_safe_execute_dynamic_import():
     # Execution should be rejected as unsafe
     assert not result.success
     assert "unsafe" in (result.error or "").lower()
-
