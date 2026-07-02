@@ -139,6 +139,12 @@ class TorchCodegen:
         # Stability pass: re-fuse expanded exp/sum-exp ratios, log-sum-exp and
         # exp-ratio tanh into stable softmax/log_softmax/tanh/logsumexp forms.
         outputs = stabilize_outputs(self.builder, outputs)
+        # Second round: stabilization introduces new Linear structure (the
+        # ±tanh splits, softmax/sum-exp nodes) whose like terms only the
+        # factoring pass can merge/cancel, and re-factoring in turn co-locates
+        # numerator/denominator pairs for one more stabilization sweep.
+        outputs = factor_outputs(self.builder, outputs, dims)
+        outputs = stabilize_outputs(self.builder, outputs)
 
         order = toposort([node for node, _ in outputs])
         output_ids = {id(node) for node, _ in outputs}
@@ -183,7 +189,7 @@ class TorchCodegen:
             elif isinstance(node, EinsumNode):
                 lines.extend(self._emit_einsum(node, name, names, dim_of, dims, step_cache, const_name))
             elif isinstance(node, LinearNode):
-                lines.append(self._emit_linear(node, name, names, dims))
+                lines.append(self._emit_linear(node, name, names, dims, dim_of))
             elif isinstance(node, MapNode):
                 lines.append(self._emit_map(node, name, names))
             elif isinstance(node, GatherNode):
@@ -214,6 +220,20 @@ class TorchCodegen:
             if re.search(rf"\b{name}\b", used_text):
                 lines[line_idx] = text
         lines = [line for line in lines if line is not None]
+
+        # Dead-line elimination for materialized ones: a pure-ones einsum
+        # emits torch.full, but consumers may have folded it away (Linear
+        # scalar offsets, einsum weight absorption). Straight-line SSA: a
+        # torch.full whose name appears nowhere else is dead.
+        alive_text = "\n".join(lines) + "\n" + " ".join(rets)
+        lines = [
+            line
+            for line in lines
+            if not (
+                (m := re.match(r"(t\d+) = torch\.full\(", line))
+                and len(re.findall(rf"\b{m.group(1)}\b", alive_text)) == 1
+            )
+        ]
 
         params = [emitted_inputs.get(v, f"_unused_{v}") for v in self.input_names]
         params += [f"{k}={k}" for k in consts]
@@ -503,7 +523,10 @@ class TorchCodegen:
             if (hit := step_cache.get(key)) is not None:
                 return hit
             tmp = f"_e{len(step_cache)}"
-            lines.append(f"{tmp} = torch.einsum('{step_eq}', {', '.join(args)})")
+            expr = self._step_expr(step_eq, args)
+            if expr is None:
+                expr = f"torch.einsum('{step_eq}', {', '.join(args)})"
+            lines.append(f"{tmp} = {expr}")
             step_cache[key] = tmp
             return tmp
 
@@ -557,6 +580,10 @@ class TorchCodegen:
         if broadcast:
             # Result axes: core_out order; unsqueeze+expand to full out_subs
             # order (an expand is a view — no memory is written).
+            if not core_out:
+                # A fully-scalar core may be a python float (scalar-const
+                # emission); as_tensor is a no-op on real 0-dim tensors.
+                expr = f"torch.as_tensor({expr}, dtype={self._dtype_str})"
             unsq = expr
             positions = [i for i, w in enumerate(node.out_subs) if w not in op_wires]
             for p in positions:
@@ -569,6 +596,68 @@ class TorchCodegen:
 
         lines.append(f"{name} = {expr}")
         return lines
+
+    @staticmethod
+    def _step_expr(step_eq: str, args: list[str]):
+        """Cheaper-dispatch emission for einsum steps that need no contraction
+        machinery. Returns an expression string, or None (einsum fallback).
+
+        - single operand: plain axis reductions become .sum(dim=...), pure
+          permutations become .permute(...) views (einsum would copy);
+        - multi operand, no summed index: a broadcast `*` chain over
+          permute/unsqueeze views (one TensorIterator kernel, no einsum
+          parse/plan dispatch per call).
+        """
+        ins, out = step_eq.split("->")
+        in_eqs = ins.split(",")
+        if len(set(out)) != len(out) or any(len(set(e)) != len(e) for e in in_eqs):
+            return None  # diagonals: einsum territory
+        if len(in_eqs) == 1:
+            e = in_eqs[0]
+            if not set(out) <= set(e):
+                return None  # broadcast is handled at the node level
+            red = [i for i, ch in enumerate(e) if ch not in out]
+            kept = [ch for ch in e if ch in out]
+            expr = args[0]
+            if red:
+                expr = f"{expr}.sum(dim={_tup(map(str, red))})"
+            if kept != list(out):
+                perm = [kept.index(ch) for ch in out]
+                expr = f"{expr}.permute({', '.join(map(str, perm))})"
+            return expr
+        if set().union(*map(set, in_eqs)) != set(out):
+            # Hadamard-then-reduce: both operands span the SAME index set and
+            # some indices are summed. torch.einsum lowers this to a batched
+            # matmul of degenerate (n,1)x(1,m) blocks — measured 323us vs 33us
+            # for (A*B).sum(1) at (256,1024). Scalar output is excluded: the
+            # flattened-dot path einsum picks there is the fast one.
+            if len(in_eqs) == 2 and out:
+                e1, e2 = in_eqs
+                if set(e1) == set(e2) and set(out) < set(e1):
+                    perm2 = [e2.index(ch) for ch in e1]
+                    v2 = args[1]
+                    if perm2 != list(range(len(e2))):
+                        v2 = f"{v2}.permute({', '.join(map(str, perm2))})"
+                    red = [i for i, ch in enumerate(e1) if ch not in out]
+                    expr = f"({args[0]} * {v2}).sum(dim={_tup(map(str, red))})"
+                    kept = [ch for ch in e1 if ch in out]
+                    if kept != list(out):
+                        perm = [kept.index(ch) for ch in out]
+                        expr = f"({expr}).permute({', '.join(map(str, perm))})"
+                    return expr
+            return None  # a contracted index: real einsum work
+        views = []
+        for e, a in zip(in_eqs, args):
+            order = sorted(range(len(e)), key=lambda i: out.index(e[i]))
+            v = a
+            if order != list(range(len(e))):
+                v = f"{a}.permute({', '.join(map(str, order))})"
+            if e:  # 0-dim (possibly python-float) operands broadcast as-is
+                for j, ch in enumerate(out):
+                    if ch not in e:
+                        v = f"{v}.unsqueeze({j})"
+            views.append(v)
+        return " * ".join(views)
 
     def _contract(self, entries, out_ws, wire_dims, dim_of, do_step) -> str:
         """Contract (name, subs) operand pairs down to the wires `out_ws`
@@ -888,19 +977,32 @@ class TorchCodegen:
             f"dtype={idx}.dtype).unsqueeze(1)).to({idx}.dtype).view({_tup(sizes)})"
         )
 
-    def _emit_linear(self, node: LinearNode, name, names, dims) -> str:
+    def _emit_linear(self, node: LinearNode, name, names, dims, dim_of) -> str:
         parts = []
+        const_acc = 0.0
         for term, perm, w in zip(node.terms, node.perms, node.weights):
+            wf = to_float(sympy.sympify(w).subs(dims) if getattr(w, "free_symbols", None) else w)
+            if isinstance(term, EinsumNode) and not term.ops and not term.constraints:
+                # Pure-ones term: a scalar offset (TensorIterator broadcasts it
+                # in the same kernel — no torch.full materialization).
+                const_acc += wf * to_float(term.weight.subs(dims))
+                continue
             tname = names[id(term)]
             if perm != tuple(range(len(perm))):
                 tname = f"{tname}.permute({', '.join(map(str, perm))})"
-            wf = to_float(sympy.sympify(w).subs(dims) if getattr(w, "free_symbols", None) else w)
             if wf == 1.0:
                 parts.append(f"+ {tname}" if parts else tname)
             elif wf == -1.0:
                 parts.append(f"- {tname}")
             else:
                 parts.append(f"{'+ ' if parts else ''}{_fmt_weight(wf)} * {tname}")
+        if not parts:
+            sizes = _tup(str(dim_of(d)) for d in node.dims)
+            return f"{name} = torch.full({sizes}, {_fmt_weight(const_acc)}, dtype={self._dtype_str})"
+        if const_acc > 0:
+            parts.append(f"+ {_fmt_weight(const_acc)}")
+        elif const_acc < 0:
+            parts.append(f"- {_fmt_weight(-const_acc)}")
         return f"{name} = {' '.join(parts)}"
 
     def _emit_map(self, node: MapNode, name, names) -> str:
@@ -929,12 +1031,17 @@ class TorchCodegen:
             expr = f"({args[0]} >= 0).to({args[0]}.dtype)"
         elif op == "pow":
             (k,) = node.params
-            if k == -1:
+            kf = to_float(k)
+            if kf == -1.0:
                 expr = f"torch.reciprocal({args[0]})"
-            elif k == 2:
+            elif kf == 2.0:
                 expr = f"torch.square({args[0]})"
+            elif kf == 0.5:
+                expr = f"torch.sqrt({args[0]})"
+            elif kf == -0.5:
+                expr = f"torch.rsqrt({args[0]})"
             else:
-                expr = f"torch.pow({args[0]}, {to_float(k)})"
+                expr = f"torch.pow({args[0]}, {kf})"
         elif op == "equal":
             expr = f"({args[0]} == {args[1]}).to({args[0]}.dtype)"
         else:

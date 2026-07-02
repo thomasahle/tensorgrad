@@ -363,7 +363,9 @@ def test_attention_block_fused_loss_and_grad(capsys):
     src_exp = _source(fn_e, vals, dims)
     n_fused, n_exp = _op_count(src_fused), _op_count(src_exp)
     print(f"\nattention per-call op count: fused={n_fused} expanded={n_exp}")
-    assert n_fused < n_exp
+    # <=: the factoring/stabilization passes now collapse the expanded form
+    # to the fused kernel's op count — the fused path must never be LARGER.
+    assert n_fused <= n_exp
     # expanded form must agree at these (moderate) logits
     lo_e, go_e = fn_e(dict(vals), dict(dims))
     torch.testing.assert_close(lo_e.rename(None), lo.rename(None), rtol=1e-3, atol=1e-4)

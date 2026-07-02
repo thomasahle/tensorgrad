@@ -102,6 +102,8 @@ class _Rewriter:
         self._dim_cache: dict = {}
         self._score_cache: dict = {}
         self.counts: dict[int, int] = {}
+        # canonical-order einsum twin -> first node registered under it
+        self._cse_seen: dict[int, Node] = {}
 
     # ---- infrastructure ---------------------------------------------------
 
@@ -168,6 +170,9 @@ class _Rewriter:
 
     def _local(self, nd: Node) -> Node:
         if isinstance(nd, EinsumNode):
+            out = self._cse_einsum(nd)
+            if out is not nd:
+                return out
             out = self._absorb(nd)
             if out is not nd:
                 return out
@@ -179,8 +184,65 @@ class _Rewriter:
             out = self._cleanup_linear(nd)
             if out is not nd:
                 return out
+            out = self._sink_linear(nd)
+            if out is not nd:
+                return out
             return self._hoist(nd)
+        if isinstance(nd, MapNode):
+            out = self._normalize_map(nd)
+            if out is not nd:
+                return out
+            return self._sink_map(nd)
         return nd
+
+    def _normalize_map(self, nd: MapNode) -> Node:
+        """Map(x, perm) -> view(Map(x)): the permutation moves out of the
+        (possibly expensive) elementwise kernel into a free view einsum, and
+        permuted duplicates of the same Map hash-cons into ONE kernel (a
+        transposed tanh(x) next to tanh(x) was measured as a second full
+        tanh pass in the gelu gradient)."""
+        if len(nd.ops) != 1 or nd.perms[0] == tuple(range(nd.order)):
+            return nd
+        core = self.b.map(nd.op, nd.params, [nd.ops[0]])
+        return self.b.einsum(
+            [core],
+            [tuple(range(nd.order))],
+            tuple(nd.perms[0]),
+            dict(enumerate(nd.ops[0].dims)),
+        )
+
+    def _cse_einsum(self, n: EinsumNode) -> Node:
+        """Unify einsums that are structurally equal up to operand order.
+        Hash-consing misses them (the intern key is order-sensitive), so ±
+        duplicates of one contraction — ubiquitous in expanded second
+        derivatives — never meet in Linear like-term merging.
+
+        Deliberately CONSERVATIVE: an einsum is only ever replaced by a
+        previously-seen equal node, never reordered in place. Reordering
+        operands changes pairwise product grouping and hence fp rounding,
+        which breaks the saturation-exact zeros the stabilization pass
+        arranges (measured: 5e-3 error in the fp32 gelu gradient at |x|=200
+        under blanket canonical sorting)."""
+        if len(n.ops) < 2:
+            return n
+        order = sorted(
+            range(len(n.ops)), key=lambda i: (self.b.node_index(n.ops[i]), n.in_subs[i])
+        )
+        # The interned canonical-order twin is only a lookup key; if it was
+        # never registered as someone's canonical form, n stays untouched.
+        canon = self.b.einsum(
+            [n.ops[i] for i in order],
+            [tuple(n.in_subs[i]) for i in order],
+            n.out_subs,
+            dict(enumerate(n.wire_dims)),
+            n.weight,
+            n.constraints,
+        )
+        seen = self._cse_seen.get(id(canon))
+        if seen is None:
+            self._cse_seen[id(canon)] = n
+            return n
+        return seen
 
     def _zero(self, dims) -> Node:
         return self.b.const("zero", (), tuple(dims))
@@ -291,6 +353,19 @@ class _Rewriter:
                 if isinstance(op, EinsumNode) and not op.ops and not op.constraints:
                     # ones (a pure broadcast einsum): fold into the weight.
                     weight = weight * op.weight
+                    changed = progress = True
+                    continue
+                if isinstance(op, LinearNode) and len(op.terms) == 1:
+                    # single-term Linear: a scaled/permuted view — fold the
+                    # scalar into the weight, the perm into the subs (kills
+                    # materialized ±w*y copies feeding contractions).
+                    (t,) = op.terms
+                    (pm,) = op.perms
+                    new_subs = [None] * t.order
+                    for j in range(len(pm)):
+                        new_subs[pm[j]] = subs[j]
+                    weight = weight * sympy.sympify(op.weights[0])
+                    kept.append((t, tuple(new_subs)))
                     changed = progress = True
                     continue
                 if isinstance(op, ConstNode) and op.kind == "delta":
@@ -496,29 +571,190 @@ class _Rewriter:
     # ---- pass 1: un-distribution (hoisting) -------------------------------------
 
     def _cleanup_linear(self, L: LinearNode) -> Node:
-        """Drop zero terms, flatten single-consumer nested Linears."""
+        """Normalize and shrink a LinearNode:
+          - drop zero-weight / Zero terms;
+          - absorb pure-view einsum terms (fold their permutation and scalar
+            weight into the Linear's perm/weight — views are free, and seeing
+            through them is what exposes like terms);
+          - canonicalize pure-ones terms to a single weight-1 ones node;
+          - flatten nested Linears: single-consumer ones unconditionally,
+            shared ones when like-term merging keeps the term count from
+            growing (this is the cancellation that collapses expanded ±tanh /
+            ±softmax second-derivative algebra);
+          - merge like terms (same node, same perm: weights add)."""
         m = len(L.dims)
-        terms, perms, ws = [], [], []
+
+        def absorb(t, pm, w):
+            while (
+                isinstance(t, EinsumNode)
+                and len(t.ops) == 1
+                and not t.constraints
+                and len(t.out_subs) == len(t.in_subs[0]) == len(set(t.in_subs[0]))
+                and set(t.out_subs) == set(t.in_subs[0])
+            ):
+                amap = [t.in_subs[0].index(w2) for w2 in t.out_subs]
+                pm = tuple(amap[pm[j]] for j in range(m))
+                w = w * sympy.sympify(t.weight)
+                t = t.ops[0]
+            if isinstance(t, EinsumNode) and not t.ops and not t.constraints and m > 0:
+                # ones: constant under any perm — canonical output-order node
+                w = w * sympy.sympify(t.weight)
+                t = self.b.einsum([], [], tuple(range(m)), {j: L.dims[j] for j in range(m)})
+                pm = tuple(range(m))
+            return t, pm, w
+
+        def unit_twin(t):
+            """The weight-1 twin of a weighted einsum (for weight-agnostic
+            like-term keys). Codegen's step cache shares the contraction
+            steps between the twin and the weighted original."""
+            if not (isinstance(t, EinsumNode) and t.ops and sympy.sympify(t.weight) != 1):
+                return t, sympy.Integer(1)
+            return (
+                self.b.einsum(
+                    list(t.ops),
+                    [tuple(s) for s in t.in_subs],
+                    t.out_subs,
+                    dict(enumerate(t.wire_dims)),
+                    1,
+                    t.constraints,
+                ),
+                sympy.sympify(t.weight),
+            )
+
+        def merged(ents):
+            acc: dict = {}
+            keys: list = []
+            for t, pm, w in ents:
+                key = (id(t), pm)
+                if key in acc:
+                    acc[key] = (t, pm, acc[key][2] + w)
+                else:
+                    acc[key] = (t, pm, w)
+                    keys.append(key)
+            return [
+                acc[k]
+                for k in keys
+                if sympy.sympify(acc[k][2]) != 0
+                and not (isinstance(acc[k][0], ConstNode) and acc[k][0].kind == "zero")
+            ]
+
+        entries = []
         changed = False
         for t, pm, w in zip(L.terms, L.perms, L.weights):
-            if sympy.sympify(w) == 0 or (isinstance(t, ConstNode) and t.kind == "zero"):
+            w = sympy.sympify(w)
+            t2, pm2, w2 = absorb(t, tuple(pm), w)
+            changed |= t2 is not t or pm2 != tuple(pm) or w2 != w
+            t, pm, w = t2, pm2, w2
+            if w == 0 or (isinstance(t, ConstNode) and t.kind == "zero"):
                 changed = True
                 continue
             if isinstance(t, LinearNode) and self.counts.get(id(t), 2) == 1:
-                for t2, pm2, w2 in zip(t.terms, t.perms, t.weights):
-                    terms.append(t2)
-                    perms.append(tuple(pm2[pm[j]] for j in range(m)))
-                    ws.append(sympy.sympify(w) * sympy.sympify(w2))
+                for t3, pm3, w3 in zip(t.terms, t.perms, t.weights):
+                    entries.append(
+                        absorb(t3, tuple(pm3[pm[j]] for j in range(m)), w * sympy.sympify(w3))
+                    )
                 changed = True
                 continue
-            terms.append(t)
-            perms.append(pm)
-            ws.append(w)
+            entries.append((t, pm, w))
+
+        ents2 = merged(entries)
+        changed |= len(ents2) != len(entries)
+        entries = ents2
+
+        # Shared nested Linears: flatten when the merged result is no larger
+        # (equal is a wash per consumer; smaller means terms cancelled).
+        progress = True
+        while progress:
+            progress = False
+            for i, (t, pm, w) in enumerate(entries):
+                if not isinstance(t, LinearNode):
+                    continue
+                flat = [
+                    absorb(t3, tuple(pm3[pm[j]] for j in range(m)), w * sympy.sympify(w3))
+                    for t3, pm3, w3 in zip(t.terms, t.perms, t.weights)
+                ]
+                cand = merged(entries[:i] + flat + entries[i + 1 :])
+                if len(cand) <= len(entries):
+                    entries = cand
+                    changed = progress = True
+                    break
+
         if not changed:
             return L
-        if not terms:
+        if not entries:
             return self._zero(L.dims)
-        return self.b.linear(terms, perms, ws)
+        return self.b.linear(*map(list, zip(*entries)))
+
+    # ---- broadcast sinking -----------------------------------------------------
+
+    def _broadcast_axes(self, t: Node) -> set:
+        """Output axes of an EinsumNode along which the value is constant:
+        their wires appear in no operand and no constraint row (codegen emits
+        them as expand views)."""
+        if not isinstance(t, EinsumNode) or len(set(t.out_subs)) != len(t.out_subs):
+            return set()
+        used = {w for s in t.in_subs for w in s}
+        used |= {w for cs, _ in t.constraints for w, _ in cs}
+        return {a for a, w in enumerate(t.out_subs) if w not in used}
+
+    def _sink_map(self, nd: MapNode) -> Node:
+        """Map(broadcast(x)) -> broadcast(Map(x)): elementwise ops commute
+        with replication, so the op runs on the pre-expand core. This is what
+        keeps LayerNorm's rsqrt(var + eps) at (B,) instead of (B,V)."""
+        if len(nd.ops) != 1:
+            return nd
+        E = nd.ops[0]
+        bax = self._broadcast_axes(E)
+        if not bax:
+            return nd
+        keep = [a for a in range(E.order) if a not in bax]
+        core_out = tuple(E.out_subs[a] for a in keep)
+        core = self.b.einsum(
+            list(E.ops),
+            [tuple(s) for s in E.in_subs],
+            core_out,
+            dict(enumerate(E.wire_dims)),
+            E.weight,
+            E.constraints,
+        )
+        mp = self.b.map(nd.op, nd.params, [core])
+        pm = nd.perms[0]
+        out_subs = tuple(E.out_subs[pm[k]] for k in range(nd.order))
+        return self.b.einsum([mp], [core_out], out_subs, dict(enumerate(E.wire_dims)))
+
+    def _sink_linear(self, L: LinearNode) -> Node:
+        """A Linear whose EVERY term is broadcast along a common set of output
+        axes is itself a broadcast: compute the smaller core Linear and expand
+        (the eps*ones + var/n pattern feeding pow in normalization layers)."""
+        m = len(L.dims)
+        if m == 0:
+            return L
+        baxes: set = set(range(m))
+        for t, pm in zip(L.terms, L.perms):
+            bt = self._broadcast_axes(t)
+            baxes &= {j for j in range(m) if pm[j] in bt}
+            if not baxes:
+                return L
+        keep_j = [j for j in range(m) if j not in baxes]
+        new_terms, new_perms = [], []
+        for t, pm in zip(L.terms, L.perms):
+            drop_a = {pm[j] for j in baxes}
+            keep_a = [a for a in range(t.order) if a not in drop_a]
+            core = self.b.einsum(
+                list(t.ops),
+                [tuple(s) for s in t.in_subs],
+                tuple(t.out_subs[a] for a in keep_a),
+                dict(enumerate(t.wire_dims)),
+                t.weight,
+                t.constraints,
+            )
+            cidx = {a: i for i, a in enumerate(keep_a)}
+            new_terms.append(core)
+            new_perms.append(tuple(cidx[pm[j]] for j in keep_j))
+        inner = self.b.linear(new_terms, new_perms, list(L.weights))
+        return self.b.einsum(
+            [inner], [tuple(keep_j)], tuple(range(m)), {j: L.dims[j] for j in range(m)}
+        )
 
     def _hoist(self, L: LinearNode) -> Node:
         """sum_t w_t einsum(A, B_t) -> einsum(A, sum_t w_t B_t) for the best
@@ -582,7 +818,10 @@ class _Rewriter:
 
         best = None
         for (nid, sig), members in groups.items():
-            if len(members) < 2:
+            if len(members) < 2 or not sig:
+                # Empty signature: an order-0 operand in an order-0 Linear —
+                # the shared node is already computed once (hash-consing);
+                # there are no wires to hoist through.
                 continue
             n = members[0][2]
             C = max(sig) + 1

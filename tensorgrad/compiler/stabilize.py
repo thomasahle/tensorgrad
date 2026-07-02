@@ -305,6 +305,37 @@ class _Stabilizer:
                     return sympy.Integer(1) / sympy.sympify(w_z)
             return None
 
+        # (c) softmax denominator: exp(X) * softmax(X)^-1 == sum-exp(X),
+        #     constant over the softmax axes (they drop from the operand's
+        #     wires). Gradient-of-log graphs are full of exp/softmax pairs
+        #     split by factoring; each match consumes one power. No new
+        #     instability: the sum-exp overflows exactly when the already
+        #     present exp operand does.
+        if isinstance(Z, ReduceNode) and Z.op == "softmax":
+            X = Z.ops[0]
+            for q in range(len(ops)):
+                if q == p:
+                    continue
+                E = ops[q]
+                if not (
+                    isinstance(E, MapNode)
+                    and E.op == "exp"
+                    and E.ops[0] is X
+                    and E.perms[0] == tuple(range(E.order))
+                ):
+                    continue
+                if list(in_subs[q]) != zwire:
+                    continue
+                kept = tuple(a for a in range(Z.order) if a not in Z.axes)
+                zsum = self.b.einsum(
+                    [E], [tuple(range(E.order))], kept, dict(enumerate(E.dims))
+                )
+                ops[q] = zsum
+                in_subs[q] = tuple(zwire[a] for a in kept)
+                shrink()
+                return sympy.Integer(1)
+            return None
+
         # (b) tanh family: divide an aligned co-operand by a*(exp(Y)+exp(-Y))
         pe = self._exp_pair(Z)
         if pe is not None and pe[2] == pe[3] and pe[2] != 0:
@@ -591,7 +622,7 @@ class _Stabilizer:
         # log(w_z * sum exp(X)) -> max-shifted stable logsumexp
         se = self._sum_exp(S)
         if se is not None:
-            if id(n) in self._log_done:
+            if id(n) in self._log_done or self._already_shifted(se[1]):
                 return n
             E, X, red, a_of_out, w_z = se
             w_z = sympy.sympify(w_z)
@@ -614,6 +645,23 @@ class _Stabilizer:
                 ws.append(sympy.log(w_z))
             return self._permuted(self.b.linear(terms, perms, ws), pl)
         return n
+
+    @staticmethod
+    def _already_shifted(X: Node) -> bool:
+        """True when X has the max-shifted form Y - broadcast(max(Y)): the
+        logsumexp rewrite must not re-fire on its own output. Structural (not
+        per-instance memo): the pass runs more than once per specialization."""
+        if not (isinstance(X, LinearNode) and len(X.terms) == 2):
+            return False
+        for i in (0, 1):
+            if sympy.sympify(X.weights[i]) != -1:
+                continue
+            mb, other = X.terms[i], X.terms[1 - i]
+            if isinstance(mb, EinsumNode) and len(mb.ops) == 1:
+                mb = mb.ops[0]
+            if isinstance(mb, ReduceNode) and mb.op == "max" and mb.ops[0] is other:
+                return True
+        return False
 
     def _permuted(self, node: Node, perm: tuple) -> Node:
         """Apply a MapNode-style perm (out axis k = node axis perm[k]) as a view."""
