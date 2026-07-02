@@ -14,6 +14,37 @@ from sympy import Symbol
 from tensorgrad.utils import _MatchEdgesKey
 
 
+_lazy_rename = False
+
+# Lazily imported tensorgrad.compiler.canon module (compositional structural
+# hashing). Loaded on first use to avoid a circular import (canon imports this
+# module) and to keep `import tensorgrad` light. False means "unavailable".
+_canon_mod = None
+
+
+def _get_canon():
+    global _canon_mod
+    if _canon_mod is None:
+        try:
+            import tensorgrad.compiler.canon as canon
+
+            _canon_mod = canon
+        except ImportError:  # e.g. torch missing: fall back to the nx path
+            _canon_mod = False
+    return _canon_mod or None
+
+
+def set_lazy_rename(enable: bool = True) -> bool:
+    """Make Tensor.rename wrap composite tensors in a lazy Rename node
+    instead of rebuilding them recursively. Essential for constructing deep
+    models (residual reuse makes eager renaming exponential). Returns the
+    previous setting."""
+    global _lazy_rename
+    prev = _lazy_rename
+    _lazy_rename = enable
+    return prev
+
+
 class TensorMeta(ABCMeta):
     def __call__(cls, *args, **kwargs):
         """Calling Tensor(...) is a shortcut to wrapping the argument in a tensor."""
@@ -127,7 +158,18 @@ class Tensor(metaclass=TensorMeta):
         # Restrict renaming to free edges
         kwargs = {new: old for new, old in kwargs.items() if new in self.edges}
 
-        result = self._rename(**kwargs)
+        if _lazy_rename and all(k == v for k, v in kwargs.items()):
+            return self
+        if _lazy_rename and isinstance(self, (Sum, Product, Function)):
+            # Lazy rename: rebuilding a composite tree is exponential when
+            # subexpressions are reused (residual networks!). The Rename
+            # wrapper is O(1), isomorphism-transparent, and gets merged /
+            # pushed down during simplify. Opt-in via set_lazy_rename(True)
+            # because code that pattern-matches tree structure (expectation,
+            # polynomials, diagrams) sees Rename nodes it may not expect.
+            result = Rename(self, kwargs)
+        else:
+            result = self._rename(**kwargs)
 
         # Check that the shape is preserved
         assert result.shape == {kwargs.get(e, e): s for e, s in self.shape.items()}
@@ -168,6 +210,7 @@ class Tensor(metaclass=TensorMeta):
 
         # Check that the shape is preserved
         assert result.shape == self.shape
+        _record_simplify_provenance(args, self, result)
 
         return result
 
@@ -188,20 +231,34 @@ class Tensor(metaclass=TensorMeta):
 
     @final
     def substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        """Substitute a variable with a tensor"""
+        """Substitute a variable with a tensor.
+
+        Sharing-preserving and memoized: each DAG node is rewritten at most
+        once (keyed by object identity), and unchanged subtrees are returned
+        as-is. The stock recursion rebuilt the whole tree per call, which is
+        exponential on expressions with shared subexpressions (residual
+        networks)."""
         # Ideally we'd like y to be able to have extra edges that are not in x
         # but which will be broadcasted as new edges of the tensor. This will
         # allow us to implement numerical expectation, and other situations where
         # we originally didn't have broadcasting, but we want to add it.
         # Maybe we could even remove broadcasted edges of x as well.
         # The tricky thing is to ensure it doesn't clash with the existing edges.
-        return self._substitute(x, y)
+        return _substitute_memo(self, x, y, {})
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        """Override this method to implement substitution"""
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
+        """Override this method to implement substitution.
+        Recurse into children via _substitute_memo(child, x, y, memo)."""
         raise NotImplementedError
 
     def __hash__(self) -> int:
+        # Isomorphism-invariant hash (a == b implies equal hashes), computed
+        # compositionally and memoized on the object by canon.canon_info, so
+        # shared subexpressions are hashed once (the nx WL hash rebuilds the
+        # tree-expanded graph and is exponential on DAG-shaped expressions).
+        canon = _get_canon()
+        if canon is not None:
+            return canon.structural_hash(self)
         return hash(self.weisfeiler_lehman)
 
     @cached_property
@@ -360,7 +417,33 @@ class Tensor(metaclass=TensorMeta):
         Returns:
             True if the tensors are isomorphic; False otherwise.
         """
-        if self.weisfeiler_lehman != other.weisfeiler_lehman:
+        canon = _get_canon()
+        if canon is not None:
+            a, b = canon.canon_info(self), canon.canon_info(other)
+            # Sound reject: any isomorphism (with or without edge matching)
+            # implies equal invariant hashes.
+            if a.coarse_fp != b.coarse_fp:
+                return False
+            if a.refined_fp == b.refined_fp:
+                if not match_edges and not edge_names:
+                    # Sound accept: equal fingerprints imply isomorphic.
+                    return True
+                # Name-sensitive accept: by (I1) equal fingerprints yield a
+                # color-preserving isomorphism, and by (I2) any
+                # color-preserving edge permutation is an automorphism, so a
+                # label-preserving isomorphism exists iff the (color, label)
+                # multisets agree. (Labels mirror edge_structural_graph.)
+                def label(e: str):
+                    default = ("Outer Edge", e) if match_edges else ""
+                    return default if edge_names is None else edge_names.get(e, default)
+
+                if Counter((a.refined_colors[e], label(e)) for e in self.edges) == Counter(
+                    (b.refined_colors[e], label(e)) for e in other.edges
+                ):
+                    return True
+            # Ambiguous (hash-equal but fingerprint/label-distinct): only now
+            # pay for the exact nx isomorphism test.
+        elif self.weisfeiler_lehman != other.weisfeiler_lehman:
             return False
         G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
@@ -522,7 +605,7 @@ class Variable(Tensor):
     def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
         if x == self:
             # TODO: If X has symmetries, the derivative can actually be more complex than this.
-            # See See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
+            # See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
             return Product(Delta(s, e, new_names[e]) for e, s in self.shape.items())
         # Note: We don't need to tell Zero the symmetries, since it's automatically
         # symmetric in all dimensions that have compatible sizes.
@@ -541,8 +624,8 @@ class Variable(Tensor):
         G.add_node(0, name=("Variable", self.name), tensor=self)
         edges = {}
         # Symmetries are more fine-grained than shapes, since two dims can have
-        # the same size, but not be symmetric. E.g. an assymetric square matrix.
-        # Example of variable with 2 sizes, 3 symmetri orbits and 4 edges:
+        # the same size, but not be symmetric. E.g. an asymmetric square matrix.
+        # Example of variable with 2 sizes, 3 symmetry orbits and 4 edges:
         # +-size 1-sym 1-e 1
         # |  +-----sym 2-e 2
         # +-size 2-sym 3-e 3
@@ -576,8 +659,11 @@ class Variable(Tensor):
             return self
         return Rename(self, kwargs)
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        if x == self:
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
+        # Name pre-check: Variables with different names are never isomorphic
+        # (the name is part of the structural graph), so the expensive
+        # isomorphism __eq__ only runs on same-named variables.
+        if self is x or (self.name == x.name and x == self):
             return y
         return self
 
@@ -663,8 +749,9 @@ class Rename(Tensor):
     def _rename(self, **kwargs: str) -> Tensor:
         return Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        return Rename(self.tensor.substitute(x, y), self.mapping)
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
+        inner = _substitute_memo(self.tensor, x, y, memo)
+        return self if inner is self.tensor else Rename(inner, self.mapping)
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         # Rename is the only tensor that doesn't actually create its own node in the graph
@@ -722,7 +809,7 @@ class Constant(Tensor, ABC):
                     edges[e] = orbit_node
         return G, edges
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
         return self
 
     def _rename(self, **kwargs: str) -> Tensor:
@@ -815,7 +902,7 @@ class Delta(Constant):
         # We can't merge order 0 copy tensors, since we now give them a value equal to their size.
         # In principle we could create a new Delta(size1 * size2, []) tensor, but then we start having
         # arbitrary expressions as sizes, which I'm not sure we want yet.
-        # Also, merging an order 0 with and order > 0 was never going to work, unless the size of the
+        # Also, merging an order 0 with an order > 0 was never going to work, unless the size of the
         # order 0 Delta was 1, which it probably never is.
         # In either case, this method should only be called if the tensors share an edge, which they
         # can't if one of them has order 0.
@@ -1086,19 +1173,38 @@ class Function(Tensor):
                 self._shape[b] = t.shape[b]
 
     def _rename(self, **kwargs: str) -> Tensor:
+        # Names to avoid when generating fresh middle names below.
+        used = self.edges | set(kwargs.values())
+        for t in self.inputs:
+            used |= t.edges
         renamed_inputs = []
+        final_rename = {}  # applied on top of the rebuilt Function at the end
         for t, es in zip(self.inputs, self.signature.inputs):
-            # Only rename external edges of input tensors.
-            rename = {e: v for e, v in kwargs.items() if e not in es}
+            # Only rename external (broadcast) edges of input tensors.
+            rename = {e: v for e, v in kwargs.items() if e in t.edges and e not in es}
+            # A rename target may collide with an edge of t that we are not renaming,
+            # typically an edge consumed by the function (e.g. renaming broadcast edge
+            # 's' -> 't' while the function consumes t's edge 't'). Route such renames
+            # through fresh middle names and fix them up with a final Rename,
+            # mirroring the middle-name routing in Rename._grad.
+            remaining = t.edges - rename.keys()
+            colliding = {e: v for e, v in rename.items() if v in remaining}
+            if colliding:
+                middle = _unused_edge_names(colliding.values(), used)
+                used |= set(middle.values())
+                for e, v in colliding.items():
+                    rename[e] = middle[v]
+                    final_rename[middle[v]] = v
             renamed_inputs.append(t.rename(**rename))
         output_rename = {k: v for k, v in kwargs.items() if k in self.shape_out}
+        final_rename |= output_rename
         res = Function(
             self.signature,
             renamed_inputs,
             self.shape_out,
         )
-        if output_rename and any(v != k for k, v in output_rename.items()):
-            res = Rename(res, output_rename)
+        if any(v != k for k, v in final_rename.items()):
+            res = Rename(res, final_rename)
         return res
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
@@ -1212,8 +1318,11 @@ class Function(Tensor):
     def depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.inputs)
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        return Function(self.signature, [t.substitute(x, y) for t in self.inputs], self.shape_out)
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
+        inputs = [_substitute_memo(t, x, y, memo) for t in self.inputs]
+        if all(a is b for a, b in zip(inputs, self.inputs)):
+            return self
+        return Function(self.signature, inputs, self.shape_out)
 
 
 class Derivative(Tensor):
@@ -1246,7 +1355,9 @@ class Derivative(Tensor):
         else:
             args["grad_steps"] -= 1
             # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
-            res = inner.grad(self.x, self.new_names).simplify(args)
+            grad = inner.grad(self.x, self.new_names)
+            _record_simplify_provenance(args, inner, grad)
+            res = grad.simplify(args)
         return res
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
@@ -1366,8 +1477,11 @@ class Product(Tensor):
             ]
         )
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        return Product([t.substitute(x, y) for t in self.factors])
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
+        factors = [_substitute_memo(t, x, y, memo) for t in self.factors]
+        if all(a is b for a, b in zip(factors, self.factors)):
+            return self
+        return Product(factors)
 
     def __repr__(self) -> str:
         if len(self.factors) <= 1:
@@ -1421,6 +1535,12 @@ class Product(Tensor):
             tensors = _PowerFunction.simplify_outer(tensors, args)
             verify_edges(tensors, f"{before} -> {tensors}")
 
+        # Deterministic factor order: sort by the seed-stable structural
+        # fingerprint, so commutative construction order (and PYTHONHASHSEED)
+        # doesn't leak into the simplified result.
+        if (canon := _get_canon()) is not None:
+            tensors.sort(key=canon.refined_sort_key)
+
         # Base cases
         if len(tensors) == 1:
             res = tensors[0]
@@ -1428,6 +1548,11 @@ class Product(Tensor):
             terms = [[]]
             weights = [1]
             for t in tensors:
+                # A (lazy) Rename wrapper can hide a Sum factor from the
+                # distribution below; push the rename through eagerly, but
+                # only here where expand needs to look through it.
+                while isinstance(t, Rename) and isinstance(t.tensor, Sum):
+                    t = t.tensor._rename(**t.mapping)
                 if isinstance(t, Sum):
                     # Create cartesian product
                     terms = [term + [t0] for term in terms for t0 in t.terms]
@@ -1435,8 +1560,9 @@ class Product(Tensor):
                 else:
                     for term in terms:
                         term.append(t)
-            # Recurse with expand=False to avoid infinite descent
-            res = Sum([Product(ts) for ts in terms], weights).simplify(args={"expand": False})
+            # Recurse with expand=False to avoid infinite descent, but keep
+            # all other caller flags intact.
+            res = Sum([Product(ts) for ts in terms], weights).simplify(args={**args, "expand": False})
         else:
             res = Product(tensors)
 
@@ -1570,10 +1696,10 @@ class Sum(Tensor):
             self._shape[e] = s
 
         # Any tensors that lacks an edge will be broadcasted to have that edge.
-        all_edges = self._shape.keys()
+        # (Iterate in shape order, not set order, for deterministic results.)
         self.terms = []
         for t in terms:
-            missing = {e: self._shape[e] for e in all_edges - t.edges}
+            missing = {e: s for e, s in self._shape.items() if e not in t.edges}
             # Note: don't broadcast if the tensor is already full, since that would create new
             # Ones([]) objects after simplification is supposed to have completed.
             self.terms.append(t @ Ones(**missing) if missing else t)
@@ -1587,8 +1713,11 @@ class Sum(Tensor):
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         return Sum([Derivative(t, x, new_names) for t in self.terms], self.weights)
 
-    def _substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
-        return Sum([t.substitute(x, y) for t in self.terms], self.weights)
+    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
+        terms = [_substitute_memo(t, x, y, memo) for t in self.terms]
+        if all(a is b for a, b in zip(terms, self.terms)):
+            return self
+        return Sum(terms, self.weights)
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
         terms = [t.simplify(args=args) for t in self.terms]
@@ -1620,6 +1749,12 @@ class Sum(Tensor):
         # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
         if not ws_tensors:
             return Zero(**self.shape)
+        # Deterministic term order: sort by the seed-stable (name-sensitive)
+        # structural fingerprint, so commutative construction order (and
+        # PYTHONHASHSEED) doesn't leak into the simplified result. Positive
+        # weights sort first purely for presentation (avoid a leading minus).
+        if (canon := _get_canon()) is not None:
+            ws_tensors.sort(key=lambda wt: (wt[0] < 0, canon.refined_sort_key(wt[1]), str(wt[0])))
         weights, tensors = zip(*ws_tensors)
         # If there is just one tensor with weight 1, we don't need LinearComb
         if weights == (1,):
@@ -1657,6 +1792,18 @@ class Sum(Tensor):
 ################################################################################
 
 
+def _substitute_memo(t: Tensor, x: "Variable", y: Tensor, memo: dict) -> Tensor:
+    """Memoized (by object identity) driver for Tensor.substitute.
+
+    The memo keys are ids of descendants of the substitution root, which stay
+    alive for the duration of the call, so ids cannot be recycled."""
+    res = memo.get(id(t))
+    if res is None:
+        res = t._substitute(x, y, memo)
+        memo[id(t)] = res
+    return res
+
+
 def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
     """Group tensors by their edge names."""
     groups = defaultdict(list)
@@ -1664,6 +1811,12 @@ def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
         for e in t.edges:
             groups[e].append(t)
     return groups
+
+
+def _record_simplify_provenance(args: dict[str, Any], before: Tensor, after: Tensor) -> None:
+    recorder = args.get("provenance")
+    if recorder is not None:
+        recorder.record(before, after)
 
 
 def _add_structural_graph(
@@ -1715,7 +1868,10 @@ def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: 
     """
     used_names = set(used_names)
     rename = {}
-    for e in edges:
+    # Sort so collision-resolution (the "_" suffixes) doesn't depend on the
+    # iteration order of the (frequently set-typed, hence PYTHONHASHSEED-
+    # dependent) `edges` argument.
+    for e in sorted(edges):
         candidate = e + suffix
         while candidate in used_names:
             candidate += "_"

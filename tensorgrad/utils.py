@@ -4,7 +4,13 @@ from typing import Any, TypeVar, Generic
 class _MatchEdgesKey:
     """Normally Tensors use isomorphism as their test for equality, but they don't include
     the edge names in the comparison. This class is used to compare tensors based on their
-    edge names. It is used in the Sum tensor to combine tensors with the same edge names."""
+    edge names. It is used in the Sum tensor to combine tensors with the same edge names.
+
+    Performance: `hash(value)` is the canon-backed structural hash (invariant
+    under any isomorphism, so in particular under the name-sensitive
+    match_edges equality used here), which prefilters dict collisions; the
+    remaining same-bucket comparisons hit the fingerprint/edge-color fast
+    paths inside Tensor.is_isomorphic, and nx only runs on ambiguous pairs."""
 
     def __init__(self, value: Any, **edge_names: str):
         self.value = value

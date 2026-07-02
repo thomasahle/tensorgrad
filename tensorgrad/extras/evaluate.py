@@ -14,9 +14,12 @@ from tensorgrad.functions import (
     _MatrixInverseFunction,
     _SimpleFunction,
     _ArgMaxFunction,
+    _GatherFunction,
+    _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
     _SoftmaxFunction,
+    _LogSoftmaxFunction,
     _ZeroFunction,
     Convolution,
     Reshape,
@@ -156,22 +159,34 @@ class Context:
         # extras["contractions"] = extras.get("contractions", 0) + len(prod.contractions)
         if not prod.factors:
             return torch.tensor(1.0)
+        # Order-0 Deltas are scalar factors equal to their size. They have no edges, so
+        # the einsum/copy-merging machinery below would silently drop them. Pull them out
+        # and multiply the result at the end.
+        scalar = 1
+        factors = []
+        for t in prod.factors:
+            if isinstance(t, Delta) and not t.edges:
+                scalar *= self.dims[t.size]
+            else:
+                factors.append(t)
+        if not factors:
+            return torch.tensor(float(scalar))
         # We use "operator" einsum interface, which doesn't require single letter names.
         # e.g.  einsum('i,i', b, b)  =  einsum(b, [0], b, [0])
         # and   einsum('ij,jk->ik', b, c)  =  einsum(b, [0, 1], c, [1, 2], [0, 2])
-        edge_numbers = {e: i for i, e in enumerate({e for t in prod.factors for e in t.edges})}
+        edge_numbers = {e: i for i, e in enumerate({e for t in factors for e in t.edges})}
 
         # Optimize by skipping Delta tensors when possible
         # We equate their edges to avoid materializing large identity matrices
         merge_copies = True
         # We can't remove copies, if that's all we have
-        if all(isinstance(t, Delta) for t in prod.factors):
+        if all(isinstance(t, Delta) for t in factors):
             merge_copies = False
 
         # Check if any output edge is only provided by Deltas
         # If so, we can't skip those Deltas
         if merge_copies:
-            non_delta_edges = {e for t in prod.factors if not isinstance(t, Delta) for e in t.edges}
+            non_delta_edges = {e for t in factors if not isinstance(t, Delta) for e in t.edges}
             for e in prod.edges:
                 if e not in non_delta_edges:
                     # Output edge only provided by Deltas - can't merge
@@ -182,7 +197,7 @@ class Context:
         # Equate all edges of each Delta to the same index
         next_delta_idx = max(edge_numbers.values()) + 1 if edge_numbers else 0
         if merge_copies:
-            for t in prod.factors:
+            for t in factors:
                 if isinstance(t, Delta):
                     # Use a fresh index for this Delta's edges
                     for e in t.edges:
@@ -207,7 +222,7 @@ class Context:
 
             # Build parts for einsum with deduplicated output
             parts = []
-            for t in prod.factors:
+            for t in factors:
                 if not isinstance(t, Delta):
                     torch_tensor = self.evaluate(t)
                     parts.append(torch_tensor.rename(None))
@@ -247,17 +262,22 @@ class Context:
                 expand_parts.append(final_output)
                 result = torch.einsum(*expand_parts)
 
+            if scalar != 1:
+                result = result * scalar
             return result.rename(*prod.edges)
         else:
             # No repeated output or not merging - use standard path
             parts = []
-            for t in prod.factors:
+            for t in factors:
                 if not merge_copies or not isinstance(t, Delta):
                     torch_tensor = self.evaluate(t)
                     parts.append(torch_tensor.rename(None))
                     parts.append([edge_numbers[e] for e in torch_tensor.names])
             parts.append(output_indices)
-            return torch.einsum(*parts).rename(*prod.edges)
+            result = torch.einsum(*parts)
+            if scalar != 1:
+                result = result * scalar
+            return result.rename(*prod.edges)
 
     @_evaluate.register
     def _(self, sum_: Sum):
@@ -392,6 +412,10 @@ def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
         return torch.relu(x)
     if func.name == "abs":
         return torch.abs(x)
+    if func.name == "tanh":
+        return torch.tanh(x)
+    if func.name == "erf":
+        return torch.erf(x)
     if func.name == "gt0":
         return torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names)
 
@@ -400,6 +424,27 @@ def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
 def _(func: _EqualFunction, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """Evaluate element-wise equality comparison."""
     return (x.rename(None) == y.rename(None)).float().rename(*x.names)
+
+
+@evaluate_function.register
+def _(func: _GatherFunction, table: torch.Tensor, idx: torch.Tensor) -> torch.Tensor:
+    """out[*idx_edges, *other_table_edges] = table[idx[...], ...] with idx
+    holding integral values stored as floats (like argmax output)."""
+    other = [n for n in table.names if n != func.dim]
+    t = table.align_to(func.dim, *other).rename(None)
+    flat = idx.rename(None).long().reshape(-1)
+    out = t.index_select(0, flat).reshape(tuple(idx.shape) + t.shape[1:])
+    return out.rename(*idx.names, *other)
+
+
+@evaluate_function.register
+def _(func: _OneHotFunction, idx: torch.Tensor, size_carrier: torch.Tensor) -> torch.Tensor:
+    """out[eq_edge, *idx_edges] = 1.0 where idx == eq_edge index. The second
+    input only carries the number of classes (its single edge's size)."""
+    num_classes = size_carrier.size(func.dim)
+    flat = idx.rename(None).long().reshape(1, -1)
+    onehot = (flat == torch.arange(num_classes).unsqueeze(1)).to(torch.float32)
+    return onehot.reshape((num_classes,) + tuple(idx.shape)).rename(func.eq_edge, *idx.names)
 
 
 @evaluate_function.register
@@ -412,6 +457,18 @@ def _(func: _SoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
     # We move the affected dimensions to the front, then flatten them.
     y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
     return y.softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
+
+
+@evaluate_function.register
+def _(func: _LogSoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
+    (dims,) = func.inputs
+    sizes = [x.size(d) for d in dims]
+    names = [d for d in x.names if d not in dims]
+    other_sizes = [x.size(n) for n in names]
+    # log_softmax doesn't support named dimensions, so we have to rename them to None.
+    # We move the affected dimensions to the front, then flatten them.
+    y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
+    return y.log_softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
 
 
 @evaluate_function.register

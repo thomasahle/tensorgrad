@@ -26,7 +26,7 @@ if __name__ == "__main__":
     
     test_path = sys.argv[1]
     
-    # Create a output filename based on the test path
+    # Create an output filename based on the test path
     profile_output = os.path.join(
         "profiling", 
         os.path.basename(test_path).replace('.py', '') + '.prof'

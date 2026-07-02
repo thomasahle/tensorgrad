@@ -2,6 +2,7 @@ from tensorgrad import Variable
 import tensorgrad.functions as F
 from tensorgrad.extras.to_pytorch import compile_to_callable as compile_to_pytorch
 from tensorgrad.extras.to_numpy import compile_to_callable as compile_to_numpy
+from tensorgrad.compiler import compile_to_callable as compile_new
 from tensorgrad.extras.evaluate import evaluate
 from tensorgrad.testutils import init_tensor
 
@@ -20,7 +21,7 @@ parser.add_argument(
     "--backend",
     type=str,
     default="pytorch",
-    choices=["pytorch", "pytorch-compile", "numpy", "eval"],
+    choices=["pytorch", "pytorch-compile", "numpy", "eval", "compiler", "compiler-compile"],
     help="Backend to use for compilation (default: pytorch)",
 )
 parser.add_argument(
@@ -57,6 +58,10 @@ elif args.backend == "pytorch-compile":
     compiler = partial( compile_to_pytorch, torch_compile=True, verbose=args.verbose)
 elif args.backend == "eval":
     compiler = partial(evaluate_callable, verbose=args.verbose)
+elif args.backend == "compiler":
+    compiler = partial(compile_new, verbose=args.verbose)
+elif args.backend == "compiler-compile":
+    compiler = partial(compile_new, torch_compile=True, verbose=args.verbose)
 
 
 print("Defining MLP architecture and loss symbolically...")

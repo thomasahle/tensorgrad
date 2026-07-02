@@ -12,7 +12,7 @@
 ## Tensorgrad
 A Tensor & Deep Learning framework - It's like PyTorch meets SymPy.
 
-Tensorgrad is an open-source python package for symbolic tensor manipulation.
+Tensorgrad is an open-source Python package for symbolic tensor manipulation.
 It performs any simplification described in the [Tensor Cookbook (draft)](https://github.com/thomasahle/tensorgrad/blob/main/paper/cookbook.pdf) automatically, and can even be used as a machine learning framework.
 
 ## Quickstart
@@ -145,8 +145,8 @@ This is different from the normal "matrix shaped" covariance you get if you take
 
 ### Evaluation
 
-Tensorgrad can evaluate your diagrams using [Pytorch Named Tensors](https://pytorch.org/docs/stable/named_tensor.html).
-It uses graph isomorphism detection to eliminated common subexpressions.
+Tensorgrad can evaluate your diagrams using [PyTorch Named Tensors](https://pytorch.org/docs/stable/named_tensor.html).
+It uses graph isomorphism detection to eliminate common subexpressions.
 
 ### Code Generation
 
@@ -222,4 +222,3 @@ Finally we can speed up each matrix multiplication by using FastJL, which is its
 
 - [Tool for creating tensor diagrams from einsum](https://thomasahle.com/blog/einsum_to_dot.html?q=abc,cde,efg,ghi,ija-%3Ebdfhj&layout=circo) by Thomas Ahle
 - [Ideograph: A Language for Expressing and Manipulating Structured Data](https://arxiv.org/pdf/2303.15784.pdf) by Stephen Mell, Osbert Bastani, Steve Zdancewic
-

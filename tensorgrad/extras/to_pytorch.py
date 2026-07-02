@@ -195,7 +195,7 @@ class CodegenContext:
             return str(symbol)
         if isinstance(symbol, sympy.Symbol):
             if symbol not in self.seen_symbols:
-                # Make sure the symbol name doesn't clash with e.g. an loop iterator (i)
+                # Make sure the symbol name doesn't clash with e.g. a loop iterator (i)
                 name = self.fresh_name(symbol.name)
                 self.seen_symbols[symbol] = name
             return self.seen_symbols[symbol]
