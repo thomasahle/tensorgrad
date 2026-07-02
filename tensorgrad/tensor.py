@@ -206,12 +206,35 @@ class Tensor(metaclass=TensorMeta):
         args.setdefault("expand_functions", True)
         args.setdefault("expand", False)
 
+        # Cross-subtree memoization. Without it, a node reachable by K distinct
+        # DAG paths is re-simplified K times; residual nets (x = x + f(x))
+        # double the path count per layer, so deep-model simplify is
+        # exponential in depth even though the tree stays small. Opt-in
+        # (args["memoize"]) because with the combine passes enabled the
+        # inflated intermediate tree's working set can exceed memory at depth;
+        # safe with the combine passes off. Gated on grad_steps == inf so the
+        # in-place decrement in Derivative._simplify (inf - 1 == inf) can never
+        # make a cached key stale. The key includes tuple(self.edges) so an
+        # isomorphic subtree with different free-edge names never returns a
+        # result with the wrong edges (the memo-hit path bypasses the shape
+        # assert below).
+        memo = key = None
+        if args.get("memoize") and args["grad_steps"] == float("inf"):
+            canon = _get_canon()
+            if canon is not None:
+                memo = args.setdefault("_memo", {})
+                key = (canon.refined_sort_key(self), tuple(self.edges), args["expand"])
+                if (hit := memo.get(key)) is not None:
+                    return hit
+
         result = self._simplify(args)
 
         # Check that the shape is preserved
         assert result.shape == self.shape
         _record_simplify_provenance(args, self, result)
 
+        if memo is not None:
+            memo[key] = result
         return result
 
     def _simplify(self, args: dict[str, Any]) -> "Tensor":
@@ -228,6 +251,30 @@ class Tensor(metaclass=TensorMeta):
             while (new := expr.simplify({"expand": True})) != expr:
                 expr = new
         return expr
+
+    def simplify_for_compile(self) -> "Tensor":
+        """Eliminate Derivative nodes with minimal other rewriting, so the
+        compiler's IR passes (factoring, stabilization) do the algebra instead.
+
+        `full_simplify` runs the symbolic combine passes to a fixpoint, which
+        for deep models (transformers) inflates the tree by orders of magnitude
+        and is exponential in depth. This lighter path keeps the symbolic tree
+        small (Function-signature derivatives still resolve to their fused
+        forms, since that is unconditional), then lets factor.py/stabilize.py
+        recover identical compact code at compile time — validated to match the
+        full path's output while turning a >300s deep-model simplify into
+        sub-second. Memoized by structural key across shared subtrees.
+        """
+        return self.simplify(
+            {
+                "grad_steps": float("inf"),
+                "expand_functions": False,
+                "combine_products": False,
+                "sum_combine_terms": False,
+                "factor_components": False,
+                "memoize": True,
+            }
+        )
 
     @final
     def substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
