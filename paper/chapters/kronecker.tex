@@ -8,7 +8,7 @@ In the language of numpy, we may write
 \verb|np.ones((2,3,4)).reshape(2, 12)| to flatten a shape (2,3,4) tensor into a shape (2,12) matrix.
 Similarly, in mathematical notation, $\mathrm{vec}(X)$ is commonly used to denote the flattening of a matrix into a vector.
 
-Typically the main reason to do this is as a cludge for dealing with bad general notation for tensors.
+Typically the main reason to do this is as a kludge for dealing with bad general notation for tensors.
 Hence, with tensor diagrams, we can avoid this operation entirely.
 However, it is still interesting to see how tensor diagrams can make a lot of properties of flattening much more transparent.
 
@@ -18,8 +18,8 @@ We'll use a triangle to denote this:
    \triangleright_{i,j,k}=
 \begin{tikzpicture}[baseline=-.25em]
 \node[triangle] (c0) at (1.5,0) {};
-\draw (c0) -- ++(-.5, .5) node[midway, above right, font=\tiny] {i};
-\draw (c0) -- ++(-.5, -.5) node[midway, above left, font=\tiny] {j};
+\draw (c0) -- ++(-.5, .5) node[midway, above right, font=\tiny] {j};
+\draw (c0) -- ++(-.5, -.5) node[midway, above left, font=\tiny] {i};
 \draw[double] (c0) -- ++(.5, 0) node[midway, above, font=\tiny] {k};
 \end{tikzpicture}
 = [i + j n = k]
@@ -29,6 +29,19 @@ Here $n$ is the dimension of the $i$ edge.
 Note we use a double line to denote the output of the flattening operation.
 This is simply a syntactic choice to remind ourselves that the output is a bundle of two edges.
 
+Which edge goes on top?
+Throughout the book we use the convention that \emph{the top edge of a bundle is its most significant part}:
+reading a bundle top to bottom matches reading the classical expression left to right,
+the way we write numbers with the most significant digit first.
+In the definition above, the bottom edge $i$ is the fast index and the top edge $j$ selects the block.
+For the Kronecker products below, this means $A \otimes B$ is drawn with $A$ on top.
+And since $\mathrm{vec}(X)$ stacks the \emph{columns} of $X$,
+the column index is the most significant part of its bundle:
+when $X$ is drawn to the left of a flattening triangle,
+its column edge takes the top port and its row edge wraps under into the bottom port.
+This convention also agrees with the wire order of the FFT diagrams in the Special Tensors chapter,
+where the top wire carries the most significant bit.
+
 Using this notation we can write
 \[
    \mathrm{vec}(X)_k
@@ -37,12 +50,13 @@ Using this notation we can write
    \begin{tikzpicture}[baseline=-.25em]
       \node (X) at (.5,0) {X};
       \node[triangle] (c0) at (1.5,0) {};
-      \draw (X) edge[bend left] (c0);
-      \draw (X) edge[bend right] (c0);
+      \draw (X) edge[bend left] node[midway, above, font=\tiny] {j} (c0);
+      \draw (X) edge[bend right] node[midway, below, font=\tiny] {i} (c0);
       \draw[double] (c0) -- ++(.5, 0) node[midway, above, font=\tiny] {k};
    \end{tikzpicture}
-   .
+   ,
 \]
+where the row index $i$ of $X$ takes the fast, bottom port and the column index $j$ the top.
 %The basic property of $\triangleright$ is that opposing triangles cancel:
 Some basic properties of $\triangleright$:
 \begin{align}
@@ -153,7 +167,7 @@ Some basic properties of $\triangleright$:
 \end{align}
 
 \section{The Kronecker Product}
-The Kronecker product of an $m\times n$ matrix $A$ and an $r \times q$ matrix $B$, is an $mr \times nq$ matrix, $A \otimes B$ defined as
+The Kronecker product of an $m\times n$ matrix $A$ and a $p \times q$ matrix $B$, is an $mp \times nq$ matrix, $A \otimes B$ defined as
 \[
    \renewcommand*{\arraystretch}{1.3}
    A \otimes B = \begin{bmatrix}
@@ -165,7 +179,7 @@ The Kronecker product of an $m\times n$ matrix $A$ and an $r \times q$ matrix $B
    .
 \]
 Using index notation we can also write this as
-$(A\otimes B)_{p(r-1)+v, q(s-1)+w} = A_{rs} B_{vw}$, but it's pretty hard to read.
+$(A\otimes B)_{p(i-1)+k,\, q(j-1)+l} = A_{ij} B_{kl}$, but it's pretty hard to read.
 
 In tensor notation the Kronecker Product is simply the outer product of two matrices, flattened ``on both sides'':
 $A\otimes B=$
@@ -572,15 +586,15 @@ The Matrix Cookbook gives the following properties of the vec-operator:
 
 \begin{walign}
    \tag{520}
-   \mathrm{vec}(A^T X B)
+   \mathrm{vec}(A^T X B)^T
    &=
    \mathrm{vec}(X)^T
-   (A \otimes B)
+   (B \otimes A)
                      &
    \begin{tikzpicture}[baseline=-.25em]
       \node (X) at (-.2,0) {X};
-      \node (A) at (.5,.5) {A};
-      \node (B) at (.5,-.5) {B};
+      \node (A) at (.5,-.5) {A};
+      \node (B) at (.5,.5) {B};
       \node[triangle] (c1) at (1,0) {};
       \draw (X) -- (A) -- (c1);
       \draw (X) -- (B) -- (c1);
@@ -591,8 +605,8 @@ The Matrix Cookbook gives the following properties of the vec-operator:
       \node (X) at (.75,0) {X};
       \node[triangle] (c0) at (1.5,0) {};
       \node[triangle, rotate=180] (c1) at (2,0) {};
-      \node (A) at (2.5,.5) {A};
-      \node (B) at (2.5,-.5) {B};
+      \node (A) at (2.5,-.5) {A};
+      \node (B) at (2.5,.5) {B};
       \node[triangle] (c2) at (3,0) {};
       \node (c3) at (3.4,0) {};
       \draw (X) edge[bend left] (c0);
@@ -602,7 +616,7 @@ The Matrix Cookbook gives the following properties of the vec-operator:
       \draw (c1) -- (B) -- (c2);
       \draw[double] (c2) -- (c3);
       % \draw [decorate,decoration={brace,amplitude=5pt,mirror,raise=4ex}]
-      % (.5,-.75) -- (3.5,-.75) node[midway,yshift=-3em]{$\mathrm{vec}(X)^T(A \otimes B)$};
+      % (.5,-.75) -- (3.5,-.75) node[midway,yshift=-3em]{$\mathrm{vec}(X)^T(B \otimes A)$};
    \end{tikzpicture}
    \\
    \tag{521}
@@ -675,7 +689,7 @@ The Matrix Cookbook gives the following properties of the vec-operator:
    \end{tikzpicture}
    \\
    \tag{524}
-   a^T X B X^T c &= \mathrm{vec}(X)^T (B\otimes ca^T) \mathrm{vec}(X)
+   a^T X B X^T c &= \mathrm{vec}(X)^T (B\otimes ac^T) \mathrm{vec}(X)
                  &
                  \vecmatvec{.5em}{a}{X,B,X}{c}
                  &=
@@ -683,7 +697,7 @@ The Matrix Cookbook gives the following properties of the vec-operator:
       \node (X1) at (2,0) {X};
       \node (B) at (3,.25) {B};
       \node (a) at (2.75,-.25) {$a$};
-      \node (b) at (3.25,-.25) {$b$};
+      \node (b) at (3.25,-.25) {$c$};
       \node (X2) at (4,0) {X};
       \draw (a) -- (X1) -- (B) -- (X2) -- (b);
    \end{tikzpicture}
@@ -694,7 +708,7 @@ The Matrix Cookbook gives the following properties of the vec-operator:
       \node[triangle, rotate=180] (c1) at (2,0) {};
       \node (A) at (2.75,.25) {B};
       \node (B1) at (2.5,-.25) {$a$};
-      \node (B2) at (3,-.25) {$b$};
+      \node (B2) at (3,-.25) {$c$};
       \node[triangle] (c2) at (3.5,0) {};
       \node[triangle, rotate=180] (c3) at (4,0) {};
       \node (X1) at (4.75,0) {X};
@@ -797,7 +811,8 @@ For example, the following complicated graph:
    \def\svgwidth{.7\linewidth}
    \import{figures/}{kron.pdf_tex}
 \end{center}
-Can be written as a simple vector-matrix-matrix-vector product, $a M_1 M_2 b$,
+% TODO: re-verify the M1/M2/b factor order against figures/kron.pdf_tex under the top=most-significant convention
+Can be written as a simple vector-matrix-matrix-vector product, $a^T M_1 M_2 b$,
 where $M_1 = \mathrm{vec}(B) \otimes C'$,
 $M_2 = E' \otimes D' \otimes I$ and $b = f\otimes g\otimes \mathrm{vec}(H)$,
 where $C'$, $D'$ and $E'$ are rank 3 tensors flattened on one side, and $\mathrm{vec}(B)$ is interpreted as a matrix with a single column.
@@ -838,18 +853,18 @@ which follows from the tensor diagram massaging:
 =
 \begin{tikzpicture}[baseline=-.25em]
    \node (X) at (0,0) {X};
-   \node (B) at (.65,.25) {A};
+   \node (B) at (.65,-.25) {A};
    \node[triangle] (f) at (1.1,0) {};
-   \draw (X) edge[bend right] (f);
+   \draw (X) edge[bend left] (f);
    \draw (X) -- (B) -- (f);
    \draw[double] (f) -- ++(.4,0);
 \end{tikzpicture}
 +
 \begin{tikzpicture}[baseline=-.25em]
    \node (X) at (0,0) {X};
-   \node (A) at (.65,-.25) {B};
+   \node (A) at (.65,.25) {B};
    \node[triangle] (f) at (1.1,0) {};
-   \draw (X) edge[bend left] (f);
+   \draw (X) edge[bend right] (f);
    \draw (X) -- (A) -- (f);
    \draw[double] (f) -- ++(.4,0);
 \end{tikzpicture}
@@ -866,14 +881,14 @@ which follows from the tensor diagram massaging:
       \node[triangle, rotate=180] (c2) at (3,-.25) {};
       \draw[double] (c1) -- ++(-.4,0);
       \draw[double] (c2) -- ++(-.4,0);
-      \node (A) at (3.4,.4) {A};
-      \node (B) at (3.4,-.4) {B};
+      \node (A) at (3.4,.1) {A};
+      \node (B) at (3.4,-.1) {B};
       \node[triangle] (c3) at (3.8,.25) {};
       \node[triangle] (c4) at (3.8,-.25) {};
       \draw (c1) -- (A) -- (c3);
       \draw (c2) -- (B) -- (c4);
-      \draw (c1) edge[bend right] (c3);
-      \draw (c2) edge[bend left] (c4);
+      \draw (c1) edge[bend left] (c3);
+      \draw (c2) edge[bend right] (c4);
       \draw[double] (c3) -- ++(.4,0);
       \draw[double] (c4) -- ++(.4,0);
       \node (br) at (4.4,0) {$\bigg)$};
@@ -1029,7 +1044,7 @@ We use the symbols $\ast$ and $\bullet$ for the column and row-wise Kronecker pr
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
       A_{11} B_{11} & A_{12} B_{12} \\
-      A_{11} B_{21} & A_{22} B_{22} \\
+      A_{11} B_{21} & A_{12} B_{22} \\
       A_{21} B_{11} & A_{22} B_{12} \\
       A_{21} B_{21} & A_{22} B_{22}
    \end{bmatrix}
@@ -1070,7 +1085,7 @@ In terms of tensor diagrams, these products correspond simply to flattening the 
    \end{tikzpicture}
 \end{walign}
 Clearly the two are identical up to transpose.
-Indeed, $(A \ast B)^T = B^T \bullet A^T$ and $(A \bullet B)^T = B^T \ast A^T$.
+Indeed, $(A \ast B)^T = A^T \bullet B^T$ and $(A \bullet B)^T = A^T \ast B^T$.
 
 There are multiple ``mixed product'' identities:
 \begin{walign}
@@ -1107,7 +1122,7 @@ There are multiple ``mixed product'' identities:
       \draw[double] (c1) -- ++(.4,0);
    \end{tikzpicture}
    \\
-   (A x) \circ (B y) &= (A \bullet C) (x \otimes y)
+   (A x) \circ (B y) &= (A \bullet B) (x \otimes y)
                      &
    \begin{tikzpicture}[baseline=-.25em]
       \node (c0) at (0,0) {$\sbullet$};
@@ -1221,12 +1236,12 @@ There are multiple ``mixed product'' identities:
 \subsection{Concatenation}
 
 If two tensors have matching shapes, we can concatenate them along an axis.
-An easy way to do this is taking the outer product with a vector that selects the location in the new axis, and them add them together.
+An easy way to do this is taking the outer product with a vector that selects the location in the new axis, and then add them together.
 Define $e^{(i)}$ to be the vector of length $2$ with a 1 in the $i$-th position and 0 elsewhere.
 I.e. $e^{(0)} = [1, 0]$ and $e^{(1)} = [0, 1]$.
 Then we can define
 \[
-\mathrm{cat}_i(X, Y)
+\mathrm{stack}_i(X, Y)
 =
 \begin{tikzpicture}[baseline=0em, inner sep = 1pt]
     \node (e) at (0, .4) {$e^{(0)}$};
@@ -1251,14 +1266,14 @@ Then we can define
 \]
 
 For matrices and vectors, we often write concatenation using bars, like:
-$\mathrm{stack}_i(A, B) = A\mid B$ and $\mathrm{stack}_j(A, B) = A \mid B$.
+$\mathrm{stack}_i(A, B) = A\mid B$ and $\mathrm{stack}_j(A, B) = \frac{A}{B}$.
 From this we get the identity
 \begin{align*}
 \left(A \mid C\right) \left(\frac{B}{D}\right)
 &=
 \mathrm{stack}_i(A, C)
 \,
-\mathrm{stack}_i(B, D)
+\mathrm{stack}_j(B, D)
 \\&=
 \left(
 \begin{tikzpicture}[baseline=0em, inner sep = 1pt]
@@ -1349,8 +1364,8 @@ From this we get the identity
 \\&=
 AB + CD,
 \end{align*}
-since $e^{(0)}-e^{(0)}=e^{(1)}-e^{(1)}=1$,
-and $e^{(0)}-e^{(1)}=0$.
+since ${e^{(0)}}^T e^{(0)}={e^{(1)}}^T e^{(1)}=1$,
+and ${e^{(0)}}^T e^{(1)}=0$.
 
 The stacking operation is closely related to the direct sum of matrices. The direct sum $A \oplus B$ of two matrices creates a block diagonal matrix:
 \[
@@ -1395,7 +1410,7 @@ A \oplus B =
 % This is the tensor product (outer product) of three tensors: $e^{(0)} \otimes A \otimes e^{(0)} + e^{(1)} \otimes B \otimes e^{(1)}$.
 
 The construction makes it clear that the direct sum places $A$ in the upper-left block (when $i=j=0$) and $B$ in the lower-right block (when $i=j=1$), with zeros elsewhere.
-This connection is particularly important in quantum computing, where this operation is known as "controlling" - applying different operations based on the state of a control qubit.
+This connection is particularly important in quantum computing, where this operation is known as ``controlling'' - applying different operations based on the state of a control qubit.
 
 More generally, for multiple matrices:
 \[
@@ -1422,16 +1437,16 @@ The direct sum satisfies several properties with respect to the Kronecker produc
 \begin{walign}
    \tag{yyy}
    \begin{array}{c}
-      A \otimes (B \oplus C) 
+      (B \oplus C) \otimes A
       \\
-      = (A \otimes B) \oplus (A \otimes C)
+      = (B \otimes A) \oplus (C \otimes A)
    \end{array}
    &&&
    \begin{array}{c}
    \begin{tikzpicture}[baseline=0em, inner sep=1pt]
       \node[triangle, rotate=180] (F0) at (-3.3,0) {};
-      \node (A) at (.6,.3) {$A$};
-      \node (BC) at (0,-.3) {$\big(
+      \node (A) at (.6,-.3) {$A$};
+      \node (BC) at (0,.3) {$\big(
     % Inner part 1
    \begin{tikzpicture}[baseline=.25em, inner sep=1pt]
       % First term: e^0 ⊗ AC ⊗ e^0
@@ -1468,16 +1483,16 @@ The direct sum satisfies several properties with respect to the Kronecker produc
       \draw[triple] (F0) -- ++(-.4,0) node[midway, above, font=\tiny] {$i$};
       \node[triangle] (F1) at (3.3,0) {};
       \draw (F0) -- (A) -- (F1);
-      \draw[double] (F0) -- ++(.3,-.25);
-      \draw[double] (F1) -- ++(-.3,-.25);
+      \draw[double] (F0) -- ++(.3,.25);
+      \draw[double] (F1) -- ++(-.3,.25);
       \draw[triple] (F1) -- ++(.4,0) node[midway, above, font=\tiny] {$j$};
    \end{tikzpicture}
     \\
    =
    \begin{tikzpicture}[baseline=.25em, inner sep=1pt]
       \node (e0l) at (-.35,.4) {$e^{(0)}$};
-      \node (A) at (0,0) {$A$};
-      \node (B) at (0,-.4) {$B$};
+      \node (A) at (0,-.4) {$A$};
+      \node (B) at (0,0) {$B$};
       \node (e0r) at (.35,.4) {$e^{(0)}$};
       \node[triangle, rotate=180] (F1) at (-1.3,0) {};
       \node[triangle] (F2) at (1.3,0) {};
@@ -1495,8 +1510,8 @@ The direct sum satisfies several properties with respect to the Kronecker produc
       +
    \begin{tikzpicture}[baseline=.25em, inner sep=1pt]
       \node (e0l) at (-.35,.4) {$e^{(1)}$};
-      \node (A) at (0,0) {$A$};
-      \node (B) at (0,-.4) {$C$};
+      \node (A) at (0,-.4) {$A$};
+      \node (B) at (0,0) {$C$};
       \node (e0r) at (.35,.4) {$e^{(1)}$};
       \node[triangle, rotate=180] (F1) at (-1.3,0) {};
       \node[triangle] (F2) at (1.3,0) {};
@@ -1664,14 +1679,6 @@ that is, you just flatten on one side.
 \end{exercise}
 
 \begin{exercise}
-   Find the derivative of
-   \[
-      \mathrm{Tr}(G(A\otimes X))
-   \]
-   with respect to $X$.
-\end{exercise}
-
-\begin{exercise}
    % TODO: Find tag name
    \[\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X} \otimes \mathbf{X})=\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}(\mathbf{X}) \operatorname{Tr}(\mathbf{X})=2 \operatorname{Tr}(\mathbf{X}) \mathbf{I}\]
 \end{exercise}
@@ -1681,10 +1688,10 @@ that is, you just flatten on one side.
    \[
       \mathrm{Tr}(G (A \otimes X))
    \]
-   with respect to $X$, where $G$ is an $\mathbb R^{n^2} \times \mathbb R^{n^2}$ matrix,
+   with respect to $X$, where $G \in \mathbb{R}^{n^2 \times n^2}$,
    and $A$ and $X$ are $\mathbb R^{n \times n}$ matrices.
 
-   Write the result in terms of $\mathrm{vec}(A)$ a reshaped version of $G$.
+   Write the result in terms of $\mathrm{vec}(A)$ and a reshaped version of $G$.
 \end{exercise}
 
 \begin{exercise}

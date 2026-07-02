@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="60mm" height="25mm"
+     viewBox="0 0 60 25"
+     version="1.1">
+  <g inkscape:groupmode="layer" inkscape:label="Layer 1" id="layer1">
+    <!-- M_3 tensor -->
+    <text x="10" y="14" font-family="CMU Serif" font-size="5.2px">$M_3$</text>
+    <!-- Three edges at 30°, 150°, 270° starting just outside the label -->
+    <path d="M 16.5 11.5 L 22.0 8.5" stroke="#000" stroke-width="0.35" fill="none"/>
+    <path d="M 9.5 11.5 L 4.0 8.5" stroke="#000" stroke-width="0.35" fill="none"/>
+    <path d="M 13.0 16.5 L 13.0 22.0" stroke="#000" stroke-width="0.35" fill="none"/>
+
+    <!-- M_4 tensor -->
+    <text x="42" y="14" font-family="CMU Serif" font-size="5.2px">$M_4$</text>
+    <path d="M 48.0 11.0 L 52.5 6.5" stroke="#000" stroke-width="0.35" fill="none"/>
+    <path d="M 41.5 11.0 L 37.0 6.5" stroke="#000" stroke-width="0.35" fill="none"/>
+    <path d="M 48.0 16.5 L 52.5 21.0" stroke="#000" stroke-width="0.35" fill="none"/>
+    <path d="M 41.5 16.5 L 37.0 21.0" stroke="#000" stroke-width="0.35" fill="none"/>
+  </g>
+</svg>

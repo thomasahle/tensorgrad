@@ -36,8 +36,8 @@ If we want something else, like $f(Mx)$, we can use brackets:
    };
    \draw[->] (group) -- (f);
 }.
-It may be helpful with some more examples:
-%In the examples below, $x\in \R^n$:
+It may be helpful with some more examples.
+In the examples below, $x\in \R^n$:
 \vspace{-1.5em}
 \begin{center}
 \begingroup
@@ -72,8 +72,8 @@ It may be helpful with some more examples:
    & $v^T u(x) \in \mathbb R$
    & \tikz[baseline=(x.base)]{
       \node (x) at (0,0) {$x$};
-      \node (v) at (-.75,0) {$v$};
-      \node (u) at (-1.5,0) {$u$};
+      \node (v) at (-.75,0) {$u$};
+      \node (u) at (-1.5,0) {$v$};
       \draw[->] (x) -- (v) node[midway, above, font=\tiny] {$n$};
       \draw (v) -- (u) node[midway, above, font=\tiny] {$m$};
    }
@@ -106,8 +106,8 @@ It may be helpful with some more examples:
    & \begin{tikzpicture}[baseline=-.25em]
       \node (A) at (0,0) {$A$};
       \node (X) at (1,0) {$X$};
-      \draw[->] (X) edge[bend right] node[midway, above, font=\tiny] {n} (A);
-      \draw[->] (X) edge[bend left] node[midway, above, font=\tiny] {m} (A);
+      \draw (X) edge[->, bend right] node[midway, above, font=\tiny] {n} (A);
+      \draw (X) edge[->, bend left] node[midway, above, font=\tiny] {m} (A);
    \end{tikzpicture}
    & (Matrix input function)
    \\
@@ -138,8 +138,8 @@ To make it more concrete, let's consider some well known functions:
 (1) The determinant function, $\det : \mathbb R^{n\times n} \to \mathbb R$ is a scalar function, and we can apply it to a batch of matrices by \tikz[baseline=(det.base), inner sep=2pt, every node/.append style={anchor=base}]{
       \node (det) {$\det$};
       \node[right=1.5em of det] (X) {$X$};
-      \draw[->] (X) edge[bend right] node[midway, above, font=\tiny] {n} (det);
-      \draw[->] (X) edge[bend left] node[midway, above, font=\tiny] {m} (det);
+      \draw (X) edge[->, bend right] node[midway, above, font=\tiny] {n} (det);
+      \draw (X) edge[->, bend left] node[midway, above, font=\tiny] {n} (det);
       \draw (X) -- ++(.5,0) node[right, font=\tiny] {$b$};
    } which results in a single vector $\in\R^b$.
 %
@@ -154,7 +154,7 @@ To make it more concrete, let's consider some well known functions:
 % 
    (3)
   If the element-wise power function, $\mathrm{pow}_n : \mathbb R \to \mathbb R$
-      is be applied to two vectors, they simplify under the Hadamard product:
+      is applied twice to the same vector, the factors simplify under the Hadamard product:
       \[
          \begin{tikzpicture}[baseline=(s.base), inner sep=2pt, every node/.append style={anchor=base}]
             \node (pown) {$\mathrm{pow}_n$};
@@ -213,16 +213,16 @@ $(\tikz[baseline=(ex1.base), every node/.append style={anchor=base}]{
    \node (x1) at (1,0) {$x$};
    \draw (ex1) edge[<-, densely dotted] (x1);
    \draw (x1) -- ++(.5,0);
-}) \in \R^n$ is the element-wise exponential function.
+}) \in \R^d$ is the element-wise exponential function.
 If we contract it with $\tikz[baseline=(s.base)] {
    \node[inner sep=1pt] (s) {$\sbullet$};
    \draw (s) -- ++(-.4,0);
 }$, we get the sum $s=\sum_i \exp(x_i)$.
 Finally, we apply $\mathrm{pow}_{-1}$ to $s$ and multiply it with the exponential function to get the softmax function.
 
-One situation where things may get a bit confusing if the output tensor is contracted with the broadcasting edges of an input tensor.
+One situation where things may get a bit confusing is when the output tensor is contracted with the broadcasting edges of an input tensor.
 But as long as we remember to contract the function edges first, things work out.
-For example, for a function $f : \R^n \to \R$ and a matrix $x \in \R^{m \times n}$:
+For example, for a function $f : \R^n \to \R^m$ and a matrix $x \in \R^{m \times n}$:
 \[
    \begin{tikzpicture}[baseline=(f.base), inner sep=2pt]
       \node (f) {$f$};
@@ -342,14 +342,14 @@ This clearly follows the classical mnemonic: ``the derivative of the outer funct
 The only refinement we need is that the ``outer function'' is connected to the ``inner function'' using the new edge created by taking the derivative.
 
 We could further simplify \tikz[baseline=(f.base), inner sep=2pt]{\node[dn](f){$f$}; \draw[d0](f)--++(.6,0);} to \tikz[baseline=(f.base), inner sep=2pt]{\node(f){$f'$}; \draw(f)--++(.5,0);}, where $f'$ is the derivative of $f$.
-For example, if $f$ was $\cos-$, then $f'$ would be $\sin-$.
+For example, if $f$ was $\sin-$, then $f'$ would be $\cos-$.
 But we can also just keep the circled $f$ as an easy to recognize symbol for the derivative.
 
 \subsection{The Hessian Chain Rule}
 Things get even more interesting when we consider the second derivative.
 Using standard notation, the Hessian of $f\circ v$ is
 \[
-H_{f\circ v}(x) = Dv(x)^T \cdot D^2f(v(x)) \cdot Dv(x) + \sum_{k=1}^d \frac{\partial f}{\partial u_k}(v(x)) \frac{\partial^2 v_k}{\partial x \partial x^T}(x).
+H_{f\circ v}(x) = Dv(x)^T \cdot D^2f(v(x)) \cdot Dv(x) + \sum_{k=1}^m \frac{\partial f}{\partial v_k}(v(x)) \frac{\partial^2 v_k}{\partial x \partial x^T}(x).
 \]
 This ``Hessian Chain Rule'' is much easier to derive using tensor diagrams:
 \begin{align*}
@@ -568,11 +568,17 @@ Two examples where we can expand \tikz[baseline=(f.base), inner sep=2pt]{\node[d
    \includegraphics[width=\textwidth]{figures/other_functions.pdf}
 \]
 Here $\mathrm{inv}(X)$ is the matrix inverse function, taking a matrix $X$ to its inverse $X^{-1}$.
-In the case of the determinant, one may continue taking derivatives to find the
-simple pattern
+In the case of the determinant, the first derivative is the classical
 \[
-   \frac{\partial^k \det(X)}{\partial X^k} = \det(X) (X^{-1})^{\otimes k}.
+   \frac{\partial \det(X)}{\partial X} = \det(X)\,(X^{-1})^T.
 \]
+One may continue taking derivatives, but the pattern is not simply $\det(X)(X^{-1})^{\otimes k}$: each derivative introduces signs.
+For $k=2$,
+\[
+   \frac{\partial^2 \det(X)}{\partial X_{ij}\,\partial X_{kl}}
+   = \det(X)\left(X^{-1}_{ji} X^{-1}_{lk} - X^{-1}_{jk} X^{-1}_{li}\right),
+\]
+and in general the $k$-th derivative is $\det(X)$ times the signed sum, over all permutations, of the possible wirings of $k$ copies of $X^{-1}$.
 
 
 \subsection{Pseudo-linear forms}
@@ -637,9 +643,9 @@ We may appreciate the simplicity of this expression, when we consider the follow
 \begin{align*}
    \mathrm{d}[A(x) x]
    & =\mathrm{d}[A(x)] x+A(x) \mathrm{d} x 
-   \\& =\operatorname{vec}{\mathrm{d}[A(x)] x}+A(x) \mathrm{d} x 
-   \\& =\operatorname{vec}{I \mathrm{d}[A(x)] x}+A(x) \mathrm{d} x 
-   \\& =(x^T \otimes I) \operatorname{vec}{\mathrm{d}[A(x)]}+A(x) \mathrm{d} x 
+   \\& =\operatorname{vec}(\mathrm{d}[A(x)]\, x)+A(x) \mathrm{d} x
+   \\& =\operatorname{vec}(I\, \mathrm{d}[A(x)]\, x)+A(x) \mathrm{d} x
+   \\& =(x^T \otimes I) \operatorname{vec}(\mathrm{d}[A(x)])+A(x) \mathrm{d} x
    \\& =(x^T \otimes I) \mathrm{D} \operatorname{vec}[A(x)] \mathrm{d} x+A(x) \mathrm{d} x 
    \\& =[(x^T \otimes I) \mathrm{D} \operatorname{vec}[A(x)]+A(x)] \mathrm{d} x
 \end{align*}
@@ -655,15 +661,15 @@ Which finally implies:
 The Matrix Cookbook has the formula:
 \begin{align}
    \tag{128}
-   \frac{\partial \Tr(\sin(x))}{\partial x}
-   &= \cos(x)^T
+   \frac{\partial \Tr(\sin(X))}{\partial X}
+   &= \cos(X)^T
 \end{align}
 If we attempt to derive this using tensor diagrams, we get the following different result,
 \[
    \includegraphics[width=.5\textwidth]{figures/cos.pdf}
 \]
-which is equivalent to $\cos(x) \circ I$.
-That is, $\cos(x)$ but zero everywhere except the diagonal.
+which is equivalent to $\cos(X) \circ I$.
+That is, $\cos(X)$ but zero everywhere except the diagonal.
 
 The reason is that the matrix cookbook actually uses a slightly different definition of ``function applied to matrix''.
 If $F$ can be written as a power series, then one way to define $F(X)$ is the matrix power series:
@@ -676,7 +682,7 @@ matching the Matrix Cookbook's formula.
 
 
 \subsection{Taylor}
-For an n-times differentiable function $v: \R^d\to\R^d$ we can write the Taylor expansion:
+For a sufficiently differentiable function $v: \R^d\to\R^m$ we can write the Taylor expansion:
 \[
    \begin{tikzpicture}[baseline=-1em, inner sep=1pt]
       \node (n0) {$v$};
@@ -746,10 +752,10 @@ Writing this using classical notation is quite messy:
     + \left[\frac{\partial}{\partial x} v(x)\right]\eps
     +
     \frac{1}{2}
-    (I \otimes \eps)
+    (\eps^T \otimes I)
     \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial v(x)}{\partial x} \right]\right]\eps
     + \frac{1}{6}
-    (I \otimes \eps \otimes \eps)
+    (\eps^T \otimes \eps^T \otimes I)
     \left[\frac{\partial\mathrm{vec}}{\partial x}\left[\frac{\partial\mathrm{vec}}{\partial x} \left[\frac{\partial v(x)}{\partial x} \right]\right]\right]\eps
     + \dots
 \end{align*}
@@ -789,11 +795,11 @@ With index notation it's ok:
 
 \begin{exercise}
    % Source: Adapted from StackExchange VAE backpropagation questions (e.g., by greg).
-   % Answer: Using the chain rule and elementwise differentiation, one obtains 
-   % $\nabla_W KL = \frac{1}{2}\Big(e^{Wx+c} - 1\Big)x^T$, where the exponential is applied elementwise.
+   % Answer: Using the chain rule and elementwise differentiation, with $z = Wx+c$ one obtains
+   % $\nabla_W KL = \frac{1}{2}\Big(e^{z} + 2z - 1\Big)x^T$, where the exponential is applied elementwise.
    Represent the KL-divergence term for a Variational Autoencoder (VAE) as
    \[
-      KL(\mu,\sigma) = -\frac{1}{2}\Big(1 + \log\sigma^2 - \mu^2 - \sigma^2\Big),
+      KL(\mu,\sigma) = -\frac{1}{2}\sum_i\Big(1 + \log\sigma_i^2 - \mu_i^2 - \sigma_i^2\Big),
    \]
    with parameters given by 
    \[
@@ -927,10 +933,10 @@ With index notation it's ok:
 \begin{exercise}
    % Source: Matrix Cookbook and common SE answers.
    % Answer: The derivative is 
-   % $\nabla_X\,\operatorname{Tr}(X^T A X B) = A X B^T + A^T X B$.
+   % $\nabla_X\,\operatorname{Tr}(X^T A X B) = A X B + A^T X B^T$.
    Let $A\in\mathbb{R}^{m\times m}$ and $B\in\mathbb{R}^{n\times n}$ be constant matrices, and let $X\in\mathbb{R}^{m\times n}$ be a variable matrix. Prove that
    \[
-      \nabla_X\,\operatorname{Tr}(X^T A X B) = A X B^T + A^T X B.
+      \nabla_X\,\operatorname{Tr}(X^T A X B) = A X B + A^T X B^T.
    \]
    (Hint: Use the cyclic property of the trace to rearrange terms.)
 \end{exercise}
@@ -964,7 +970,7 @@ With index notation it's ok:
    % Source: Standard vectorization identities from the Matrix Cookbook.
    % Answer: The identity is 
    % $\operatorname{vec}(A\,X\,B^T) = (B \otimes A)\,\operatorname{vec}(X)$.
-   Let $A\in\mathbb{R}^{p\times m}$, $X\in\mathbb{R}^{m\times n}$, and $B\in\mathbb{R}^{n\times q}$. Prove the identity
+   Let $A\in\mathbb{R}^{p\times m}$, $X\in\mathbb{R}^{m\times n}$, and $B\in\mathbb{R}^{q\times n}$. Prove the identity
    \[
       \operatorname{vec}(A\,X\,B^T) = (B \otimes A)\,\operatorname{vec}(X).
    \]
@@ -1000,11 +1006,11 @@ With index notation it's ok:
 \end{exercise}
 \begin{exercise}
    % Source: Based on discussions of spectral function differentiability on SE.
-   % Answer: When the largest eigenvalue has multiplicity $k>1$, any matrix of the form 
-   % $G = \sum_{i=1}^k u_i v_i^T$, where $\{u_i\}$ is an orthonormal basis for the eigenspace, is a valid subgradient. The gradient is not unique in this case.
-   Let $Y\in\mathbb{R}^{n\times n}$ be a symmetric matrix, and define $\phi(Y)$ to be its largest eigenvalue. If this eigenvalue has multiplicity $k>1$, show that the derivative of $\phi(Y)$ is not unique. In particular, demonstrate that any matrix of the form
+   % Answer: For any unit eigenvector $u$ of the largest eigenvalue, $\phi(Y+\Delta) \ge u^T(Y+\Delta)u = \phi(Y) + \Tr(u u^T \Delta)$, so $G = u u^T$ is a subgradient.
+   % The full subdifferential is the convex hull $\{\sum_i c_i u_i u_i^T : c_i \ge 0, \sum_i c_i = 1\}$; since it contains more than one point when $k>1$, no unique gradient exists.
+   Let $Y\in\mathbb{R}^{n\times n}$ be a symmetric matrix, and define $\phi(Y)$ to be its largest eigenvalue. If this eigenvalue has multiplicity $k>1$, the function $\phi$ is not differentiable at $Y$. Show that for any unit eigenvector $u$ corresponding to the largest eigenvalue, the matrix
    \[
-      G = \sum_{i=1}^k u_i v_i^T,
+      G = u\,u^T
    \]
-   where $\{u_i\}_{i=1}^k$ is any orthonormal basis for the eigenspace corresponding to the largest eigenvalue, is a valid subgradient of $\phi(Y)$. Explain the challenges that arise in defining a unique gradient in this setting.
+   is a valid subgradient of $\phi$ at $Y$. More generally, show that any convex combination $\sum_{i=1}^k c_i\, u_i u_i^T$, where $\{u_i\}_{i=1}^k$ is an orthonormal basis for the eigenspace corresponding to the largest eigenvalue, $c_i \ge 0$ and $\sum_{i=1}^k c_i = 1$, is a valid subgradient. Explain the challenges that arise in defining a unique gradient in this setting.
 \end{exercise}

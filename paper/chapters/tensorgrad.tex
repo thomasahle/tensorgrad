@@ -1,17 +1,64 @@
 
 \chapter{Tensorgrad}
 
-Implementation details
+Throughout this book we have manipulated tensor diagrams by hand.
+The \emph{tensorgrad} library (\url{https://github.com/thomasahle/tensorgrad})
+does the same manipulations symbolically in Python: tensors are represented as
+graphs with \emph{named} edges, so there is no index bookkeeping, no
+transpose-juggling, and no einsum strings to keep consistent.
+On top of this representation the library implements symbolic differentiation,
+diagram simplification, and compilation to numeric PyTorch code.
+In this chapter we give a short overview of the design, and of the problems a
+tensor-diagram engine has to solve that a classical computer-algebra system does not.
 
-\section{Isomorphisms}
-There is actually a concept of ``tensor isomorphism'', but it's basically just the same as graph isomorphism.
+\section{Representation}
 
-We need to understand isomorphisms in many different parts of the code.
+Every expression is a subclass of \texttt{Tensor}.
+The leaves are \texttt{Variable} (a named tensor whose dimensions are sympy
+symbols) and the constants \texttt{Delta} (the copy/identity tensor, which also
+doubles as a hyper-edge of any order) and \texttt{Zero}.
+Composite expressions are built from \texttt{Sum}, \texttt{Product},
+\texttt{Function}, and \texttt{Derivative}; a lightweight \texttt{Rename}
+node relabels edges lazily.
+Nonlinear functions such as \texttt{exp}, \texttt{log}, and \texttt{softmax}
+are described by a \texttt{FunctionSignature}, which declares which input edges
+are consumed, which output edges are produced, and how to differentiate---so
+users can add new functions without touching the core.
 
-\subsection{In Products}
-- Cancelling / combining equal parts of a product
-This is actually extra hard, because you have to collect a subset of nodes that constitute isomorphic subgraphs.
-Right now we hack this a bit by just considering separate components of the product.
+The key decision is that edges are identified by \emph{name}, not by position.
+A matrix is a tensor with two edges, say $i$ and $j$, and contraction happens
+simply by forming a \texttt{Product} of tensors that share an edge name.
+There is no distinction between a matrix and its transpose beyond which names
+its edges carry, which matches how tensor diagrams themselves work.
+The price is that renaming becomes a first-class operation the engine must
+handle carefully---for instance when a derivative introduces new edges that
+would otherwise clash with existing names.
+
+\section{Canonicalization}
+
+The central algorithmic problem is deciding when two diagrams are \emph{the same}.
+Since a diagram is a labeled multigraph, this is exactly graph isomorphism:
+each expression can produce a NetworkX graph of itself
+(\texttt{structural\_graph}), free edges are turned into labeled nodes so they
+can participate in the matching, and two tensors are equal iff their graphs are
+isomorphic (\texttt{is\_isomorphic}).
+For speed, tensorgrad first compares Weisfeiler--Lehman hashes (and, when the
+compiler backend is available, a refinement-based canonical fingerprint that is
+computed compositionally and memoized), and only falls back to an exact
+isomorphism search when the hashes collide.
+
+Names make this subtler than plain graph isomorphism.
+Inside a \texttt{Sum}, the terms $A$ and $A^T$ are isomorphic \emph{as graphs},
+but $A + A^T$ must not simplify to $2A$: summands may only be merged under an
+isomorphism that respects the sum's edge names.
+Conversely, if the user declares
+$A$ symmetric via \texttt{Variable.with\_symmetries}, the symmetry becomes part
+of the graph, the renamed copy really is the same tensor, and $A + A^T = 2A$
+follows automatically.
+Isomorphism testing also powers \texttt{Product} simplification, where equal
+subgraphs of a contraction are recognized and combined into powers
+(Figure~\ref{fig:power}), and common-subexpression elimination during evaluation,
+where a cached value for $A$ can be reused for $A^T$ by renaming its edges.
 
 \begin{figure}[h]
 \centering{
@@ -22,217 +69,53 @@ Right now we hack this a bit by just considering separate components of the prod
 }
 \end{figure}
 
-Basically the problem is:
-\begin{enumerate}
-   \item You are given a multigraph $G$ with nodes $V$ and edges $E$.
-   \item Nodes and edges are all labeled.
-   \item You are to find two disjoint subsets $V_1$ and $V_2$ of $V$ such that the subgraphs $G_1$ and $G_2$ induced by $V_1$ and $V_2$ are isomorphic.
-      Also, under the isomorphism, the labels of the nodes and edges in $G_1$ and $G_2$ are the same.
-\end{enumerate}
+\section{Differentiation}
 
-The problem is probably NP-hard, but it might still have an algorithm that's faster than
-$2^n$ trying all subsets.
-In particular, we might modify the VF2 algorithm, which iteratively tries to match nodes in $G_1$ and $G_2$.
-The NetworkX library already has a GraphMatcher, which searches for isomoprhic subgraphs.
-It might be extendable to our problem...
-But honestly I don't know if we even want to solve this problem in the most general, since it corresponds a bit to factoring the graph.
-And we don't do factoring, just as we don't do inverse distribution.
+Derivatives follow Penrose's convention from the derivative chapters: taking
+$\partial T/\partial X$ adds one new free edge to the diagram for every edge
+of $X$.
+Calling \texttt{t.grad(X)} wraps the expression in a \texttt{Derivative} node
+and pushes it one step inward using the rules of this book, diagrams-as-data:
+the derivative of a \texttt{Variable} with respect to itself becomes a product
+of \texttt{Delta} tensors connecting old edges to new ones; the derivative of a
+\texttt{Product} distributes by the product rule; a \texttt{Function} consults
+its \texttt{FunctionSignature} for the chain rule from
+Chapter~\ref{chapter:functions}.
+Because a derivative is just another node in the graph, higher-order
+derivatives like Hessians are simply \texttt{t.grad(x).grad(x)}, and
+\texttt{Expectation} (over Gaussian variables, using the identities from the
+statistics chapter) composes with everything else.
 
-In either case, it's clear that we need to be able to compare nodes and edges for isomorphism.
+\section{Simplification and Evaluation}
 
-Also, the basic usecase of isomorphism canonaization in products is simply to compute the canonical product itself from its parts.
-Part of our approach here is taking the outer edges and turning them into nodes, so they can be colored.
+Simplification is a set of local rewrite rules---evaluating deltas, flattening
+nested sums and products, cancelling zeros, merging isomorphic terms---applied
+in a depth-first pass by \texttt{simplify()}; \texttt{full\_simplify()} repeats
+the pass until a fixed point is reached.
+The result can be rendered back as a diagram with \texttt{to\_tikz} (that is how
+many figures in this book were produced), evaluated numerically with
+\texttt{evaluate}, which maps variables to PyTorch tensors and contracts
+products with \texttt{einsum}, or compiled to a standalone PyTorch function
+with \texttt{compile\_to\_callable} from \texttt{tensorgrad.extras.to\_pytorch}.
 
-\subsection{In Sums}
+As a small end-to-end example, here is the gradient of the least-squares loss
+from the machine-learning chapter:
 
-When deciding whether $A + B$ is equal to $2A$ we need to check if $A$ and $B$ are isomorphic.
-But we also need to do this under the current renaming of the edges.
-That's why you can't just transform $A + A^T = 2A$.
-
-The way it actually works in my code is
 \begin{lstlisting}
-def key_fn(t: Tensor):
-    # Align tensor edges to have the same order, using Sum's order as reference.
-    canons = [t.canonical_edge_names[t.edges.index(e)] for e in self.edges]
-    return hash((t.canon,) + tuple(canons))
+import tensorgrad as tg
+import tensorgrad.functions as F
 
-ws_tensors = TensorDict(key_fn=key_fn, default_fn=int)
-for w, t in zip(weights, tensors):
-    ws_tensors[t] += w
-ws_tensors = [(w, t) for t, w in ws_tensors.items()]
-\end{lstlisting}
-which says that I'm using for a hash, the canonical form of the tensor, plus the canonical form of the edges in the order of the edges in the sum.
-These are basically the orbits, meaning that if the summed tensor has a symmetry, we are allowed to "flip" it to make the summands isomorphic.
+b, x, y = tg.symbols("b x y")
+X = tg.Variable("X", b, x)
+Y = tg.Variable("Y", b, y)
+W = tg.Variable("W", x, y)
 
-In the ``compute canonical'' method, we do more or less the same, but we also include the weights.
-\begin{lstlisting}
-def _compute_canonical(self):
-    hashes = []
-    for e in self.edges:
-        canons = [t.canonical_edge_names[t.edges.index(e)] for t in self.tensors]
-        hashes.append(hash(("Sum",) + tuple(sorted(zip(self.weights, canons)))))
-    base = hash(("Sum", len(self.tensors)))
-    hashes = [hash((base, h)) for h in hashes]
-    return base, hashes
+error = X @ W - Y            # contracts the shared edge x
+loss = F.frobenius2(error)   # contract all edges with themselves
+grad = loss.grad(W).full_simplify()
 \end{lstlisting}
 
-In the future we want to use symmetry groups instead.
-What would be the symmetry group of a sum?
-It's the diagonal of the product of the symmetry groups of the summands.
-How can we find the generators of this group?
-Maybe we should just construct some joint graph and then find the automorphisms of that graph.
-
-Alternatively we can use sympy.
-It is not known whether this problem is solvable in polynomial time. I think Babai proved that it is quasi-polynomial but not with a practical algorithm. Incidentally the problems of intersections of subgroups, centralizers of elements, and stabilizers of subsets of $\{1, \dots, n\}$ have been proved (by Eugene Luks) to be polynomially equivalent.
-
-
-Actually making a graph and using nauty is a really good idea, since it would
-be able to detect that $A+A^T$ is symmetric.
-Just taking the intersection of the automorphism groups of the summands would not find that.
-
-Another option is to convert the sum to a function...
-But no, that's weird.
-That would require me to support functions with arbitrary numbers of inputs, which is not currently the case.
-
-
-
-\subsection{In Evaluation}
-When evaluating a tensor, we can look at the graph of the tensor and see if it's isomorphic to a previously evaluated tensor.
-This is an example where we don't really need a canonical form, but an approximate hash plus vf2 would be fine.
-Also note that in this case we don't care about the edge renaming, because we can just rename the edges before we return the tensor.
-E.g. if we have already evaluated $A$, we can use that to get $A^T$ easily.
-
-\subsection{In Variables}
-In variables we include the name of the variable in the hash.
-Basically we assume that variables named the same refer to the same data.
-\begin{lstlisting}
-   base = hash(("Variable", self.name))
-   return base, [hash((base, e)) for e in self.original_edges]
-\end{lstlisting}
-For the original canonical edge names, we use the edge names before renaming.
-This means, in the case of $A^T$ that will have the same hash as $A$.
-But because it's renamed, the \texttt{t.index} call in the Sum will flip the edges.
-
-We could imagine variables taking an automorphism group as an argument, which would allow us to define variables with different symmetries.
-Such as a symmetric matrix $A$ where $A+A^T$ is actually $2A$.
-
-\subsection{In Constants}
-When computing the canonical form of a constant, like \texttt{Zero} or \texttt{Copy} we don't care about the edge names.
-I guess because the constants we use are all maximally symmetric?
-We currently include the constants \texttt{tag}, which is the hash of the variable that it came from, if any.
-
-\subsection{In Functions}
-One issue is that while the original names are usually part of the function definition,
-the new edges added by differentiation are often automatically generated based on the context,
-so they shouldn't really be part of the canonical form.
-
-In contrast to Sum, we don't sort the canons here, since the order of the inputs matters.
-
-Maybe functions should be allowed to transform the symmetry group?
-E.g. if we have a function that takes a symmetric matrix and returns a symmetric matrix, we should be able to use the symmetry group of the input to simplify the output.
-
-\subsection{In Derivatives}
-All we do is hashing the tensor and the wrt.
-And then add new edges for the derivative.
-
-\subsection{Other}
-For some tensors there might be edge dimension relations that aren't equivalences.
-For example, a flatten tensor would have the ``out'' edge dimension equal to the product of the ``in'' edge dimensions.
-
-In a previous version I had every tensor register a ``callback'' function.
-Whenever an edge dimension ``became available'', the tensor would get a chance to emit new edge dimensions.
-However, this was a lot more work for each tensor to implement, and not needed for any of the existing tensors.
-
-\section{Renaming}
-This is an important part of the code.
-
-\section{Evaluation}
-
-An important part of evaluation is determining the dimension of each edge.
-To do this, I'm basically creating a full graph of the tensor, using a function called
-\texttt{edge\_equivalences} which a list of tuples $((t_1, e_1), (t_2, e_2))$,
-indicating that edge $e_1$ of tensor $t_1$ is equivalent to edge $e_2$ of tensor $t_2$.
-Note that the same edge name can appear multiple times in the graph, so we need to keep track of the tensor as well.
-
-For variables, since the user gives edge dimensions in terms of variables, it's important to keep track of renamed edge names:
-\begin{lstlisting}
-for e1, e2 in zip(self.original_edges, self.edges):
-     yield (self, e1), (self, e2)
-\end{lstlisting}
-
-For constants, there might be some equivalences based on tensors that the constant was derived from.
-\begin{lstlisting}
-def edge_equivalences(self):
-    if self.link is not None:
-        yield from self.link.edge_equivalences()
-        for e in self.link.edges:
-            if e in self.edges:
-                yield (self, e), (self.link, e)
-\end{lstlisting}
-
-For the copy tensor, everything is equivalent:
-\begin{lstlisting}
-def edge_equivalences(self):
-    yield from super().edge_equivalences()
-    for e in self.edges[1:]:
-        yield (self, self.edges[0]), (self, e)
-\end{lstlisting}
-
-For functions we can't really say anything about the edges of the function itself \texttt{(self.edges\_out)},
-but at least we can say something about the broadcasted edges.
-\begin{lstlisting}
-for t, *inner_edges in self.inputs:
-    yield from t.edge_equivalences()
-    for e in t.edges:
-        if e not in inner_edges:
-            yield (t, e), (self, e)
-\end{lstlisting}
-We could maybe also say that input edges with the same name are equivalent?
-
-For products, we look at each edge $(t_1, e, t_2)$ and yield $(t_1, e), (t_2, e)$.
-However for the free edges, $(t, e)$, we match them with ourselves, $(t, e), (self, e)$.
-\begin{lstlisting}
-def edge_equivalences(self):
-    pairs = defaultdict(list)
-    for t in self.tensors:
-        yield from t.edge_equivalences()
-        for e in t.edges:
-            pairs[e].append(t)
-    for e, ts in pairs.items():
-        if len(ts) == 1:
-            yield (self, e), (ts[0], e)
-        else:
-            t1, t2 = ts
-            yield (t1, e), (t2, e)
-\end{lstlisting}
-
-Similarly, for sums, everything is just matched with ourselves:
-\begin{lstlisting}
-def edge_equivalences(self):
-    for t in self.tensors:
-        yield from t.edge_equivalences()
-        for e in t.edges:
-            yield (t, e), (self, e)
-\end{lstlisting}
-
-Finally, we use BFS to propagate the edge dimensions from the variables (which are given by the user) to the rest of the graph.
-
-Why is it even necessary for non-variables to know the edge dimensions?
-Mostly because of copy tensors, which we use for hyper edges, and have to construct.
-Could we get rid of this if we computed hyper-edges more efficiently without copy's?
-There are also sometimes "detached" copies...
-
-Also, an alternative idea would be to actually construct the full graph.
-I originally didn't think this would be possible because of the Sum's which aren't really graphs.
-But maybe with the new approach of using nauty, we could actually do this.
-
-\subsection{Products}
-We simply evaluate the tensors in the product and give them to einsum.
-
-
-\section{Simplification Rules}
-There are a bunch of these.
-
-Mostly we can do everything in a single depth-first pass,
-but a few times we need to do multiple passes.
-That can be done with the full-simplify method, which repeatedly calls simplify until nothing changes.
+The resulting diagram is $2X^T(XW - Y)$, with no matrix-shaped reasoning
+required from the user.
+For installation instructions, an interactive playground, and many more
+examples, see \url{https://github.com/thomasahle/tensorgrad}.

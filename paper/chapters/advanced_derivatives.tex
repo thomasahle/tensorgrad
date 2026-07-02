@@ -9,7 +9,7 @@
    \\
    \frac{d}{dx}\frac{x-a}{\|x-a\|_2} &= \frac{I}{\|x-a\|_2} - \frac{(x-a)(x-a)^T}{\|x-a\|_2^3}
    \\
-   \frac{d}{dx}\|x\|_2^2 = \frac{d}{dx}\|x^T x\|_2 = 2x
+   \frac{d}{dx}\|x\|_2^2 &= \frac{d}{dx} x^T x = 2x
 \end{align}
 
 \section{Derivatives of matrix norms}
@@ -27,9 +27,9 @@
  
 \section{From Stack Exchange}
 
-Let $F(t)=|1+t A|$ then
-$F'(t) = \mathrm{Tr}(A)$ and
-$F''(t) = \mathrm{Tr}(A)^2 - \mathrm{Tr}(A^2)$.
+Let $F(t)=|I+t A|$ then
+$F'(0) = \mathrm{Tr}(A)$ and
+$F''(0) = \mathrm{Tr}(A)^2 - \mathrm{Tr}(A^2)$.
 
 \section{Derivatives of an Inverse}
 
@@ -44,8 +44,8 @@ $$
 \begin{aligned}
 \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{A}\right] & =-\left(\mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\right)\left(\mathbf{A}+\mathbf{A}^T\right)\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
 \frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{C X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
-\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
-& -2 \mathbf{C X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+& +2 \mathbf{B X}\left(\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
+\frac{\partial}{\partial \mathbf{X}} \operatorname{Tr}\left[\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}\left(\mathbf{X}^T \mathbf{B X}\right)\right] & =-2 \mathbf{C X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \mathbf{X}^T \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1} \\
 & +2 \mathbf{B X}\left(\mathbf{A}+\mathbf{X}^T \mathbf{C X}\right)^{-1}
 \end{aligned}
 $$

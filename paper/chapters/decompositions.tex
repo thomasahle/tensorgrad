@@ -9,30 +9,49 @@
 Say we have an order $n$ tensor $A$.
 We ``unfold'' $A$ along each dimension.
 This means pulling the edge $i$ to the left, and flattening the rest to the right.
-Then we compute the SVD, $USV$.
+Then we compute the SVD, $USV^T$.
 Here $U$ is a square matrix, which we keep.
-We multiply the $i$th edge of $A$ by $U^T$ (which is also the inverse of $U$).
+We multiply the $i$th edge of $A$ by $U^T$ (since $U$ is orthogonal, $U^T$ is also the inverse of $U$).
 The result is a ``core'' tensor as well as a sequence of $U$ tensors.
 If we want a more compact SVD, we can make each $U$ low rank, like normal SVD.
-There is also the ``Interlacing computation`` where we multiply the $U^T$s onto $A$ as we go along.
+There is also the ``Interlacing computation'' where we multiply the $U^T$s onto $A$ as we go along.
 
-For order $3$ tensors, this method is called a ``Tucker decomposition''.
+The resulting format --- a core tensor contracted with a factor matrix on each mode --- is called a ``Tucker decomposition'' (introduced by Tucker for order $3$ tensors); the algorithm above for computing it is known as the higher-order SVD (HOSVD).
 
 % This paper has some reasonably good explanations of improved methods, such as HOOI:
 % https://www-users.cse.umn.edu/~saad/PDF/umsi-2006-132.pdf
-If the ``core matrix'' is diagonal, this is called tensor rank decomposition.
+A related but different format is the CP decomposition (CANDECOMP/PARAFAC), which writes the tensor as a sum of $r$ outer products of vectors.
+Here $r$ may exceed the dimensions of the tensor, and the factors are in general neither orthogonal nor square.
+Finding the smallest such $r$ --- the tensor rank --- is called tensor rank decomposition.
 If we were good at that, we could use it to factor $I^{\otimes 3}$ to get better matrix multiplication algorithms.
 Unfortunately tensor rank decomposition is NP hard.
 
-I guess HOSVD gives a rank decomposition if we diagonalize the core tensor.
-It just won't be an efficient one.
+Note that a Tucker decomposition does yield a rank decomposition of sorts: expanding the dense core tensor into its nonzero entries gives a sum of up to $\prod_i R_i$ outer products.
+It just won't be a minimal one.
 %What about a method where we first compute a (lower rank) HOSVD, then 
 
 \section{Rank Decomposition}
 
 \subsection{Border Rank}
-The border rank of a tensor is the smallest rank of a tensor that is close to it.
-TODO: Example where the border rank is much smaller than the rank.
+The border rank of a tensor is the smallest $r$ such that the tensor is a limit of tensors of rank at most $r$.
+The border rank can be strictly smaller than the rank.
+For example, if $x$ and $y$ are linearly independent vectors, the tensor
+\[
+T = x\otimes x\otimes y + x\otimes y\otimes x + y\otimes x\otimes x
+\]
+has rank $3$, but border rank $2$.
+To see this, expand
+\[
+(x+\eps y)^{\otimes 3}
+= x\otimes x\otimes x
++ \eps\,(x\otimes x\otimes y + x\otimes y\otimes x + y\otimes x\otimes x)
++ O(\eps^2),
+\]
+so
+\[
+T = \lim_{\eps\to 0} \frac{1}{\eps}\left[(x+\eps y)^{\otimes 3} - x^{\otimes 3}\right],
+\]
+where each tensor in the limit is a sum of just two simple tensors.
 
 \section{Fast Matrix Multiplication}
 
@@ -170,7 +189,12 @@ we reshape them as block matrices, shape $(2,\frac n 2,2,\frac n 2)$ and use Str
 \end{tikzpicture}
 .
 \]
-Contracting the edges in the right order, uses only $7/8 n^3 + O(n^2)$ operations.
+Contracting the edges in the right order, uses only $7/8\, n^3 + O(n^2)$ operations.
+The key is that the hyperedge of size $7$ must \emph{not} be contracted first.
+Instead we first contract the pairs of edges between $S_A$ and $A$, and between $S_B$ and $B$; each of these takes $7 \cdot 2^2 (n/2)^2 = O(n^2)$ operations.
+Next we contract $S_AA - S_BB$, a batched product over the hyperedge, which takes $7(n/2)^3 = \frac78 n^3$ operations.
+Finally we contract the result with $W$, which takes $2^2 \cdot 7 (n/2)^2 = O(n^2)$ operations.
+The important term is the cubic $\frac78 n^3$, which, if instead computed recursively, leads to the classical $O(n^{\log_2 7})$ algorithm.
 
 If we instead reshape to $(2,2,\dots,2)$,
 \[
@@ -191,28 +215,14 @@ AB =
 \]
 and using Strassen's tensor along each axis reduces the work by $(7/8)^{\log_2(n)}$, giving us matrix multiplication in time $n^{3 + \log_2(7/8)} = n^{2.80735}$.
 
-
-\newpage
-
-Contracting the double edges, $S_A - A$ and $S_B - B$, is both $O(n^2)$ time.
-
-It remains to verify that this is actually faster than the naive matrix multiplication:
-Contracting $S_A - A$ takes $7\cdot 2^2 (n/2)^2$ operations, and likewise $S_B - B$.
-Next we contract $S_AA - S_BB$ which takes $7(n/2)^3$ time.
-And finally we contract the edge with $W$ which takes $2^2 \cdot 7 (n/2)^2$.
-The important term is the cubic $7/8 n^3$, which if instead done recursively, leads to the classical $O(n^{\log_2 7})$ algorithm.
-
-FIXME: What ``edge with $W$''? I think we have to/want to contract the hyperedge with $W$ immediately?
-
-\subsubsection{Other}
+\subsection{Other}
 
 If we instead wrote $A$ and $B$ using $(n,m)$ and $(m,p)$ shaped blocks, we could factor $I_n\otimes I_m\otimes I_p$ and get a matrix multiplication algorithm using the same approach as the Strassen $(2,2,2)$ tensors above.
 Lots of papers have investigated this problem, which has led to the best algorithms by Josh Alman and others.
-For example, Deep Mind found a rank 47 factorization of $I_3\otimes I_4\otimes I_5$.
+For example, DeepMind found a rank 47 factorization of $I_3\otimes I_4\otimes I_5$.
 
 Maybe a more interesting example is the $(4,4,4)$ tensor, for which they find a rank 47 factorization.
-This an easy way to create a rank 49 is to take Strassen and double it.
+An easy way to create a rank 49 is to take Strassen and double it.
 Would this be a nice thing to show? Maybe too messy?
 Well, actually their rank 47 construction only works in the ``modular'' case. Then $(3,4,5)$ is general.
-
 

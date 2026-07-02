@@ -75,13 +75,14 @@
 
 
 
+\newcount\traceitemcount
+
 \newcommand{\trace}[2]{% #1 is the list of items, #2 is the looseness for the loop
    %\pgfmathsetmacro{\negspace}{-1.0em - 0.5em*#2} % Calculate negative space
    \hspace{-1em}
     \begin{tikzpicture}[baseline=(node1.base), inner sep=1pt]
         % Initialize a counter for tracking the number of items
-        \newcount\itemcount
-        \itemcount=0
+        \traceitemcount=0
         
         % Define nodes
         \def\lastnode{node1}
@@ -92,12 +93,12 @@
                 \node[right=1em of \lastnode] (node\c) {$\i$}; % Subsequent nodes
                 \draw (\lastnode) -- (node\c); % Draw edge from last node to current
             \fi
-            \global\advance\itemcount by 1
+            \global\advance\traceitemcount by 1
             \xdef\lastnode{node\c}
         }
         
         % Draw the loop edge
-        \ifnum \itemcount=1
+        \ifnum \traceitemcount=1
             \path (node1) edge [out=160, in=20, loop] ();
         \else
             \path (node1) edge [out=160, in=20, looseness=#2] (\lastnode);
@@ -113,11 +114,11 @@
 \def\vecmatvec#1#2#3#4{
    \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node (node0) {$#2$};
-      \xdef\lastnode{node0};
+      \xdef\lastnode{node0}
       \foreach \i [count=\c] in {#3} {
          \node[right=#1 of \lastnode] (node\c) {$\i$};
          \draw (\lastnode.east) -- (node\c);
-         \xdef\lastnode{node\c};
+         \xdef\lastnode{node\c}
       }
       \node[right=#1 of \lastnode] (last) {$#4$};
       \draw (\lastnode.east) -- (last);

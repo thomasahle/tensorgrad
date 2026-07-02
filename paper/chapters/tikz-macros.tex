@@ -15,6 +15,18 @@
   \begin{scope}[shift={#2}]%
     \node[label, anchor=east] at (-\outerRadius,0) {#4};%
     \CountCSV{\blockCount}{#5}%
+
+    \def\partitionDrawStyle{#1}%
+    \def\partitionShowK{0}%
+    \if\relax\detokenize{#1}\relax
+      % no-op
+    \else
+      \def\karg{k}%
+      \ifx\partitionDrawStyle\karg
+        \def\partitionDrawStyle{}%
+        \def\partitionShowK{1}%
+      \fi
+    \fi
     
     % First optimize the assignment of blocks to hub positions
     \def\bestTotalDist{1000}%
@@ -25,11 +37,11 @@
         \pgfmathsetmacro{\totalDist}{0}%
         % For each block in the partition:
         \foreach [count=\blockIndex from 0] \block in #5 {%
-            \pgfmathsetmacro{\angleStep}{30+360/\blockCount}%
+            \pgfmathsetmacro{\angleStep}{360/\blockCount}%
             \pgfmathsetmacro{\hubAngle}{mod(\blockIndex * \angleStep + \offset, 360)}%
             % For each element in this block:
             \foreach \elem in \block {%
-                \pgfmathsetmacro{\elemAngle}{mod((\elem - 1)*360/\globaln, 360)}%
+                \pgfmathsetmacro{\elemAngle}{mod(30+(\elem - 1)*360/\globaln, 360)}%
                 \pgfmathsetmacro{\dist}{min(abs(mod(\elemAngle - \hubAngle,360)),360 - abs(mod(\elemAngle - \hubAngle,360)))}%
                 % Update the accumulator globally:
                 \pgfmathparse{\totalDist + \dist/360}%
@@ -51,20 +63,20 @@
     \fi
     \foreach [count=\i from 0] \block in #5 {%
       \pgfmathsetmacro{\currentAngle}{\i * \angleStep + \bestOffset}%
-      \drawBlock[#1]{\currentAngle:\hubRadius}{\block}{\i}%
+      \drawBlock[\partitionDrawStyle]{\currentAngle:\hubRadius}{\block}{\partitionShowK}%
     }%
   \end{scope}%
 }
-\newcommand{\drawBlock}[3][]{%
+\newcommand{\drawBlock}[4][]{%
     \coordinate (hub) at (#2);%
     % For each element in this block, draw a spoke:
     \foreach \elem in #3 {%
         \pgfmathsetmacro{\thisAngle}{30+(\elem - 1)*360/\globaln}%
         \path (hub) (\thisAngle:\outerRadius) coordinate (node\elem);%
-        \draw[thin] (hub) -- (node\elem);%
+        \draw[thin,#1] (hub) -- (node\elem);%
     }%
-    \if\relax\detokenize{#1}\relax
-        \node[inner sep=1pt, circle, fill, minimum size=2pt] at (hub) {};%
+    \ifnum#4=0
+        \node[inner sep=1pt, circle, fill, minimum size=2pt,#1] at (hub) {};%
     \else
         \CountCSV{\blockSize}{#3}%
         \node[label, inner sep=0pt, fill=white] at (hub) {\scriptsize$K_{\blockSize}$};%

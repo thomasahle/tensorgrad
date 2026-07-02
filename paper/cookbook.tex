@@ -4,6 +4,7 @@
 \usepackage{xparse}
 \usepackage{amsmath}
 \usepackage{amsfonts}
+\usepackage{amssymb}
 \usepackage{amsthm}
 \usepackage{placeins}
 \usepackage[T1]{fontenc}
@@ -24,7 +25,6 @@
 \usepackage{tikz}
 \input{chapters/tikz-styles.tex}
 \input{chapters/tikz-macros.tex}
-
 % https://tex.stackexchange.com/a/398211/24956
 \usepackage{environ}
 \NewEnviron{walign}{%
@@ -91,21 +91,25 @@
 % Consider also taking some inspiration from https://arxiv.org/pdf/1802.01528
 % "The Matrix Calculus You Need For Deep Learning"
 
+% Avoid duplicate `page.1` hyperref destinations caused by the `titlepage` env.
+\hypersetup{pageanchor=false}
 \maketitle
+\hypersetup{pageanchor=true}
 
 \input{chapters/intro.tex}
-%\input{chapters/simple_derivatives.tex}
-%\input{chapters/kronecker.tex}
-%\input{chapters/functions.tex}
+\input{chapters/simple_derivatives.tex}
+\input{chapters/kronecker.tex}
+\input{chapters/functions.tex}
 \input{chapters/statistics.tex}
 
-% \input{chapters/determinant.tex}
-% \input{chapters/advanced_derivatives.tex}
-%\input{chapters/special_matrices.tex}
-% \input{chapters/decompositions.tex}
-% \input{chapters/ml.tex}
-% \input{chapters/tensor_algos.tex}
-% \input{chapters/tensorgrad.tex}
+\input{chapters/determinant.tex}
+\input{chapters/advanced_derivatives.tex}
+\input{chapters/special_matrices.tex}
+\input{chapters/decompositions.tex}
+\input{chapters/tensor_trains.tex}
+\input{chapters/ml.tex}
+\input{chapters/tensor_algos.tex}
+\input{chapters/tensorgrad.tex}
 
 \bibliographystyle{plain}
 \bibliography{references}

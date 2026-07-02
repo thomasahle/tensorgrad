@@ -4,7 +4,7 @@
 
 It's convenient to write the determinant in tensor notation as
 \[\mathrm{det}(A)=
-\frac{1}{n!}\,\mathbin{
+\mathbin{
 \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
    \node (a0) {$A$};
    \node[right=.5em of a0] (dots) {$\cdots$};
@@ -17,9 +17,15 @@ It's convenient to write the determinant in tensor notation as
    \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
 \end{tikzpicture}}
 \]
-where
+where the thick bars are the anti-symmetrizers of §\ref{sec:symmetry}.
+Recall that, following Penrose's convention, the anti-symmetrizer is \emph{normalized}:
+across $n$ edges it denotes the idempotent projection
+$P = \frac{1}{n!}\sum_\sigma \mathrm{sign}(\sigma)\,\sigma$,
+so the closed diagram above computes $\Tr(P A^{\otimes n} P)$.
+When the thick bar appears on its own, as a tensor with $n$ legs,
+it equals the Levi-Civita tensor scaled by $1/\sqrt{n!}$:
 $\mathbin{
-\begin{tikzpicture}[baseline=(a0.south)-3em, inner sep=1pt]
+\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
    \node (a0) {\tiny $i_1$};
    \node[right=.5em of a0] (a1) {\tiny $i_2$};
    \node[right=.5em of a1] (dots) {$\dots$};
@@ -29,19 +35,23 @@ $\mathbin{
    \draw (a2.south) -- ++(0,-.25) coordinate (a2bot);
    \draw[line width=2pt] (a0bot -| a0.west) -- (a2bot -| a2.east);
 \end{tikzpicture}}
-=\varepsilon_{i_1,\dots,i_n}$
-is the rank-$n$ Levi-Civita tensor defined by
+=\frac{1}{\sqrt{n!}}\,\varepsilon_{i_1,\dots,i_n}$,
+where the raw rank-$n$ Levi-Civita tensor is defined by
 \[
    \varepsilon_{i_1, \dots, i_n} =
    \begin{cases}
       \mathrm{sign}(\sigma) & \sigma=(i_1, \dots, i_n) \text{ is a permutation} \\
-      0 & \text{otherwise.}
+      0 & \text{otherwise,}
    \end{cases}
 \]
+so that $P = \frac{1}{n!}\,\varepsilon\otimes\varepsilon$ when the dimension of the edges is $d=n$.
+The square root, which follows Cvitanovi\'c's birdtrack normalization~\cite{cvitanovic_birdtracks}, is what makes the two readings agree:
+stacking two bar-tensors gives
+$\frac{\varepsilon}{\sqrt{n!}}\otimes\frac{\varepsilon}{\sqrt{n!}} = P$
+exactly, so we may evaluate any closed diagram either bar-by-bar or through the projector $P$ and get the same value.
 To see that the definition makes sense, let's first consider
 \begin{align*}
    \mathrm{det}(I)=
-   \frac{1}{n!}
 \mathbin{
    \begin{tikzpicture}[baseline=(dots.base), inner sep=1pt]
       \node (a0) {};
@@ -58,6 +68,9 @@ To see that the definition makes sense, let's first consider
       \draw[line width=2pt] (a0bot -| a0.west) -- (a2bot -| a2.east);
    \end{tikzpicture}
 }
+%&
+=
+\Tr(P)
 %&
 =
 \frac{1}{n!}
@@ -77,31 +90,41 @@ To see that the definition makes sense, let's first consider
 %\\&
 = 1.
 \end{align*}
-In general we get from the permutation definition of the determinant:
+Indeed, $P$ projects onto the space of anti-symmetric order-$n$ tensors,
+which for $d=n$ is one-dimensional (spanned by $\varepsilon$),
+so its trace is $1$.
+In general, since $P$ is idempotent we have
+$\Tr(P A^{\otimes n} P) = \Tr(P A^{\otimes n})$,
+and expanding $P = \frac{1}{n!}\,\varepsilon\otimes\varepsilon$
+recovers the permutation definition of the determinant:
 \begin{align*}
-   \detstack{A}
+   \detstack{$A$}
    &=
+   \frac{1}{n!}
    \sum_{i_1, \dots, i_n, j_1, \dots, j_n}
    \varepsilon_{i_1, \dots, i_n}
    \varepsilon_{j_1, \dots, j_n}
    A_{i_1,j_1} \cdots A_{i_n,j_n}
    \\&=
+   \frac{1}{n!}
    \sum_{\sigma, \tau}
    \mathrm{sign}(\sigma)
    \mathrm{sign}(\tau)
    A_{\sigma_1,\tau_1} \cdots A_{\sigma_n,\tau_n}
    \\&=
+   \frac{1}{n!}
    \sum_{\sigma}
    \mathrm{sign}(\sigma)
    \sum_\tau
    \mathrm{sign}(\tau)
    A_{\sigma_1,\tau_1} \cdots A_{\sigma_n,\tau_n}
    \\&=
+   \frac{1}{n!}
    \sum_{\sigma}
    \mathrm{sign}(\sigma)^2
    \mathrm{det}(A)
    \\&=
-   n! \mathrm{det}(A).
+   \mathrm{det}(A).
 \end{align*}
 The definition generalizes to Cayley's ``hyper determinants'' by $\dots$.
 
@@ -136,9 +159,13 @@ A curious property is that
       \draw[line width=2pt] (b0bot -| b0.west) -- (b1bot -| b1.east);
    \end{tikzpicture}}
 \]
+that is, applying $A^{\otimes n}$ to the bar-tensor just scales it by $\mathrm{det}(A)$.
+This is because the bar-tensor spans the one-dimensional image of $P$,
+a line which $A^{\otimes n}$ maps to itself.
 
-\renewcommand{\arraystretch}{2}
-\begin{tabular}[h]{lcc}
+{%
+\renewcommand{\arraystretch}{2}%
+\begin{tabular}{lcc}
    (18) &
    $ \mathrm{det}(A) = \prod_i \lambda_i $
    &
@@ -212,10 +239,10 @@ A curious property is that
    &
    \dots
    \\
-\end{tabular}
+\end{tabular}%
+}
 
 
 \section{Inverses}
 Might be reduced, unless cofactor matrices have a nice representation?
-
 

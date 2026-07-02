@@ -11,7 +11,7 @@ For example, if $T$ is an order-3 tensor and $U$ is an order-2 tensor, we draw $
    }}
 \]
 This notation follows Penrose.
-The two extra lines coming from the black dot on the circle makes the derivative an order-5 tensor.
+The two extra lines coming from the black dot on the circle make the derivative an order-5 tensor.
 That the order of derivatives grows this way, is one of the main reasons we'll encounter for tensors to show up in the first place.
 
 When there are not too many edges, we will use a simple inline notation like this:
@@ -26,8 +26,38 @@ When there are not too many edges, we will use a simple inline notation like thi
 \end{tikzpicture}
 \]
 
-The Matrix Cookbook defines the single-entry matrix $J^{i,j} \in R^{n\times n}$ as the matrix which is zero everywhere except in the entry $(i, j)$ in which it is 1.
-Alternatively we could write $J^{i,j}_{n,m} = [i=n][j=m]$.
+Before we dive into the tables, it is worth recording a simple observation that makes many of the identities below immediate.
+A tensor network built purely from contractions is linear in each of the tensors it contains.
+So if a tensor $X$ appears exactly once in a network $T$, the derivative $\frac{\partial T}{\partial X}$ is just \emph{the same network with the node $X$ deleted}, the edges that pointed into $X$ left dangling as the new derivative edges:
+\[
+   \frac{\partial}{\partial X}\;
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (A) at (0,0) {$A$};
+      \node (X) at (.8,0) {$X$};
+      \node (B) at (1.6,0) {$B$};
+      \draw (A) -- (X);
+      \draw (X) -- (B);
+      \draw (A) edge[bend left=45] (B);
+      \draw (A) -- ++(-.5,0);
+      \draw (B) -- ++(.5,0);
+   \end{tikzpicture}
+   \;=\;
+   \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+      \node (A) at (0,0) {$A$};
+      \node (B) at (1.6,0) {$B$};
+      \draw (A) edge[bend left=45] (B);
+      \draw (A) -- ++(-.5,0);
+      \draw (B) -- ++(.5,0);
+      \draw (A.east) -- ++(.45,-.12);
+      \draw (B.west) -- ++(-.45,-.12);
+   \end{tikzpicture}
+\]
+If $X$ appears $k$ times, the product rule simply sums the $k$ networks obtained by deleting one occurrence at a time --- we will see this repeatedly below, e.g.\ in (81) where $x$ appears twice.
+Note that this is \emph{not} the chain rule: it only applies while nothing nonlinear stands between $T$ and $X$.
+Once functions like $\exp$ or $\mathrm{softmax}$ enter the network, we need the machinery of Chapter~\ref{chapter:functions}.
+
+The Matrix Cookbook defines the single-entry matrix $J^{i,j} \in \R^{n\times n}$ as the matrix which is zero everywhere except in the entry $(i, j)$ in which it is 1.
+Alternatively we could write $J^{i,j}_{k,l} = [i=k][j=l]$.
 
 \section{Derivatives of Matrices, Vectors and Scalar Forms}
 
@@ -58,7 +88,7 @@ The following first order derivatives show the basic linearity properties of the
       \end{tikzpicture}
    \\
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   \tag{69}
+   \tag{69$'$}
    \frac{\partial a^T x}{\partial x}
    &= a
    &
@@ -175,7 +205,7 @@ The following first order derivatives show the basic linearity properties of the
 \end{walign}
 
 \subsection{Second Order}
-The second order derivatives are follow from the product rule:
+The second order derivatives follow from the product rule:
 \[
    \vcenter{\hbox{
       \import{figures/}{product.pdf_tex}
@@ -187,7 +217,7 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    \tag{76}
    \frac{\partial}{\partial X_{i,j}}
    \sum_{k,l,m,n} X_{k,l} X_{m,n}
-   &= (\sum_{k,l} X_{k,l})^2
+   &
    %&= \frac{\partial \|X\|_F^2}{\partial X_{i,j}}
    %&= 2\, \sum_{k,l} X_{k,l}
    &
@@ -437,7 +467,6 @@ Integer powers of matrices, like $X^n$, are easy to handle by writing
 out the product and using the product rule.
 The Matrix Cookbook includes a few derivatives we can handle this way.
 \begin{walign}
-   \\[.5em]
    \tag{90}
    \frac{\partial\left(\mathbf{X}^n\right)_{k l}}{\partial X_{i j}}
    &=
@@ -478,7 +507,7 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \node[right=.25 of X2] (X3) {$\dots$};
       \node[right=.25 of X3] (X4) {$(X)$};
       \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
-      \draw ++(-.5,0) -- (X0) -- (X1) -- (X2) -- (X3) -- (X4);
+      \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
       \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
       \draw[d] (X4.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
       \draw[d] (X4.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
@@ -845,7 +874,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$X$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw ($(a1.west)-(0,-.2em)$) -- ++(.1,-.05);
+      \draw (a1.east) -- ++(.2,-.1);
+      \draw ($(a1.west)-(0,-.2em)$) -- ++(-.2,-.1);
    \end{tikzpicture}
    \hspace{-1.5em}
    +
@@ -928,6 +958,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$\phantom{X}$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
+      \draw (a3.west) -- ++(-.2,-.1);
+      \draw ($(a3.east)-(0,-.2em)$) -- ++(.2,-.1);
    \end{tikzpicture}
    \\
    &&&=
@@ -940,16 +972,16 @@ and conclude
 \[
    (B+B^T)X
    =
-   \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
-   =
    \frac{\partial}{\partial X} \mathrm{Tr}(X^T B X)
+   =
+   \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
    = X(B^T + B).
 \]
-However that is clearly not that case.
+However that is clearly not the case.
 Such substitution would only work for a linear function, not a quadratic.
-In general it is the case that
-$\frac{\partial}{\partial X} f(X)^T \neq
-\frac{\partial}{\partial X} f(X^T)$.
+In general one cannot push the substitution $X \to X^T$ through the derivative:
+$\frac{\partial}{\partial X} f(X^T)$ is not simply
+$\frac{\partial}{\partial X} f(X)$ with $X$ replaced by $X^T$.
 %Instead we have
 %\[
 %   \frac{\partial}{\partial X} \mathrm{Tr}(X B X^T)
@@ -1043,7 +1075,7 @@ $\frac{\partial}{\partial X} f(X)^T \neq
    with respect to $x$.
    % Using tensorgrad we get that it is
    % https://math.stackexchange.com/questions/3015464/second-derivative-of-a-matrix-quartic-form/4977819#4977819
-   % 2 ((x^T S)(S x) + x^T A x S),
+   % 2 (S x x^T S + (x^T A x) S),
    % where S = A^T + A.
 \end{exercise}
 

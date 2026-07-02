@@ -36,9 +36,9 @@ The order of the tensor resulting from a complicated network of contractions can
 
 
 \paragraph{Etymology}
-The term "tensor" is rooted in the Latin word tensio, meaning ``tension'' or ``stretching,'' derived from the verb tendere, which means ``to stretch'' or ``to extend.''
+The term ``tensor'' is rooted in the Latin word tensio, meaning ``tension'' or ``stretching,'' derived from the verb tendere, which means ``to stretch'' or ``to extend.''
 It was first introduced in the context of mathematics in the mid-19th century by William Rowan Hamilton in his work on quaternions, where it referred to the magnitude of a quaternion.
-The modern usage of "tensor" was later established by Gregorio Ricci-Curbastro and Tullio Levi-Civita in their development of tensor calculus, a framework that generalizes the concept of scalars, vectors, and matrices to more complex, multidimensional entities.~\cite{tensor_etymology_russo, hamilton_tensor}.
+The modern usage of ``tensor'' was later established by Gregorio Ricci-Curbastro and Tullio Levi-Civita in their development of tensor calculus, a framework that generalizes the concept of scalars, vectors, and matrices to more complex, multidimensional entities~\cite{tensor_etymology_russo, hamilton_tensor}.
 
 
 \tableofcontents
@@ -65,7 +65,7 @@ The following table shows how some basic operations can be written with tensor d
 \noindent
 %\hspace{-1em}
 \vspace{.5em}
-\begin{tabular}[h]{lcccl}
+\begin{tabular}{lcccl}
    Dot product
    &
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -273,11 +273,11 @@ what makes tensor diagram notation cleaner than, say, Einstein sum notation.
 
 The \emph{key principle} of tensor diagrams is that \emph{edge contraction is associative}.
 This means you can contract any edge in any order you prefer.
-This can be seen from the sum representation above, which can be reordered to sum over $k,l,m,n$ in any order.
+This can be seen from the sum representation above, which can be reordered to sum over $k,l,m,n,o$ in any order.
 
 The computational price for different contraction orders can be widely different.
 Unfortunately it's not computationally easy to find the optimal order.
-See section~\ref{sec:opt_contr} for algorithms to find the best contraction order, and approximate contraction methods.
+See section~\ref{sec:opt_contr} for algorithms to find the best contraction order.
 
 Note that tensor graphs are not always connected.
 We already saw that the outer product of two vectors can be written
@@ -288,13 +288,13 @@ We already saw that the outer product of two vectors can be written
       \draw (a1.east) -- ++(.3,0) node {};
    \end{tikzpicture}$.
 This is natural from the sum representation: No edges simply means no sums.
-So here $y_{i,j} = a_i b_j$, which is exactly the outer product $y=a\otimes b$.
+So here $Y_{i,j} = a_i b_j$, which is exactly the outer product $Y=a\otimes b$.
 % Can also mention how this gives us scaling by letter (5) be the order-0 tensor with value 5.
 
 
 \section{The Copy Tensor}
 
-A particularly important tensor is the ``copy'' tensor, also known as the ``diagonal'', ``kronecker delta'' or ``spider'' tensor.
+A particularly important tensor is the ``copy'' tensor, also known as the ``diagonal'', ``Kronecker delta'' or ``spider'' tensor.
 The simplest version is the all-ones vector, which we write as $\sbullet-$.
 That is $\sbullet_i = 1$.
 The general order-n tensor is 1 on the diagonal, 0 everywhere else:
@@ -430,11 +430,11 @@ Note that $J$ is different from the order-4 copy-tensor,
 
 \section{Sums of Tensors}
 
-Tensor products can express any linear function.
-That is $f$ such that $f(a x, b y) = a b f(x,y)$.
-Unfortunately not all operations on tensors are linear.
-Even something as simple as a sum of two vectors, $x+y$, can not be displayed with a simple contraction graph.
-(Note that this is not linear because $ax+by\neq ab(x+y)$.)
+Tensor products can express any multilinear function.
+That is $f$ which is linear in each argument separately; in particular $f(a x, b y) = a b f(x,y)$.
+Unfortunately not all operations on tensors are multilinear.
+Even something as simple as a sum of two vectors, $x+y$, cannot be displayed with a simple contraction graph.
+(Note that this is not bilinear because $ax+by\neq ab(x+y)$.)
 
 To handle this important operation, Penrose suggested simply writing the two graphs with a plus sign between them, such as $-x + -y$.
 Note that this is itself an order-1 tensor, even though it may look like there are two free edges.
@@ -483,7 +483,7 @@ $
    \draw (a1.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
 \end{tikzpicture}}}
 $
-is an outer product between $x$ and the all one vector, which is a matrix in which every row is the same.
+is an outer product between $x$ and the all-ones vector, which is a matrix in which every row is the same.
 Similarly, if we want to add $x$ to every column, we could use
 the matrix
 $
@@ -495,10 +495,10 @@ $
 \end{tikzpicture}}}
 $.
 
-Note that we typically don't talk about ``rows'' or ``columns'' when dealing with tensors, but simply use the name edge (sometimes axis) of the tensor.
+Note that we typically don't talk about ``rows'' or ``columns'' when dealing with tensors, but simply use the edge names (sometimes called axes) of the tensor.
 When using named edges, operations from classical vector notation like ``transpose'' can also be removed.
 The matrix $X^T$ is simply $X$ where the left and right edge have been swapped.
-But if the edges are named, we don't have to keep track on ``where the edge is'' at all.
+But if the edges are named, we don't have to keep track of ``where the edge is'' at all.
 
 \section{Transposition}
 In classical matrix notation, transposition flips the indices of a matrix, so that
@@ -801,7 +801,7 @@ Let's reproduce them with tensor diagrams:
 
 \subsection{Higher order traces}
 For higher order tensors, we still define the trace as the sum of the diagonal elements.
-That is, for a tensor $A$ of order $n$, the trace is just the product with the order $n$ copy tensor:
+That is, for a tensor $T$ of order $n$, the trace is just the product with the order $n$ copy tensor:
 \[
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
       \node (Tr) {Tr(};
@@ -847,7 +847,7 @@ We don't even have to think about whether the contractions we use are traces or 
 Eigenvalues and eigenvectors are fundamental concepts in linear algebra that have important applications in tensor network theory. In tensor diagram notation, we can represent these concepts in a visually intuitive way.
 
 For a matrix $A$, if there exists a non-zero vector $v$ and a scalar $\lambda$ such that $Av = \lambda v$, then $\lambda$ is called an eigenvalue of $A$, and $v$ is the corresponding eigenvector.
-In tensor diagram notation It's convenient to write its eigendecomposition as $A = Q\Lambda Q^{-1}$, where $Q$ is a matrix whose columns are the eigenvectors of $A$, and $\Lambda$ is a diagonal matrix of the eigenvalues.
+In tensor diagram notation, it's convenient to write its eigendecomposition as $A = Q\Lambda Q^{-1}$, where $Q$ is a matrix whose columns are the eigenvectors of $A$, and $\Lambda$ is a diagonal matrix of the eigenvalues.
 Thus:
 \begin{align}
    \label{eq:eigen-decomposition}
@@ -922,8 +922,9 @@ but also certain higher-order statistical moments, like the third or fourth mome
 Sometimes only with respect to particular group, but most of the time with respect to all permutations of edges.
 The Copy Tensor is a simple example of a completely symmetric tensor.
 
-Sometimes it will be useful to symmetrize a tensor by summing over all permutations of its indices.
-We write this using a squiggly line over the symmetrized edges:
+Sometimes it will be useful to symmetrize a tensor by averaging over all permutations of its indices.
+Following Penrose's convention, we write this using a squiggly line over the symmetrized edges.
+A squiggle across $k$ edges denotes $\frac{1}{k!}\sum_\sigma \sigma$, the average over all $k!$ permutations $\sigma$ of those edges:
 \[
    \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(1,0);
@@ -931,6 +932,8 @@ We write this using a squiggly line over the symmetrized edges:
       \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (0.5,-.7) to (0.5,1.7);
    \end{tikzpicture}
    =
+   \frac{1}{2}
+   \left(
    \begin{tikzpicture}[baseline=.1em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(1,0);
       \draw (0,1) -- ++(1,0);
@@ -940,6 +943,7 @@ We write this using a squiggly line over the symmetrized edges:
       \draw (0,0) -- ++(1,1);
       \draw (0,1) -- ++(1,-1);
    \end{tikzpicture}
+   \right)
    ,\quad
    \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(1,0);
@@ -948,6 +952,8 @@ We write this using a squiggly line over the symmetrized edges:
       \draw [very thick, line width=2pt, decorate, decoration={snake, amplitude=0.5mm, segment length=2.5mm}] (0.5,-.7) to (0.5,2.7);
    \end{tikzpicture}
    =
+   \frac{1}{6}
+   \left(
    \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(1,0);
       \draw (0,1) -- ++(1,0);
@@ -983,10 +989,10 @@ We write this using a squiggly line over the symmetrized edges:
       \draw (0,1) -- ++(1,0);
       \draw (0,2) -- ++(1,-2);
    \end{tikzpicture}
+   \right)
 \]
-For example, if $A$ is a square matrix,
+For example, if $A$ is a square matrix, the squiggle extracts the symmetric part $\frac{1}{2}(A + A^T)$ of $A$:
 \(
-   A + A^T =
    \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=2em, y=2em]
       \node (A) at (0,0) {$A$};
       \draw (A) -- ++(-1,0);
@@ -995,6 +1001,8 @@ For example, if $A$ is a square matrix,
         ($(A)+(.6,-.3)$) arc [start angle=-20, end angle=200, x radius=0.6, y radius=0.5];
    \end{tikzpicture}
    =
+   \frac{1}{2}
+   \left(
    \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=1.5em, y=2em]
       \node (A) at (0,0) {$A$};
       \draw (A) -- ++(-1,0);
@@ -1006,11 +1014,12 @@ For example, if $A$ is a square matrix,
       \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
       \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
    \end{tikzpicture}
+   \right)
    .
 \)
-There is a complementary notion of \emph{anti-symmetrization} (or \emph{skew-symmetrization}), where we sum over \emph{all permutations with appropriate sign}.
-For instance, a rank-2 skew-symmetric matrix \(A\) satisfies \(A_{ij} = -A_{ji}\).
-We can anti-symmetrize using a flat thick line:
+There is a complementary notion of \emph{anti-symmetrization} (or \emph{skew-symmetrization}), where we average over \emph{all permutations with appropriate sign}.
+For instance, an order-2 skew-symmetric matrix \(A\) satisfies \(A_{ij} = -A_{ji}\).
+We can extract the skew-symmetric part, $\frac{1}{2}(A - A^T)$, using a flat thick line:
 \(
    \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=2em, y=2em]
       \node (A) at (0,0) {$A$};
@@ -1019,6 +1028,8 @@ We can anti-symmetrize using a flat thick line:
     \draw [very thick] ($(A)+(.6,-.2)$) arc [start angle=-10, end angle=190, x radius=0.6, y radius=0.5];
    \end{tikzpicture}
    =
+   \frac{1}{2}
+   \left(
    \begin{tikzpicture}[baseline=(A.base), inner sep=2pt, x=1.5em, y=2em]
       \node (A) at (0,0) {$A$};
       \draw (A) -- ++(-1,0);
@@ -1030,11 +1041,12 @@ We can anti-symmetrize using a flat thick line:
       \draw (a0) -- ++(.3, 0) arc (270:90:-.1) --  ++(-.6, 0);
       \draw (a0) -- ++(-.3, 0) arc (270:90:.1) --  ++(.6, 0);
    \end{tikzpicture}
+   \right)
    .
 \)
-In higher-rank cases, the sign of each term is determined by the parity of the permutation.
+In higher-order cases, a thick line across $k$ edges denotes $\frac{1}{k!}\sum_\sigma \mathrm{sign}(\sigma)\,\sigma$, where the sign of each term is determined by the parity of the permutation.
 
-Both tensors are idempotent, since symmetrizing a symmetric tensor has no effect:
+Because of the normalization, both operators are idempotent projections: composing two of them over the same $k$ edges gives just a single one, since symmetrizing an already-symmetric tensor has no effect:
 \[
    \begin{tikzpicture}[baseline=.5em, inner sep=2pt, x=1em, y=.7em]
       \draw (0,0) -- ++(2,0);
@@ -1073,8 +1085,8 @@ Both tensors are idempotent, since symmetrizing a symmetric tensor has no effect
 
 In physics it's often relevant to change between different coordinate systems.
 Most such changes transform the left and right side of matrices differently, and similarly row and column vectors.
-For tensors this generalize to the concepts of covariance and contravariance.
-With notion, we keep track of ``input'' and ``output'' vectors.
+For tensors this generalizes to the concepts of covariance and contravariance.
+With this notion, we keep track of ``input'' and ``output'' vectors.
 We'll also need to distinguish between things such as the identity matrix, $\matmul{\sbullet}$,
 $\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
    \node (a0) {$\sbullet$};

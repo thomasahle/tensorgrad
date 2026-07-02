@@ -1,9 +1,11 @@
 
 \chapter{Statistics and Probability}
 \section{Definition of Moments}
-Let $x\in\mathbb R^{n}$ is a random variable.
-We write $m = E[x]\in\mathbb R^n$ for the expectation and
-$M=\mathrm{Var}[x] = E[(x-m)(x-m)^T]$ for the covariance (when these quantities are defined.)
+
+Let $x\in\mathbb R^{n}$ be a random variable.
+We write $m = E[x]\in\mathbb R^n$ for the expectation
+and write $\tilde x = x - m$ for the centered variable,
+so that $M=\mathrm{Var}[x] = E[\tilde x \tilde x^T]$ is the covariance (when these quantities are defined.)
 
 In tensor diagrams, we will use square brackets:
 \[
@@ -19,48 +21,40 @@ In tensor diagrams, we will use square brackets:
    =
 \mathbin{\begin{tikzpicture}[baseline=(n0.base), inner sep=1pt]
    \node (n0) at (0,0) {$[$};
-   \node [right=1em of n0] (n1) {$(x\ominus m)$};
-   \node [right=.5em of n1] (n2) {$(x\ominus m)$};
+   \node [right=1em of n0] (n1) {$\tilde x$};
+   \node [right=.5em of n1] (n2) {$\tilde x$};
    \node [right=1em of n2] (n3) {$]$};
    \draw (n0) -- (n1);
    \draw (n2) -- (n3);
 \end{tikzpicture}}
 \]
-We will use the circled minus, $\ominus$, to distinguish the operation from contraction edges.
+Inside diagrams we always write the centered variable as $\tilde x$ rather than $x - m$, since a bare minus sign inside a diagram could be mistaken for a contraction edge.
 
 We can also define the third and fourth centralized moment tensors
 \[
-   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$M_3$};
-      \draw (T) -- ++(.5,.3);
-      \draw (T) -- ++(.5,-.3);
-      \draw (T) -- ++(.5,0);
-   \end{tikzpicture}
-   =
+   \vcenter{\hbox{\import{figures/}{moment_tensors.pdf_tex}}}
+\]
+equal to the natural outer products
+\[
+   M_3 =
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{1em}{(x\ominus m)}{}{} \\
-      \vecmatvec{1em}{(x\ominus m)}{}{} \\
-      \vecmatvec{1em}{(x\ominus m)}{}{}
+      \vecmatvec{1em}{\tilde x}{}{} \\
+      \vecmatvec{1em}{\tilde x}{}{} \\
+      \vecmatvec{1em}{\tilde x}{}{}
    \end{bmatrix}
 \quad\text{and}\quad
-   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$M_4$};
-      \draw (T) -- ++(.5,.5);
-      \draw (T) -- ++(.5,-.5);
-      \draw (T) -- ++(.5,.2);
-      \draw (T) -- ++(.5,-.2);
-   \end{tikzpicture}
-   =
+   M_4 =
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{1em}{(x\ominus m)}{}{} \\
-      \vecmatvec{1em}{(x\ominus m)}{}{} \\
-      \vecmatvec{1em}{(x\ominus m)}{}{} \\
-      \vecmatvec{1em}{(x\ominus m)}{}{}
+      \vecmatvec{1em}{\tilde x}{}{} \\
+      \vecmatvec{1em}{\tilde x}{}{} \\
+      \vecmatvec{1em}{\tilde x}{}{} \\
+      \vecmatvec{1em}{\tilde x}{}{}
    \end{bmatrix}
 .
 \]
+
 %These are less common in introductory causes, even though the scalar third and fourth moment are common.
 %This is presumably because they require higher order tensors.
 
@@ -69,8 +63,8 @@ We can also define the third and fourth centralized moment tensors
 %M =
 %\left[
 %   \begin{tikzpicture}[baseline=(c.base), inner sep=1pt]
-%      \node (T1) {$(x\ominus m)$};
-%      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
+%      \node (T1) {$\tilde x$};
+%      \node (T2)[below=.5em of T1] {$\tilde x$};
 %      \node (c)[right=.7em of T1, yshift=-1em] {$\sbullet$};
 %      \draw (T1) -- (c);
 %      \draw (T2) -- (c);
@@ -81,9 +75,9 @@ We can also define the third and fourth centralized moment tensors
 %M_3 =
 %\left[
 %   \begin{tikzpicture}[baseline=(T2.base), inner sep=1pt]
-%      \node (T1) {$(x\ominus m)$};
-%      \node (T2)[below=.5em of T1] {$(x\ominus m)$};
-%      \node (T3)[below=.5em of T2] {$(x\ominus m)$};
+%      \node (T1) {$\tilde x$};
+%      \node (T2)[below=.5em of T1] {$\tilde x$};
+%      \node (T3)[below=.5em of T2] {$\tilde x$};
 %      \node (c)[right=.7em of T2] {$\sbullet$};
 %      \draw (T1) -- (c);
 %      \draw (T2) -- (c);
@@ -115,54 +109,24 @@ We can also define the third and fourth centralized moment tensors
 
 
 \subsection{Expectation of Linear Combinations}
-General principle: The ``linearity of expectation'' lets you pull out all parts of the graph not involving $X$.
+General principle: The ``linearity of expectation'' lets you pull out all parts of the graph not involving $X$, which we assume here has mean zero, so that its third moment tensor is exactly the $M_3$ defined above.
 \[
    \vcenter{\hbox{
       \import{figures/}{linearityOfExpectation.pdf_tex}
    }}
 \]
-where $M_3$ is the expectation\footnote{FIXME: This is different from the notation just introduced above.}
-\(
-\left[
-\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-   \node (T) {$x$};
-   \draw (T) -- ++(0,.3);
-   \draw (T) -- ++(-.1,-.3);
-   \draw (T) -- ++(.1,-.3);
-\end{tikzpicture}
-\,
-\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-   \node (T) {$x$};
-   \draw (T) -- ++(0,.3);
-   \draw (T) -- ++(-.1,-.3);
-   \draw (T) -- ++(.1,-.3);
-\end{tikzpicture}
-\,
-\begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-   \node (T) {$x$};
-   \draw (T) -- ++(0,.3);
-   \draw (T) -- ++(-.1,-.3);
-   \draw (T) -- ++(.1,-.3);
-\end{tikzpicture}
-\right]
-\),
-which is an order-9 tensor with no dependence on the constants $A$, $B$, $C$ and $D$.
+The remaining tensor on the right (labeled $M_3$ in the figure) is an order-9 tensor that depends only on the distribution of $X$, not on the constants $A$, $B$, $C$, $D$, $E$.
 In practice you would want to name the edges to keep track of what gets multiplied with what.
 
 We can even use linearity of expectation to push the expectation inside an infinite sum of tensors, as in the following moment generating function, which relates all the $M_k$ tensors:
 \begin{align*}
-   \mathrm{E}(\mathrm{e}^{\langle x\ominus m, t\rangle})
-   &= \sum_{k=0}^\infty \frac{1}{k!} \mathrm{E}[\langle x\ominus m, t\rangle^k]
-    = \mathrm{E}\big[\sum_{k=0}^\infty \frac{1}{k!} \langle (x\ominus m)^{\otimes k}, t^{\otimes k}\rangle\big]
+   \mathrm{E}(\mathrm{e}^{\langle \tilde x, t\rangle})
+   &= \sum_{k=0}^\infty \frac{1}{k!} \mathrm{E}[\langle \tilde x, t\rangle^k]
+    = \mathrm{E}\big[\sum_{k=0}^\infty \frac{1}{k!} \langle \tilde x^{\otimes k}, t^{\otimes k}\rangle\big]
    = \sum_{k=0}^\infty \frac{1}{k!} \langle M_k, t^{\otimes k}\rangle
  \\&=
   % =
    1
-   +
-   \begin{tikzpicture}[baseline=.5em, inner sep=1]
-      \node (T) {$m$};
-      \draw (T) -- ++(0,.5) node[fill=white] {$t$};
-   \end{tikzpicture}
    +
    \frac{1}{2}
    \begin{tikzpicture}[baseline=(T.base), inner sep=1]
@@ -190,6 +154,7 @@ We can even use linearity of expectation to push the expectation inside an infin
    +
    \dots
 \end{align*}
+Note that there is no linear term, since $M_1 = \E[\tilde x] = 0$.
 
 \subsection{Linear Forms}
 The Matrix Cookbook gives the following simple expectation:
@@ -218,8 +183,8 @@ We often prefer to write expectations in terms of the simple centered moments, w
    \end{bmatrix}
    =
    \begin{bmatrix}
-      (x\ominus m) - \\
-      (x\ominus m) -
+      \tilde x - \\
+      \tilde x -
    \end{bmatrix}
    +
    \begin{array}{c}
@@ -245,21 +210,25 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    &
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{.5em}{A}{}{x} \ominus [\vecmatvec{.5em}{A}{}{x}] \\
-      \vecmatvec{.5em}{A}{}{x} \ominus [\vecmatvec{.5em}{A}{}{x}]
+      \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+         \draw (0,0) node[right] {$\widetilde{Ax}$} -- ++(-.3,0);
+      \end{tikzpicture} \\
+      \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+         \draw (0,0) node[right] {$\widetilde{Ax}$} -- ++(-.3,0);
+      \end{tikzpicture}
    \end{bmatrix}
    &=
    \renewcommand*{\arraystretch}{1.3}
    \begin{bmatrix}
-      \vecmatvec{.5em}{A}{}{(x\ominus m)} \\
-      \vecmatvec{.5em}{A}{}{(x\ominus m)}
+      \vecmatvec{.5em}{A}{}{\tilde x} \\
+      \vecmatvec{.5em}{A}{}{\tilde x}
    \end{bmatrix}
  \\&&&=
    \vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
-      \node (n1) at (0,-.25) {$\vecmatvec{1em}{A}{}{(x\ominus m)}$};
-      \node (n2) at (0,.25) {$\vecmatvec{1em}{A}{}{(x\ominus m)}$};
+      \node (n1) at (0,-.25) {$\vecmatvec{1em}{A}{}{\tilde x}$};
+      \node (n2) at (0,.25) {$\vecmatvec{1em}{A}{}{\tilde x}$};
       \node at (-.45, 0) {$\Bigg[$};
-      \node at (1, 0) {$\Bigg]$};
+      \node at (.8, 0) {$\Bigg]$};
    \end{tikzpicture}}}
  \\&&& =
    \vecmatvec{.5em}{}{A,M_2,A}{}
@@ -273,8 +242,8 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    &=
    \left(
       \begin{bmatrix}
-         (x\ominus m) - \\
-         (x\ominus m) -
+         \tilde x - \\
+         \tilde x -
       \end{bmatrix}
       +
       \begin{array}{c}
@@ -290,11 +259,11 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    \\
    &&&=
    \mathbin{\begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-      \node (n1) at (0,-.25) {$(x\ominus m)$};
-      \node (n2) at (0,.25) {$(x\ominus m)$};
-      \node at (-.75, 0) {$\Bigg[$};
-      \node at (.75, 0) {$\Bigg]$};
-      \node (A) at (1, 0) {$A$};
+      \node (n1) at (0,-.25) {$\tilde x$};
+      \node (n2) at (0,.25) {$\tilde x$};
+      \node at (-.4, 0) {$\Bigg[$};
+      \node at (.4, 0) {$\Bigg]$};
+      \node (A) at (.9, 0) {$A$};
       \draw (n1) -- (A);
       \draw (n2) -- (A);
    \end{tikzpicture}}
@@ -313,44 +282,157 @@ This makes it easy to handle the quadratic forms from the Matrix Cookbook:
    \\[.5em]
 \end{walign}
 
-\begin{align*}
-   E[(A\mathbf{x} + a)(B\mathbf{x} + b)^T] &= AMB^T + (Am + a)(Bm + b)^T \tag{320} \\
-   E[\mathbf{x}\mathbf{x}^T] &= M + mm^T \tag{321} \\
-   E[\mathbf{x} a^T \mathbf{x}] &= (M + mm^T)a \tag{322} \\
-   E[\mathbf{x}^T a\mathbf{x}^T] &= a^T(M + mm^T) \tag{323} \\
-   E[(A\mathbf{x})(A\mathbf{x})^T] &= A(M + mm^T)A^T \tag{324} \\
-   E[(\mathbf{x} + a)(\mathbf{x} + a)^T] &= M + (m + a)(m + a)^T \tag{325} \\
-   E[(A\mathbf{x} + a)^T(B\mathbf{x} + b)] &= \text{Tr}(AMB^T) + (Am + a)^T(Bm + b) \tag{326} \\
-   E[\mathbf{x}^T \mathbf{x}] &= \text{Tr}(M) + m^T m \tag{327} \\
-   E[\mathbf{x}^T A\mathbf{x}] &= \text{Tr}(AM) + m^T Am \tag{328} \\
-   E[(A\mathbf{x})^T(A\mathbf{x})] &= \text{Tr}(AMA^T) + (Am)^T(Am) \tag{329} \\
-   E[(\mathbf{x} + a)^T(\mathbf{x} + a)] &= \text{Tr}(M) + (m + a)^T(m + a) \tag{330}
-\end{align*}
+The general outer-product form is obtained by the same ``pull out the mean'' step applied to two independent linear expressions.
+We split $Ax+a = A\tilde x + (Am+a)$ and likewise for $Bx+b$; the centered-times-mean cross terms vanish in expectation.
 
+\begin{walign}
+   \tag{320}
+   &\E[(Ax+a)(Bx+b)^T]
+   &&
+   \renewcommand*{\arraystretch}{1.3}
+   \begin{bmatrix}
+      \vecmatvec{.5em}{A}{}{x} + a \\
+      \vecmatvec{.5em}{B}{}{x} + b
+   \end{bmatrix}
+ \\*
+   &= AMB^T + (Am+a)(Bm+b)^T
+   &&=
+   \renewcommand*{\arraystretch}{1.3}
+   \begin{bmatrix}
+      \vecmatvec{.5em}{A}{}{\tilde x} \\
+      \vecmatvec{.5em}{B}{}{\tilde x}
+   \end{bmatrix}
+   +
+   \renewcommand*{\arraystretch}{1.3}
+   \begin{bmatrix}
+      \vecmatvec{.5em}{A}{}{m} + a \\
+      \vecmatvec{.5em}{B}{}{m} + b
+   \end{bmatrix}
+ \\*
+   &
+   &&=
+   \vecmatvec{.5em}{}{A,M_2,B}{}
+   +
+   \renewcommand*{\arraystretch}{1.3}
+   \begin{bmatrix}
+      \vecmatvec{.5em}{A}{}{m} + a \\
+      \vecmatvec{.5em}{B}{}{m} + b
+   \end{bmatrix}
+\end{walign}
 
+\noindent All the other outer-product identities are specializations of~(320) with $A$, $B$ set to $I$ or to each other, and $a$, $b$ optionally zero.
+\begin{walign}
+   \tag{321}
+   \E[xx^T] &= M + mm^T
+   &&
+   \begin{bmatrix} x -\\x - \end{bmatrix}
+   =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$M$};
+      \draw (T) -- ++(.5,.25);
+      \draw (T) -- ++(.5,-.25);
+   \end{tikzpicture}
+   +
+   \begin{matrix} m -\\ m - \end{matrix}
+ \\[.4em]
+   \tag{324}
+   \E[(Ax)(Ax)^T] &= A(M+mm^T)A^T
+   &&
+   \renewcommand*{\arraystretch}{1.3}
+   \begin{bmatrix}
+      \vecmatvec{.5em}{A}{}{x} \\ \vecmatvec{.5em}{A}{}{x}
+   \end{bmatrix}
+   =
+   \vecmatvec{.5em}{}{A,M_2,A}{}
+   +
+   \renewcommand*{\arraystretch}{1.3}
+   \begin{bmatrix}
+      \vecmatvec{.5em}{A}{}{m} \\ \vecmatvec{.5em}{A}{}{m}
+   \end{bmatrix}
+ \\[.4em]
+   \tag{325}
+   \E[(x+a)(x+a)^T] &= M + (m+a)(m+a)^T
+   &&
+   \begin{bmatrix} x+a \\ x+a \end{bmatrix}
+   =
+   \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
+      \node (T) {$M$};
+      \draw (T) -- ++(.5,.25);
+      \draw (T) -- ++(.5,-.25);
+   \end{tikzpicture}
+   +
+   \begin{matrix} m+a\\ m+a \end{matrix}
+\end{walign}
+
+\noindent The remaining two outer-product identities are just~(321) contracted against a vector~$a$ (so one of the two free edges gets closed):
+\begin{walign}
+   \tag{322}
+   \E[x\, a^T x] &= (M+mm^T)a
+   &&
+   \vecmatvec{.5em}{}{\E[xx^T]}{a}
+   \;=\;
+   \vecmatvec{.5em}{}{M_2}{a}
+   \;+\;
+   \vecmatvec{.5em}{}{m, m}{a}
+ \\[.4em]
+   \tag{323}
+   \E[x^T a\, x^T] &= a^T(M+mm^T)
+   && \text{(transpose of~(322))}
+\end{walign}
+
+\noindent Contracting the two free edges of~(320) against each other (i.e., taking the trace) turns the outer-product identities into scalar inner-product identities. The inner product $(Ax+a)^T(Bx+b)$ is just the two vectors joined on their free edges:
+\begin{walign}
+   \tag{326}
+   &\E[(Ax+a)^T(Bx+b)]
+   &&
+   \vecmatvec{.5em}{(Ax+a)}{}{(Bx+b)}
+ \\*
+   &= \Tr(AMB^T) + (Am+a)^T(Bm+b)
+   &&= \trace{A,M_2,B}{1.3}
+ \\*
+   &
+   &&\phantom{{}={}}{}+ \vecmatvec{.5em}{(Am+a)}{}{(Bm+b)}
+\end{walign}
+\noindent The remaining trace identities specialize~(326) the same way:
+\begin{walign}
+   \tag{327}
+   &\E[x^T x]
+   &&
+   \vecmatvec{.5em}{x}{}{x}
+ \\*
+   &= \Tr(M) + m^T m
+   &&= \trace{M}{1.3}
+   \;+\;
+   \vecmatvec{.5em}{m}{}{m}
+ \\[.4em]
+   \tag{328}
+   \E[x^T A x] &= \Tr(AM) + m^T A m
+   && \text{(already shown as~(318))}
+ \\[.4em]
+   \tag{329}
+   &\E[(Ax)^T(Ax)]
+   &&
+   \vecmatvec{.5em}{(Ax)}{}{(Ax)}
+ \\*
+   &= \Tr(AMA^T) + (Am)^T(Am)
+   &&= \trace{A,M_2,A}{1.3}
+   \;+\;
+   \vecmatvec{.5em}{(Am)}{}{(Am)}
+ \\[.4em]
+   \tag{330}
+   &\E[(x+a)^T(x+a)]
+   &&
+   \vecmatvec{.5em}{(x+a)}{}{(x+a)}
+ \\*
+   &= \Tr(M) + (m+a)^T(m+a)
+   &&= \trace{M}{1.3}
+   \;+\;
+   \vecmatvec{.5em}{(m+a)}{}{(m+a)}
+\end{walign}
 
 \subsection{Cubic Forms}
 
-\[
-\begin{tikzpicture}[scale=1.3,
-  every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
-  label/.style={draw=none, fill=none, text=black, font=\scriptsize},
-  declare function={
-    xgap=.8;  % Horizontal spacing between diagrams
-  }]
-
-  \drawPartitionAtAngle{(-1.6*xgap,0)}{3}{$\kappa_3$}{{{1,2,3}}}
-  \drawPartitionAtAngle{(0,0)}{3}{$+\kappa_2\kappa_1\Big($}{{{1,2},{3}}}
-  \drawPartitionAtAngle{(xgap,0)}{3}{$+$}{{{1,3},{2}}}
-  \drawPartitionAtAngle{(2*xgap,0)}{3}{$+$}{{{2,3},{1}}}
-  \drawPartitionAtAngle{(3.6*xgap,0)}{3}{$\Big)+\kappa_1^3$}{{{1},{2},{3}}}
-
-\end{tikzpicture}
-\]
-
-
-When $x$ is a stochastic vector with mean vector $m$,
-it can be convenient to expand the raw third moment in terms of the central moments:
+The raw third moment $\E[x^{\otimes 3}]$ decomposes into central moments by the same ``pull out the mean'' expansion, $x = \tilde x + m$. Of the eight terms in the expansion of $(\tilde x + m)^{\otimes 3}$, the three terms containing exactly one centered factor vanish in expectation (since $\E[\tilde x] = 0$), leaving
 
 \renewcommand*{\arraystretch}{1}
 \begin{align*}
@@ -361,107 +443,67 @@ it can be convenient to expand the raw third moment in terms of the central mome
 \end{bmatrix}
 &=
 \begin{bmatrix}
-   (x\ominus m) - \\
-   (x\ominus m) - \\
-   (x\ominus m) -
+   \tilde x - \\
+   \tilde x - \\
+   \tilde x -
 \end{bmatrix}
-\vspace{-.5em}
 +
-3
-\hspace{-.25em}
-\begin{array}{l}
-\begin{bmatrix}
-   (x\ominus m) -
-\end{bmatrix}\\[.1em]
-\begin{bmatrix}
+3 \cdot \underbrace{\left(
+   \begin{array}{l}
+   \begin{bmatrix}
+      \tilde x - \\
+      \tilde x -
+   \end{bmatrix}\\[.3em]
+   \hphantom{[}\,m -
+   \end{array}
+\right)}_{\text{one of three positions}}
++
+\begin{array}{c}
+   m - \\
    m - \\
    m -
-\end{bmatrix}
 \end{array}
-\hspace{-.5em}
-+
-3
-\hspace{-.25em}
-\begin{array}{l}
-\begin{bmatrix}
-   m -
-\end{bmatrix}\\[.1em]
-\begin{bmatrix}
-   (x\ominus m) - \\
-   (x\ominus m) -
-\end{bmatrix}
-\end{array}
-\hspace{-.5em}
-+
-\hspace{-.5em}
-\begin{array}{c}
-\begin{bmatrix}
-   m -
-\end{bmatrix}\\[.1em]
-\begin{bmatrix}
-   m -
-\end{bmatrix}\\[.1em]
-\begin{bmatrix}
-   m -
-\end{bmatrix}
-\end{array}
-%
 \\&=
 \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
    \node (T) {$M_3$};
    \draw (T) -- ++(0,.4);
-   \draw (T) -- ++(-.2,-.35);
-   \draw (T) -- ++(.2,-.35);
+   \draw (T) -- ++(-.25,-.35);
+   \draw (T) -- ++(.25,-.35);
 \end{tikzpicture}
-+
-3
-\hspace{-.25em}
-\begin{array}{c}
-   m - \\
-   -M-
-\end{array}
-\hspace{-.5em}
-+
+\;+\; 3
+\begin{tikzpicture}[baseline=0pt, inner sep=1.5pt]
+   % M node with two horizontal edges going left
+   \node (M) at (0, -.3) {$M$};
+   \draw (M.west) -- ++(-1.1, .2);
+   \draw (M.west) -- ++(-1.1, -.2);
+   % m node with one horizontal edge going left
+   \node (m) at (0, .55) {$m$};
+   \draw (m.west) -- ++(-1.1, 0);
+   % vertical squiggle crossing all three free edges
+   \draw [very thick, line width=1.5pt, decorate, decoration={snake, amplitude=0.45mm, segment length=2.2mm}]
+         (-1.0, -.9) -- (-1.0, 1.0);
+\end{tikzpicture}
+\;+\;
 \begin{array}{c}
    m - \\
    m - \\
    m -
 \end{array}
 \end{align*}
-TODO: The edges from the $m,M$ term needs to be symmetrized.
+The squiggle denotes symmetrization over its edges (the average over all $3! = 6$ permutations of those legs, following the convention in §\ref{sec:symmetry}). Since $M$ is symmetric, permutations that only swap $M$'s two legs act trivially, so the average produces each of the $3$ distinct assignments of $m$ and $M$ to the legs with weight $\tfrac26 = \tfrac13$; the factor $3$ turns this average back into the sum of the three distinct terms.
 
-
-But this is still a bit of a mess.
-See also below on Cumulants.
-
-
-
-Assume \(\mathbf{x}\) to be a stochastic vector with independent coordinates, mean \(m\),
-covariance \(M\) and central moments \(v_3 = \mathbb{E}[(\mathbf{x} - m)^3]\). Then (see [7])
+For an affine expression $(Ax+a)(Bx+b)^T(Cx+c)$, the same pattern gives
 \begin{align*}
-&\mathbb{E}[(A\mathbf{x} + a)(B\mathbf{x} + b)^T (C\mathbf{x} + c)]
-\\&\quad=
-A\,\mathrm{diag}(B^T C) v_3
-\\&\quad+
-(Am + a) \mathrm{Tr}(BMC^T)
-\\&\quad+
-AMC^T (Bm + b)
-\\&\quad\,+
-AMB^T (Cm + c)
-\\&\quad+
-(Am + a)(Bm + b)^T (Cm + c)
-\\
-  &\mathbb{E}[\mathbf{x} \mathbf{x}^T \mathbf{x}]
-\\&\quad=
-   v_3
-\\&\quad+
-   2 Mm
-\\&\quad+
-   (\text{Tr}(M) + m^T m) m
+   \E\!\left[(Ax+a)(Bx+b)^T(Cx+c)\right]
+   &= A\cdot M_3\!\!\left(B^T, C\right)
+   \\&\quad+ AMB^T(Cm+c) + AMC^T(Bm+b) + (Am+a)\,\Tr(BMC^T)
+   \\&\quad+ (Am+a)(Bm+b)^T(Cm+c),
 \end{align*}
+where $M_3(B^T, C)$ denotes the order-1 tensor obtained by contracting two legs of $M_3$ with $B^T$ and~$C$ respectively, and then contracting the remaining free indices of $B$ and $C$ with each other; in components, $M_3(B^T, C)_i = (M_3)_{ijk} B_{lj} C_{lk}$.
 
 
 \section{Cumulants}
+\label{sec:cumulants}
 
 Given a random vector $x\in\mathbb R^d$,
 its $n$th Cumulant Tensor, $K_n\in\R^{d,\ldots,d}$ is defined by
@@ -563,10 +605,7 @@ We can write the expectations of $x^{\otimes n}$ in terms of the cumulants:
 \]
 In general the sum is over all the partitions of the set $\{1,\ldots,n\}$.
 
-If the entries of $x$ are \emph{independent}, the off-diagonals of the cumulant tensors $K_1, K_2, \dots$ are zero.
-This means 
-%
-Assume each $x_i$ has cumulants $\kappa_1, \kappa_2, \kappa_3, \kappa_4 \in \R$, then
+If the entries of $x$ are \emph{independent} and identically distributed with scalar cumulants $\kappa_1, \kappa_2, \kappa_3, \kappa_4 \in \R$, the off-diagonals of the cumulant tensors $K_1, K_2, \dots$ all vanish, and the partition sum reduces to a scalar weight times a ``copy tensor'' (diagonal) for each block. For $n=4$:
 \[
 \begin{bmatrix}
    \begin{tikzpicture}[
@@ -676,7 +715,7 @@ For $n=5$ there are 52 partitions in total, but only 11 survive if $\kappa_1=0$:
    \end{tikzpicture}
 \]
 
-If $x$ is Gaussian, all cumulants of order $3$ and higher are zero.
+If $x$ is a centered (zero-mean) Gaussian, all cumulants except $\kappa_2$ are zero.
 For $n=6$ there are 203 partitions in total, but only 15 terms\footnote{This is why $\E[g^6]=15$ for $g\sim N(0,1)$.} for $E[x^{\otimes 6}]$:
 \[
    \begin{tikzpicture}[
@@ -713,13 +752,10 @@ For $n=6$ there are 203 partitions in total, but only 15 terms\footnote{This is 
 \]
 
 \subsection{Quartic Forms}
-
-
-
-
+\label{sec:quartic-forms}
 
 We can use this to compute $\mathrm{Var}[x^T A x]$.
-We assume $A$ is symmetric:
+We assume $A$ is symmetric and, as above, that the entries of $x$ are independent and identically distributed with scalar cumulants $\kappa_1, \kappa_2, \kappa_3, \kappa_4$:
 \begin{walign}
    \mathrm{Var}[x^T A x]
    &=
@@ -834,22 +870,19 @@ The Matrix Cookbook lists this as
    + 4\mu_3 c^T Aa
    + (\mu_4 - 3\mu_2^2)a^T a \tag{319}
 \]
-where $c = \mu_1$ is the mean of $x$,
+where $c = \mu_1 \mathbf{1}$ is the mean vector of $x$ (every coordinate has mean $\mu_1$),
 and $a = \mathrm{diag}(A)$ is the diagonal of $A$,
 and $\mu_4 = \kappa_4 + 3\kappa_2^2$ is the fourth central moment.
 
 
 \section{Weighted Scalar Variable}
-Let $y=w^T x$, and let $m=E[y]$, then
+If we contract the random vector $x$ with a deterministic vector $w$ to form a scalar $y = w^T x$, the central moments of $y$ are just the central-moment tensors of $x$ contracted on all legs with $w$:
 \begin{align*}
-   \tag{321}
-   \E[y] &= m = w^T \mu
+   \E[y] &= w^T m
    \\
-   \tag{322}
-   \E[(y\ominus m)^2] &= \vecmatvec{.5em}{w}{M_2}{w}
+   \E[(y - m_y)^2] &= \vecmatvec{.5em}{w}{M_2}{w}
    \\
-   \tag{323}
-   \E[(y\ominus m)^3] &=
+   \E[(y - m_y)^3] &=
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$M_3$};
       \node[above=.3em of a0] (n0) {$w$};
@@ -860,8 +893,7 @@ Let $y=w^T x$, and let $m=E[y]$, then
       \draw (a0.west) -- (n3);
    \end{tikzpicture}}
    \\
-   \tag{324}
-   \E[(y\ominus m)^4] &=
+   \E[(y - m_y)^4] &=
    \mathbin{\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$M_4$};
       \node[above=.3em of a0] (n0) {$w$};
@@ -874,32 +906,36 @@ Let $y=w^T x$, and let $m=E[y]$, then
       \draw (a0.west) -- (n3);
    \end{tikzpicture}}
 \end{align*}
+where $m_y = \E[y] = w^T m$.
 
-
-For $x\sim N(0,1)$, we have the inequality:
-\[
-   \E[y^n]^{1/n} \leq \sqrt{2/\pi}\, \|w\|_2.
-\]
+\noindent For $x\sim N(0, I)$ (unit Gaussian) all central moments $M_k$ with $k$ odd vanish, and $\E[|y|^n]^{1/n} \le \sqrt{2n/\pi}\,\|w\|_2$ by the Gaussian moment formula $\E|g|^n = \sigma^n 2^{n/2} \Gamma(\tfrac{n+1}{2})/\sqrt{\pi}$.
 
 
 \section{Gaussian Moments}
 
-For a Gaussian vector $x \sim \mathcal{N}(m,M)$:
-- All odd centered moments vanish: $M_3 = 0$, etc.
-- Even moments can be computed via Isserlis' theorem.
-
-For instance:
+For a Gaussian vector $x \sim \mathcal{N}(m, M)$, all cumulants beyond the second vanish: $K_1 = m$, $K_2 = M$, and $K_n = 0$ for $n \ge 3$. The moment-cumulant formula from the Cumulants section then collapses to a sum over partitions of $\{1,\dots,n\}$ into singletons (each carrying a factor of $m$) and pairs (each carrying a factor of $M$)~--- \emph{Isserlis' theorem}, also known as \emph{Wick's theorem}:
 \[
-\mathbb{E}[(x \ominus m)^{\otimes 4}]
-=
-M \otimes M + M \otimes M + \dots
+   \left[
+      \begin{tikzpicture}[baseline=(c.base), inner sep=1pt, every node/.style={inner sep=1pt}]
+         \node (c) at (0, 0) {$x$};
+         \node[right=.3em of c] (dots) {$\cdots$};
+         \node[right=.3em of dots] (cn) {$x$};
+         \draw (c) -- ++(0, .35);
+         \draw (cn) -- ++(0, .35);
+         \node[above=.3em of dots] {\scriptsize $n$ copies};
+      \end{tikzpicture}
+   \right]
+   = \sum_{\pi \in \mathcal{P}(n)} \prod_{B \in \pi}
+   \begin{cases} m & |B| = 1 \\ M & |B| = 2 \\ 0 & |B| \ge 3 \end{cases}.
 \]
-(summing over the different pairings of indices).
+For centered Gaussians ($m = 0$) only the pairings survive, giving the familiar identity
+\[
+   E[x^{\otimes 2k}] = \sum_{\pi \text{ pairing}} \bigotimes_{(i,j) \in \pi} M,
+\]
+a sum with $(2k-1)!!$ terms ($3$ for $k=2$, $15$ for $k=3$).
 
 \subsection{Gaussian Integration by Parts}
-If $X$ is a tensor with Gaussian entries, zero mean, and some covariance,
-% General principle for Gaussian expectations.
-Stein's lemma gives the following very general equation, for any differentiable function $f$:
+If $X$ is a tensor with Gaussian entries, zero mean, and some covariance, Stein's lemma gives the following very general equation, for any differentiable function $f$:
 \[
    \vcenter{\hbox{
       \import{figures/}{steins.pdf_tex}
@@ -907,850 +943,160 @@ Stein's lemma gives the following very general equation, for any differentiable 
 \]
 Combined with the tensor chain rule from chapter~\ref{chapter:functions}, this can be a very powerful way to evaluate many hard expectations.
 
+\subsection{Quadratic and Quartic Forms}
 
-
+The quadratic-form identities of the Quadratic Forms section hold for arbitrary distributions, so they apply to Gaussians without modification --- see (318) and (321). What \emph{is} Gaussian-specific is the variance of a quadratic form, where, for symmetric $A$, Wick pairing leaves only two surviving terms after cancelling~$\E[x^T A x]^2$:
 \begin{align*}
-E(xx^T) &= \Sigma + mm^T \tag{377} \\
-E[x^TAx] &= \text{Tr}(A\Sigma) + m^TAm \tag{378} \\
-\text{Var}(x^TAx) &= \text{Tr}[A\Sigma(A + A^T)\Sigma] + \cdots \tag{379} \\
-&\quad +m^T(A + A^T)\Sigma(A + A^T)m \\
-E[(x - m')^TA(x - m')] &= (m - m')^TA(m - m') + \text{Tr}(A\Sigma) \tag{380}
+   \mathrm{Var}[x^T A x]
+   &= 2\,\Tr(AMAM) + 4\, m^T A M A m \tag{379}
+   \\ &= 2\;\trace{A,M,A,M}{1} \;+\; 4\;\vecmatvec{.5em}{m}{A,M,A}{m}\,.
 \end{align*}
+Specializing to $M = \sigma^2 I$ recovers the Matrix Cookbook identity
+\begin{equation}
+   \mathrm{Var}[x^T A x] = 2\sigma^4 \Tr(A^2) + 4\sigma^2 m^T A^2 m. \tag{381}
+\end{equation}
+For two symmetric forms with the same Gaussian,
+\begin{equation}
+   \mathrm{Cov}(x^T A x,\, x^T B x) = 2\,\Tr(A M B M) + 4\, m^T A M B m. \tag{382}
+\end{equation}
+(Our version generalizes the Matrix Cookbook's (382), which assumes $x \sim \mathcal{N}(0, \sigma^2 I)$ and hence reads $2\sigma^4 \Tr(AB)$.)
 
-If $\Sigma = \sigma^2I$ and $A$ is symmetric, then
-
+More general fourth moments follow the same Wick-pairing recipe: given any four linear expressions $\ell_1(x), \dots, \ell_4(x)$, we have
+\[
+   \E[\ell_1 \ell_2 \ell_3 \ell_4]
+   = \sum_{\text{3 pairings}} \E[\ell_i \ell_j]\, \E[\ell_k \ell_l] + \text{mean-only terms}.
+\]
+For example,
 \begin{align*}
-\text{Var}(x^TAx) = 2\sigma^4\text{Tr}(A^2) + 4\sigma^2m^TA^2m \tag{381}
+   \E[a^T x \, b^T x \, c^T x \, d^T x]
+   &= (a^T M b)(c^T M d)
+   + (a^T M c)(b^T M d)
+   + (a^T M d)(b^T M c)
+   \\ &\quad + \text{mean-dependent terms},
 \end{align*}
-
-Assume $x \sim \mathcal{N}(0, \sigma^2I)$ and $A$ and $B$ to be symmetric, then
-
-\begin{align*}
-\text{Cov}(x^TAx, x^TBx) = 2\sigma^4\text{Tr}(AB) \tag{382}
-\end{align*}
-
-\subsection{Cubic forms}
-
-Assume $x$ to be a stochastic vector with independent coordinates, mean $m$ and covariance $M$
-
-\begin{align*}
-E[xb^Txx^T] &= mb^T(M + mm^T) + (M + mm^T)bm^T \tag{383} \\
-&\quad +b^Tm(M - mm^T)
-\end{align*}
-
-\subsection{Mean of Quartic Forms}
-
-\begin{align*}
-E[xx^Txx^T] &= 2(\Sigma + mm^T)^2 + m^Tm(\Sigma - mm^T) \\
-&\quad +\text{Tr}(\Sigma)(\Sigma + mm^T) \\[1em]
-E[xx^TAxx^T] &= (\Sigma + mm^T)(A + A^T)(\Sigma + mm^T) \\
-&\quad +m^TAm(\Sigma - mm^T) + \text{Tr}[A\Sigma](\Sigma + mm^T) \\[1em]
-E[x^Txx^Tx] &= 2\text{Tr}(\Sigma^2) + 4m^T\Sigma m + (\text{Tr}(\Sigma) + m^Tm)^2 \\[1em]
-E[x^TAxx^TBx] &= \text{Tr}[A\Sigma(B + B^T)\Sigma] + m^T(A + A^T)\Sigma(B + B^T)m \\
-&\quad +(\text{Tr}(A\Sigma) + m^TAm)(\text{Tr}(B\Sigma) + m^TBm)
-\end{align*}
-
-\begin{align*}
-E[a^Txb^Txc^Txd^Tx] &= (a^T(\Sigma + mm^T)b)(c^T(\Sigma + mm^T)d) \\
-&\quad +(a^T(\Sigma + mm^T)c)(b^T(\Sigma + mm^T)d) \\
-&\quad +(a^T(\Sigma + mm^T)d)(b^T(\Sigma + mm^T)c) - 2a^Tmb^Tmc^Tmd^Tm
-\end{align*}
-
-\begin{align*}
-&E[(Ax + a)(Bx + b)^T(Cx + c)(Dx + d)^T] \\
-&= [A\Sigma B^T + (Am + a)(Bm + b)^T][C\Sigma D^T + (Cm + c)(Dm + d)^T] \\
-&\quad +[A\Sigma C^T + (Am + a)(Cm + c)^T][B\Sigma D^T + (Bm + b)(Dm + d)^T] \\
-&\quad +(Bm + b)^T(Cm + c)[A\Sigma D^T - (Am + a)(Dm + d)^T] \\
-&\quad +\text{Tr}(B\Sigma C^T)[A\Sigma D^T + (Am + a)(Dm + d)^T]
-\end{align*}
-
-\begin{align*}
-&E[(Ax + a)^T(Bx + b)(Cx + c)^T(Dx + d)] \\
-&= \text{Tr}[A\Sigma(C^TD + D^TC)\Sigma B^T] \\
-&\quad +[(Am + a)^TB + (Bm + b)^TA]\Sigma[C^T(Dm + d) + D^T(Cm + c)] \\
-&\quad +[\text{Tr}(A\Sigma B^T) + (Am + a)^T(Bm + b)][\text{Tr}(C\Sigma D^T) + (Cm + c)^T(Dm + d)]
-\end{align*}
-
-See [7].
-
+which the reader can unfold by writing $\ell_i = a_i^T\tilde x + a_i^T m$ and collecting terms.
 
 \subsection{Mixture of Gaussians}
-For a mixture of Gaussians:
-\[
-   x \sim \sum_k \pi_k \mathcal{N}(m_k, M_k),
-\]
-the moments are weighted sums:
-\[
-   E[x] = \sum_k \pi_k m_k, \quad
-   \mathrm{Var}[x] = \sum_k \pi_k (M_k + m_k m_k^T) - \left(\sum_k \pi_k m_k\right)\left(\sum_k \pi_k m_k\right)^T.
-\]
-Higher moments similarly combine via linearity.
-
-
+For a mixture
+\(
+   x \sim \sum_k \rho_k\, \mathcal{N}(m_k, M_k),
+\)
+linearity of expectation gives
 \begin{align*}
-E[x] &= \sum_k \rho_k m_k \tag{384} \\[1em]
-\text{Cov}(x) &= \sum_k\sum_{k'} \rho_k\rho_{k'} (\Sigma_k + m_km_k^T - m_km_{k'}^T) \tag{385}
+   \tag{384}
+   \E[x] &= \sum_k \rho_k\, m_k
+   \\
+   \tag{385}
+   \mathrm{Var}[x] &= \sum_k \rho_k (M_k + m_k m_k^T) - \left(\sum_k \rho_k m_k\right)\!\left(\sum_k \rho_k m_k\right)^{\!T}.
 \end{align*}
+Higher moments follow the same pattern --- each component contributes its own Wick-pairing sum, weighted by $\rho_k$.
 
-\subsection{Derivatives}
-Derivatives of moments with respect to $m$ or $M$ can be found by differentiating under the integral sign, and using Stein's lemma for Gaussian cases.
+\subsection{Derivatives of the Gaussian Log-Likelihood}
 
-\section{Free Probability for Vectors and Tensors}
-
-Free probability theory provides a non-commutative analogue of classical probability. We'll start with the simplest case—vectors with scalar entries—then progress to matrices and finally to higher-rank tensors.
-
-\subsection{Free Cumulants for Vectors}
-
-For a random vector $x \in \mathbb{R}^n$ with scalar entries, free cumulants are defined analogously to classical cumulants but using only non-crossing partitions.
-
-\subsubsection{R-Transform for Vectors}
-
-The R-transform (free cumulant generating function) is:
+For $x \sim \mathcal{N}(m, M)$ with density
 \[
-   R_x(z) = \sum_{n=1}^{\infty} \kappa_n^{\text{free}} z^{n-1}
+   p(x;\, m, M) = (2\pi)^{-n/2} \det(M)^{-1/2} \exp\!\left(-\tfrac{1}{2}(x-m)^T M^{-1} (x-m)\right),
 \]
-
-This is the free analogue of the classical cumulant generating function $\log \mathrm{E}[e^{tz}] = \sum_{n=1}^{\infty} \frac{\kappa_n}{n!} t^n$.
-
-\subsubsection{Moment-Cumulant Relations}
-
-If each $x_i$ has free cumulants $\kappa_1^{\text{free}}, \kappa_2^{\text{free}}, \kappa_3^{\text{free}}, \kappa_4^{\text{free}} \in \mathbb{R}$, then:
+the log-likelihood score functions are
+\begin{align*}
+   \frac{\partial \log p}{\partial m} &= M^{-1}(x - m),
+   \\
+   \frac{\partial \log p}{\partial M} &= \tfrac{1}{2}\, M^{-1}\!\left[(x-m)(x-m)^T - M\right]\! M^{-1}.
+\end{align*}
+Both have zero expectation under~$p$, as scores must. Setting the sample scores to zero, the MLE estimators from $N$ i.i.d.\ samples $x_1, \dots, x_N$ are
 \[
-\begin{bmatrix}
-   \begin{tikzpicture}[
-      baseline=(T.base),
-      every node/.style={inner sep=1pt, circle, draw=none, fill=white},
-    ]
-    \draw (30:.2) node[label] {$x$} -- (30:.5);
-    \draw (120:.2) node[label] {$x$} -- (120:.5);
-    \draw (210:.2) node[label] {$x$} -- (210:.5);
-    \draw (300:.2) node[label] {$x$} -- (300:.5);
-   \end{tikzpicture}
-\end{bmatrix}_{\text{free}}
-=
-\begin{tikzpicture}[
-  every node/.style={inner sep=1pt, circle, draw, fill=white, thin},
-  label/.style={draw=none, fill=none, text=black, font=\scriptsize},
-  crossing/.style={draw=red, fill=red!20},
-  declare function={
-    xgap=1;
-    ygap=.6;
-  },
-  baseline=-1cm
-  ]
-  
-  % Pattern {4} - 1 partition (non-crossing)
-  \drawPartitionAtAngle{(0,0)}{4}{$\kappa_4^{\text{free}}$}{{{1,2,3,4}}}
-
-  % Pattern {3,1} - 4 partitions total
-  \drawPartitionAtAngle{(0,-ygap)}{4}{$+\kappa_3^{\text{free}}\kappa_1^{\text{free}}\Big($}{{{1,2,3},{4}}}
-  \drawPartitionAtAngle[crossing]{(xgap,-ygap)}{4}{$\times$}{{{1,2,4},{3}}}
-  \drawPartitionAtAngle[crossing]{(2*xgap,-ygap)}{4}{$\times$}{{{2},{1,3,4}}}
-  \drawPartitionAtAngle{(3*xgap,-ygap)}{4}{$+$}{{{1},{2,3,4}}}
-  \node[label] at (3.5*xgap,-ygap) {$\Big)$};
-
-  % Pattern {2,2} - 3 partitions total
-  \drawPartitionAtAngle{(0,-2*ygap)}{4}{$+(\kappa_2^{\text{free}})^2\Big($}{{{1,2},{3,4}}}
-  \drawPartitionAtAngle[crossing]{(xgap,-2*ygap)}{4}{$\times$}{{{1,3},{2,4}}}
-  \drawPartitionAtAngle{(2*xgap,-2*ygap)}{4}{$+$}{{{1,4},{2,3}}}
-  \node[label] at (2.5*xgap,-2*ygap) {$\Big)$};
-
-  % Pattern {2,1,1} - 6 partitions total
-  \drawPartitionAtAngle{(0,-3*ygap)}{4}{$+\kappa_2^{\text{free}}(\kappa_1^{\text{free}})^2\Big($}{{{1,2},{3},{4}}}
-  \drawPartitionAtAngle[crossing]{(xgap,-3*ygap)}{4}{$\times$}{{{1,3},{2},{4}}}
-  \drawPartitionAtAngle[crossing]{(2*xgap,-3*ygap)}{4}{$\times$}{{{1,4},{2},{3}}}
-  \drawPartitionAtAngle[crossing]{(3*xgap,-3*ygap)}{4}{$\times$}{{{1},{2,3},{4}}}
-  \drawPartitionAtAngle[crossing]{(4*xgap,-3*ygap)}{4}{$\times$}{{{1},{3},{2,4}}}
-  \drawPartitionAtAngle{(5*xgap,-3*ygap)}{4}{$+$}{{{1},{2},{3,4}}}
-  \drawPartitionAtAngle{(6*xgap,-3*ygap)}{4}{$+$}{{{1,4},{2},{3}}}
-  \node[label] at (6.5*xgap,-3*ygap) {$\Big)$};
-
-  % Pattern {1,1,1,1} - 1 partition (non-crossing)
-  \drawPartitionAtAngle{(0,-4*ygap)}{4}{$+(\kappa_1^{\text{free}})^4$}{{{1},{2},{3},{4}}}
-
-  % Legend
-  \node[label, red] at (4,-5*ygap) {\small Red = crossing partitions (excluded in free probability)};
-
-\end{tikzpicture}
+   \hat m = \frac{1}{N} \sum_i x_i,
+   \qquad
+   \hat M = \frac{1}{N} \sum_i (x_i - \hat m)(x_i - \hat m)^T.
 \]
+The expected Fisher information follows from a second differentiation and Stein's lemma; it equals the covariance of the score, $\E\!\left[\nabla \log p \, (\nabla \log p)^T\right]$, which we can evaluate with the tensor Wick theorem above.
 
-Compare with classical: 15 partitions $\to$ 9 non-crossing partitions!
+\section{Free Probability for Random Matrices}
 
-\subsection{Free Cumulants for Matrices}
+When we move from scalar random variables to matrices, two things change: matrix products don't commute, and the dimension $N$ becomes a parameter in its own right. The payoff: as $N \to \infty$, many matrix ensembles have limiting spectra that are governed by a clean analogue of the cumulants of \S\ref{sec:cumulants}~-- \emph{free cumulants}~-- where the sum-over-partitions gets restricted to \emph{non-crossing} partitions. This single adjustment captures both the Wigner semicircle (free Gaussian) and the Marchenko--Pastur (free $\chi^2$) distributions within the same formal framework.
 
-For random matrices, we must consider traces of products. Unlike scalars, matrix products don't commute, adding complexity.
+\newcommand{\arcdiag}[2]{%
+  \mathord{\begin{tikzpicture}[baseline=-1pt, inner sep=0pt, thin, x=7pt, y=7pt]
+    \foreach \i in {1,...,#1} {\fill (\i, 0) circle (0.8pt);}
+    #2
+  \end{tikzpicture}}%
+}
+\newcommand{\arcc}[2]{\draw (#1, 0) to[bend left=60, looseness=1.3] (#2, 0);}
+
+\subsection{Non-Crossing Partitions}
+
+Place $n$ dots on a line. A partition $\pi$ of $\{1,\dots,n\}$ is \emph{non-crossing} if its blocks can be drawn as arcs above the dots without any two arcs intersecting. For $n=4$, fourteen of the fifteen set partitions are non-crossing; the lone crossing partition is $\{1,3\},\{2,4\}$:
 \[
-\begin{tikzpicture}[baseline=-.5em, scale=0.8]
-   % Classical vs Free
-   \node at (-2,1) {\small Classical cumulants:};
-   \node at (-2,-1.5) {\small Free cumulants:};
-   
-   % Classical - all 5 partitions
-   \node at (0,1) {$\mathrm{E}[X^3] =$};
-   \node at (2,1) {$\kappa_3$};
-   \node at (3,1) {$+ 3\kappa_2\kappa_1$};
-   \node at (5,1) {$+ \kappa_1^3$};
-   \node at (7,1) {\small (5 partitions)};
-   
-   % Free - only 2 non-crossing
-   \node at (0,-1.5) {$\mathrm{E}[\mathrm{Tr}(X^3)] =$};
-   \node at (2.5,-1.5) {$\kappa_3^{\text{free}}$};
-   \node at (4.5,-1.5) {$+ \kappa_1^{\text{free}}\kappa_2^{\text{free}}$};
-   \node at (7,-1.5) {\small (2 NC partitions)};
-\end{tikzpicture}
+   \arcdiag{4}{\arcc{1}{2}\arcc{3}{4}}
+   \quad
+   \arcdiag{4}{\arcc{1}{3}\arcc{2}{4}}
+   \quad
+   \arcdiag{4}{\arcc{1}{4}\arcc{2}{3}}
+   \qquad\text{(three pairings; only the middle one crosses.)}
 \]
+Write $\mathrm{NC}(n)$ for the set of non-crossing partitions of $\{1,\dots,n\}$.
+Its size is the $n$-th Catalan number $C_n = \binom{2n}{n}/(n+1) = 1, 1, 2, 5, 14, 42, \dots$
 
-The partition $(1,3),(2)$ is crossing and thus excluded in free probability:
+\subsection{Free Moments and Free Cumulants}
+
+For an $N \times N$ random matrix $X$ with orthogonal-conjugation-invariant distribution, define the \emph{free moments} and \emph{free cumulants} by
 \[
-\begin{tikzpicture}[baseline=0, scale=0.7]
-   % Non-crossing partitions
-   \node at (-2,0) {\small Non-crossing:};
-   \foreach \i in {1,2,3} {
-      \node[circle, draw] (A\i) at (120-120*\i:1) {\tiny \i};
-   }
-   \draw[thick] (A1) to (A2);
-   \draw[thick] (A3) to (A3);
-   
-   \begin{scope}[xshift=4cm]
-      \foreach \i in {1,2,3} {
-         \node[circle, draw] (B\i) at (120-120*\i:1) {\tiny \i};
-      }
-      \draw[thick] (B1) to (B1);
-      \draw[thick] (B2) to (B3);
-   \end{scope}
-   
-   % Crossing partition
-   \begin{scope}[xshift=8cm]
-      \node at (-2,0) {\small Crossing:};
-      \foreach \i in {1,2,3} {
-         \node[circle, draw] (C\i) at (120-120*\i:1) {\tiny \i};
-      }
-      \draw[thick, red] (C1) to (C3);
-      \draw[thick] (C2) to (C2);
-      \node[red] at (0,-2) {\small $\times$};
-   \end{scope}
-\end{tikzpicture}
+   m_n(X) = \lim_{N \to \infty} \frac{1}{N}\, \E[\Tr(X^n)],
+   \qquad
+   m_n(X) = \sum_{\pi \in \mathrm{NC}(n)} \prod_{B \in \pi} \kappa_{|B|}^{\mathrm{free}}(X).
 \]
+The second equation is Speicher's moment-cumulant formula~-- the same sum-over-partitions as in \S\ref{sec:cumulants}, but restricted to non-crossing ones. Writing $\kappa_k$ for $\kappa_k^{\mathrm{free}}$ and expanding for small $n$:
+\begin{align*}
+   m_1 &= \kappa_1, \\
+   m_2 &= \kappa_2 + \kappa_1^2, \\
+   m_3 &= \kappa_3 + 3\kappa_2\kappa_1 + \kappa_1^3, \\
+   m_4 &= \kappa_4 + 4\kappa_3\kappa_1 + 2\kappa_2^{\,2} + 6\kappa_2\kappa_1^{\,2} + \kappa_1^4.
+\end{align*}
+The coefficient $2$ on $\kappa_2^{\,2}$ (not $3$ as in the classical case) is the key difference: the pair-pair pattern has three set-partitions $\{1,2\}\{3,4\},\{1,3\}\{2,4\},\{1,4\}\{2,3\}$, but the middle one crosses and drops out.
 
-Key insight: For matrices, we have ONE edge to match between elements. For higher-rank tensors, we have MULTIPLE edges (colors) to match.
+\subsection{R-Transform and Free Convolution}
 
-\subsection{Tensor Free Cumulants}
-
-For rank-$D$ tensors, the free cumulant theory becomes richer due to colored non-crossing partitions.
-
-\subsubsection{Colored Non-Crossing Partitions for Tensors}
-
-For rank-$D$ tensors, each element has $D$ "legs" or indices. A valid pairing must:
-\begin{itemize}
-\item Be non-crossing when elements are arranged on a circle
-\item Match ALL $D$ colors (one per leg) between paired elements
-\end{itemize}
-
-This dramatically reduces the number of valid partitions. For rank-3 tensors:
+The \emph{R-transform} of $X$ is the generating function of free cumulants,
 \[
-\begin{tikzpicture}[baseline=-.5em, scale=0.8]
-   % Matrix case
-   \node at (-3,0) {\small Matrices:};
-   \node[draw, thick] (M1) at (-1,0) {$X$};
-   \node[draw, thick] (M2) at (0.5,0) {$X$};
-   \draw[thick] (M1.east) -- (M2.west) node[midway, above] {\tiny 1 edge};
-   
-   % Tensor case
-   \node at (2,0) {\small Rank-3 tensors:};
-   \node[draw, thick] (T1) at (4,0) {$T$};
-   \node[draw, thick] (T2) at (5.5,0) {$T$};
-   % Must connect all 3 colors
-   \draw[cyan, thick] (T1.north east) to[bend left=20] (T2.north west);
-   \draw[magenta, thick] (T1.east) -- (T2.west);
-   \draw[yellow, thick] (T1.south east) to[bend right=20] (T2.south west);
-   \node at (7.5,0) {\tiny 3 edges};
-\end{tikzpicture}
+   R_X(z) = \sum_{n \ge 1} \kappa_n^{\mathrm{free}}(X)\, z^{n-1}.
 \]
-
-\subsubsection{Invariant Traces for Tensors}
-
-Unlike matrices, higher-rank tensors have no single canonical trace. Instead, every way of contracting tensors to produce a scalar defines a different invariant:
-
-\begin{center}
-\begin{tabular}{|l|l|}
-\hline
-Matrices ($D=2$) & Tensors ($D>2$) \\
-\hline
-Unique invariant $\mathrm{Tr}(X_1 \cdots X_n)$ & Family of invariants $\mathrm{Tr}_{\pi}(T_1,\ldots,T_n)$ \\
-& indexed by colored permutations $\pi \in \mathfrak{S}_{Dn}$ \\
-\hline
-\end{tabular}
-\end{center}
-
-\textbf{Definition of $\mathrm{Tr}_{\pi}$:} Given tensors $T_1,\ldots,T_n$ each with $D$ legs (colored 1 through $D$), a colored permutation $\pi = (\pi^{(1)},\ldots,\pi^{(D)}) \in \mathfrak{S}_n^D$ specifies which legs connect:
-
+The crucial property: if $X$ and $Y$ are \emph{freely independent} (the non-commutative analogue of ``classical independence'' for large random matrices~-- essentially, their eigenvector bases are asymptotically generic with respect to each other), then
 \[
-\mathrm{Tr}_{\pi}(T_1,\ldots,T_n) = 
-\begin{tikzpicture}[baseline=0, scale=0.8]
-   % Example for n=3, D=3
-   \node at (-2,0) {\small Example:};
-   % Three tensors
-   \node[draw, thick] (T1) at (90:1.2) {$T_1$};
-   \node[draw, thick] (T2) at (210:1.2) {$T_2$};
-   \node[draw, thick] (T3) at (330:1.2) {$T_3$};
-   
-   % Permutation pi^(1) for cyan: (1 2 3)
-   \draw[cyan, thick] (T1) to[bend right=30] node[midway, left] {\tiny $\pi^{(1)}$} (T2);
-   \draw[cyan, thick] (T2) to[bend right=30] (T3);
-   \draw[cyan, thick] (T3) to[bend right=30] (T1);
-   
-   % Permutation pi^(2) for magenta: (1 3 2)
-   \draw[magenta, thick] (T1) to[bend left=20] node[midway, right] {\tiny $\pi^{(2)}$} (T3);
-   \draw[magenta, thick] (T3) to[bend left=20] (T2);
-   \draw[magenta, thick] (T2) to[bend left=20] (T1);
-   
-   % Permutation pi^(3) for yellow: (1)(2)(3)
-   \draw[yellow, thick] (T1) to[out=60,in=120,looseness=8] (T1);
-   \draw[yellow, thick] (T2) to[out=180,in=240,looseness=8] (T2);
-   \draw[yellow, thick] (T3) to[out=300,in=360,looseness=8] (T3);
-\end{tikzpicture}
+   R_{X+Y}(z) = R_X(z) + R_Y(z).
 \]
+This is the direct free analogue of the classical statement that cumulants add under independence. For free multiplicative convolution (the distribution of $X^{1/2} Y X^{1/2}$ when $X, Y$ are free positive), the corresponding transform is the $S$-transform and is multiplicative.
 
-For matrices ($D=2$), only the cyclic permutation gives a non-zero trace, recovering the usual $\mathrm{Tr}(X_1 X_2 \cdots X_n)$.
+\subsection{Two Canonical Distributions}
 
-\textbf{Normalization:} To obtain finite limits as $N \to \infty$, we normalize by $N^{-(D-1)n}$:
-\[
-   \frac{1}{N^{(D-1)n}} \mathrm{Tr}_{\pi}(T_1,\ldots,T_n) \xrightarrow{N \to \infty} \text{finite}
-\]
+\paragraph{Wigner semicircle} (free analogue of the standard Gaussian). Density
+\(
+   \rho(x) = \frac{1}{2\pi}\sqrt{4 - x^2}
+\)
+on $[-2, 2]$. All free cumulants vanish except $\kappa_2 = 1$, so $R(z) = z$. It arises as the $N\to\infty$ limit of the spectrum of an $N\times N$ Gaussian symmetric matrix (GOE/GUE) with entries of variance $1/N$. Just as the classical central limit theorem makes sums of i.i.d.\ scalars Gaussian, the \emph{free} CLT makes sums of free self-adjoint matrices semicircular.
 
-\subsubsection{Moment-Cumulant Formula}
+\paragraph{Marchenko--Pastur} (free analogue of the scaled $\chi^2$). For the Wishart matrix $W = \frac{1}{N} X X^T$ with $X \in \R^{N \times cN}$ having i.i.d.\ zero-mean unit-variance entries, the limiting spectrum is $\mathrm{MP}(c)$ with $R$-transform
+\(
+   R(z) = \frac{c}{1 - z}.
+\)
 
-The tensor moment-cumulant relation involves ALL invariant traces:
-\[
-   \boxed{\left( \mathrm{E}[\mathrm{Tr}_{\pi}(T_{i_1},\ldots,T_{i_n})] \right)_{\pi \in \mathrm{NC}_D(n)} = \sum_{\sigma \in \mathrm{NC}_D(n)} \kappa_{\sigma}^{(\mathrm{t})} \cdot (\text{pattern matching})}
-\]
+\subsection{A Note on Higher-Rank Tensors}
 
-The moments form a vector indexed by colored non-crossing permutations, and tensor freeness acts on this entire family.
+For random tensors of rank $\ge 3$ a partial analogue of free probability exists; see e.g.\ Gurau's \emph{Random Tensors} (Oxford, 2017). The relevant combinatorial object is \emph{colored non-crossing partitions}, counted by the Fuss--Catalan numbers $C_n^{(D)} = \frac{1}{(D-1)n + 1}\binom{Dn}{n}$ (so $C_n^{(2)} = C_n$). The analogue of the non-crossing-pairing dominance for matrices is the dominance of \emph{melonic} diagrams in the large-$N$ limit. The theory is genuinely richer than the matrix case and we do not develop it further here.
 
-Example for $n=2$: The second moment decomposes as
-\[
-\begin{tikzpicture}[baseline=-.5em, scale=0.8]
-   % Moment
-   \node at (-1,0) {$\mathrm{E}[\mathrm{Tr}(T_1 T_2)]$};
-   \node at (1,0) {$=$};
-   
-   % First term: partition (1,2)
-   \node at (2.5,0) {$\kappa_2^{(\mathrm{t})}$};
-   \node[circle, draw, inner sep=1pt] (A1) at (3.5,0.3) {\tiny 1};
-   \node[circle, draw, inner sep=1pt] (A2) at (3.5,-0.3) {\tiny 2};
-   \draw[thick] (A1) -- (A2);
-   \node at (4.2,0) {$\delta_{i_1,i_2}$};
-   
-   \node at (5.5,0) {$+$};
-   
-   % Second term: partition (1),(2)
-   \node at (6.5,0) {$(\kappa_1^{(\mathrm{t})})^2$};
-   \node[circle, draw, inner sep=1pt] (B1) at (7.5,0.3) {\tiny 1};
-   \node[circle, draw, inner sep=1pt] (B2) at (7.5,-0.3) {\tiny 2};
-\end{tikzpicture}
-\]
-
-For Gaussian tensors, $\kappa_1^{(\mathrm{t})} = 0$ and $\kappa_n^{(\mathrm{t})} = 0$ for $n > 2$, so:
-\[
-   \mathrm{E}[\mathrm{Tr}(T_1 T_2)] = \kappa_2^{(\mathrm{t})} \delta_{i_1,i_2} = \delta_{i_1,i_2}
-\]
-
-\subsection{Tensor Wick Theorem}
-
-For Gaussian tensors, a fundamental result analogous to Wick's theorem holds:
-
-Tensor Wick Factorization:
-Let $(T_i)_{i \in I}$ be i.i.d. standard Gaussian $D$-leg tensors of size $N$. As $N \to \infty$:
-\[
-   \mathrm{E}[T_{i_1} \cdots T_{i_{2k}}] = \sum_{\pi \in \mathrm{NC}_D(2k)} \prod_{(j,j') \in \pi} \delta_{i_j, i_{j'}} + O(N^{-1})
-\]
-
-This shows that Gaussian tensors are asymptotically tensor-free, with all cumulants beyond the second vanishing.
-
-For four rank-3 tensors, the valid colored non-crossing pairings are severely restricted:
-\[
-\begin{tikzpicture}[baseline=-.5em, scale=0.7]
-   % First row - tensors arranged in circle
-   \node at (-2,2) {\small Tensors arranged on circle:};
-   \foreach \i in {1,2,3,4} {
-      \node[draw, thick] (T\i) at (90-90*\i:1.5) {$T_{\i}$};
-   }
-   
-   % Second row - valid pairing (1,2)(3,4)
-   \begin{scope}[yshift=-4cm]
-      \node at (-2,0) {\small $(1,2)(3,4)$ valid:};
-      \foreach \i in {1,2,3,4} {
-         \node[draw, thick] (S\i) at (90-90*\i:1.5) {$T_{\i}$};
-      }
-      % Connect 1-2 with all three colors
-      \draw[cyan, thick] (S1) to[bend right=20] (S2);
-      \draw[magenta, thick] (S1) to (S2);
-      \draw[yellow, thick] (S1) to[bend left=20] (S2);
-      % Connect 3-4 with all three colors
-      \draw[cyan, thick] (S3) to[bend right=20] (S4);
-      \draw[magenta, thick] (S3) to (S4);
-      \draw[yellow, thick] (S3) to[bend left=20] (S4);
-   \end{scope}
-   
-   % Third row - invalid pairing (1,3)(2,4)
-   \begin{scope}[yshift=-8cm]
-      \node at (-2,0) {\small $(1,3)(2,4)$ invalid:};
-      \foreach \i in {1,2,3,4} {
-         \node[draw, thick] (R\i) at (90-90*\i:1.5) {$T_{\i}$};
-      }
-      % Try to connect 1-3
-      \draw[cyan, thick] (R1) to[bend left=45] (R3);
-      % This forces 2-4 to cross!
-      \draw[red, thick, dashed] (R2) to (R4) node[midway, above] {\tiny crosses!};
-   \end{scope}
-   
-   \node at (5,-4) {\small Only $(1,2)(3,4)$ and $(1,4)(2,3)$ are non-crossing};
-\end{tikzpicture}
-\]
-
-\subsection{Additivity Under Tensor Freeness}
-
-If two tensor algebras $\mathcal{A}_1$ and $\mathcal{A}_2$ are tensor-free, then for $A \in \mathcal{A}_1$ and $B \in \mathcal{A}_2$:
-\[
-   \kappa_n^{(\mathrm{t})}(A + B) = \kappa_n^{(\mathrm{t})}(A) + \kappa_n^{(\mathrm{t})}(B)
-\]
-
-This generalizes the additivity of classical cumulants for independent variables.
-
-Graphically, for the second cumulant (covariance):
-\[
-\begin{tikzpicture}[baseline=-.5em, scale=0.8]
-   % Left side
-   \node at (-1,0) {$\kappa_2^{(\mathrm{t})}\Big($};
-   \node[draw, thick] (A) at (0,.5) {$A$};
-   \node at (.5,0) {$+$};
-   \node[draw, thick] (B) at (1,-.5) {$B$};
-   \node at (1.5,0) {$\Big)$};
-   
-   % Equals
-   \node at (2.5,0) {$=$};
-   
-   % Right side
-   \node at (3.5,0) {$\kappa_2^{(\mathrm{t})}$};
-   \node[draw, thick] (A2) at (4.5,0) {$A$};
-   \draw[thick] (A2) -- ++(-.5,0);
-   \draw[thick] (A2) -- ++(.5,0);
-   
-   \node at (5.5,0) {$+$};
-   
-   \node at (6.5,0) {$\kappa_2^{(\mathrm{t})}$};
-   \node[draw, thick] (B2) at (7.5,0) {$B$};
-   \draw[thick] (B2) -- ++(-.5,0);
-   \draw[thick] (B2) -- ++(.5,0);
-\end{tikzpicture}
-\]
-
-\subsubsection{Vanishing Mixed Cumulants}
-
-For matrices, if $A$ and $B$ are free and one has zero trace, then $\kappa_n^{\text{free}}(AB\cdots) = 0$ for alternating products. For tensors, the analogous property depends on the contraction pattern.
-
-\textbf{Definition:} A tensor $T$ has \emph{zero first cumulant} if $\kappa_1^{(\mathrm{t})}(T) = 0$, which means $\mathrm{E}[\mathrm{Tr}_{\pi}(T)] = 0$ for ALL colored permutations $\pi \in \mathfrak{S}_D$.
-
-\textbf{Definition:} An \emph{alternating contraction pattern} is a way of connecting tensors in a sequence $A_1, B_1, A_2, B_2, \ldots$ where:
-\begin{itemize}
-\item Tensors appear in alternating order (A, B, A, B, ...)
-\item Each tensor's legs are contracted with neighbors (no tensor left isolated)
-\item The contraction respects the tensor structure
-\end{itemize}
-
-\textbf{Theorem:} If $A$ and $B$ are tensor-free and $\kappa_1^{(\mathrm{t})}(A) = 0$, then any alternating contraction has vanishing cumulants:
-\[
-   \kappa_n^{(\mathrm{t})}(A \otimes_C B \otimes_C A \otimes_C \cdots) = 0 \quad \text{for } n \geq 2
-\]
-
-Examples of alternating contractions for rank-3 tensors:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.7]
-   % Example 1: Linear chain
-   \node at (-2,1) {\small Linear chain:};
-   \node[draw, thick] (A1) at (0,1) {$A$};
-   \node[draw, thick] (B1) at (1.5,1) {$B$};
-   \node[draw, thick] (A2) at (3,1) {$A$};
-   \node[draw, thick] (B2) at (4.5,1) {$B$};
-   % Connect with one color
-   \draw[cyan, thick] (A1) -- (B1) -- (A2) -- (B2);
-   % Other legs free
-   \draw[magenta, thick] (A1) -- ++(0,.3);
-   \draw[yellow, thick] (A1) -- ++(0,-.3);
-   \draw[magenta, thick] (B1) -- ++(0,.3);
-   \draw[yellow, thick] (B1) -- ++(0,-.3);
-   
-   % Example 2: Cyclic
-   \node at (-2,-1) {\small Cyclic:};
-   \node[draw, thick] (A3) at (0,-1) {$A$};
-   \node[draw, thick] (B3) at (1.5,-1) {$B$};
-   \node[draw, thick] (A4) at (3,-1) {$A$};
-   \node[draw, thick] (B4) at (4.5,-1) {$B$};
-   % Connect in a more complex pattern
-   \draw[cyan, thick] (A3) -- (B3);
-   \draw[magenta, thick] (B3) -- (A4);
-   \draw[yellow, thick] (A4) -- (B4);
-   \draw[cyan, thick] (B4) to[bend right=30] (A3);
-   
-   % Example 3: Tree-like
-   \node at (-2,-3) {\small Tree:};
-   \node[draw, thick] (A5) at (1.5,-3) {$A$};
-   \node[draw, thick] (B5) at (0,-3.7) {$B$};
-   \node[draw, thick] (B6) at (3,-3.7) {$B$};
-   \draw[cyan, thick] (A5) -- (B5);
-   \draw[magenta, thick] (A5) -- (B6);
-   \draw[yellow, thick] (B5) -- ++(-.5,0);
-   \draw[yellow, thick] (B6) -- ++(.5,0);
-\end{tikzpicture}
-\]
-
-If $\kappa_1^{(\mathrm{t})}(A) = 0$, all these contractions yield $\kappa_n^{(\mathrm{t})} = 0$.
-
-This holds because any non-crossing partition must include a singleton block containing $A$, but $\kappa_1^{(\mathrm{t})}(A) = 0$.
-
-The key difference from matrices: for tensors, we must specify the contraction pattern, as different contractions can yield different results even for the same tensors.
-
-\subsection{Spectrum of Tensor Wishart Matrices}
-
-Consider a rank-3 tensor $T \in \mathbb{C}^{N \times N \times N}$ with i.i.d. Gaussian entries $\mathcal{N}_{\mathbb{C}}(0, N^{-3})$. The Wishart-type matrix $W = TT^{\dagger}$ (contracting one index) has limiting spectral distribution:
-
-\[
-\begin{tikzpicture}[baseline=-.5em, scale=0.8]
-   % Tensor contraction
-   \node[draw, thick] (T1) at (0,0) {$T$};
-   \node[draw, thick] (T2) at (2,0) {$T^{\dagger}$};
-   \draw[cyan, thick] (T1) -- ++(0,.5);
-   \draw[magenta, thick] (T1) to[out=-150,in=-30] (T2);
-   \draw[yellow, thick] (T1) -- ++(0,-.5);
-   \draw[cyan, thick] (T2) -- ++(0,.5);
-   \draw[magenta, thick] (T2) -- ++(0,-.5);
-   \draw[yellow, thick] (T2) -- ++(.5,0);
-   \node at (3.5,0) {$\xrightarrow{N \to \infty}$};
-   \node at (6,0) {$\mathrm{MP}(1) \boxtimes \mathrm{MP}(1) = \mathrm{MP}(1/2)$};
-\end{tikzpicture}
-\]
-
-where $\boxtimes$ denotes free multiplicative convolution and $\mathrm{MP}(c)$ is the Marchenko-Pastur distribution.
-
-\subsection{Tensor Networks and Free Probability}
-
-Free probability provides powerful tools for analyzing tensor network states, which arise naturally in quantum many-body physics and machine learning.
-
-\subsubsection{Graph Amalgamation}
-
-For a tensor network on a graph $G = (V, E)$ with random Gaussian tensors at each vertex, the boundary density matrix factorizes according to the graph's structure:
-
-Graph Amalgamation:
-Let $\rho_b$ be the boundary density matrix of a random tensor network. Then:
-\[
-   \rho_b = \underset{\gamma \in \mathcal{C}_{\min}}{*_{\mathcal{B}}} \rho_{\gamma}
-\]
-where $*_{\mathcal{B}}$ denotes free multiplicative convolution with amalgamation over the boundary algebra, and $\mathcal{C}_{\min}$ are the minimal cuts of $G$.
-
-For example, a simple two-vertex network:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.8]
-   % Two tensors
-   \node[draw, thick, circle] (T1) at (0,0) {$T_1$};
-   \node[draw, thick, circle] (T2) at (3,0) {$T_2$};
-   % Internal edge
-   \draw[thick] (T1) -- (T2) node[midway, above] {$e$};
-   % Boundary edges
-   \draw[thick] (T1) -- ++(-1,.5) node[left] {$\partial_1$};
-   \draw[thick] (T1) -- ++(-1,-.5) node[left] {$\partial_2$};
-   \draw[thick] (T2) -- ++(1,.5) node[right] {$\partial_3$};
-   \draw[thick] (T2) -- ++(1,-.5) node[right] {$\partial_4$};
-   % Minimal cut
-   \draw[dashed, red, thick] (1.5,-1) -- (1.5,1) node[above] {cut};
-\end{tikzpicture}
-\]
-
-\subsubsection{Entanglement and Max-Flow}
-
-The Rényi entropy of tensor network states connects to max-flow problems on the network graph:
-
-\[
-   S_q(\rho_b) = \frac{1}{1-q} \log \left[ \max_f \prod_{e \in E} w_e^{f(e)} \right] + o(1)
-\]
-
-where $f$ ranges over integer flows and $w_e$ are edge weights. For maximally entangled links ($w_e = 1$), this recovers the Ryu-Takayanagi formula from holography.
-
-\subsection{Examples with Higher-Order Tensors}
-
-\subsubsection{Star Network}
-Consider a star graph with one central vertex of degree $D = 4$:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.8]
-   \node[circle, draw, thick] (C) at (0,0) {$T$};
-   \foreach \i in {1,2,3,4} {
-      \node (B\i) at (90*\i:1.5) {$\partial_\i$};
-      \draw[thick] (C) -- (B\i);
-   }
-\end{tikzpicture}
-\]
-
-The boundary density matrix is $\rho_b = W_1 W_2 W_3 W_4$ with independent Wishart factors. By tensor freeness:
-\[
-   \mu_{\rho} = \mathrm{MP}(1)^{\boxtimes 4}, \quad R_{\rho}(w) = \frac{4w}{1-w}
-\]
-
-The von Neumann entropy per site equals $\log 4 - 3/4$.
-
-The free product decomposition:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.7]
-   % Central tensor with 4 Wishart factors
-   \node[circle, draw, thick] (C) at (0,0) {$T$};
-   \foreach \i in {1,2,3,4} {
-      \node[draw, thick] (W\i) at (90*\i:2) {$W_{\i}$};
-      \draw[thick] (C) -- (W\i);
-   }
-   % Free product symbol
-   \node at (3,0) {$=$};
-   \node at (4.5,0) {$W_1 \boxtimes W_2 \boxtimes W_3 \boxtimes W_4$};
-\end{tikzpicture}
-\]
-
-\subsubsection{Ladder Networks}
-For a $2 \times L$ ladder with periodic vertical boundary:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.6]
-   \foreach \i in {0,1,2} {
-      \node[circle, draw] (T\i) at (1.5*\i,0) {};
-      \node[circle, draw] (B\i) at (1.5*\i,-1.5) {};
-      \draw (T\i) -- (B\i);
-   }
-   \node at (4.5,0) {$\cdots$};
-   \node at (4.5,-1.5) {$\cdots$};
-   \foreach \i in {0,1} {
-      \draw (T\i) -- (T\the\numexpr\i+1);
-      \draw (B\i) -- (B\the\numexpr\i+1);
-   }
-\end{tikzpicture}
-\]
-
-The entanglement entropy scales as $S_2 = \lceil L/2 \rceil \log N + O(1)$, exhibiting area law scaling.
-
-The max-flow through the network:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.5]
-   % Flow network representation
-   \foreach \i in {0,1,2} {
-      \foreach \j in {0,1} {
-         \node[circle, draw, inner sep=1pt] (T\i\j) at (2*\i,1.5*\j) {};
-      }
-   }
-   % Horizontal edges with flow
-   \foreach \i in {0,1} {
-      \draw[thick, ->] (T\i0) -- (T\the\numexpr\i+1\relax0) node[midway, above, font=\tiny] {$f_1$};
-      \draw[thick, ->] (T\i1) -- (T\the\numexpr\i+1\relax1) node[midway, above, font=\tiny] {$f_2$};
-   }
-   % Vertical edges
-   \foreach \i in {0,1,2} {
-      \draw[thick] (T\i0) -- (T\i1);
-   }
-   % Source and sink
-   \node at (-1,0.75) {$s$};
-   \node at (5,0.75) {$t$};
-   \draw[thick, ->] (-0.5,0.75) -- (T00);
-   \draw[thick, ->] (-0.5,0.75) -- (T01);
-   \draw[thick, ->] (T20) -- (4.5,0.75);
-   \draw[thick, ->] (T21) -- (4.5,0.75);
-   % Max flow
-   \node at (6,0.75) {$f_{\max} = 2$};
-\end{tikzpicture}
-\]
-
-\subsection{D-ary Catalan Numbers}
-
-The colored Möbius function for $\mathrm{NC}_D(n)$ involves $D$-ary Catalan numbers:
-\[
-   \mu_{\mathrm{col}}(0_n, 1_n) = (-1)^{n-1} C_{n-1}^{(D)}
-\]
-
-where $C_n^{(D)} = \frac{1}{(D-1)n+1}\binom{Dn}{n}$ are the Fuss-Catalan numbers.
-
-The growth of $D$-ary Catalan numbers:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.6]
-   % Table of values
-   \node at (0,2) {$n$};
-   \node at (1.5,2) {$C_n^{(2)}$};
-   \node at (3,2) {$C_n^{(3)}$};
-   \node at (4.5,2) {$C_n^{(4)}$};
-   \draw[thick] (-0.5,1.7) -- (5,1.7);
-   \foreach \n/\c2/\c3/\c4 in {0/1/1/1, 1/1/1/1, 2/2/3/5, 3/5/12/35, 4/14/55/285} {
-      \node at (0,1.3-0.4*\n) {$\n$};
-      \node at (1.5,1.3-0.4*\n) {$\c2$};
-      \node at (3,1.3-0.4*\n) {$\c3$};
-      \node at (4.5,1.3-0.4*\n) {$\c4$};
-   }
-\end{tikzpicture}
-\]
-
-For $D = 2$ (matrices), we recover the standard Catalan numbers. For $D = 3$ (rank-3 tensors):
-\[
-   C_0^{(3)} = 1, \quad C_1^{(3)} = 1, \quad C_2^{(3)} = 3, \quad C_3^{(3)} = 12, \quad C_4^{(3)} = 55, \ldots
-\]
-
-\subsection{Melonic Diagrams}
-
-Melonic diagrams are the leading-order Feynman diagrams in the $1/N$ expansion of tensor models. They are named after their melon-like shape and have a special topological structure.
-
-\subsubsection{Definition and Structure}
-
-For rank-$D$ tensors, a melonic diagram is one that can be drawn on a 2-sphere where:
-\begin{itemize}
-\item Each face is colored by one of $D$ colors
-\item The diagram has a tree-like structure of "melons"
-\item No color appears twice around any vertex
-\end{itemize}
-
-The basic melon (2-point function) for rank-3 tensors:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.8]
-   % Basic melon
-   \node at (-2,0) {Basic melon:};
-   \node[circle, draw, thick] (L) at (0,0) {$T$};
-   \node[circle, draw, thick] (R) at (2,0) {$\bar{T}$};
-   % Three colored edges forming the melon
-   \draw[cyan, thick] (L) to[bend left=40] node[above] {\tiny cyan} (R);
-   \draw[magenta, thick] (L) to node[below] {\tiny magenta} (R);
-   \draw[yellow, thick] (L) to[bend right=40] node[below] {\tiny yellow} (R);
-\end{tikzpicture}
-\]
-
-\subsubsection{Higher-Order Melonic Diagrams}
-
-The 4-point melonic diagram (order $N^{-1}$):
-\[
-\begin{tikzpicture}[baseline=0, scale=0.7]
-   % 4-point melon
-   \node at (-3,0) {4-point:};
-   \node[circle, draw, fill=white] (T1) at (0,1) {$T$};
-   \node[circle, draw, fill=white] (T2) at (2,1) {$\bar{T}$};
-   \node[circle, draw, fill=white] (T3) at (2,-1) {$T$};
-   \node[circle, draw, fill=white] (T4) at (0,-1) {$\bar{T}$};
-   
-   % Internal face (white)
-   \draw[thick] (T1) -- (T2) -- (T3) -- (T4) -- (T1);
-   
-   % External colored faces
-   \draw[cyan, thick] (T1) to[bend left=45] (T2);
-   \draw[magenta, thick] (T2) to[bend left=45] (T3);
-   \draw[yellow, thick] (T3) to[bend left=45] (T4);
-   \draw[cyan, thick] (T4) to[bend left=45] (T1);
-\end{tikzpicture}
-\quad
-\begin{tikzpicture}[baseline=0, scale=0.7]
-   % Tree structure
-   \node at (-2,0) {Tree of melons:};
-   \node[circle, draw, fill=white] (C) at (0,0) {};
-   \foreach \i in {0,120,240} {
-      \node[circle, draw, fill=white] (T\i) at (\i:1.5) {};
-      \node[circle, draw, fill=white] (S\i) at (\i:2.5) {};
-   }
-   % Connect center to first layer
-   \foreach \i in {0,120,240} {
-      \draw[thick] (C) -- (T\i);
-   }
-   % Melons on outer layer
-   \draw[cyan, thick] (T0) to[bend left=30] (S0);
-   \draw[magenta, thick] (T0) to[bend right=30] (S0);
-   \draw[cyan, thick] (T120) to[bend left=30] (S120);
-   \draw[yellow, thick] (T120) to[bend right=30] (S120);
-   \draw[magenta, thick] (T240) to[bend left=30] (S240);
-   \draw[yellow, thick] (T240) to[bend right=30] (S240);
-   % Connect melons
-   \draw[yellow, thick, bend left=20] (T0) to (T120);
-   \draw[magenta, thick, bend left=20] (T120) to (T240);
-   \draw[cyan, thick, bend left=20] (T240) to (T0);
-\end{tikzpicture}
-\]
-
-\subsubsection{Counting Melonic Diagrams}
-
-The number of melonic diagrams grows much slower than general diagrams:
-
-Melonic Dominance:
-At order $n$ in the $1/N$ expansion:
-\begin{itemize}
-\item General diagrams: $\sim (D!)^n n!$ 
-\item Melonic diagrams: $\sim D^n \cdot C_{n-1}$ (Catalan numbers)
-\end{itemize}
-
-For rank-3 tensors at order 3:
-\[
-\begin{tikzpicture}[baseline=0, scale=0.6]
-   % First melonic diagram
-   \begin{scope}[xshift=0cm]
-      \node at (0,1.5) {\small Type 1};
-      \foreach \i in {0,1,2,3} {
-         \node[circle, draw, fill=white, inner sep=1pt] (T\i) at (90*\i:1) {};
-      }
-      \draw[thick] (T0) -- (T1) -- (T2) -- (T3) -- (T0);
-      \draw[cyan, thick, bend left=45] (T0) to (T1);
-      \draw[magenta, thick, bend left=45] (T1) to (T2);
-      \draw[yellow, thick, bend left=45] (T2) to (T3);
-      \draw[cyan, thick, bend left=45] (T3) to (T0);
-   \end{scope}
-   
-   % Second melonic diagram
-   \begin{scope}[xshift=5cm]
-      \node at (0,1.5) {\small Type 2};
-      \node[circle, draw, fill=white, inner sep=1pt] (C) at (0,0) {};
-      \foreach \i in {0,120,240} {
-         \node[circle, draw, fill=white, inner sep=1pt] (T\i) at (\i:0.8) {};
-         \node[circle, draw, fill=white, inner sep=1pt] (S\i) at (\i:1.6) {};
-      }
-      \foreach \i in {0,120,240} {
-         \draw[thick] (C) -- (T\i) -- (S\i);
-      }
-      \draw[cyan, thick, bend left=30] (T0) to (T120);
-      \draw[magenta, thick, bend left=30] (T120) to (T240);
-      \draw[yellow, thick, bend left=30] (T240) to (T0);
-   \end{scope}
-   
-   % Third melonic diagram  
-   \begin{scope}[xshift=10cm]
-      \node at (0,1.5) {\small Type 3};
-      \node[circle, draw, fill=white, inner sep=1pt] (L) at (-1,0) {};
-      \node[circle, draw, fill=white, inner sep=1pt] (C) at (0,0) {};
-      \node[circle, draw, fill=white, inner sep=1pt] (R) at (1,0) {};
-      \node[circle, draw, fill=white, inner sep=1pt] (T) at (0,1) {};
-      \draw[thick] (L) -- (C) -- (R);
-      \draw[thick] (C) -- (T);
-      \draw[cyan, thick, bend left=30] (L) to (T);
-      \draw[magenta, thick, bend right=30] (L) to (T);
-      \draw[yellow, thick, bend left=30] (R) to (T);
-      \draw[cyan, thick, bend right=30] (R) to (T);
-   \end{scope}
-\end{tikzpicture}
-\]
-
-\subsubsection{Melonic Universality}
-
-In the large-$N$ limit, tensor models are dominated by melonic diagrams, leading to:
-\begin{itemize}
-\item Spectral dimension $d_s = 2$ (like branched polymers)
-\item Critical exponents independent of $D$ for $D \geq 3$
-\item Connection to the Sachdev-Ye-Kitaev (SYK) model in physics
-\end{itemize}
-
-This universality is why melonic diagrams are central to understanding tensor models and their continuum limits.
 
 \section{Exercises}
 \begin{exercise}
+   Assume the coordinates of $x$ are independent, and let $v_3$ denote the vector of their third central moments, $(v_3)_i = \E[(x_i - m_i)^3]$. Show that
    \begin{align*}
-   \mathrm{E}[(A\mathbf{x} + a)(A\mathbf{x} + a)^T (A\mathbf{x} + a)] = 
-   \mathrm{Adiag}(A^T A) v_3 \\
-   + [2 AMA^T + (A\mathbf{x} + a)(A\mathbf{x} + a)^T] (Am + a) \\
+   \mathrm{E}[(Ax + a)(Ax + a)^T (Ax + a)] =
+   A\,\diag(A^T A)\, v_3 \\
+   + [2 AMA^T + (Am + a)(Am + a)^T] (Am + a) \\
    + \mathrm{Tr}(AMA^T)(Am + a)
    \end{align*}
-
+   Assuming instead that $x$ is Gaussian, show that
    \begin{align*}
-   \mathrm{E}[(A\mathbf{x} + a) b^T (C\mathbf{x} + c)(D\mathbf{x} + d)^T] = 
-   (A\mathbf{x} + a) b^T (CMD^T + (Cm + c)(Dm + d)^T) \\
+   \mathrm{E}[(Ax + a) b^T (Cx + c)(Dx + d)^T] =
+   (Am + a) b^T (CMD^T + (Cm + c)(Dm + d)^T) \\
    + (AMC^T + (Am + a)(Cm + c)^T) b(Dm + d)^T \\
    + b^T (Cm + c)(AMD^T - (Am + a)(Dm + d)^T)
    \end{align*}
@@ -1760,30 +1106,12 @@ This universality is why melonic diagrams are central to understanding tensor mo
    Also try to verify your derivations using tensorgrad.
 \end{exercise}
 \begin{exercise}
-   For rank-3 tensors $T_1, T_2, T_3$ with colored legs (cyan, magenta, yellow), draw all valid 3-colored non-crossing partitions of $\{1,2,3\}$. 
-   How many are there compared to the total number of set partitions?
+   Enumerate the non-crossing partitions of $\{1, 2, 3, 4, 5\}$ and verify there are $C_5 = 42$ of them. How many of the $52$ set partitions of $\{1, \dots, 5\}$ are crossing?
+   % Answer: 52 - 42 = 10.
 \end{exercise}
 \begin{exercise}
-   Consider a rank-4 Gaussian tensor $T \in \mathbb{R}^{N \times N \times N \times N}$. 
-   Compute $\mathrm{E}[\mathrm{Tr}_{12}(T) \mathrm{Tr}_{34}(T)]$ where $\mathrm{Tr}_{ij}$ denotes contraction of indices $i$ and $j$.
-   Use the tensor Wick theorem and draw the corresponding colored diagrams.
+   Compute the free cumulants $\kappa_n^{\mathrm{free}}$ of the semicircle distribution by inverting the moment-cumulant formula on the Catalan moments $m_{2k} = C_k$, $m_{2k+1} = 0$.
 \end{exercise}
 \begin{exercise}
-   For a tensor network on a binary tree of depth $d$, show that the boundary entanglement entropy scales as $S \sim d \log N$.
-   Use the graph amalgamation theorem and identify the minimal cuts.
-\end{exercise}
-\begin{exercise}
-   Verify that for rank-$D$ tensors, the number of melonic diagrams at order $n$ grows as $D^n n!$.
-   Draw all melonic diagrams for $D=3, n=3$.
-\end{exercise}
-\begin{exercise}
-   Show that the $D$-ary Catalan numbers satisfy the recursion:
-   \[
-      C_n^{(D)} = \sum_{k=0}^{n-1} C_k^{(D)} C_{n-1-k}^{(D-1)}
-   \]
-   What does this imply about the structure of colored non-crossing partitions?
-\end{exercise}
-\begin{exercise}
-   For two tensor-free rank-3 tensors $A$ and $B$, compute the third tensor cumulant $\kappa_3^{(\mathrm{t})}(A+B)$.
-   Verify the additivity property using colored partition diagrams.
+   Show that if $X$ has $R$-transform $R_X(z)$, then for a scalar $\lambda > 0$, $\lambda X$ has $R$-transform $R_{\lambda X}(z) = \lambda\, R_X(\lambda z)$.
 \end{exercise}

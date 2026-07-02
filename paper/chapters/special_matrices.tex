@@ -7,11 +7,11 @@ Below are some examples.
 
 \section{Fast Kronecker Multiplication}
 
-Say we want to compute $(A_1\otimes A_2\cdots A_n)x$,
-where $A_i$ is a $a_i \times a_i$ matrix, and $x \in \R^{a_1 a_2 \cdots a_n}$.
+Say we want to compute $(A_1\otimes A_2\otimes\cdots\otimes A_n)x$,
+where $A_i$ is an $a_i \times a_i$ matrix, and $x \in \R^{a_1 a_2 \cdots a_n}$.
 If we first compute the Kronecker product, and then the matrix-vector multiplication, this would take $(a_1\cdots a_n)^2$ time.
 
-Instead we can reshape $x$ into a $a_1 \times \cdots a_n$ tensor and 
+Instead we can reshape $x$ into an $a_1 \times \cdots \times a_n$ tensor and
 perform the multiplication
 \[
    \begin{tikzpicture}[baseline=-.25em]
@@ -40,7 +40,7 @@ a_1^2(a_2\cdots a_n)
 + a_n^2(a_1\cdots a_{n-1})
 = (a_1 + \dots + a_n)(a_1 \cdots a_n),
 \]
-which is the basis of many fast algorithm as we will see.
+which is the basis of many fast algorithms as we will see.
 
 \section{Hadamard Transform}
 
@@ -86,7 +86,7 @@ H_{2^n} =
    \end{tikzpicture}
    \,.
 \]
-The Fast Hadamard Transform (FHT) transform is usually described recursively by:
+The Fast Hadamard Transform (FHT) is usually described recursively by:
 \[
    \renewcommand*{\arraystretch}{1.3}
 H_{2^n} x
@@ -104,10 +104,10 @@ H_{2^n} x
 ,
 \]
 where $\smat{ x^{(1)} \\ x^{(2)} }$ is the first and second half of $x$.
-Because of the redundancy in the matrix multiplication (it only depends on $H_{2^{n-1}}x^{(1)}$ and $H_{2^{n-1}} x^{(2)}$, the algorithm computes $H_N x$ in $O(N\log N)$ time.
+Because of the redundancy in the matrix multiplication (it only depends on $H_{2^{n-1}}x^{(1)}$ and $H_{2^{n-1}} x^{(2)}$), the algorithm computes $H_N x$ in $O(N\log N)$ time.
 
 Alternatively we could just use the general fact, as described above, where $a_i = 2$ for all $i$.
-Then the ``fast Kronecker multiplication'' method takes time $(a_1 a_2\cdots a_n)(a_1+a_2+\cdots a_n) = 2 n \log_2 n$.
+Then the ``fast Kronecker multiplication'' method takes time $(a_1 a_2\cdots a_n)(a_1+a_2+\cdots+a_n) = 2 N \log_2 N$.
 
 
 \section{Fourier Transform}
@@ -115,7 +115,7 @@ Then the ``fast Kronecker multiplication'' method takes time $(a_1 a_2\cdots a_n
 % A more common matrix is the Discrete Fourier Matrix.
 %\\
 %\\
-The Discrete Fourier Matrix is defined by $(F_N)_{i,j}=\omega^{ij}$,
+The Discrete Fourier Matrix is defined by $(F_N)_{j,k}=\omega^{jk}$,
 where $\omega = e^{-2\pi i/N}$:
 %We can write it out as
 \[
@@ -130,11 +130,11 @@ F_N =
    \end{bmatrix}
 .
 \]
-Using the function syntax from earlier, and assuming $n$ is the vector $[1, 2, \dots, N]$, an alternative way to write this would be:
+Using the function syntax from earlier, and assuming $n$ is the vector $[0, 1, \dots, N-1]$, an alternative way to write this would be:
 \[
 \begin{tikzpicture}
     % Place the exp text
-    \node (exp) at (-.2,0) {$\exp$};
+    \node[anchor=east] (exp) at (.1,0) {$\exp(-2\pi i \,\cdot\, / N)$};
     
     \begin{scope}[xshift=1cm]
         % Draw the dashed rectangle
@@ -151,7 +151,7 @@ Using the function syntax from earlier, and assuming $n$ is the vector $[1, 2, \
 \end{tikzpicture}
 \]
 
-The Good-Thomas Fast Fourier Transformer (FFT) uses a decomposition based on the Chinese Remainder Theorem:
+The Good-Thomas Fast Fourier Transform (FFT) uses a decomposition based on the Chinese Remainder Theorem:
 \[
 F_{N} = 
    \begin{tikzpicture}[baseline=-1em, y=1.7em]
@@ -170,8 +170,8 @@ F_{N} =
 \]
 where $N = p_1^{i_1} p_2^{i_2} \cdots p_n^{i_n}$ is the prime factorisation of $N$, and $P_1$ and $P_2$ are some permutation matrices.
 
-Using fast Kronecker multiplication, the algorithm this takes $(p_1^{i_1}+\dots+p_n^{i_n}) N$ time.
-By padding $x$ with zeros, we can increase $N$ by a constant factor to get a string of $n=O(\log(N)/\log\log(N))$ primes, the sum of which is $\sim n^2/\log n = O(\log(N)^2)$.
+Using fast Kronecker multiplication, this takes $(p_1^{i_1}+\dots+p_n^{i_n}) N$ time.
+By padding $x$ with zeros, we can increase $N$ by a constant factor to get a string of $n=O(\log(N)/\log\log(N))$ primes, the sum of which is $\sim n^2\log n = O(\log(N)^2/\log\log N)$.
 The complete algorithm thus takes time $O(N \log(N)^2)$.
 Next we will see how to reduce this to $O(N\log N)$.
 
@@ -197,9 +197,9 @@ F_{N/2} & 0 \\
 \end{bmatrix}
 ,
 \]
-where $D_N = [1, w^N, w^{2N}, \dots]$.
+where $D_{N/2} = \mathrm{diag}(1, \omega, \omega^2, \dots, \omega^{N/2-1})$ is the diagonal matrix of ``twiddle factors'', with $\omega = e^{-2\pi i/N}$ as before.
 The even-odd permutation moves all the even values to the start.
-If we reshape $I_{2^n}$ as $I_2\otimes\dots\otimes I_2$, this permutation is just
+If we reshape the length-$2^n$ index space into $2\times\dots\times 2$, this permutation is just
 $
 P_N = \begin{tikzpicture}[baseline=.5em, x=1em, y=.5em]
     \draw (0,0) -- (1, 1);
@@ -211,6 +211,7 @@ $,
 or in pytorch: \texttt{x.permute([3,0,1,2])}.
 Also note that
 $\smat{I&I\\I&-I} = H_2 \otimes I$ and $\smat{F_{N/2} & 0\\0&F_{N/2}}=I_2 \otimes F_{N/2}$.
+In the diagrams below we write $D_N$ for the full length-$N$ diagonal matrix $\smat{I&0\\0&D_{N/2}} = I_{N/2} \oplus D_{N/2}$.
 So we can write in tensor diagram notation:
 \begin{align*}
 F_N =
@@ -264,10 +265,10 @@ F_N =
             \draw (b\i\k) -- (D\i);
         }
     }
-    \draw (L0) -- (H0) -- (b0) -- (s0) -- (r3);
-    \draw (L1) -- (l1) -- (b1) -- (H1) -- (b11) -- (s1) -- (r2);
-    \draw (L2) -- (l2) -- (b2) -- (b12) -- (H2) -- (b22) -- (s2) -- (r1);
-    \draw (L3) -- (l3) -- (b3) -- (b13) -- (b23) -- (H3) -- (s3) -- (r0);
+    \draw (L0) -- (H0) -- (b00) -- (s0) -- (r3);
+    \draw (L1) -- (l1) -- (b01) -- (H1) -- (b11) -- (s1) -- (r2);
+    \draw (L2) -- (l2) -- (b02) -- (b12) -- (H2) -- (b22) -- (s2) -- (r1);
+    \draw (L3) -- (l3) -- (b03) -- (b13) -- (b23) -- (H3) -- (s3) -- (r0);
 \end{tikzpicture}
 %\\&=
 %\begin{tikzpicture}[baseline=-2em, x=2em, y=1em, inner sep=1pt]
@@ -287,14 +288,14 @@ F_N =
 %            \draw (b\i\k) -- (D\i);
 %        }
 %    }
-%    \draw (r3) -- (L0) -- (H3) -- (b0) -- (s0);
-%    \draw (r2) -- (L1) -- (l1) -- (b1) -- (H2) -- (b11) -- (s1);
-%    \draw (r1) -- (L2) -- (l2) -- (b2) -- (H1) -- (b12) -- (b22) -- (s2);
-%    \draw (r0) -- (L3) -- (H0) -- (l3) -- (b3) -- (b13) -- (b23) -- (s3);
+%    \draw (r3) -- (L0) -- (H3) -- (b00) -- (s0);
+%    \draw (r2) -- (L1) -- (l1) -- (b01) -- (H2) -- (b11) -- (s1);
+%    \draw (r1) -- (L2) -- (l2) -- (b02) -- (H1) -- (b12) -- (b22) -- (s2);
+%    \draw (r0) -- (L3) -- (H0) -- (l3) -- (b03) -- (b13) -- (b23) -- (s3);
 %\end{tikzpicture}
 .
 \end{align*}
-Since one can multiply with the permutation and diagonal matrices in linear time, the $O(n\log n)$ time complexity follows from the same argument as for Hadamard.
+Since one can multiply with the permutation and diagonal matrices in linear time, the $O(N\log N)$ time complexity follows from the same argument as for Hadamard.
 
 Note there are a bunch of symmetries, such as by transposing (horizontal flip), since the matrix is symmetric.
 Or by pushing the permutation to the left side.
@@ -321,10 +322,10 @@ With this generalized Cooley-Tukey algorithm, we get the following diagram:
             \draw (b\i\k) -- (D\i);
         }
     }
-    \draw (L0) -- (H0) -- (b0) -- (s0) -- (r3);
-    \draw (L1) -- (b1) -- (H1) -- (b11) -- (s1) -- (r2);
-    \draw (L2) -- (b2) -- (b12) -- (H2) -- (b22) -- (s2) -- (r1);
-    \draw (L3) -- (b3) -- (b13) -- (b23) -- (H3) -- (s3) -- (r0);
+    \draw (L0) -- (H0) -- (b00) -- (s0) -- (r3);
+    \draw (L1) -- (b01) -- (H1) -- (b11) -- (s1) -- (r2);
+    \draw (L2) -- (b02) -- (b12) -- (H2) -- (b22) -- (s2) -- (r1);
+    \draw (L3) -- (b03) -- (b13) -- (b23) -- (H3) -- (s3) -- (r0);
 \end{tikzpicture}
 ,
 \]
@@ -332,7 +333,9 @@ where $n_0n_1n_2n_3 = N$.
 Here we replaced the $D_N$ matrix with the ``generalized'' Fourier matrix $F^{(a,b)}$ matrix, which is defined as $F^{(a,b)}_{j,k} = e^{-2\pi i j k/(ab)}$, and we reshaped as necessary.
 In the simple case of where we split in just two parts of roughly $n_1=n_2=\sqrt{N}$, this is also called ``Four step FFT'' or Bailey's FFT algorithm.
 
-We can use the property $F_{a,bc} = F_{a,b} \bullet F_{a,c}^{1/b}$ to simplify the diagram further:
+We can use the property $F^{(a,bc)} = F^{(a,b)} \bullet (F^{(a,c)})^{1/b}$ to simplify the diagram further.
+Here $\bullet$ denotes the join over the shared row index $j$: reshaping the column index $k$ into a pair $(k_1,k_2)$, we set $(F^{(a,b)} \bullet (F^{(a,c)})^{1/b})_{j,(k_1,k_2)} = F^{(a,b)}_{j,k_1} \big((F^{(a,c)})^{1/b}\big)_{j,k_2}$, where the elementwise power $1/b$ is taken using the principal branch.
+This gives:
 \[
    F_N =
 \begin{tikzpicture}[baseline=-2em, x=2.5em, y=1.5em, inner sep=1pt]
@@ -351,17 +354,17 @@ We can use the property $F_{a,bc} = F_{a,b} \bullet F_{a,c}^{1/b}$ to simplify t
             \node[inner sep=0pt, minimum size=0pt] (c\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\k) {$\sbullet$};
         }
     }
-    \node (D00) at (1,-.5) {$\scriptscriptstyle F^{n_0, n_1}$};
-    \node (D01) at (1.5,-1.5) {$\scriptscriptstyle F^{n_0, n_2}$};
-    \node (D02) at (2,-2.5) {$\scriptscriptstyle F^{n_0, n_3}$};
+    \node (D00) at (1,-.5) {$\scriptscriptstyle F^{(n_0, n_1)}$};
+    \node (D01) at (1.5,-1.5) {$\scriptscriptstyle F^{(n_0, n_2)}$};
+    \node (D02) at (2,-2.5) {$\scriptscriptstyle F^{(n_0, n_3)}$};
     \draw (b01) -- (D00) -- (c01);
     \draw (b02) -- (D01) -- (c02);
     \draw (b03) -- (D02) -- (c03);
-    \node (D10) at (4,-1.5) {$\scriptscriptstyle F^{n_1, n_2}$};
-    \node (D11) at (4.5,-2.5) {$\scriptscriptstyle F^{n_1, n_3}$};
+    \node (D10) at (4,-1.5) {$\scriptscriptstyle F^{(n_1, n_2)}$};
+    \node (D11) at (4.5,-2.5) {$\scriptscriptstyle F^{(n_1, n_3)}$};
     \draw (b12) -- (D10) -- (c12);
     \draw (b13) -- (D11) -- (c13);
-    \node (D20) at (6.5,-2.5) {$\scriptscriptstyle F^{n_2, n_3}$};
+    \node (D20) at (6.5,-2.5) {$\scriptscriptstyle F^{(n_2, n_3)}$};
     \draw (b23) -- (D20) -- (c23);
     % Horizontal connections
     \draw (L0) -- (H0) -- (b01) -- (b02) -- (b03) -- (s0) -- (r3);
@@ -372,7 +375,7 @@ We can use the property $F_{a,bc} = F_{a,b} \bullet F_{a,c}^{1/b}$ to simplify t
 .
 \]
 % This algorithm is actually slower (n (log n)^2), because the pair-wise D matrices are not actually faster.
-In the simple case where we split in $2$ every time, this is also called the ``Quantum FFT'' algorithm.
+In the simple case where we split in $2$ every time, this is also called the ``Quantum Fourier Transform (QFT)'' algorithm.
 
 We hid some stuff above, namely that the matrices should be divided by different $N$s.
 
@@ -417,7 +420,7 @@ These typically look like this:
 and have $2^n$ rows.
 The tensor diagram only has $n$ rows (or $\log_2 N$).
 
-\subsubsection{Multi-dimensional Fourier Transform}
+\subsection{Multi-dimensional Fourier Transform}
 This is just taking the Fourier transform along each axis.
 
 \subsection{Vandermonde Matrices}
@@ -451,13 +454,13 @@ The idea is to define two polynomials that are zero in respectively the first an
    m_0(x)&=(x-x_1)\cdots(x-x_{n/2}) \quad\text{and}\\
    m_1(x)&=(x-x_{n/2+1})\cdots(x-x_{n}).
 \end{align*}
-We then compute $R_0 = P \bmod m_0$ and $R_1 = P \bmod m_1$ using the Polynomial remainder theorem, which can be done in $O(n\log n)$ time using a FFT.
+We then compute $R_0 = P \bmod m_0$ and $R_1 = P \bmod m_1$ using fast polynomial division, which can be done in $O(n\log n)$ time using a FFT.
 This means
 \begin{align*}
    P(x) &= Q_0(x)m_0(x) + R_0(x) \quad\text{and}\\
    P(x) &= Q_1(x)m_1(x) + R_1(x)
 \end{align*}
-by construction, where $R_0$ and $R_1$ are polynomials of degree at most $n/2$.
+by construction, where $R_0$ and $R_1$ are polynomials of degree less than $n/2$.
 Because of how $m_0$ and $m_1$ were defined, we have
 \begin{align*}
 R_0(x_i) &= P(x_i) \quad\text{for } i \le n/2 \quad\text{and}\\
@@ -469,7 +472,7 @@ This gives us a divide-and-conquer algorithm with $T(n) = 2T(n/2) + n\log n$, wh
 
 
 
-\subsection{Block matrices}
+\section{Block matrices}
 Stuff like Schur complements is interesting.
 But can we say anything useful using tensor diagrams?
 
@@ -480,16 +483,16 @@ Regard the matrix
    \left[ \begin{array}{c|c} A_{11} & A_{12} \\ \hline A_{21} & A_{22} \end{array} \right]
 \]
 
-The Schur complement of block $A_{11}$ of the matrix above is the matrix (denoted $C_2$ in the text above)
+The Schur complement of block $A_{11}$ of the matrix above is the matrix
 
 \[
-   A_{22} - A_{21}A_{11}^{-1}A_{12}
+   C_2 = A_{22} - A_{21}A_{11}^{-1}A_{12}
 \]
 
-The Schur complement of block $A_{22}$ of the matrix above is the matrix (denoted $C_1$ in the text above)
+The Schur complement of block $A_{22}$ of the matrix above is the matrix
 
 \[
-   A_{11} - A_{12}A_{22}^{-1}A_{21}
+   C_1 = A_{11} - A_{12}A_{22}^{-1}A_{21}
 \]
 
 Using the Schur complement, one can rewrite the inverse of a block matrix
@@ -524,15 +527,15 @@ When the appropriate inverses exists, this can be solved for $x_1$ which can the
 %\subsection{Singleentry Matrix, The}
 %Describes the matrix $J$.
 %All of this is trivial with diagrams.
-\subsection{Symmetric, Skew-symmetric/Antisymmetric}
+\section{Symmetric, Skew-symmetric/Antisymmetric}
 \label{sec:symmetric}
 
 Could introduce Penrose's symmetric tensors here?
 % The best sources is probably
 % https://www.mscs.dal.ca/%7Eselinger/papers/graphical-bib/public/Penrose-applications-of-negative-dimensional-tensors.pdf
 
-\subsection{Toeplitz Matrices}
+\section{Toeplitz Matrices}
 Could talk about the convolution tensor here...
-\subsection{Units, Permutation and Shift}
+\section{Units, Permutation and Shift}
 Not that interesting...
 
