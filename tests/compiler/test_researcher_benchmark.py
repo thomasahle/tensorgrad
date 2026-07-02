@@ -24,9 +24,10 @@ Tier 2 — the founding problem: the CE∘softmax Hessian wrt logits, batched.
     L = -sum(y * log(primitive_softmax(x, 'v'))) / B;  H = L.grad(x).grad(x)
       TERM COUNT   simplified H is a 2-term Sum: diag(s) - s s^T shape  [passes]
       CORRECT      matches torch.autograd.functional.hessian, tiny dims [passes]
-      Y-FREE       compiled H has no InputNode for y (cancellation; needs a
-                   one-hot/simplex declaration for y — with a *general* y the
-                   Hessian provably retains the factor sum_v y[b,v])
+      Y-FREE       with y declared simplex (sum_v y[b,v] = 1, true for one-hot
+                   targets, via Variable.with_constraint), the compiled H has no
+                   InputNode for y — with a *general* y the Hessian provably
+                   retains the factor sum_v y[b,v]                      [passes]
       HVP FAST     compiled HVP beats torch double-backward, B=64 V=256 [needs #17:
                    today the HVP program materializes a (B,B,B,V,V,V) intermediate]
       BLOCK-DIAG   HVP program has no batch x batch intermediate        [needs #17]
@@ -375,6 +376,47 @@ def _stage_tier2_hessian():
     return res
 
 
+def _stage_tier2_hessian_simplex():
+    """The founding cancellation. Targets y are one-hot (rows on the simplex), so the
+    researcher declares sum_v y[b,v] = 1 via Variable.with_constraint. The Hessian
+    H = (sum_v y[b,v]) * delta_{b,b2} (diag(s) - s s^T) / B must then simplify to a
+    y-FREE 2-term form, and the compiled program must not consume y at all."""
+    b, v = symbols("b v")
+    x = Variable("x", b, v)
+    y = Variable("y", b, v).with_constraint("simplex", "v")
+    s = primitive_softmax(x, "v")
+    L = -F.sum(y * F.log(s)) / Delta(b)  # mean over the batch
+    H = L.grad(x).grad(x, new_names={"b": "b2", "v": "v2"})
+    # expand=True: the sum_v y factor only becomes a flat ones-contraction (which the
+    # simplex declaration cancels) after the rational layer is distributed.
+    Hs = H.simplify({"expand": True})
+
+    res = {
+        "n_terms": len(Hs.terms) if isinstance(Hs, Sum) else 1,
+        "depends_on_y": Hs.depends_on(y),
+    }
+    fn = compile_to_callable(Hs)
+    res["input_names"] = list(fn.input_names)  # y-freeness = no y InputNode
+
+    # CORRECT vs torch.autograd.functional.hessian with an ACTUAL one-hot y (fp64)
+    B, V = 3, 5
+    torch.manual_seed(0)
+    xt = torch.randn(B, V, dtype=torch.float64).rename("b", "v")
+    yt = _one_hot_targets(B, V, torch.float64)
+    values = {x: xt}
+    if "y" in res["input_names"]:  # pragma: no cover - only on regression
+        values[y] = yt.rename("b", "v")
+    Hv = fn(values, {b: B, v: V}).align_to("b", "v", "b2", "v2").rename(None)
+
+    def torch_L(xf):
+        return -(yt * torch.log_softmax(xf, dim=1)).sum() / B
+
+    Href = torch.autograd.functional.hessian(torch_L, xt.rename(None))
+    res["correct"] = bool(torch.allclose(Hv, Href, rtol=RTOL, atol=1e-10))
+    res["max_err"] = float((Hv - Href).abs().max())
+    return res
+
+
 def _stage_tier2_hvp():
     """Hessian-vector product: correctness, block-diagonal structure, speed."""
     b, v, x, y, Hs = _ce_hessian()
@@ -530,18 +572,18 @@ def test_tier2_ce_hessian_correct():
     assert res["correct"], f"Hessian mismatch, max err {res['max_err']:.2e}"
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="needs a one-hot/simplex constraint on y: the Hessian of "
-    "-sum(y*log softmax(x)) provably retains the factor sum_v y[b,v], which "
-    "only cancels once the engine can declare sum_v y = 1 (one-hot targets); "
-    "then #19 Schwartz-Zippel fingerprints can certify the cancellation",
-)
 def test_tier2_ce_hessian_y_free():
-    """The founding cancellation: the compiled Hessian program must not need y."""
-    res = _staged_cached("_stage_tier2_hessian")
+    """The founding cancellation: with y declared on the simplex (sum_v y[b,v] = 1,
+    which one-hot targets satisfy), the sum_v y factor cancels, the Hessian keeps the
+    classical 2-term diag(s) - s s^T form, and the compiled program must not need y."""
+    res = _staged_cached("_stage_tier2_hessian_simplex")
+    assert not res["depends_on_y"], "simplified Hessian still depends on simplex-declared y"
     assert "y" not in res["input_names"], (
         f"compiled Hessian still consumes y: inputs={res['input_names']}"
+    )
+    assert res["n_terms"] == 2, f"expected 2 terms, got {res['n_terms']}"
+    assert res["correct"], (
+        f"y-free Hessian mismatch vs autograd with one-hot y, max err {res['max_err']:.2e}"
     )
 
 

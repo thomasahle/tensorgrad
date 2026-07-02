@@ -129,7 +129,9 @@ class Context:
     def _(self, delta: Delta):
         size = self.dims[delta.size]
         if not delta.edges:
-            return torch.tensor(size)
+            # Return float to match the dtype of every other evaluation path
+            # (and the compiler backend, which folds order-0 deltas into weights).
+            return torch.tensor(float(size))
         copy = torch.zeros([size] * delta.order)
         for idx in range(size):
             copy[(idx,) * len(delta.edges)] = 1

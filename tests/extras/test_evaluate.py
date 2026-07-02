@@ -6,6 +6,7 @@ import torch.nn.functional as tF
 from sympy import symbols
 
 import tensorgrad.functions as F
+from tensorgrad.compiler import compile_to_callable as compile_aot
 from tensorgrad.extras.to_pytorch import compile_to_callable
 from tensorgrad.tensor import (
     Delta,
@@ -360,3 +361,167 @@ def test_nn():
     loss1 = evaluate(y, params1, shapes)
 
     assert loss1 < loss0, "Loss should decrease after one step of gradient descent"
+
+
+# ---------------------------------------------------------------------------
+# Order-0 Delta scalar factors.
+# Regression tests: evaluate() used to silently drop order-0 Delta factors
+# (scalars equal to their symbol's size) when Product evaluation filtered
+# Delta tensors out of the einsum contraction, e.g.
+#   evaluate(Delta(a) * (x @ x)) == x @ x   instead of   |a| * (x @ x).
+# The compiler backend folds order-0 deltas into einsum weights, so we
+# cross-check against it on the same expressions.
+# ---------------------------------------------------------------------------
+
+
+def _order0_setup():
+    a, i = symbols("a i")
+    x = Variable("x", i=i)
+    xv = torch.tensor([1.0, 2.0, 1.5], names=("i",))  # x @ x == 7.25
+    dims = {a: 4, i: 3}
+    return a, i, x, xv, dims
+
+
+def _check_order0(expr, expected, values, dims):
+    """Check evaluate on expr and expr.simplify(), and cross-check the compiler."""
+    for e in (expr, expr.simplify()):
+        res = evaluate(e, dict(values), dims=dict(dims))
+        assert_close(res, expected)
+        compiled = compile_aot(e)(dict(values), dict(dims))
+        assert_close(compiled, expected)
+
+
+def test_order0_delta_alone():
+    a, i, x, xv, dims = _order0_setup()
+    res = evaluate(Delta(a), {}, dims=dims)
+    assert res.item() == 4.0
+    # Float dtype, to match every other evaluate path and the compiler backend
+    assert res.dtype == torch.float32
+
+
+def test_order0_delta_times_contraction():
+    # The original oracle bug: the |a| = 4 factor was dropped from the product
+    a, i, x, xv, dims = _order0_setup()
+    expr = Delta(a) * (x @ x)
+    _check_order0(expr, torch.tensor(29.0), {x: xv}, dims)
+
+
+def test_order0_delta_only_product():
+    a, i, x, xv, dims = _order0_setup()
+    expr = Product([Delta(a), Delta(a), Delta(i)])
+    _check_order0(expr, torch.tensor(48.0), {}, dims)
+
+
+def test_order0_delta_power():
+    a, i, x, xv, dims = _order0_setup()
+    expr = F.pow(Delta(a), 2) * (x @ x)
+    _check_order0(expr, torch.tensor(116.0), {x: xv}, dims)
+    expr = F.pow(Delta(a), -1) * (x @ x)
+    _check_order0(expr, torch.tensor(7.25 / 4), {x: xv}, dims)
+
+
+def test_order0_delta_in_sum_and_weights():
+    a, i, x, xv, dims = _order0_setup()
+    # Plain sum
+    _check_order0(Delta(a) + (x @ x), torch.tensor(11.25), {x: xv}, dims)
+    # Weighted sum: 2*4 + 3*7.25
+    _check_order0(Sum([Delta(a), x @ x], [2, 3]), torch.tensor(29.75), {x: xv}, dims)
+    # Nested in a Sum inside a Product: (2 - |a|) * x
+    expr = Product([Sum([Ones(), Delta(a)], [2, -1]), x])
+    _check_order0(expr, (-2.0 * xv.rename(None)).rename("i"), {x: xv}, dims)
+
+
+def test_order0_delta_broadcast_to_vector():
+    a, i, x, xv, dims = _order0_setup()
+    expr = Delta(a) * x
+    _check_order0(expr, (4.0 * xv.rename(None)).rename("i"), {x: xv}, dims)
+
+
+def test_order0_delta_with_identity():
+    # All remaining factors are Deltas (merge_copies=False path)
+    a, i, x, xv, dims = _order0_setup()
+    expr = Product([Delta(a), Delta(i, "i", "j")])
+    expected = (4.0 * torch.eye(3)).rename("i", "j")
+    _check_order0(expr, expected, {}, dims)
+
+
+def test_order0_delta_repeated_output():
+    # Repeated-output einsum branch: out[j,k] = |a| * x_j * [j == k]
+    a, i, x, xv, dims = _order0_setup()
+    expr = Product([Delta(a), x, Delta(i, "i", "j", "k")])
+    expected = (4.0 * torch.diag(xv.rename(None))).rename("j", "k")
+    for e in (expr, expr.simplify()):
+        res = evaluate(e, {x: xv}, dims=dict(dims))
+        assert_close(res.align_to("j", "k"), expected)
+
+
+# ---------------------------------------------------------------------------
+# Property test: scalar-heavy random expressions, evaluate vs an independent
+# reference and vs the compiler backend.
+# ---------------------------------------------------------------------------
+
+
+def _random_scalar_expr(rng, depth, x, xv, size_syms):
+    """Return (order-0 tensorgrad expr, python float reference)."""
+    if depth <= 0:
+        choice = rng.randrange(6)
+        if choice == 0:
+            sym, val = rng.choice(size_syms)
+            return Delta(sym), float(val)
+        if choice == 1:
+            return Ones(), 1.0
+        if choice == 2:
+            return Product([]), 1.0
+        if choice == 3:
+            return x @ x, float(xv.rename(None) @ xv.rename(None))
+        if choice == 4:
+            sym, val = rng.choice(size_syms)
+            k = rng.choice([-1, 2])
+            return F.pow(Delta(sym), k), float(val) ** k
+        return F.sum(x), float(xv.rename(None).sum())
+    kind = rng.choice(["sum", "prod", "pow1"])
+    if kind == "sum":
+        n = rng.randint(2, 3)
+        pairs = [_random_scalar_expr(rng, depth - 1, x, xv, size_syms) for _ in range(n)]
+        weights = [rng.choice([-2, -1, 1, 2]) for _ in range(n)]
+        return Sum([p[0] for p in pairs], weights), sum(w * p[1] for w, p in zip(weights, pairs))
+    if kind == "prod":
+        p1 = _random_scalar_expr(rng, depth - 1, x, xv, size_syms)
+        p2 = _random_scalar_expr(rng, depth - 1, x, xv, size_syms)
+        return Product([p1[0], p2[0]]), p1[1] * p2[1]
+    # pow with k=1 wraps composites in a _PowerFunction without growing magnitude
+    p = _random_scalar_expr(rng, depth - 1, x, xv, size_syms)
+    return F.pow(p[0], 1), p[1]
+
+
+def test_random_scalar_heavy_vs_compiler():
+    rng = random.Random(0)
+    torch.manual_seed(0)
+    a, b, i = symbols("a b i")
+    dims = {a: 2, b: 5, i: 3}
+    x = Variable("x", i=i)
+    size_syms = [(a, 2), (b, 5), (i, 3)]
+    n_compiler_checked = 0
+    for trial in range(50):
+        xv = torch.randn(3, names=("i",))
+        expr, ref = _random_scalar_expr(rng, rng.randint(1, 2), x, xv, size_syms)
+        if rng.random() < 0.4:
+            # Broadcast the scalar onto a vector output
+            expr = expr * x
+            expected = (ref * xv.rename(None)).rename("i")
+        else:
+            expected = torch.tensor(ref)
+        for e in (expr, expr.simplify()):
+            res = evaluate(e, {x: xv}, dims=dict(dims))
+            assert_close(res, expected, rtol=1e-3, atol=5e-2)
+            try:
+                compiled = compile_aot(e)({x: xv}, dict(dims))
+            except (ValueError, TypeError):
+                # Known compiler gaps on scalar-only subgraphs:
+                # - factor.py _hoist: max() arg is an empty sequence
+                # - codegen einsum receiving a python float operand
+                continue
+            n_compiler_checked += 1
+            assert_close(compiled, expected, rtol=1e-3, atol=5e-2)
+    # Most expressions must actually be cross-checked against the compiler
+    assert n_compiler_checked >= 60, f"only {n_compiler_checked} compiler cross-checks ran"

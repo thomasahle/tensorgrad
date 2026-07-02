@@ -491,6 +491,18 @@ class _PowerFunction(FunctionSignature):
             # We only apply this if we actually got more than one component
             if len(new_comps) > 1:
                 return Product(new_comps).simplify(args)
+            # More generally, factors joined only *diagonally* — through copy tensors that
+            # also carry a free (broadcast) edge — multiply pointwise, so pow distributes
+            # over them too: pow(Delta(b, "b,b1,b2") A_b1 B_b2w, k)
+            #             = Delta(b, "b,b1,b2") pow(A, k)_b1 pow(B, k)_b2w.
+            # E.g. softmax = Delta(b,..) exp(x) pow(Z, -1), so pow(softmax, -1) splits
+            # into Z * pow(exp(x), -1), whose parts can cancel in the ambient product.
+            # Only under expand=True: it rewrites the rational layer aggressively, which
+            # pays off when products are being distributed so the split parts meet their
+            # cancellation partners in a flat factor list.
+            if args["expand"] and (split := self._pointwise_split(inner)) is not None:
+                joins, groups = split
+                return Product(joins + [Function(self, (g,), {}) for g in groups]).simplify(args)
 
         # We can pull out the weight of a sum if it's just a single tensor
         if isinstance(inner, Sum) and len(inner.terms) == 1:
@@ -511,6 +523,31 @@ class _PowerFunction(FunctionSignature):
             )
 
         return func
+
+    @staticmethod
+    def _pointwise_split(inner: Product) -> tuple[list[Tensor], list[Tensor]] | None:
+        """Split a connected product into diagonally-joined groups.
+
+        A Delta factor with at least one free edge never sums: it aligns the indices of
+        its neighbors diagonally (and, when it has two or more free edges, masks
+        off-diagonal entries with zeros, where we use the convention 0^k = 0, matching
+        pow(Zero) = Zero). Removing all such "joining" deltas partitions the remaining
+        factors into groups that combine purely elementwise, so an elementwise power of
+        the product distributes over the groups. Deltas with no free edge are genuine
+        contractions (sums) and stay inside their group.
+
+        Returns (joining_deltas, groups) or None if there is nothing to split.
+        """
+        free = inner.edges
+        joins, rest = [], []
+        for t in inner.factors:
+            (joins if isinstance(t, Delta) and set(t.edges) & set(free) else rest).append(t)
+        if not joins or len(rest) < 2:
+            return None
+        groups = Product(rest).components()
+        if len(groups) < 2:
+            return None
+        return joins, groups
 
     @classmethod
     def simplify_outer(cls, tensors: list[Tensor], args: dict[str, Any] = None) -> list[Tensor]:

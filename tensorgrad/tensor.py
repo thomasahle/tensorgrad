@@ -584,6 +584,7 @@ class Variable(Tensor):
         name: str,
         *shape0: Symbol,
         _symmetries: None | str | set[frozenset[str]] = None,
+        _constraints: None | Iterable[tuple[str, str]] = None,
         **shape1: Symbol,
     ):
         """
@@ -593,16 +594,74 @@ class Variable(Tensor):
             name: The name of the variable.
             shape0: Positional Sympy symbols for dimensions.
             _symmetries: Optional symmetries (as a string or set of frozensets).
+            _constraints: Optional value constraints as (constraint_name, edge) pairs.
+                Use :meth:`with_constraint` instead of passing this directly.
             shape1: Keyword arguments for dimensions.
         """
         self.name = name
         self._shape = self._check_shape(shape0, shape1)
         self._symmetries = self._check_symmetries(self._shape, _symmetries)
+        self._constraints = self._check_constraints(_constraints)
+
+    #: Constraint names that :meth:`with_constraint` accepts.
+    CONSTRAINTS = frozenset({"simplex"})
+
+    def _check_constraints(self, constraints: None | Iterable[tuple[str, str]]) -> frozenset[tuple[str, str]]:
+        if constraints is None:
+            return frozenset()
+        constraints = frozenset(constraints)
+        for cname, e in constraints:
+            if cname not in self.CONSTRAINTS:
+                raise ValueError(f"Unknown constraint {cname!r}. Supported: {sorted(self.CONSTRAINTS)}")
+            if e not in self._shape:
+                raise ValueError(f"Constraint {cname!r} names edge {e!r} not in shape {self._shape}")
+        # Constrained edges must be closed under the symmetry orbits: an automorphism may
+        # permute the edges of an orbit, so a constraint on only part of an orbit would make
+        # the isomorphism test (which colors an orbit's edges identically) unsound.
+        for cname in {c for c, _ in constraints}:
+            edges = {e for c, e in constraints if c == cname}
+            for orbit in self._symmetries:
+                if orbit & edges and not orbit <= edges:
+                    raise ValueError(
+                        f"Constraint {cname!r} on {sorted(edges)} must include all edges of "
+                        f"the symmetry orbit {sorted(orbit)} (or none of them)"
+                    )
+        return constraints
 
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
-        return Variable(self.name, **self.shape, _symmetries=symmetries)
+        return Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=self._constraints)
+
+    def with_constraint(self, name: str, *edges: str) -> "Variable":
+        """Declare a value constraint on this variable.
+
+        Supported constraints:
+            - ``"simplex"``: for each listed edge, the entries along that edge sum to one
+              (e.g. one-hot targets or probability distributions):
+              ``Variable("y", b, v).with_constraint("simplex", "v")`` declares
+              ``sum_v y[b, v] = 1`` for every ``b``. During ``simplify``, contracting the
+              constrained edge against an all-ones vector (the pattern ``F.sum`` produces)
+              drops the variable, leaving all-ones on its remaining edges. Only the
+              sum-to-one property is used; nonnegativity is not modeled.
+
+        NOTE: Constraints describe the VALUES the variable will hold; they do not change
+        differentiation. ``grad`` still treats the variable as a free, unconstrained
+        parameter (derivatives are taken in the full ambient space), so gradients of and
+        with respect to a constrained variable are unchanged.
+        """
+        if not edges:
+            raise ValueError("with_constraint requires at least one edge")
+        new = {(name, e) for e in edges}
+        return Variable(
+            self.name,
+            **self.shape,
+            _symmetries=self._symmetries,
+            _constraints=self._constraints | new,
+        )
 
     def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
+        # Note: Constraints (see with_constraint) deliberately do NOT affect the gradient.
+        # They describe the values the variable will hold, not the space it is optimized
+        # over, so we differentiate as if the variable were unconstrained.
         if x == self:
             # TODO: If X has symmetries, the derivative can actually be more complex than this.
             # See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
@@ -617,11 +676,21 @@ class Variable(Tensor):
         if self._symmetries != {frozenset({e}) for e in self.edges}:
             groups = ", ".join(sorted(" ".join(sorted(group)) for group in self._symmetries))
             symmetries = f'.with_symmetries("{groups}")'
-        return f"Variable({', '.join(args)}){symmetries}"
+        constraints = ""
+        for cname in sorted({c for c, _ in self._constraints}):
+            edges = ", ".join(f'"{e}"' for e in sorted(e for c, e in self._constraints if c == cname))
+            constraints += f'.with_constraint("{cname}", {edges})'
+        return f"Variable({', '.join(args)}){symmetries}{constraints}"
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
-        G.add_node(0, name=("Variable", self.name), tensor=self)
+        # Constraints are part of the node name (like the variable name itself), so a
+        # constrained variable is never isomorphic to an unconstrained one, and rename/
+        # substitute (which go through isomorphism) keep track of them for free.
+        node_name = ("Variable", self.name)
+        if self._constraints:
+            node_name += (tuple(sorted(self._constraints)),)
+        G.add_node(0, name=node_name, tensor=self)
         edges = {}
         # Symmetries are more fine-grained than shapes, since two dims can have
         # the same size, but not be symmetric. E.g. an asymmetric square matrix.
@@ -888,7 +957,11 @@ class Delta(Constant):
             # means isomorphic, so it might remove too many unintended tensors.
             other = [t for t in tensors if t is not t1 and t is not t2]
 
-            for simplification in [cls._merge_copy_tensors, cls._remove_identity_matrix]:
+            for simplification in [
+                cls._merge_copy_tensors,
+                cls._remove_identity_matrix,
+                cls._sum_constrained_variable,
+            ]:
                 if (new := simplification(t1, t2, e)) is not None:
                     return other + new, False
 
@@ -935,6 +1008,36 @@ class Delta(Constant):
             if other_edge not in t2.edges:
                 return [t2.rename(**{e: other_edge})]
         return None
+
+    @staticmethod
+    def _sum_constrained_variable(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
+        """Sum over a simplex-constrained edge of a Variable.
+
+        Contracting an edge with an order-1 Delta (an all-ones vector; the pattern
+        ``F.sum`` produces) computes the sum over that edge. If the edge is declared
+        ``simplex`` on the variable (see ``Variable.with_constraint``), that sum is 1,
+        so the variable and the ones-vector are replaced by all-ones on the variable's
+        remaining edges.
+        """
+        # Make t1 the all-ones vector
+        if not (isinstance(t1, Delta) and t1.order == 1):
+            t1, t2 = t2, t1
+        if not (isinstance(t1, Delta) and t1.order == 1):
+            return None
+        # Peel lazy Rename wrappers off t2 to find the underlying Variable, tracking the
+        # accumulated original -> outer name mapping.
+        inner, mapping = t2, {}
+        while isinstance(inner, Rename):
+            mapping = Rename.merge_renames(inner.mapping, mapping)
+            inner = inner.tensor
+        if not isinstance(inner, Variable):
+            return None
+        # Map the contracted edge back to the variable's original edge name, since
+        # constraints are declared in terms of the original names.
+        orig_e = {mapping.get(o, o): o for o in inner.edges}.get(e)
+        if ("simplex", orig_e) not in inner._constraints:
+            return None
+        return [Delta(s, e2) for e2, s in t2.shape.items() if e2 != e]
 
 
 class Zero(Constant):

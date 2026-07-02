@@ -551,6 +551,18 @@ class CodegenContext:
                 # For multi-dimensional softmax, flatten, apply softmax, then reshape
                 # This matches the evaluation in evaluate.py
                 raise NotImplementedError("Multi-dimensional softmax not yet supported in code generation")
+        elif signature.name == "log_softmax":
+            # Log-softmax over specified dimensions (mirrors the softmax case above)
+            edges = list(t.inputs[0].edges)
+            dims_to_softmax = list(signature.inputs[0])  # The dimensions to apply log_softmax over
+            dim_indices = [edges.index(d) for d in dims_to_softmax]
+            if len(dim_indices) == 1:
+                fun_expr = (
+                    f"torch.nn.functional.log_softmax({child_names[0]}, dim={dim_indices[0]})"
+                    f"{permute(t.inputs[0], t)}"
+                )
+            else:
+                raise NotImplementedError("Multi-dimensional log_softmax not yet supported in code generation")
         else:
             raise NotImplementedError(f"Don't know how to emit code for {t.signature}")
 
