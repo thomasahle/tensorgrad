@@ -65,7 +65,7 @@ equal to the natural outer products
 %   \begin{tikzpicture}[baseline=(c.base), inner sep=1pt]
 %      \node (T1) {$\tilde x$};
 %      \node (T2)[below=.5em of T1] {$\tilde x$};
-%      \node (c)[right=.7em of T1, yshift=-1em] {$\sbullet$};
+%      \node[copydot] (c)[right=.7em of T1, yshift=-1em] {};
 %      \draw (T1) -- (c);
 %      \draw (T2) -- (c);
 %      \draw (c) -- ++(.7em,0);
@@ -78,7 +78,7 @@ equal to the natural outer products
 %      \node (T1) {$\tilde x$};
 %      \node (T2)[below=.5em of T1] {$\tilde x$};
 %      \node (T3)[below=.5em of T2] {$\tilde x$};
-%      \node (c)[right=.7em of T2] {$\sbullet$};
+%      \node[copydot] (c)[right=.7em of T2] {};
 %      \draw (T1) -- (c);
 %      \draw (T2) -- (c);
 %      \draw (T3) -- (c);
@@ -92,14 +92,14 @@ equal to the natural outer products
 %    M = \sigma^2
 %    \,
 % \begin{tikzpicture}[baseline=(T.base), inner sep=0]
-%    \node (T) {$\sbullet$};
+%    \node[copydot] (T) {};
 %    \draw (T) -- ++(0,.3);
 %    \draw (T) -- ++(0,-.3);
 % \end{tikzpicture}
 %    \text{ and }
 %    M_3 = \mathrm{E}[(x_0-m_0)^3]
 % \begin{tikzpicture}[baseline=(T.base), inner sep=0]
-%    \node (T) {$\sbullet$};
+%    \node[copydot] (T) {};
 %    \draw (T) -- ++(0,.3);
 %    \draw (T) -- ++(-.2,-.3);
 %    \draw (T) -- ++(.2,-.3);
@@ -787,7 +787,7 @@ We assume $A$ is symmetric and, as above, that the entries of $x$ are independen
    \kappa_4
    \begin{tikzpicture}[baseline=(A0.base), inner sep=0pt, fill=white]
        \node (A1) at (0,0) {$A$};
-       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[copydot] (bullet) at (.8,0) {};
        \node[anchor=west] (A2) at (1.4,0) {$A$};
        \draw (A1.east) to[out=45,in=135] (bullet) to[out=45,in=135] (A2.west);
        \draw (A1.east) to[out=-45,in=-135] (bullet) to[out=-45,in=-135] (A2.west);
@@ -796,9 +796,9 @@ We assume $A$ is symmetric and, as above, that the entries of $x$ are independen
    4\kappa_3\kappa_1
    \begin{tikzpicture}[baseline=(A0.base), inner sep=1pt]
        \node (A1) at (0,0) {$A$};
-       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[copydot] (bullet) at (.8,0) {};
        \node[anchor=west] (A2) at (1.1,0) {$A$};
-       \node (bullet2) at (1.8,0) {$\sbullet$};
+       \node[copydot] (bullet2) at (1.8,0) {};
        \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west);
        \draw (A1.east) to[out=-45,in=-135] (bullet);
        \draw (A2.east) -- (bullet2);
@@ -808,10 +808,10 @@ We assume $A$ is symmetric and, as above, that the entries of $x$ are independen
    \\&\quad+
    4\kappa_2\kappa_1^2
    \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-       \node (bullet) at (0,0) {$\sbullet$};
+       \node[copydot] (bullet) at (0,0) {};
        \node (A) at (.5,0) {$A$};
        \node (A2) at (1,0) {$A$};
-       \node (bullet2) at (1.5,0) {$\sbullet$};
+       \node[copydot] (bullet2) at (1.5,0) {};
        \draw (bullet.east) -- (A.west);
        \draw (A.east) -- (A2.west);
        \draw (A2.east) -- (bullet2.west);
@@ -833,10 +833,10 @@ We assume $A$ is symmetric and, as above, that the entries of $x$ are independen
    2 \kappa_2^2 \hspace{-.5em}\trace{A,A}{2}\hspace{-.5em}
    +4\kappa_2\kappa_1^2
    \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-       \node (bullet) at (0,0) {$\sbullet$};
+       \node[copydot] (bullet) at (0,0) {};
        \node (A) at (.5,0) {$A$};
        \node (A2) at (1,0) {$A$};
-       \node (bullet2) at (1.5,0) {$\sbullet$};
+       \node[copydot] (bullet2) at (1.5,0) {};
        \draw (bullet.east) -- (A.west);
        \draw (A.east) -- (A2.west);
        \draw (A2.east) -- (bullet2.west);
@@ -845,9 +845,9 @@ We assume $A$ is symmetric and, as above, that the entries of $x$ are independen
    4\kappa_3\kappa_1
    \begin{tikzpicture}[baseline=(A0.base), inner sep=1pt]
        \node (A1) at (0,0) {$A$};
-       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[copydot] (bullet) at (.8,0) {};
        \node[anchor=west] (A2) at (1.1,0) {$A$};
-       \node (bullet2) at (1.8,0) {$\sbullet$};
+       \node[copydot] (bullet2) at (1.8,0) {};
        \draw (A1.east) to[out=45,in=135] (bullet) -- (A2.west);
        \draw (A1.east) to[out=-45,in=-135] (bullet);
        \draw (A2.east) -- (bullet2);
@@ -855,7 +855,7 @@ We assume $A$ is symmetric and, as above, that the entries of $x$ are independen
    +\kappa_4
    \begin{tikzpicture}[baseline=(A0.base), inner sep=0pt, fill=white]
        \node (A1) at (0,0) {$A$};
-       \node (bullet) at (.8,0) {$\sbullet$};
+       \node[copydot] (bullet) at (.8,0) {};
        \node[anchor=west] (A2) at (1.4,0) {$A$};
        \draw (A1.east) to[out=45,in=135] (bullet) to[out=45,in=135] (A2.west);
        \draw (A1.east) to[out=-45,in=-135] (bullet) to[out=-45,in=-135] (A2.west);

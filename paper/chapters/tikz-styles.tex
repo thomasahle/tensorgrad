@@ -15,6 +15,15 @@
 }
 
 \tikzset{%
+   % Copy tensor node: a true circle shape, so edges anchor exactly on
+   % the drawn circle instead of stopping at a text glyph's bounding box.
+   copydot/.style={
+      circle,
+      draw,
+      inner sep=0pt,
+      outer sep=0pt,
+      minimum size=3pt
+   },
    dot/.style={
       circle,
       inner sep=0mm,

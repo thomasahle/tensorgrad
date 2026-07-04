@@ -224,10 +224,10 @@ F_N =
     \node[inner sep=0pt, minimum size=0pt] (L1) at (-1,-1) {};
     \node[inner sep=0pt, minimum size=0pt] (L2) at (-1,-2) {};
     \node[inner sep=0pt, minimum size=0pt] (L3) at (-1,-3) {};
-    \node[inner sep=0pt, minimum size=0pt] (b0) at (1,0) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b1) at (1,-1) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b2) at (1,-2) {$\sbullet$};
-    \node[inner sep=0pt, minimum size=0pt] (b3) at (1,-3) {$\sbullet$};
+    \node[inner sep=0pt, minimum size=0pt, copydot] (b0) at (1,0) {};
+    \node[inner sep=0pt, minimum size=0pt, copydot] (b1) at (1,-1) {};
+    \node[inner sep=0pt, minimum size=0pt, copydot] (b2) at (1,-2) {};
+    \node[inner sep=0pt, minimum size=0pt, copydot] (b3) at (1,-3) {};
     \node (D) at (.5,-4.5) {$D_N$};
     \node[rectangle,draw,minimum height=3em] (F) at (2,-2) {$F_{N/2}$};
     \node[inner sep=0pt, minimum size=0pt] (r0) at (4,0) {};
@@ -261,7 +261,7 @@ F_N =
     \foreach \i in {0, 1, 2} {
         \node (D\i) at (0.5+\i*2,-4.5) {$D_{N/2^\i}$};
         \foreach \k in {\i,...,3} {
-            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1+\i*2,-\k) {$\sbullet$};
+            \node[inner sep=0pt, minimum size=0pt, copydot] (b\i\k) at (1+\i*2,-\k) {};
             \draw (b\i\k) -- (D\i);
         }
     }
@@ -284,7 +284,7 @@ F_N =
 %    \foreach \i in {0, 1, 2} {
 %        \node (D\i) at (0.5+\i*2,-4.5) {$D_{N/2^\i}$};
 %        \foreach \k in {\i,...,3} {
-%            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1+\i*2,-\k) {$\sbullet$};
+%            \node[inner sep=0pt, minimum size=0pt, copydot] (b\i\k) at (1+\i*2,-\k) {};
 %            \draw (b\i\k) -- (D\i);
 %        }
 %    }
@@ -318,7 +318,7 @@ With this generalized Cooley-Tukey algorithm, we get the following diagram:
     \node (D2) at (0.5+2*2,-4.5) {$\scriptstyle F^{(n_2, n_3)}$};
     \foreach \i in {0, 1, 2} {
         \foreach \k in {\i,...,3} {
-            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1+\i*2,-\k) {$\sbullet$};
+            \node[inner sep=0pt, minimum size=0pt, copydot] (b\i\k) at (1+\i*2,-\k) {};
             \draw (b\i\k) -- (D\i);
         }
     }
@@ -350,8 +350,8 @@ This gives:
     \foreach \i in {0, 1, 2} {
         \pgfmathtruncatemacro{\j}{\i+1}
         \foreach \k in {\j,...,3} {
-            \node[inner sep=0pt, minimum size=0pt] (b\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\i) {$\sbullet$};
-            \node[inner sep=0pt, minimum size=0pt] (c\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\k) {$\sbullet$};
+            \node[inner sep=0pt, minimum size=0pt, copydot] (b\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\i) {};
+            \node[inner sep=0pt, minimum size=0pt, copydot] (c\i\k) at (1/2+2.75*\i-\i*\i/4+\k/2,-\k) {};
         }
     }
     \node (D00) at (1,-.5) {$\scriptscriptstyle F^{(n_0, n_1)}$};

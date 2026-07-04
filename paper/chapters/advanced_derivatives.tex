@@ -379,9 +379,9 @@ drawn with copy tensors as
 \[
    G \circ I \;=\;
    \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (d1) at (0,0) {$\sbullet$};
+      \node[copydot] (d1) at (0,0) {};
       \node (G) at (.7,0) {$G$};
-      \node (d2) at (1.4,0) {$\sbullet$};
+      \node[copydot] (d2) at (1.4,0) {};
       \draw (d1) -- (G) -- (d2);
       \draw (d1) edge[bend left=40] (d2);
       \draw (d1) -- ++(-.4,0);

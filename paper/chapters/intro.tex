@@ -322,7 +322,7 @@ We can write this as
 \[
    D_a = 
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$\sbullet$};
+      \node[copydot] (T) {};
       \node (x) at (.3,-.3) {$a$};
       \draw (T) -- (x);
       \draw (T) -- ++(-.25,-.25);
@@ -335,7 +335,7 @@ Similarly the Hadamard product, $(a\circ b)_i = a_i b_i$, can be written
 \[
    a \circ b =
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$\sbullet$};
+      \node[copydot] (T) {};
       \node (a) at (-.3,-.3) {$a$};
       \node (b) at (.3,-.3) {$b$};
       \draw (T) -- (a);
@@ -348,10 +348,10 @@ prove the identity $D_aD_b = D_{a\circ b}$ by ``copy tensor manipulation'':
 \[
    D_a D_b =
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$\sbullet$};
+      \node[copydot] (T) {};
       \node (a) at (-.3,-.3) {$a$};
       \draw (T) -- (a);
-      \node (T2) at (.5,0) {$\sbullet$};
+      \node[copydot] (T2) at (.5,0) {};
       \node (b) at (.8,-.3) {$b$};
       \draw (T) -- ++(0,.3);
       \draw (T) -- (T2);
@@ -360,7 +360,7 @@ prove the identity $D_aD_b = D_{a\circ b}$ by ``copy tensor manipulation'':
    \end{tikzpicture}
    =
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$\sbullet$};
+      \node[copydot] (T) {};
       \node (a) at (-.3,-.3) {$a$};
       \node (b) at (.3,-.3) {$b$};
       \draw (T) -- (a);
@@ -370,12 +370,12 @@ prove the identity $D_aD_b = D_{a\circ b}$ by ``copy tensor manipulation'':
    \end{tikzpicture}
    =
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
-      \node (T) {$\sbullet$};
+      \node[copydot] (T) {};
       \node (a) at (-.3,-.3) {$a$};
       \node (b) at (.3,-.3) {$b$};
       \draw (T) -- (a);
       \draw (T) -- (b);
-      \node (T2) at (0,.3) {$\sbullet$};
+      \node[copydot] (T2) at (0,.3) {};
       \draw (T) -- (T2);
       \draw (T2) -- ++(.25,.25);
       \draw (T2) -- ++(-.25,.25);
@@ -410,10 +410,10 @@ In the Matrix Cookbook they define the order-4 tensor $J$,
 which satisfies $J_{i,j,k,l} = [i=k][j=l]$ and which we'd write as
 $J=\vcenter{\hbox{
    \begin{tikzpicture}[inner sep=0pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0.east) -- ++(.2,0);
    \draw (a0.west) -- ++(-.2,0);
-   \node[below=.2em of a0] (a1) {$\sbullet$};
+   \node[below=.2em of a0, copydot] (a1) {};
    \draw (a1.east) -- ++(.2,0);
    \draw (a1.west) -- ++(-.2,0);
 \end{tikzpicture}}}$,
@@ -421,7 +421,7 @@ and satisfies, for example, $\frac{dX}{dX}=J$.
 Using ``tensor products'' you could write $J=I\otimes I$.
 Note that $J$ is different from the order-4 copy-tensor,
 \begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0) -- ++(.17,.17);
    \draw (a0) -- ++(.17,-.17);
    \draw (a0) -- ++(-.17,.17);
@@ -468,7 +468,7 @@ $
 \end{tikzpicture}}}
 +
 \vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0.west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
    \node[below=.2em of a0] (a1) {$x$};
    \draw (a1.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
@@ -477,7 +477,7 @@ $.
 This is because
 $
 \vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0.west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
    \node[below=.2em of a0] (a1) {$x$};
    \draw (a1.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
@@ -488,7 +488,7 @@ Similarly, if we want to add $x$ to every column, we could use
 the matrix
 $
 \vcenter{\hbox{\begin{tikzpicture}[inner sep=1pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0.west) -- ++(-.2,0) node[midway, below, font=\tiny] {$j$};
    \node[above=.2em of a0] (a1) {$x$};
    \draw (a1.west) -- ++(-.2,0) node[midway, above, font=\tiny] {$i$};
@@ -548,7 +548,7 @@ Renaming can be done using multiplication by identity matrices:
 \end{tikzpicture})
 (
 \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$\sbullet$};
+   \node[copydot] (A) {};
    \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$j$};
    \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$k$};
 \end{tikzpicture})
@@ -571,14 +571,14 @@ E.g.
 \end{tikzpicture})
 (
 \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$\sbullet$};
+   \node[copydot] (A) {};
    \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$j$};
    \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$k$};
 \end{tikzpicture})
 \big]
 (
 \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$\sbullet$};
+   \node[copydot] (A) {};
    \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$k$};
    \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
 \end{tikzpicture})
@@ -597,13 +597,13 @@ E.g.
    \big[
 (
 \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$\sbullet$};
+   \node[copydot] (A) {};
    \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$j$};
    \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$k$};
 \end{tikzpicture})
 (
 \begin{tikzpicture}[baseline=(A.base), inner sep=1pt]
-   \node (A) {$\sbullet$};
+   \node[copydot] (A) {};
    \draw (A.west) -- ++(-.2,0) node[left, font=\tiny] {$k$};
    \draw (A.east) -- ++(.2,0) node[right, font=\tiny] {$j$};
 \end{tikzpicture})
@@ -616,16 +616,16 @@ E.g.
 \end{tikzpicture}
 \,
 \begin{tikzpicture}[baseline=-0.6em, inner sep=1pt]
-   \node (a0) {$\sbullet$};
-   \node[below=.1 of a0] (a1) {$\sbullet$};
+   \node[copydot] (a0) {};
+   \node[below=.1 of a0, copydot] (a1) {};
    \draw (a0) -- ++(.1, 0) arc (270:90:-.15) -- (a1);
    \draw (a1) -- ++(-.1, 0) arc (270:90:.15) -- (a0);
 \end{tikzpicture},
 \]
 where
 $\begin{tikzpicture}[baseline=-0.7em, inner sep=1pt]
-   \node (a0) {$\sbullet$};
-   \node[below=.1 of a0] (a1) {$\sbullet$};
+   \node[copydot] (a0) {};
+   \node[below=.1 of a0, copydot] (a1) {};
    \draw (a0) -- ++(.1, 0) arc (270:90:-.15) -- (a1);
    \draw (a1) -- ++(-.1, 0) arc (270:90:.15) -- (a0);
 \end{tikzpicture}$
@@ -814,7 +814,7 @@ That is, for a tensor $T$ of order $n$, the trace is just the product with the o
    =
    \begin{tikzpicture}[baseline=(T.base), inner sep=1pt]
       \node (T) {$T$};
-      \node[right=2em of T] (s) {$\sbullet$};
+      \node[right=2em of T, copydot] (s) {};
       \path (T) edge [out=90, in=120] (s);
       \path (T) edge [out=-30, in=200] (s);
       \path (T) edge [out=-120, in=220] (s);
@@ -860,7 +860,7 @@ Thus:
    \begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
    \node (Q) {$Q$};
    \draw (Q.west) -- ++(-.3, 0);
-   \node[right=1em of Q] (dot) {$\sbullet$};
+   \node[right=1em of Q, copydot] (dot) {};
    \path (Q) edge (dot);
    \node[below=.3em of dot] (e) {$\lambda$};
    \path (dot) edge (e);
@@ -881,7 +881,7 @@ The trace of a matrix is equal to the sum of its eigenvalues. We can represent t
    \hspace{-3em}
    \begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
       \node (Q) {$Q$};
-      \node[right=1em of Q] (dot) {$\sbullet$};
+      \node[right=1em of Q, copydot] (dot) {};
       \path (Q) edge (dot);
       \node[below=.3em of dot] (e) {$\lambda$};
       \path (dot) edge (e);
@@ -893,7 +893,7 @@ The trace of a matrix is equal to the sum of its eigenvalues. We can represent t
    =
    \hspace{-1em}
    \begin{tikzpicture}[baseline=(dot.base), inner sep=1pt]
-      \node (dot) {$\sbullet$};
+      \node[copydot] (dot) {};
       \node[below=.3em of dot] (e) {$\lambda$};
       \path (dot) edge (e);
       \path (dot) edge [out=160, in=20, loop] ();
@@ -901,7 +901,7 @@ The trace of a matrix is equal to the sum of its eigenvalues. We can represent t
    \hspace{-1em}
    =
    \begin{tikzpicture}[baseline=(dot.base), inner sep=1pt]
-      \node (dot) {$\sbullet$};
+      \node[copydot] (dot) {};
       \node[below=.3em of dot] (e) {$\lambda$};
       \path (dot) edge (e);
    \end{tikzpicture}
@@ -1089,13 +1089,13 @@ For tensors this generalizes to the concepts of covariance and contravariance.
 With this notion, we keep track of ``input'' and ``output'' vectors.
 We'll also need to distinguish between things such as the identity matrix, $\matmul{\sbullet}$,
 $\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0) -- ++(-.17,.1);
    \draw (a0) -- ++(-.17,-.1);
 \end{tikzpicture}$,
 and
 $\begin{tikzpicture}[baseline=(a0.base), inner sep=0pt]
-   \node (a0) {$\sbullet$};
+   \node[copydot] (a0) {};
    \draw (a0) -- ++(.17,.1);
    \draw (a0) -- ++(.17,-.1);
 \end{tikzpicture}$.

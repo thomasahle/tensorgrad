@@ -124,7 +124,7 @@ In the examples below, $x\in \R^n$:
       \draw[->] (u) -- (f) node[midway, above, font=\tiny] {$n$};
       \node (v) at (.7,-.25) {$v$};
       \draw[->] (v) -- (f) node[midway, below, font=\tiny] {$m$};
-      \node[inner sep=1pt] (d) at (1.25,0) {$\sbullet$};
+      \node[inner sep=1pt, copydot] (d) at (1.25,0) {};
       \draw (u) -- (d);
       \draw (v) -- (d);
       \draw (d) -- ++(.4,0) node[midway, above, font=\tiny] {$b$};
@@ -163,7 +163,7 @@ To make it more concrete, let's consider some well known functions:
             \node[below=.5em of u1] (u2) {$u$};
             \draw (u1) edge[->, densely dotted] (pown);
             \draw (u2) edge[->, densely dotted] (powm);
-            \node (s) at (1.5, -.25) {$\sbullet$};
+            \node[copydot] (s) at (1.5, -.25) {};
             \draw (u1) -- (s);
             \draw (u2) -- (s);
             \draw (s) -- ++(.5,0);
@@ -200,7 +200,7 @@ We can write this using elementary functions as:
       \node[right=1em of pow] (b1) {$($};
       \node[right=0em of b1] (exp2) {$\mathrm{exp}$};
       \node[right=1em of exp2] (x2) {$x$};
-      \node[right=1em of x2, inner sep=1pt] (s) {$\sbullet$};
+      \node[right=1em of x2, inner sep=1pt, copydot] (s) {};
       \draw (x2) edge[->, densely dotted] (exp2);
       \draw (b1) edge[->, densely dotted] (pow);
       \draw (x2) -- (s);
@@ -215,7 +215,7 @@ $(\tikz[baseline=(ex1.base), every node/.append style={anchor=base}]{
    \draw (x1) -- ++(.5,0);
 }) \in \R^d$ is the element-wise exponential function.
 If we contract it with $\tikz[baseline=(s.base)] {
-   \node[inner sep=1pt] (s) {$\sbullet$};
+   \node[inner sep=1pt, copydot] (s) {};
    \draw (s) -- ++(-.4,0);
 }$, we get the sum $s=\sum_i \exp(x_i)$.
 Finally, we apply $\mathrm{pow}_{-1}$ to $s$ and multiply it with the exponential function to get the softmax function.

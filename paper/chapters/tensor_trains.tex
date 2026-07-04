@@ -121,7 +121,7 @@ Grouping each $G_k$ with $G'_k$ and the copy tensor between them gives new cores
    \begin{tikzpicture}[baseline=-.05em, inner sep=1pt]
       \node (G2) at (1,.5) {$G_2$};
       \node (H2) at (1,-.5) {$G'_2$};
-      \node (m) at (1.35,0) {$\sbullet$};
+      \node[copydot] (m) at (1.35,0) {};
       \draw (G2) -- ++(-.6,0);
       \draw (G2) -- ++(.6,0);
       \draw (H2) -- ++(-.6,0);
@@ -135,7 +135,7 @@ Grouping each $G_k$ with $G'_k$ and the copy tensor between them gives new cores
       \node[triangle, rotate=180, inner sep=3pt] (l) at (0,0) {};
       \node (G2) at (1.1,.6) {$G_2$};
       \node (H2) at (1.1,-.6) {$G'_2$};
-      \node (m) at (1.7,0) {$\sbullet$};
+      \node[copydot] (m) at (1.7,0) {};
       \node[triangle, inner sep=3pt] (r) at (2.6,0) {};
       \draw[double] (l) -- ++(-.5,0);
       \draw (l) edge[bend left=15] (G2);
@@ -376,7 +376,7 @@ so the sketched vector is
    \Pi x^{\otimes p}
    =
    \begin{tikzpicture}[baseline=-.05em, inner sep=1pt]
-      \node (m) at (0,0) {$\sbullet$};
+      \node[copydot] (m) at (0,0) {};
       \node (M1) at (.9,.7) {$M^{(1)}$};
       \node (M2) at (.9,0) {$M^{(2)}$};
       \node (M3) at (.9,-.7) {$M^{(3)}$};

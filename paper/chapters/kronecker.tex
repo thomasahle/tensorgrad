@@ -105,7 +105,7 @@ Some basic properties of $\triangleright$:
 %It's also easy to convince oneself of the following ``mixed'' property:
 %\begin{align}
    \begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
-      \node (F0) at (0,0) {$\sbullet$};
+      \node[copydot] (F0) at (0,0) {};
       \node[triangle, rotate=180, inner sep=3pt] (Fab0) at (.5,.25) {};
       \node (A) at (1,.333) {};
       \node (B) at (1,.166) {};
@@ -123,10 +123,10 @@ Some basic properties of $\triangleright$:
    \quad&=\quad
    \begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
       \node[triangle, rotate=180, inner sep=3pt] (F0) at (0,0) {};
-      \node (Fab0) at (.5,.25) {$\sbullet$};
+      \node[copydot] (Fab0) at (.5,.25) {};
       \node (A) at (1,.333) {};
       \node (B) at (1,.166) {};
-      \node (Fcd0) at (.5,-.25) {$\sbullet$};
+      \node[copydot] (Fcd0) at (.5,-.25) {};
       \node (C) at (1,-.166) {};
       \node (D) at (1,-.333) {};
       \draw[double] (F0) -- ++(-.4,0);
@@ -142,7 +142,7 @@ Some basic properties of $\triangleright$:
    \\
    \label{eq:tensor_diag}
    \begin{tikzpicture}[baseline=-.5em, inner sep=0pt]
-      \node (b) at (.5,0) {$\sbullet$};
+      \node[copydot] (b) at (.5,0) {};
       \node[triangle, rotate=180, inner sep=3pt] (r) at (1,0) {};
       \node[triangle, inner sep=3pt] (l) at (0,0) {};
       \draw[double] (b) -- (r);
@@ -158,8 +158,8 @@ Some basic properties of $\triangleright$:
    \end{tikzpicture}
    \quad&=\quad
    \begin{tikzpicture}[baseline=-.5em, inner sep=0pt]
-      \node (b1) at (.4,.1) {$\sbullet$};
-      \node (b2) at (.6,-.1) {$\sbullet$};
+      \node[copydot] (b1) at (.4,.1) {};
+      \node[copydot] (b2) at (.6,-.1) {};
       \draw (b1) -- (0, .1);
       \draw (b2) -- (0, -.1);
       \draw (b1) -- (1, .1);
@@ -465,8 +465,8 @@ Recalling the eigen decomposition of a matrix, \eqref{eq:eigen-decomposition}, w
       \node[triangle, rotate=180] (F0) at (0,0) {};
       \node (Q1) at (.6,.25) {$Q_1$};
       \node (Q2) at (.6,-.25) {$Q_2$};
-      \node (b1) at (1.25,.25) {$\sbullet$};
-      \node (b2) at (1.25,-.25) {$\sbullet$};
+      \node[copydot] (b1) at (1.25,.25) {};
+      \node[copydot] (b2) at (1.25,-.25) {};
       \node (Q1i) at (2,.25) {$Q_1^{-1}$};
       \node (Q2i) at (2,-.25) {$Q_2^{-1}$};
       \node[triangle] (F1) at (2.7,0) {};
@@ -484,8 +484,8 @@ Recalling the eigen decomposition of a matrix, \eqref{eq:eigen-decomposition}, w
       \node (Q2) at (.55,-.25) {$Q_2$};
       \node[triangle] (F1) at (1.1,0) {};
       \node[triangle, rotate=180] (F2) at (1.5,0) {};
-      \node (b1) at (1.9,.25) {$\sbullet$};
-      \node (b2) at (1.9,-.25) {$\sbullet$};
+      \node[copydot] (b1) at (1.9,.25) {};
+      \node[copydot] (b2) at (1.9,-.25) {};
       \node[triangle] (F3) at (2.3,0) {};
       \node[triangle, rotate=180] (F4) at (2.7,0) {};
       \node (Q1i) at (3.35,.25) {$Q_1^{-1}$};
@@ -510,7 +510,7 @@ Recalling the eigen decomposition of a matrix, \eqref{eq:eigen-decomposition}, w
       \node (Q1) at (.55,.25) {$Q_1$};
       \node (Q2) at (.55,-.25) {$Q_2$};
       \node[triangle] (F1) at (1.1,0) {};
-      \node (b) at (1.6,0) {$\sbullet$};
+      \node[copydot] (b) at (1.6,0) {};
       \node[triangle, rotate=180] (F4) at (2.1,0) {};
       \node (Q1i) at (2.75,.25) {$Q_1^{-1}$};
       \node (Q2i) at (2.75,-.25) {$Q_2^{-1}$};
@@ -534,8 +534,8 @@ where the last step is due to \eqref{eq:tensor_diag}.
 % \begin{align}
 %    \begin{tikzpicture}[baseline=-.25em]
 %       \node[triangle, rotate=180] (F0) at (0,0) {};
-%       \node (b1) at (.4,.25) {$\sbullet$};
-%       \node (b2) at (.6,-.25) {$\sbullet$};
+%       \node[copydot] (b1) at (.4,.25) {};
+%       \node[copydot] (b2) at (.6,-.25) {};
 %       \node[triangle] (F1) at (1,0) {};
 %       \draw[double] (F0) -- ++(-.4,0);
 %       \draw[double] (F1) -- ++(.4,0);
@@ -547,7 +547,7 @@ where the last step is due to \eqref{eq:tensor_diag}.
 %    \end{tikzpicture}
 %    =
 %    \begin{tikzpicture}[baseline=-.25em]
-%       \node (b) at (.5,0) {$\sbullet$};
+%       \node[copydot] (b) at (.5,0) {};
 %       \draw[double] (b) -- ++(-.4,0);
 %       \draw[double] (b) -- ++(.4,0);
 %       \node[triangle, rotate=90] (F) at (.5,-.5) {};
@@ -562,8 +562,8 @@ This is easier to see when we consider that
 $
    V =
 \begin{tikzpicture}[baseline=-.5em, inner sep=1pt, outer sep=0pt]
-      \node (b1) at (.4,.1) {$\sbullet$};
-      \node (b2) at (.6,-.1) {$\sbullet$};
+      \node[copydot] (b1) at (.4,.1) {};
+      \node[copydot] (b2) at (.6,-.1) {};
       \draw (b1) -- (0, .1);
       \draw (b2) -- (0, -.1);
       \draw (b1) -- (1, .1);
@@ -946,10 +946,10 @@ In tensor notation, the Hadamard product can be represented using two rank-3 cop
    A \circ B
    =
    \begin{tikzpicture}[baseline=-.25em]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
-      \node (c1) at (1.2,0) {$\sbullet$};
+      \node[copydot] (c1) at (1.2,0) {};
       \draw (c0) -- (A) -- (c1);
       \draw (c0) -- (B) -- (c1);
       \draw (c0) -- ++(-.4,0);
@@ -963,10 +963,10 @@ Some properties of the Hadamard product are:
    &= \mathrm{tr}(A^T D_x B D_y)
    &
    \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
-      \node (c1) at (1.2,0) {$\sbullet$};
+      \node[copydot] (c1) at (1.2,0) {};
       \draw (c0) -- (A) -- (c1);
       \draw (c0) -- (B) -- (c1);
       \draw (c0) -- ++(-.4,0) node[anchor=east] {x};
@@ -976,9 +976,9 @@ Some properties of the Hadamard product are:
    \hspace{-2em}
    \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node (A) at (0,0) {$A^T$};
-      \node (c0) at (.7,0) {$\sbullet$};
+      \node[copydot] (c0) at (.7,0) {};
       \node (B) at (1.3,0) {B};
-      \node (c1) at (1.9,0) {$\sbullet$};
+      \node[copydot] (c1) at (1.9,0) {};
       \draw (A) -- (c0) -- (B) -- (c1);
       \path (A) edge [out=160, in=20, looseness=1] (c1);
       \draw (c0) -- ++(0,-.3) node[anchor=north] {x};
@@ -989,7 +989,7 @@ Some properties of the Hadamard product are:
    (A \otimes B)\circ(C \otimes D) &= (A\circ C) \otimes (B\circ D)
                                    &
    \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
-      \node (F0) at (0,0) {$\sbullet$};
+      \node[copydot] (F0) at (0,0) {};
       \node[triangle, rotate=180] (Fab0) at (.5,.5) {};
       \node (A) at (1,.75) {A};
       \node (B) at (1,.25) {B};
@@ -998,7 +998,7 @@ Some properties of the Hadamard product are:
       \node (C) at (1,-.25) {C};
       \node (D) at (1,-.75) {D};
       \node[triangle] (Fcd1) at (1.5,-.5) {};
-      \node (F1) at (2,0) {$\sbullet$};
+      \node[copydot] (F1) at (2,0) {};
       \draw[double] (F0) -- ++(-.4,0);
       \draw[double] (F1) -- ++(.4,0);
       \draw[double] (F0) -- (Fab0);
@@ -1013,14 +1013,14 @@ Some properties of the Hadamard product are:
                                    &=
    \begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
       \node[triangle, rotate=180] (F0) at (0,0) {};
-      \node (Fab0) at (.5,.5) {$\sbullet$};
+      \node[copydot] (Fab0) at (.5,.5) {};
       \node (A) at (1,.75) {A};
       \node (B) at (1,.25) {B};
-      \node (Fab1) at (1.5,.5) {$\sbullet$};
-      \node (Fcd0) at (.5,-.5) {$\sbullet$};
+      \node[copydot] (Fab1) at (1.5,.5) {};
+      \node[copydot] (Fcd0) at (.5,-.5) {};
       \node (C) at (1,-.25) {C};
       \node (D) at (1,-.75) {D};
-      \node (Fcd1) at (1.5,-.5) {$\sbullet$};
+      \node[copydot] (Fcd1) at (1.5,-.5) {};
       \node[triangle] (F1) at (2,0) {};
       \draw[double] (F0) -- ++(-.4,0);
       \draw[double] (F1) -- ++(.4,0);
@@ -1082,7 +1082,7 @@ In terms of tensor diagrams, these products correspond simply to flattening the 
       \node[triangle, rotate=180] (c0) at (0,0) {};
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
-      \node (c1) at (1.2,0) {$\sbullet$};
+      \node[copydot] (c1) at (1.2,0) {};
       \draw (c0) -- (A) -- (c1);
       \draw (c0) -- (B) -- (c1);
       \draw[double] (c0) -- ++(-.4,0);
@@ -1091,7 +1091,7 @@ In terms of tensor diagrams, these products correspond simply to flattening the 
    \\
    A \bullet B &=
    \begin{tikzpicture}[baseline=-.25em]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
       \node[triangle] (c1) at (1.2,0) {};
@@ -1109,7 +1109,7 @@ There are multiple ``mixed product'' identities:
    (A \bullet B)(C \otimes D) &= (A C) \bullet (B D)
                               &
    \begin{tikzpicture}[baseline=-.25em]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \draw (c0) -- ++(-.4,0);
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
@@ -1127,7 +1127,7 @@ There are multiple ``mixed product'' identities:
    \end{tikzpicture}
                               &=
    \begin{tikzpicture}[baseline=-.25em]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
       \node (C) at (1.2,.25) {C};
@@ -1142,7 +1142,7 @@ There are multiple ``mixed product'' identities:
    (A x) \circ (B y) &= (A \bullet B) (x \otimes y)
                      &
    \begin{tikzpicture}[baseline=-.25em]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \draw (c0) -- ++(-.4,0);
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};
@@ -1153,7 +1153,7 @@ There are multiple ``mixed product'' identities:
    \end{tikzpicture}
                      &=
    \begin{tikzpicture}[baseline=-.25em]
-      \node (c0) at (0,0) {$\sbullet$};
+      \node[copydot] (c0) at (0,0) {};
       \draw (c0) -- ++(-.4,0);
       \node (A) at (.6,.25) {A};
       \node (B) at (.6,-.25) {B};

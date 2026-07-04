@@ -222,14 +222,14 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    %&= 2\, \sum_{k,l} X_{k,l}
    &
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
-      \node (a0) at (0,0) {$\sbullet$};
+      \node[copydot] (a0) at (0,0) {};
       \node (a1) at (.5,0) {$X$};
-      \node (a2) at (1,0) {$\sbullet$};
+      \node[copydot] (a2) at (1,0) {};
       \path (a0) edge (a1);
       \path (a1) edge (a2);
-      \node (b0) at (0, .5) {$\sbullet$};
+      \node[copydot] (b0) at (0, .5) {};
       \node (b1) at (.5, .5) {$X$};
-      \node (b2) at (1, .5) {$\sbullet$};
+      \node[copydot] (b2) at (1, .5) {};
       \path (b0) edge (b1);
       \path (b1) edge (b2);
       \node at (-.25, .25) {$\bigg($};
@@ -239,14 +239,14 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    \end{tikzpicture}
    &=
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
-      \node (a0) at (0,0) {$\sbullet$};
+      \node[copydot] (a0) at (0,0) {};
       \node (a1) at (.5,0) {$(X)$};
-      \node (a2) at (1,0) {$\sbullet$};
+      \node[copydot] (a2) at (1,0) {};
       \path (a0) edge (a1);
       \path (a1) edge (a2);
-      \node (b0) at (0, .5) {$\sbullet$};
+      \node[copydot] (b0) at (0, .5) {};
       \node (b1) at (.5, .5) {$X$};
-      \node (b2) at (1, .5) {$\sbullet$};
+      \node[copydot] (b2) at (1, .5) {};
       \path (b0) edge (b1);
       \path (b1) edge (b2);
       \draw[d] (.83,.0) -- ++(.2,.2);
@@ -254,14 +254,14 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    \end{tikzpicture}
    +
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
-      \node (a0) at (0,0) {$\sbullet$};
+      \node[copydot] (a0) at (0,0) {};
       \node (a1) at (.5,0) {$X$};
-      \node (a2) at (1,0) {$\sbullet$};
+      \node[copydot] (a2) at (1,0) {};
       \path (a0) edge (a1);
       \path (a1) edge (a2);
-      \node (b0) at (0, .5) {$\sbullet$};
+      \node[copydot] (b0) at (0, .5) {};
       \node (b1) at (.5, .5) {$(X)$};
-      \node (b2) at (1, .5) {$\sbullet$};
+      \node[copydot] (b2) at (1, .5) {};
       \path (b0) edge (b1);
       \path (b1) edge (b2);
       \draw[d] (0.83,.5) -- ++(.2,.2);
@@ -273,14 +273,14 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    &&=
    2\,
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
-      \node (a0) at (0,0) {$\sbullet$};
+      \node[copydot] (a0) at (0,0) {};
       \node (a1) at (.5,0) {};
-      \node (a2) at (1,0) {$\sbullet$};
+      \node[copydot] (a2) at (1,0) {};
       \path (a0) edge (a1);
       \path (a1) edge (a2);
-      \node (b0) at (0, .5) {$\sbullet$};
+      \node[copydot] (b0) at (0, .5) {};
       \node (b1) at (.5, .5) {$X$};
-      \node (b2) at (1, .5) {$\sbullet$};
+      \node[copydot] (b2) at (1, .5) {};
       \path (b0) edge (b1);
       \path (b1) edge (b2);
       \draw (a1.west) -- ++(.1,.2) node[midway, above left, font=\tiny] {i};
