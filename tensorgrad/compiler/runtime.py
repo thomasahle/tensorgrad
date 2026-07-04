@@ -17,7 +17,7 @@ from collections import OrderedDict
 import sympy
 import torch
 
-from tensorgrad.tensor import Tensor, Variable
+from tensorgrad.tensor import Derivative, Tensor, Variable, compile_simplify_args
 from tensorgrad.compiler.lower import lower_program
 from tensorgrad.compiler.codegen_torch import TorchCodegen
 
@@ -25,8 +25,44 @@ from tensorgrad.compiler.codegen_torch import TorchCodegen
 SPECIALIZATION_CACHE_SIZE = 32
 
 
+def _contains_derivative(tensors) -> bool:
+    """Iterative DAG walk (shared visited-set across all outputs)."""
+    seen: set[int] = set()
+    stack = list(tensors)
+    while stack:
+        t = stack.pop()
+        if id(t) in seen:
+            continue
+        seen.add(id(t))
+        if isinstance(t, Derivative):
+            return True
+        stack.extend(getattr(t, "factors", ()) or ())
+        stack.extend(getattr(t, "terms", ()) or ())
+        stack.extend(getattr(t, "inputs", ()) or ())
+        if (inner := getattr(t, "tensor", None)) is not None:
+            stack.append(inner)
+    return False
+
+
 class CompiledProgram:
-    def __init__(self, tensors: tuple[Tensor, ...], verbose: bool = False, torch_compile: bool = False):
+    def __init__(
+        self,
+        tensors: tuple[Tensor, ...],
+        verbose: bool = False,
+        torch_compile: bool = False,
+        simplify: bool | str = "auto",
+    ):
+        # Derivative nodes can't be lowered; resolve them here so users can
+        # write compile_to_callable(loss, *[loss.grad(p) for p in params])
+        # directly. One shared args dict = one shared memo across ALL outputs,
+        # which preserves cross-output subtree sharing (better than per-output
+        # simplify_for_compile calls). "auto" simplifies only when a Derivative
+        # is present, keeping behavior identical for pre-simplified inputs.
+        if simplify == "auto":
+            simplify = _contains_derivative(tensors)
+        if simplify:
+            shared_args = compile_simplify_args()
+            tensors = tuple(t.simplify_for_compile(shared_args) for t in tensors)
         self.tensors = tensors
         self.verbose = verbose
         self.torch_compile = torch_compile
@@ -132,10 +168,22 @@ class CompiledProgram:
         return tuple(wrapped)
 
 
-def compile_to_callable(*tensors: Tensor, verbose: bool = False, torch_compile: bool = False):
+def compile_to_callable(
+    *tensors: Tensor,
+    verbose: bool = False,
+    torch_compile: bool = False,
+    simplify: bool | str = "auto",
+):
     """Compile one or more tensorgrad tensors into a fast callable.
+
+    Derivative nodes are resolved automatically (see simplify_for_compile), so
+    gradients can be passed raw:
+
+        step = compile_to_callable(loss, *[loss.grad(p) for p in params])
 
     Returns f(values: dict[Variable, torch.Tensor], shapes: dict[Symbol, int])
     -> named torch.Tensor or tuple of them (one per input tensor).
     """
-    return CompiledProgram(tuple(tensors), verbose=verbose, torch_compile=torch_compile)
+    return CompiledProgram(
+        tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify
+    )

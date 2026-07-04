@@ -14,6 +14,22 @@ from sympy import Symbol
 from tensorgrad.utils import _MatchEdgesKey
 
 
+def compile_simplify_args() -> dict[str, Any]:
+    """The simplify() argument preset used on the way into the compiler:
+    resolve Derivative nodes, leave the algebra to the compiler's IR passes,
+    memoize across shared subtrees. One dict instance = one shared memo, so
+    passing the same dict to several simplify() calls preserves cross-output
+    subtree sharing (used by compile_to_callable for loss + gradients)."""
+    return {
+        "grad_steps": float("inf"),
+        "expand_functions": False,
+        "combine_products": False,
+        "sum_combine_terms": False,
+        "factor_components": False,
+        "memoize": True,
+    }
+
+
 _lazy_rename = False
 
 # Lazily imported tensorgrad.compiler.canon module (compositional structural
@@ -252,7 +268,7 @@ class Tensor(metaclass=TensorMeta):
                 expr = new
         return expr
 
-    def simplify_for_compile(self) -> "Tensor":
+    def simplify_for_compile(self, args: Optional[dict[str, Any]] = None) -> "Tensor":
         """Eliminate Derivative nodes with minimal other rewriting, so the
         compiler's IR passes (factoring, stabilization) do the algebra instead.
 
@@ -264,17 +280,15 @@ class Tensor(metaclass=TensorMeta):
         recover identical compact code at compile time — validated to match the
         full path's output while turning a >300s deep-model simplify into
         sub-second. Memoized by structural key across shared subtrees.
+
+        Note: `compile_to_callable` applies this automatically to any input
+        containing Derivative nodes, sharing one memo across all outputs — so
+        `compile_to_callable(loss, *[loss.grad(p) for p in params])` just
+        works. Call this directly only when you want the simplified symbolic
+        form itself. Pass `args` (from `compile_simplify_args()`) to share a
+        memo across several calls.
         """
-        return self.simplify(
-            {
-                "grad_steps": float("inf"),
-                "expand_functions": False,
-                "combine_products": False,
-                "sum_combine_terms": False,
-                "factor_components": False,
-                "memoize": True,
-            }
-        )
+        return self.simplify(args if args is not None else compile_simplify_args())
 
     @final
     def substitute(self, x: "Variable", y: "Tensor") -> "Tensor":
