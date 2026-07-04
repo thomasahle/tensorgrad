@@ -135,38 +135,40 @@ per-step planning, dispatch, or constant-building overhead.</p>
 <div class="attr function">
             
         <span class="def">def</span>
-        <span class="name">compile_to_callable</span><span class="signature pdoc-code multiline">(<span class="param">	<span class="o">*</span><span class="n">tensors</span><span class="p">:</span> <span class="n"><a href="tensor.html#Tensor">tensorgrad.tensor.Tensor</a></span>,</span><span class="param">	<span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>,</span><span class="param">	<span class="n">torch_compile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>,</span><span class="param">	<span class="n">simplify</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;auto&#39;</span></span><span class="return-annotation">):</span></span>
+        <span class="name">compile_to_callable</span><span class="signature pdoc-code multiline">(<span class="param">	<span class="o">*</span><span class="n">tensors</span><span class="p">:</span> <span class="n"><a href="tensor.html#Tensor">tensorgrad.tensor.Tensor</a></span>,</span><span class="param">	<span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>,</span><span class="param">	<span class="n">torch_compile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>,</span><span class="param">	<span class="n">simplify</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></span><span class="return-annotation">):</span></span>
 
                 <label class="view-source-button" for="compile_to_callable-view-source"><span>View Source</span></label>
 
     </div>
     <a class="headerlink" href="#compile_to_callable"></a>
-            <div class="pdoc-code codehilite"><pre><span></span><span id="compile_to_callable-172"><a href="#compile_to_callable-172"><span class="linenos">172</span></a><span class="k">def</span><span class="w"> </span><span class="nf">compile_to_callable</span><span class="p">(</span>
-</span><span id="compile_to_callable-173"><a href="#compile_to_callable-173"><span class="linenos">173</span></a>    <span class="o">*</span><span class="n">tensors</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
-</span><span id="compile_to_callable-174"><a href="#compile_to_callable-174"><span class="linenos">174</span></a>    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-</span><span id="compile_to_callable-175"><a href="#compile_to_callable-175"><span class="linenos">175</span></a>    <span class="n">torch_compile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-</span><span id="compile_to_callable-176"><a href="#compile_to_callable-176"><span class="linenos">176</span></a>    <span class="n">simplify</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
-</span><span id="compile_to_callable-177"><a href="#compile_to_callable-177"><span class="linenos">177</span></a><span class="p">):</span>
-</span><span id="compile_to_callable-178"><a href="#compile_to_callable-178"><span class="linenos">178</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Compile one or more tensorgrad tensors into a fast callable.</span>
-</span><span id="compile_to_callable-179"><a href="#compile_to_callable-179"><span class="linenos">179</span></a>
-</span><span id="compile_to_callable-180"><a href="#compile_to_callable-180"><span class="linenos">180</span></a><span class="sd">    Derivative nodes are resolved automatically (see simplify_for_compile), so</span>
-</span><span id="compile_to_callable-181"><a href="#compile_to_callable-181"><span class="linenos">181</span></a><span class="sd">    gradients can be passed raw:</span>
-</span><span id="compile_to_callable-182"><a href="#compile_to_callable-182"><span class="linenos">182</span></a>
-</span><span id="compile_to_callable-183"><a href="#compile_to_callable-183"><span class="linenos">183</span></a><span class="sd">        step = compile_to_callable(loss, *[loss.grad(p) for p in params])</span>
-</span><span id="compile_to_callable-184"><a href="#compile_to_callable-184"><span class="linenos">184</span></a>
-</span><span id="compile_to_callable-185"><a href="#compile_to_callable-185"><span class="linenos">185</span></a><span class="sd">    Returns f(values: dict[Variable, torch.Tensor], shapes: dict[Symbol, int])</span>
-</span><span id="compile_to_callable-186"><a href="#compile_to_callable-186"><span class="linenos">186</span></a><span class="sd">    -&gt; named torch.Tensor or tuple of them (one per input tensor).</span>
-</span><span id="compile_to_callable-187"><a href="#compile_to_callable-187"><span class="linenos">187</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="compile_to_callable-188"><a href="#compile_to_callable-188"><span class="linenos">188</span></a>    <span class="k">return</span> <span class="n">CompiledProgram</span><span class="p">(</span>
-</span><span id="compile_to_callable-189"><a href="#compile_to_callable-189"><span class="linenos">189</span></a>        <span class="nb">tuple</span><span class="p">(</span><span class="n">tensors</span><span class="p">),</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">torch_compile</span><span class="o">=</span><span class="n">torch_compile</span><span class="p">,</span> <span class="n">simplify</span><span class="o">=</span><span class="n">simplify</span>
-</span><span id="compile_to_callable-190"><a href="#compile_to_callable-190"><span class="linenos">190</span></a>    <span class="p">)</span>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="compile_to_callable-152"><a href="#compile_to_callable-152"><span class="linenos">152</span></a><span class="k">def</span><span class="w"> </span><span class="nf">compile_to_callable</span><span class="p">(</span>
+</span><span id="compile_to_callable-153"><a href="#compile_to_callable-153"><span class="linenos">153</span></a>    <span class="o">*</span><span class="n">tensors</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
+</span><span id="compile_to_callable-154"><a href="#compile_to_callable-154"><span class="linenos">154</span></a>    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="compile_to_callable-155"><a href="#compile_to_callable-155"><span class="linenos">155</span></a>    <span class="n">torch_compile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="compile_to_callable-156"><a href="#compile_to_callable-156"><span class="linenos">156</span></a>    <span class="n">simplify</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="compile_to_callable-157"><a href="#compile_to_callable-157"><span class="linenos">157</span></a><span class="p">):</span>
+</span><span id="compile_to_callable-158"><a href="#compile_to_callable-158"><span class="linenos">158</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Compile one or more tensorgrad tensors into a fast callable.</span>
+</span><span id="compile_to_callable-159"><a href="#compile_to_callable-159"><span class="linenos">159</span></a>
+</span><span id="compile_to_callable-160"><a href="#compile_to_callable-160"><span class="linenos">160</span></a><span class="sd">    Inputs are normalized automatically (Derivative nodes and derivative</span>
+</span><span id="compile_to_callable-161"><a href="#compile_to_callable-161"><span class="linenos">161</span></a><span class="sd">    signatures resolved; see simplify_for_compile), so gradients can be</span>
+</span><span id="compile_to_callable-162"><a href="#compile_to_callable-162"><span class="linenos">162</span></a><span class="sd">    passed raw:</span>
+</span><span id="compile_to_callable-163"><a href="#compile_to_callable-163"><span class="linenos">163</span></a>
+</span><span id="compile_to_callable-164"><a href="#compile_to_callable-164"><span class="linenos">164</span></a><span class="sd">        step = compile_to_callable(loss, *[loss.grad(p) for p in params])</span>
+</span><span id="compile_to_callable-165"><a href="#compile_to_callable-165"><span class="linenos">165</span></a>
+</span><span id="compile_to_callable-166"><a href="#compile_to_callable-166"><span class="linenos">166</span></a><span class="sd">    Returns f(values: dict[Variable, torch.Tensor], shapes: dict[Symbol, int])</span>
+</span><span id="compile_to_callable-167"><a href="#compile_to_callable-167"><span class="linenos">167</span></a><span class="sd">    -&gt; named torch.Tensor or tuple of them (one per input tensor).</span>
+</span><span id="compile_to_callable-168"><a href="#compile_to_callable-168"><span class="linenos">168</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="compile_to_callable-169"><a href="#compile_to_callable-169"><span class="linenos">169</span></a>    <span class="k">return</span> <span class="n">CompiledProgram</span><span class="p">(</span>
+</span><span id="compile_to_callable-170"><a href="#compile_to_callable-170"><span class="linenos">170</span></a>        <span class="nb">tuple</span><span class="p">(</span><span class="n">tensors</span><span class="p">),</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">torch_compile</span><span class="o">=</span><span class="n">torch_compile</span><span class="p">,</span> <span class="n">simplify</span><span class="o">=</span><span class="n">simplify</span>
+</span><span id="compile_to_callable-171"><a href="#compile_to_callable-171"><span class="linenos">171</span></a>    <span class="p">)</span>
 </span></pre></div>
 
 
             <div class="docstring"><p>Compile one or more tensorgrad tensors into a fast callable.</p>
 
-<p>Derivative nodes are resolved automatically (see simplify_for_compile), so
-gradients can be passed raw:</p>
+<p>Inputs are normalized automatically (Derivative nodes and derivative
+signatures resolved; see simplify_for_compile), so gradients can be
+passed raw:</p>
 
 <pre><code>step = compile_to_callable(loss, *[loss.grad(p) for p in params])
 </code></pre>
