@@ -77,9 +77,10 @@
       double,
       postaction={decorate, decoration={markings,
          mark=at position 0.5 with {
-            \fill[white] (-.09,-.06) rectangle (.09,.06);
-            \draw (-.09,.035) -- (.09,-.035);
-            \draw (-.09,-.035) -- (.09,.035);
+            \fill[white] (-.1,-.03) rectangle (.1,.03);
+            \draw (-.1,.0176) .. controls (-.025,.0176) and (.025,-.0176) .. (.1,-.0176);
+            \draw[white, line width=1.2pt] (-.1,-.0176) .. controls (-.025,-.0176) and (.025,.0176) .. (.1,.0176);
+            \draw (-.1,-.0176) .. controls (-.025,-.0176) and (.025,.0176) .. (.1,.0176);
          }}}
    },
 }
