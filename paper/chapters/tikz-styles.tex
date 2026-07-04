@@ -71,6 +71,17 @@
     inner sep=3pt,
     draw
    },
+   % A double wire with a half-twist: the two wires cross once, so the
+   % top/bottom reading order is preserved through a 180-degree turn.
+   twist/.style={
+      double,
+      postaction={decorate, decoration={markings,
+         mark=at position 0.5 with {
+            \fill[white] (-.09,-.06) rectangle (.09,.06);
+            \draw (-.09,.035) -- (.09,-.035);
+            \draw (-.09,-.035) -- (.09,.035);
+         }}}
+   },
 }
 
 

@@ -41,6 +41,9 @@ when $X$ is drawn to the left of a flattening triangle,
 its column edge takes the top port and its row edge wraps under into the bottom port.
 This convention also agrees with the wire order of the FFT diagrams in the Special Tensors chapter,
 where the top wire carries the most significant bit.
+One caveat: bundles behave like ribbons,
+so a double wire that turns $180^\circ$ around comes back with its wires in reversed order;
+when we intend the order to be preserved we mark a compensating \emph{twist} --- see the transpose rule (510) below.
 
 Using this notation we can write
 \[
@@ -319,8 +322,8 @@ The Kronecker product has the following properties:
          \node[triangle, minimum size=1cm] (F1) at (1.2,0) {};
          \draw (F0) -- (A) -- (F1);
          \draw (F0) -- (B) -- (F1);
-         \draw[double] (F0) .. controls (-1,0) and (.6,1) .. (2,0);
-         \draw[double] (F1) .. controls (2.2,0) and (.6,-1) .. (-.8,0);
+         \draw[twist] (F0) .. controls (-1,0) and (.6,1) .. (2,0);
+         \draw[twist] (F1) .. controls (2.2,0) and (.6,-1) .. (-.8,0);
       \end{tikzpicture}
                    &=
       \begin{tikzpicture}[baseline=-.25em]
@@ -439,6 +442,20 @@ The Kronecker product has the following properties:
     \trace{B}{1}
    \hspace{-1em}
 \end{walign}
+Note the small \emph{twists} on the wrapped bundles in (510).
+A double wire is genuinely two parallel wires,
+and dragging a bundle through a $180^\circ$ turn reverses their order on the page.
+The twist --- the two wires crossing once --- compensates,
+so the dangling bundle again reads $A$ before $B$.
+Without the twists, the left-hand side of (510) would be the \emph{bit-reversed} transpose $B^T \otimes A^T$,
+a genuinely different matrix!
+For the same reason, rotating a flattened block $180^\circ$ is \emph{not} its transpose.
+The trace loop in (515), on the other hand, needs no twist:
+it turns a full $360^\circ$, so the two reversals cancel.
+As a bonus, the twist on a straight bundle is a useful tensor in its own right:
+it is exactly the \emph{commutation matrix} $K$,
+satisfying $K(x \otimes y) = y \otimes x$ and $K\,\mathrm{vec}(X) = \mathrm{vec}(X^T)$.
+
 Recalling the eigen decomposition of a matrix, \eqref{eq:eigen-decomposition}, we also get:
 \begin{walign}
    \tag{519}
