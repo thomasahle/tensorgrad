@@ -35,6 +35,7 @@ from tensorgrad.compiler.ir import (
 )
 from tensorgrad.compiler.affine import indicator_tensor
 from tensorgrad.compiler.factor import factor_outputs
+from tensorgrad.compiler.layout import assign_layouts, matmul_groups
 from tensorgrad.compiler.stabilize import stabilize_outputs
 
 _LETTERS = string.ascii_letters
@@ -50,6 +51,33 @@ AFFINE_FAST = True
 # (when the intermediates have no other consumers and the axis layout permits
 # a clean permute). Toggleable so tests can compare against the unfused path.
 SDPA_FUSION = True
+
+# When True (default), affine view rewrites emit spec-time INTEGER strides:
+# the layout of every tensor an as_strided view reads from is either tracked
+# exactly (hoisted constants, pad outputs, previous as_strided views we
+# emitted ourselves) or normalized with .contiguous() (a no-op for operands
+# that are already row-major). The generated code then contains no
+# .stride()/.storage_offset() calls — torch ops returning python ints, which
+# torch.compile(fullgraph=True) refuses to trace. When False, the old
+# runtime-stride form is emitted (pure views on arbitrary layouts, but graph
+# breaks / fullgraph failures under torch.compile). Kept as a flag so tests
+# can compare the two emissions and exercise the runtime fallback.
+STATIC_STRIDES = True
+
+# Global layout assignment (compiler/layout.py): each node's physical axis
+# order is chosen so producers emit for free and consumers read without
+# permutes. False pins every node to its logical axis order (the old
+# behavior); kept so tests can compare the two emissions.
+LAYOUT_ASSIGN = True
+
+# Map matmul-shaped einsum steps onto torch.mm/bmm/matmul (measured ~2x
+# cheaper dispatch than torch.einsum: 7.1us vs 14.8us for a small mm).
+# False falls back to einsum everywhere.
+MATMUL_CELLS = True
+
+# Fuse `x @ W + bias` LinearNodes into a single torch.addmm call (the mm
+# term is suppressed and computed inside the Linear emission).
+ADDMM_FUSION = True
 
 
 def _fmt_weight(w: float) -> str:
@@ -69,6 +97,14 @@ def _tup(items) -> str:
     if len(items) == 1:
         return f"({items[0]},)"
     return f"({', '.join(items)})"
+
+
+def _row_major(sizes) -> tuple[int, ...]:
+    """Standard contiguous (row-major) strides for concrete sizes."""
+    strides = [1] * len(sizes)
+    for i in range(len(sizes) - 2, -1, -1):
+        strides[i] = strides[i + 1] * sizes[i + 1]
+    return tuple(strides)
 
 
 def _normalize_rows(rows, wire_dims, dim_of):
@@ -148,7 +184,21 @@ class TorchCodegen:
 
         order = toposort([node for node, _ in outputs])
         output_ids = {id(node) for node, _ in outputs}
+        # Global layout assignment: physical axis order per node ({} = logical
+        # order everywhere). Emitters consult _phys_of() for operands and MUST
+        # produce their own node in its assigned order.
+        var_orders = [tuple(self.builder.input_vars[n].edges) for n in self.input_names]
+        self._phys = assign_layouts(order, outputs, var_orders) if LAYOUT_ASSIGN else {}
         sdpa_plans, sdpa_suppressed = self._plan_sdpa(order, output_ids, dims)
+        addmm_plans, addmm_suppressed = self._plan_addmm(
+            order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed
+        )
+        self._addmm_plans = addmm_plans
+        # Spec-time layout knowledge: emitted name -> (sizes, strides, offset).
+        # offset None = "unknown but inherited correctly" (see _try_eliminate_row).
+        # Only names whose layout we construct ourselves are entered; everything
+        # else is normalized with .contiguous() before being viewed.
+        self._layouts: dict[str, tuple[tuple[int, ...], tuple[int, ...], int | None]] = {}
         names: dict[int, str] = {}
         lines: list[str] = []
         consts: dict[str, torch.Tensor] = {}
@@ -173,11 +223,13 @@ class TorchCodegen:
             names[id(node)] = name
             if id(node) in sdpa_suppressed:
                 continue  # consumed only by a fused SDPA call; never emitted
+            if id(node) in addmm_suppressed:
+                continue  # computed inside its consuming Linear's addmm call
             if isinstance(node, InputNode):
                 # Inputs arrive as positional args in self.input_names order.
                 emitted_inputs[node.var_name] = name
             elif id(node) in sdpa_plans:
-                lines.append(self._emit_sdpa(sdpa_plans[id(node)], name, names))
+                lines.append(self._emit_sdpa(sdpa_plans[id(node)], name, names, node))
             elif isinstance(node, ConstNode):
                 if node.kind == "scalar":
                     lines.append(f"{name} = {_fmt_weight(to_float(node.params[0].subs(dims)))}")
@@ -186,6 +238,12 @@ class TorchCodegen:
                     # convolution elimination have run (dead-const elimination).
                     deferred_consts.append((len(lines), node, name))
                     lines.append(None)
+                    if node.kind in ("zero", "delta", "reshape"):
+                        # _build_const makes these row-major contiguous
+                        # (zeros / zeros+diag-fill / eye().reshape), so their
+                        # layout is known before the tensor even exists.
+                        sizes = tuple(dim_of(d) for d in node.dims)
+                        self._layouts[name] = (sizes, _row_major(sizes), 0)
             elif isinstance(node, EinsumNode):
                 lines.extend(self._emit_einsum(node, name, names, dim_of, dims, step_cache, const_name))
             elif isinstance(node, LinearNode):
@@ -203,11 +261,17 @@ class TorchCodegen:
             else:
                 raise NotImplementedError(f"codegen for {type(node).__name__}")
 
-        # Scalars must come back as tensors for a consistent API.
+        # Scalars must come back as tensors for a consistent API. Outputs are
+        # returned in logical (edge) order: un-permute assigned layouts.
         rets = []
         for node, _ in outputs:
             n = names[id(node)]
-            rets.append(f"torch.as_tensor({n}, dtype={self._dtype_str})" if node.order == 0 else n)
+            if node.order == 0:
+                rets.append(f"torch.as_tensor({n}, dtype={self._dtype_str})")
+            else:
+                phys = self._phys_of(node)
+                inv = tuple(phys.index(j) for j in range(node.order))
+                rets.append(self._perm_str(n, inv))
 
         # Dead-const elimination: build only constants whose alias name is
         # still referenced somewhere (conv elimination removes most uses).
@@ -221,19 +285,26 @@ class TorchCodegen:
                 lines[line_idx] = text
         lines = [line for line in lines if line is not None]
 
-        # Dead-line elimination for materialized ones: a pure-ones einsum
-        # emits torch.full, but consumers may have folded it away (Linear
-        # scalar offsets, einsum weight absorption). Straight-line SSA: a
-        # torch.full whose name appears nowhere else is dead.
-        alive_text = "\n".join(lines) + "\n" + " ".join(rets)
-        lines = [
-            line
-            for line in lines
-            if not (
-                (m := re.match(r"(t\d+) = torch\.full\(", line))
-                and len(re.findall(rf"\b{m.group(1)}\b", alive_text)) == 1
-            )
-        ]
+        # Dead-line elimination: every emitted line is a pure assignment
+        # (the only in-place op, index_add_, is not of `name = ...` form), so
+        # straight-line SSA applies: an assignment whose name appears nowhere
+        # else is dead. Iterate to a fixpoint — removing a dead broadcast
+        # view or torch.full orphans its own operands. (Consumers routinely
+        # fold such terms away: Linear scalar offsets, einsum weight
+        # absorption, addmm bias fusion.)
+        while True:
+            counts: dict[str, int] = {}
+            for tok in re.findall(r"\w+", "\n".join(lines) + "\n" + " ".join(rets)):
+                counts[tok] = counts.get(tok, 0) + 1
+            keep = []
+            for line in lines:
+                m = re.match(r"([A-Za-z_]\w*) = ", line)
+                if m and "\n" not in line and counts.get(m.group(1)) == 1:
+                    continue
+                keep.append(line)
+            if len(keep) == len(lines):
+                break
+            lines = keep
 
         params = [emitted_inputs.get(v, f"_unused_{v}") for v in self.input_names]
         params += [f"{k}={k}" for k in consts]
@@ -252,6 +323,227 @@ class TorchCodegen:
         fn = ns["_compiled"]
         fn._source = src
         return fn
+
+    # ---- layout helpers ---------------------------------------------------
+
+    def _phys_of(self, node: Node) -> tuple[int, ...]:
+        """Assigned physical layout of a node: phys[p] = logical axis stored
+        at physical position p. Identity when no layout was assigned."""
+        p = self._phys.get(id(node))
+        return p if p is not None else tuple(range(node.order))
+
+    @staticmethod
+    def _perm_str(name: str, perm) -> str:
+        perm = tuple(perm)
+        if perm == tuple(range(len(perm))):
+            return name
+        return f"{name}.permute({', '.join(map(str, perm))})"
+
+    def _entry_subs(self, op: Node, subs) -> list:
+        """Wire subscripts of an operand in its PHYSICAL axis order (physical
+        axis q of the emitted tensor carries wire subs[phys[q]])."""
+        phys = self._phys_of(op)
+        return [subs[q] for q in phys]
+
+    # ---- matmul cell selection --------------------------------------------
+
+    @staticmethod
+    def _matmul_fit(a_axes, b_axes, out_axes, size_of):
+        """Try to express `contract(a, b) -> out` (axis labels of the two
+        operands' PHYSICAL layouts, and the desired physical output order) as
+        a (batched) matrix multiply with only free reshapes/transposes:
+
+          out = matmul(a viewed (*batch, M, K), b viewed (*batch, K, N))
+
+        The batch block must lead all three, identically ordered (BLAS batch
+        dims cannot be transposed for free); within each operand the trailing
+        two blocks may appear in either order (op(A) transpose flags are
+        free); intra-block orders must agree pairwise so the merged M/K/N
+        dims flatten consistently.
+
+        Returns a spec dict for _matmul_render, or None. `size_of` maps an
+        axis label to its concrete size."""
+        for a, b, x1, x2 in ((a_axes, b_axes, 0, 1), (b_axes, a_axes, 1, 0)):
+            A, B, O = set(a), set(b), set(out_axes)
+            if len(A) != len(a) or len(B) != len(b) or len(O) != len(out_axes):
+                return None  # repeated labels: diagonals, einsum territory
+            if not O <= (A | B) or (A - B - O) or (B - A - O):
+                return None  # broadcast-only outputs / single-operand sums
+            k = [c for c in a if c in B and c not in O]
+            if not k:
+                return None  # no contraction: TensorIterator territory
+            m = [c for c in out_axes if c in A and c not in B]
+            n = [c for c in out_axes if c in B and c not in A]
+            if not m and not n:
+                return None  # batched dot: (A*B).sum() beats a degenerate bmm
+            batch = [c for c in out_axes if c in A and c in B]
+            nb = len(batch)
+            # batch block must lead everywhere, in the output's order
+            if list(a[:nb]) != batch or list(b[:nb]) != batch:
+                continue
+            o_rest = list(out_axes[nb:])
+            if set(o_rest[: len(m)]) != set(m):
+                continue  # out must be (batch, m-block, n-block) for THIS roles split
+            mo, no = o_rest[: len(m)], o_rest[len(m):]
+
+            def blocks(rest, first, second):
+                for swap in (False, True):
+                    f, s = (second, first) if swap else (first, second)
+                    if list(rest[: len(f)]) == list(f) and list(rest[len(f):]) == list(s):
+                        return swap
+                return None
+
+            a_swap = blocks(list(a[nb:]), mo, k)
+            if a_swap is None:
+                continue
+            b_swap = blocks(list(b[nb:]), k, no)
+            if b_swap is None:
+                continue
+            return {
+                "x1": x1,  # which arg is the (batch, M, K) operand
+                "x2": x2,
+                "batch": [size_of(c) for c in batch],
+                "msz": _prod([size_of(c) for c in mo]),
+                "ksz": _prod([size_of(c) for c in k]),
+                "nsz": _prod([size_of(c) for c in no]),
+                "a_swap": a_swap,  # operand stored (batch, K, M): transpose
+                "b_swap": b_swap,  # operand stored (batch, N, K): transpose
+                "a_merge": len(mo) != 1 or len(k) != 1,
+                "b_merge": len(k) != 1 or len(no) != 1,
+                "out_sizes": [size_of(c) for c in out_axes],
+            }
+        return None
+
+    @staticmethod
+    def _matmul_operands(fit, args) -> tuple[str, str, str]:
+        """The two operand expressions (viewed to (*batch, M, K)/(*batch, K, N))
+        and the trailing .view suffix ('' if the raw matmul shape is final)."""
+        bsz, msz, ksz, nsz = fit["batch"], fit["msz"], fit["ksz"], fit["nsz"]
+        va, vb = args[fit["x1"]], args[fit["x2"]]
+        if fit["a_merge"]:
+            shape = bsz + ([ksz, msz] if fit["a_swap"] else [msz, ksz])
+            va = f"{va}.reshape({_tup(map(str, shape))})"
+        if fit["a_swap"]:
+            va = f"{va}.transpose(-2, -1)"
+        if fit["b_merge"]:
+            shape = bsz + ([nsz, ksz] if fit["b_swap"] else [ksz, nsz])
+            vb = f"{vb}.reshape({_tup(map(str, shape))})"
+        if fit["b_swap"]:
+            vb = f"{vb}.transpose(-2, -1)"
+        view = ""
+        if bsz + [msz, nsz] != fit["out_sizes"]:
+            view = f".view({_tup(map(str, fit['out_sizes']))})"
+        return va, vb, view
+
+    @classmethod
+    def _matmul_render(cls, fit, args) -> str:
+        """Emit the torch.mm/bmm/matmul expression for a _matmul_fit spec."""
+        va, vb, view = cls._matmul_operands(fit, args)
+        bsz = fit["batch"]
+        fn = "torch.mm" if not bsz else ("torch.bmm" if len(bsz) == 1 else "torch.matmul")
+        return f"{fn}({va}, {vb}){view}"
+
+    def _matmul_expr(self, step_eq: str, args, size_of):
+        """Cell selection for a 2-operand einsum step. Returns an expression
+        string using torch.mm/bmm/matmul, or None (einsum fallback)."""
+        if not MATMUL_CELLS:
+            return None
+        ins, out = step_eq.split("->")
+        in_eqs = ins.split(",")
+        if len(in_eqs) != 2:
+            return None
+        fit = self._matmul_fit(tuple(in_eqs[0]), tuple(in_eqs[1]), tuple(out), size_of)
+        if fit is None:
+            return None
+        return self._matmul_render(fit, args)
+
+    # ---- addmm fusion -----------------------------------------------------
+
+    def _plan_addmm(self, order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed):
+        """Find LinearNodes computable as torch.addmm(bias, A, B) (+ leftover
+        terms): one term is a single-consumer un-batched matmul-shaped einsum,
+        another term broadcasts a bias over exactly the matmul's N-block.
+        Returns (plans: id(Linear) -> plan, suppressed einsum ids)."""
+        if not (ADDMM_FUSION and MATMUL_CELLS and LAYOUT_ASSIGN):
+            return {}, set()
+        consumers: dict[int, int] = {}
+        for nd in order:
+            for op in nd.operands():
+                consumers[id(op)] = consumers.get(id(op), 0) + 1
+        plans, suppressed = {}, set()
+        for node in order:
+            if not isinstance(node, LinearNode) or id(node) in sdpa_suppressed:
+                continue
+            if len(node.terms) < 2:
+                continue
+            plan = self._addmm_fit(node, consumers, output_ids, dims, dim_of,
+                                   sdpa_plans, sdpa_suppressed, suppressed)
+            if plan is not None:
+                plans[id(node)] = plan
+                suppressed.add(plan["t_id"])
+        return plans, suppressed
+
+    def _addmm_fit(self, node, consumers, output_ids, dims, dim_of,
+                   sdpa_plans, sdpa_suppressed, already_suppressed):
+        physN = self._phys_of(node)
+        for i, (term, perm) in enumerate(zip(node.terms, node.perms)):
+            if not isinstance(term, EinsumNode):
+                continue
+            tid = id(term)
+            if (
+                consumers.get(tid, 0) != 1
+                or tid in output_ids
+                or tid in sdpa_plans
+                or tid in sdpa_suppressed
+                or tid in already_suppressed
+            ):
+                continue
+            groups = matmul_groups(term)
+            if groups is None or groups[0]:  # addmm is strictly un-batched 2D
+                continue
+            # Desired physical output of the term, seen through the Linear's
+            # layout: physical position p of the Linear holds term logical
+            # axis perm[physN[p]], i.e. wire term.out_subs[perm[physN[p]]].
+            target = tuple(term.out_subs[perm[physN[p]]] for p in range(node.order))
+            size_of = lambda w: dim_of(term.wire_dims[w])  # noqa: E731
+            a_axes = tuple(self._entry_subs(term.ops[0], term.in_subs[0]))
+            b_axes = tuple(self._entry_subs(term.ops[1], term.in_subs[1]))
+            fit = self._matmul_fit(a_axes, b_axes, target, size_of)
+            if fit is None:
+                continue
+            # Find a bias term: a pure-broadcast einsum whose real wires are
+            # exactly the trailing N-block (a per-column bias, input shape
+            # (Nsz,)) or the leading M-block (a per-row bias, input shape
+            # (Msz, 1)) of `target`, in physical order.
+            n_len = len([w for w in target if w in set(term.in_subs[fit["x2"]])
+                         and w not in set(term.in_subs[fit["x1"]])])
+            m_len = node.order - n_len
+            for j, (bt, bperm) in enumerate(zip(node.terms, node.perms)):
+                if j == i or not isinstance(bt, EinsumNode):
+                    continue
+                if bt.constraints or len(bt.ops) != 1:
+                    continue
+                (bop,) = bt.ops
+                (bsubs,) = bt.in_subs
+                if not bsubs or len(set(bsubs)) != len(bsubs) or not set(bsubs) <= set(bt.out_subs):
+                    continue
+                btarget = tuple(bt.out_subs[bperm[physN[p]]] for p in range(node.order))
+                op_phys_wires = tuple(self._entry_subs(bop, list(bsubs)))
+                if btarget[m_len:] == op_phys_wires and not any(
+                    w in set(bsubs) for w in btarget[:m_len]
+                ):
+                    side = "n"
+                elif btarget[:len(op_phys_wires)] == op_phys_wires and len(
+                    op_phys_wires
+                ) == m_len and not any(w in set(bsubs) for w in btarget[m_len:]):
+                    side = "m"
+                else:
+                    continue
+                return {"t_id": id(term), "term_idx": i, "bias_idx": j,
+                        "fit": fit, "bias_op": bop, "bias_side": side,
+                        "alpha_extra": to_float(term.weight.subs(dims)),
+                        "beta_extra": to_float(bt.weight.subs(dims))}
+        return None
 
     # ---- affine constraint elimination -----------------------------------
 
@@ -430,35 +722,72 @@ class TorchCodegen:
             lead = [p for p in range(len(subs)) if p != d]
             sizes = [dim_of(wire_dims[subs[p]]) for p in lead] + [dim_of(wire_dims[w]) for w, _ in terms]
 
+            # All planning below is spec-time when STATIC_STRIDES: strides and
+            # offsets become INTEGER LITERALS in the generated code, so dynamo
+            # never sees a .stride()/.storage_offset() call (torch ops
+            # returning python ints break torch.compile(fullgraph=True)).
+            stride_ints = off_int = None
             if pf or pb:
                 # Out-of-range accesses must read 0: move the axis last, pad,
                 # then view the (contiguous, spec-time-known) padded tensor.
                 mv = nm if d == len(subs) - 1 else f"{nm}.movedim({d}, -1)"
                 base = emit_cached(f"torch.nn.functional.pad({mv}, ({pf}, {pb}))", "ap")
-                padded = [dim_of(wire_dims[subs[p]]) for p in lead] + [X + pf + pb]
-                rm = [1] * len(padded)
-                for i in range(len(padded) - 2, -1, -1):
-                    rm[i] = rm[i + 1] * padded[i + 1]
-                lead_strides = [str(rm[i]) for i in range(len(lead))]
-                sd = "1"
-                offset = str(m + pf)
+                padded = tuple([dim_of(wire_dims[subs[p]]) for p in lead] + [X + pf + pb])
+                rm = _row_major(padded)
+                self._layouts[base] = (padded, rm, 0)
+                stride_ints = [rm[i] for i in range(len(lead))] + [abs(a) for _, a in terms]
+                off_int = m + pf
+                stride_exprs, offset = map(str, stride_ints), str(off_int)
+            elif STATIC_STRIDES:
+                base = nm
+                layout = self._layouts.get(base)
+                if layout is None:
+                    # Unknown layout (inputs, einsum/map outputs — pointwise
+                    # kernels follow their inputs' layout, so "fresh" does NOT
+                    # imply row-major): normalize once. A no-op for already-
+                    # contiguous operands; where it copies, the copy is the
+                    # price of a literal-stride, fullgraph-traceable view.
+                    base = emit_cached(f"{nm}.contiguous()", "ac")
+                    csizes = tuple(dim_of(wire_dims[s]) for s in subs)
+                    # contiguous() preserves a nonzero storage offset when it
+                    # no-ops, so the offset stays unknown (None) — handled by
+                    # offset inheritance below.
+                    layout = (csizes, _row_major(csizes), None)
+                    self._layouts[base] = layout
+                _, lstr, loff = layout
+                sd_int = lstr[d]
+                stride_ints = [lstr[p] for p in lead] + [abs(a) * sd_int for _, a in terms]
+                stride_exprs = map(str, stride_ints)
+                if loff is not None:
+                    off_int = loff + m * sd_int
+                    offset = str(off_int)
+                else:
+                    # Offset unknown: shift the base pointer with narrow (a
+                    # view; offset += m * stride(d)) and let as_strided inherit
+                    # the base's storage offset (storage_offset arg omitted).
+                    if m:
+                        base = emit_cached(f"{base}.narrow({d}, {m}, {X - m})", "an")
+                    offset = None
             else:
-                # In-range: a pure view on the operand as it is, whatever its
-                # layout — strides are queried at runtime, nothing is copied.
+                # Escape hatch (STATIC_STRIDES=False): a pure view on the
+                # operand as it is, whatever its layout — strides are queried
+                # at runtime, nothing is copied, but torch.compile graph-breaks.
                 base = nm
                 lead_strides = [f"{base}.stride({p})" for p in lead]
                 sd = f"{base}.stride({d})"
                 offset = f"{base}.storage_offset()" + (f" + {m} * {sd}" if m else "")
+                stride_exprs = lead_strides + [f"{abs(a)} * {sd}" for _, a in terms]
 
-            stride_exprs = lead_strides + [f"{abs(a)} * {sd}" for _, a in terms]
-            view = (
-                f"torch.as_strided({base}, {_tup(map(str, sizes))}, "
-                f"{_tup(stride_exprs)}, {offset})"
-            )
+            view = f"torch.as_strided({base}, {_tup(map(str, sizes))}, {_tup(stride_exprs)}"
+            view += f", {offset})" if offset is not None else ")"
             vn = emit_cached(view, "av")
+            if stride_ints is not None:
+                self._layouts[vn] = (tuple(sizes), tuple(stride_ints), off_int)
             flips = [len(lead) + i for i, (_, a) in enumerate(terms) if a < 0]
             if flips:
                 arg = str(flips[0]) if len(flips) == 1 else str(tuple(flips))
+                # flip copies, but into a layout-FOLLOWING fresh tensor (not
+                # necessarily row-major): no layout entry for the result.
                 vn = emit_cached(f"{vn}.flip({arg})", "af")
 
             entries[j] = [vn, [subs[p] for p in lead] + [w for w, _ in terms], None]
@@ -494,12 +823,14 @@ class TorchCodegen:
         lines = []
         weight = node.weight if node.weight != 1 else None
         wf = to_float(node.weight.subs(dims)) if weight is not None else 1.0
+        # Physical output order: the wire of each physical output position.
+        pout = [node.out_subs[j] for j in self._phys_of(node)]
 
         if not node.ops and not node.constraints:
             # Pure constant: weight * ones(broadcast dims), as an expanded view.
-            sizes = ", ".join(str(dim_of(node.wire_dims[w])) for w in node.out_subs)
+            sizes = ", ".join(str(dim_of(node.wire_dims[w])) for w in pout)
             w = wf if weight is not None else 1.0
-            if node.out_subs:
+            if pout:
                 lines.append(f"{name} = torch.full(({sizes},), {_fmt_weight(w)}, dtype={self._dtype_str})")
             else:
                 lines.append(f"{name} = {_fmt_weight(w)}")
@@ -515,7 +846,7 @@ class TorchCodegen:
             step_cache[key] = tmp
             return tmp
 
-        def do_step(step_eq: str, args: list[str]) -> str:
+        def do_step(step_eq: str, args: list[str], sizes=None) -> str:
             ins, out = step_eq.split("->")
             if len(args) == 1 and ins == out and len(set(out)) == len(out):
                 return args[0]  # identity einsum: nothing to do (avoids a copy)
@@ -523,15 +854,18 @@ class TorchCodegen:
             if (hit := step_cache.get(key)) is not None:
                 return hit
             tmp = f"_e{len(step_cache)}"
-            expr = self._step_expr(step_eq, args)
+            expr = self._matmul_expr(step_eq, args, sizes.__getitem__) if sizes else None
+            if expr is None:
+                expr = self._step_expr(step_eq, args)
             if expr is None:
                 expr = f"torch.einsum('{step_eq}', {', '.join(args)})"
             lines.append(f"{tmp} = {expr}")
             step_cache[key] = tmp
             return tmp
 
-        # (operand name, wire subscripts) pairs; affine constraint rows are
-        # statically eliminated into strided views of their neighbours.
+        # (operand name, wire subscripts) pairs, subscripts in each operand's
+        # PHYSICAL axis order; affine constraint rows are statically
+        # eliminated into strided views of their neighbours.
         rows = [
             (
                 {w: int(sympy.sympify(c).subs(dims)) for w, c in coeffs},
@@ -539,7 +873,10 @@ class TorchCodegen:
             )
             for coeffs, const in node.constraints
         ]
-        entries = [[names[id(op)], list(subs), op] for op, subs in zip(node.ops, node.in_subs)]
+        entries = [
+            [names[id(op)], self._entry_subs(op, subs), op]
+            for op, subs in zip(node.ops, node.in_subs)
+        ]
         entries, orphan_factor = self._eliminate_affine(
             entries, rows, node.out_subs, node.wire_dims, dim_of, emit_cached, const_name
         )
@@ -551,8 +888,8 @@ class TorchCodegen:
             # Everything eliminated algebraically: the result is a constant
             # (e.g. sum over a structure tensor = its solution count).
             w = wf if weight is not None else 1.0
-            if node.out_subs:
-                sizes = ", ".join(str(dim_of(node.wire_dims[w2])) for w2 in node.out_subs)
+            if pout:
+                sizes = ", ".join(str(dim_of(node.wire_dims[w2])) for w2 in pout)
                 lines.append(f"{name} = torch.full(({sizes},), {_fmt_weight(w)}, dtype={self._dtype_str})")
             else:
                 lines.append(f"{name} = {_fmt_weight(w)}")
@@ -562,11 +899,11 @@ class TorchCodegen:
         # contracts away all of its idx wires is the embedding-gradient
         # pattern; emit it as zeros().index_add_ instead of a dense one-hot
         # contraction (O(N*D) writes instead of O(N*V*D) flops).
-        self._try_scatter(node, entries, dim_of, lines, step_cache, names, do_step)
+        self._try_scatter(node, entries, dim_of, lines, step_cache, names, do_step, pout)
 
         op_wires = {w for _, subs, _ in entries for w in subs}
-        core_out = tuple(w for w in node.out_subs if w in op_wires)
-        broadcast = [w for w in node.out_subs if w not in op_wires]
+        core_out = tuple(w for w in pout if w in op_wires)
+        broadcast = [w for w in pout if w not in op_wires]
 
         expr = self._contract(
             [(nm, subs) for nm, subs, _ in entries], core_out, node.wire_dims, dim_of, do_step
@@ -578,19 +915,19 @@ class TorchCodegen:
             expr = f"({_fmt_weight(wf)} * {expr})"
 
         if broadcast:
-            # Result axes: core_out order; unsqueeze+expand to full out_subs
-            # order (an expand is a view — no memory is written).
+            # Result axes: core_out order; unsqueeze+expand to the full
+            # physical order (an expand is a view — no memory is written).
             if not core_out:
                 # A fully-scalar core may be a python float (scalar-const
                 # emission); as_tensor is a no-op on real 0-dim tensors.
                 expr = f"torch.as_tensor({expr}, dtype={self._dtype_str})"
             unsq = expr
-            positions = [i for i, w in enumerate(node.out_subs) if w not in op_wires]
+            positions = [i for i, w in enumerate(pout) if w not in op_wires]
             for p in positions:
                 unsq = f"{unsq}.unsqueeze({p})"
             sizes = ", ".join(
                 str(dim_of(node.wire_dims[w])) if i in positions else "-1"
-                for i, w in enumerate(node.out_subs)
+                for i, w in enumerate(pout)
             )
             expr = f"{unsq}.expand({sizes})"
 
@@ -672,12 +1009,13 @@ class TorchCodegen:
         if len(all_wires) > len(_LETTERS):
             raise ValueError(f"Einsum with {len(all_wires)} distinct indices exceeds the {len(_LETTERS)} limit")
         letters = {w: _LETTERS[i] for i, w in enumerate(all_wires)}
+        lsizes = {letters[w]: dim_of(wire_dims[w]) for w in all_wires}
         in_eqs = ["".join(letters[w] for w in subs) for _, subs in entries]
         out_eq = "".join(letters[w] for w in out_ws)
         op_names = [nm for nm, _ in entries]
 
         if len(entries) <= 2:
-            return do_step(f"{','.join(in_eqs)}->{out_eq}", op_names)
+            return do_step(f"{','.join(in_eqs)}->{out_eq}", op_names, lsizes)
 
         shapes = [tuple(dim_of(wire_dims[w]) for w in subs) for _, subs in entries]
         eq = f"{','.join(in_eqs)}->{out_eq}"
@@ -707,10 +1045,10 @@ class TorchCodegen:
         stack = list(op_names)
         for (pos, _, step_eq, _, _) in path_info.contraction_list:
             args = [stack.pop(p) for p in pos]
-            stack.append(do_step(step_eq, args))
+            stack.append(do_step(step_eq, args, lsizes))
         return stack[0]
 
-    def _try_scatter(self, node: EinsumNode, entries, dim_of, lines, step_cache, names, do_step) -> bool:
+    def _try_scatter(self, node: EinsumNode, entries, dim_of, lines, step_cache, names, do_step, pout=None) -> bool:
         """Rewrite `entries` in place when the einsum matches the scatter
         pattern: one operand is a one-hot whose class wire is a free output
         and whose idx wires are all contracted with the other operands.
@@ -718,10 +1056,16 @@ class TorchCodegen:
         scattered with index_add_; the dense one-hot is never materialized
         (its deferred emission line is dropped as dead code)."""
         out_subs = node.out_subs
+        if pout is None:
+            pout = list(out_subs)
         for j, (_, subs, op) in enumerate(entries):
             if not (isinstance(op, GatherNode) and op.op == "one_hot"):
                 continue
-            v, idx_ws = subs[0], list(subs[1:])
+            # `subs` is in the one-hot's physical order = logical (pinned):
+            # (class wire, idx wires in idx-LOGICAL axis order). index_add_
+            # flattens the idx tensor in its PHYSICAL layout, so reorder.
+            idx_phys = self._phys_of(op.ops[0])
+            v, idx_ws = subs[0], [subs[1 + q] for q in idx_phys]
             if len(set(subs)) != len(subs):
                 continue  # diagonal one-hot: keep the dense fallback
             if out_subs.count(v) != 1 or any(w in out_subs for w in idx_ws):
@@ -732,7 +1076,7 @@ class TorchCodegen:
             rem_wires = {w for _, s, _ in remaining for w in s}
             if v in rem_wires or not set(idx_ws) <= rem_wires:
                 continue
-            tail_ws = [w for w in out_subs if w != v and w in rem_wires]
+            tail_ws = [w for w in pout if w != v and w in rem_wires]
             # Contract everything else down to (idx wires..., kept out wires...).
             rest_out = idx_ws + tail_ws
             rest = self._contract(
@@ -938,12 +1282,13 @@ class TorchCodegen:
             return plan
         return None
 
-    def _emit_sdpa(self, plan, name, names) -> str:
-        def permuted(node, perm):
-            nm = names[id(node)]
-            if perm != tuple(range(len(perm))):
-                nm = f"{nm}.permute({', '.join(map(str, perm))})"
-            return nm
+    def _emit_sdpa(self, plan, name, names, node) -> str:
+        def permuted(op_node, perm):
+            # `perm` is in the operand's LOGICAL axes; compose with its
+            # assigned physical layout to index the emitted tensor.
+            phys = self._phys_of(op_node)
+            actual = tuple(phys.index(a) for a in perm)
+            return self._perm_str(names[id(op_node)], actual)
 
         args = [permuted(plan[t], plan[f"{t}_perm"]) for t in ("q", "k", "v")]
         if "mask" in plan:
@@ -955,13 +1300,26 @@ class TorchCodegen:
         expr = f"torch.nn.functional.scaled_dot_product_attention({', '.join(args)})"
         if plan["weight"] != 1.0:
             expr = f"{_fmt_weight(plan['weight'])} * {expr}"
+        # SDPA produces (batch..., seq_q, dv); out_perm[i] = produced position
+        # of logical axis i. Land it directly in OUR assigned layout.
         out_perm = plan["out_perm"]
-        if out_perm != tuple(range(len(out_perm))):
-            expr = f"({expr}).permute({', '.join(map(str, out_perm))})"
+        physN = self._phys_of(node)
+        final = tuple(out_perm[j] for j in physN)
+        if final != tuple(range(len(final))):
+            expr = f"({expr}).permute({', '.join(map(str, final))})"
         return f"{name} = {expr}"
 
+    def _to_logical(self, node: Node, names) -> str:
+        """Reference a node's tensor in LOGICAL axis order (a permute view
+        when its assigned layout differs; gather-family consumers index
+        logically)."""
+        phys = self._phys_of(node)
+        inv = tuple(phys.index(j) for j in range(node.order))
+        return self._perm_str(names[id(node)], inv)
+
     def _emit_gather(self, node: GatherNode, name, names, dim_of) -> str:
-        table, idx = names[id(node.ops[0])], names[id(node.ops[1])]
+        table = self._to_logical(node.ops[0], names)
+        idx = self._to_logical(node.ops[1], names)
         sizes = [str(dim_of(d)) for d in node.dims]
         return (
             f"{name} = torch.index_select({table}, {node.axis}, "
@@ -969,7 +1327,7 @@ class TorchCodegen:
         )
 
     def _emit_one_hot(self, node: GatherNode, name, names, dim_of) -> str:
-        idx = names[id(node.ops[0])]
+        idx = self._to_logical(node.ops[0], names)
         num_classes = dim_of(node.dims[0])
         sizes = [str(num_classes)] + [str(dim_of(d)) for d in node.dims[1:]]
         return (
@@ -978,26 +1336,59 @@ class TorchCodegen:
         )
 
     def _emit_linear(self, node: LinearNode, name, names, dims, dim_of) -> str:
+        physN = self._phys_of(node)
+        plan = getattr(self, "_addmm_plans", {}).get(id(node))
         parts = []
         const_acc = 0.0
-        for term, perm, w in zip(node.terms, node.perms, node.weights):
-            wf = to_float(sympy.sympify(w).subs(dims) if getattr(w, "free_symbols", None) else w)
+
+        def weight_of(w):
+            return to_float(sympy.sympify(w).subs(dims) if getattr(w, "free_symbols", None) else w)
+
+        if plan is not None:
+            # Fused x@W + bias: torch.addmm(bias, A, B, beta, alpha). The
+            # matmul term was suppressed; the bias enters RAW (pre-broadcast:
+            # addmm broadcasts it over the flattened M rows).
+            term = node.terms[plan["term_idx"]]
+            alpha = weight_of(node.weights[plan["term_idx"]]) * plan["alpha_extra"]
+            beta = weight_of(node.weights[plan["bias_idx"]]) * plan["beta_extra"]
+            fit = plan["fit"]
+            bop = plan["bias_op"]
+            bias = names[id(bop)]
+            if plan["bias_side"] == "m":  # per-row bias: (Msz, 1)
+                bias = f"{bias}.reshape({_tup([str(fit['msz']), '1'])})"
+            elif bop.order != 1:  # per-column bias: flatten to (Nsz,)
+                bias = f"{bias}.reshape({fit['nsz']})"
+            margs = [names[id(op)] for op in term.ops]
+            va, vb, view = self._matmul_operands(fit, margs)
+            kw = ""
+            if beta != 1.0:
+                kw += f", beta={_fmt_weight(beta)}"
+            if alpha != 1.0:
+                kw += f", alpha={_fmt_weight(alpha)}"
+            parts.append(f"torch.addmm({bias}, {va}, {vb}{kw}){view}")
+
+        for i, (term, perm, w) in enumerate(zip(node.terms, node.perms, node.weights)):
+            if plan is not None and i in (plan["term_idx"], plan["bias_idx"]):
+                continue
+            wf = weight_of(w)
             if isinstance(term, EinsumNode) and not term.ops and not term.constraints:
                 # Pure-ones term: a scalar offset (TensorIterator broadcasts it
                 # in the same kernel — no torch.full materialization).
                 const_acc += wf * to_float(term.weight.subs(dims))
                 continue
-            tname = names[id(term)]
-            if perm != tuple(range(len(perm))):
-                tname = f"{tname}.permute({', '.join(map(str, perm))})"
+            # Align the term to the node's physical layout: physical position
+            # p holds node-logical axis physN[p] = term-logical perm[physN[p]].
+            want = tuple(perm[j] for j in physN)
+            physT = self._phys_of(term)
+            tname = self._perm_str(names[id(term)], tuple(physT.index(a) for a in want))
             if wf == 1.0:
                 parts.append(f"+ {tname}" if parts else tname)
             elif wf == -1.0:
-                parts.append(f"- {tname}")
+                parts.append(f"- {tname}" if parts else f"-{tname}")
             else:
                 parts.append(f"{'+ ' if parts else ''}{_fmt_weight(wf)} * {tname}")
         if not parts:
-            sizes = _tup(str(dim_of(d)) for d in node.dims)
+            sizes = _tup(str(dim_of(node.dims[j])) for j in physN)
             return f"{name} = torch.full({sizes}, {_fmt_weight(const_acc)}, dtype={self._dtype_str})"
         if const_acc > 0:
             parts.append(f"+ {_fmt_weight(const_acc)}")
@@ -1006,12 +1397,12 @@ class TorchCodegen:
         return f"{name} = {' '.join(parts)}"
 
     def _emit_map(self, node: MapNode, name, names) -> str:
+        physN = self._phys_of(node)
         args = []
         for opnd, perm in zip(node.ops, node.perms):
-            a = names[id(opnd)]
-            if perm != tuple(range(len(perm))):
-                a = f"{a}.permute({', '.join(map(str, perm))})"
-            args.append(a)
+            want = tuple(perm[j] for j in physN)
+            physT = self._phys_of(opnd)
+            args.append(self._perm_str(names[id(opnd)], tuple(physT.index(a) for a in want)))
         op = node.op
         if op == "exp":
             expr = f"torch.exp({args[0]})"
@@ -1049,20 +1440,35 @@ class TorchCodegen:
         return f"{name} = {expr}"
 
     def _emit_reduce(self, node: ReduceNode, name, names) -> str:
-        a = names[id(node.ops[0])]
-        if node.op == "argmax":
-            (axis,) = node.axes
-            return f"{name} = {a}.argmax(dim={axis}).to({a}.dtype)"
-        if node.op == "max":
-            axes = ", ".join(map(str, node.axes))
-            return f"{name} = torch.amax({a}, dim=({axes},))"
+        (opnd,) = node.ops
+        a = names[id(opnd)]
+        physO = self._phys_of(opnd)
+        physN = self._phys_of(node)
+        if node.op in ("argmax", "max"):
+            # Reduce the operand as it lies; permute-view the result to the
+            # assigned layout if needed (the layout pass votes the operand
+            # into "kept-in-output-order + reduced-last", making this identity).
+            dims_phys = sorted(physO.index(x) for x in node.axes)
+            kept_log = [x for x in range(opnd.order) if x not in node.axes]
+            renum = {x: j for j, x in enumerate(kept_log)}  # operand ax -> node ax
+            produced = tuple(renum[x] for x in physO if x not in node.axes)
+            view = tuple(produced.index(a2) for a2 in physN)
+            if node.op == "argmax":
+                (axis,) = dims_phys
+                return f"{name} = {self._perm_str(f'{a}.argmax(dim={axis})', view)}.to({a}.dtype)"
+            axes = ", ".join(map(str, dims_phys))
+            return f"{name} = {self._perm_str(f'torch.amax({a}, dim=({axes},))', view)}"
         if node.op in ("softmax", "log_softmax"):
+            # node axes == operand axes; align the operand to OUR layout with
+            # a view, then reduce over the physical positions of node.axes.
+            a = self._perm_str(a, tuple(physO.index(physN[p]) for p in range(node.order)))
+            dims_phys = sorted(physN.index(x) for x in node.axes)
             fn = "torch.softmax" if node.op == "softmax" else "torch.log_softmax"
             if len(node.axes) == 1:
-                return f"{name} = {fn}({a}, dim={node.axes[0]})"
+                return f"{name} = {fn}({a}, dim={dims_phys[0]})"
             # Multi-axis: no native torch op; emit the numerically stable
             # max-subtracted form reducing jointly over all axes.
-            dims = "(" + ", ".join(map(str, node.axes)) + ",)"
+            dims = "(" + ", ".join(map(str, dims_phys)) + ",)"
             if node.op == "softmax":
                 return (
                     f"{name} = torch.exp({a} - torch.amax({a}, dim={dims}, keepdim=True))\n"

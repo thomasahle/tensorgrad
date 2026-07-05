@@ -46,6 +46,10 @@ class CompiledProgram:
         self.tensors = tensors
         self.verbose = verbose
         self.torch_compile = torch_compile
+        # True once any specialization had to give up on fullgraph=True and
+        # recompile with fullgraph=False (see _torch_compile). Inspectable by
+        # tests and diagnostics.
+        self.used_fullgraph_fallback = False
         self.builder, self.outputs = lower_program(list(tensors))
         self.codegen = TorchCodegen(self.builder, self.outputs)
         self.input_names = self.codegen.input_names  # sorted variable names
@@ -65,6 +69,33 @@ class CompiledProgram:
         self._specializations: OrderedDict[tuple, object] = OrderedDict()
 
     # -----------------------------------------------------------------
+
+    def _torch_compile(self, fn):
+        """torch.compile with fullgraph=True, guarded by a lazy fallback.
+
+        Codegen emits spec-time integer strides (codegen_torch.STATIC_STRIDES),
+        so the straight-line program — no eval, no named tensors, no torch ops
+        returning python ints — traces as ONE dynamo graph and Inductor can
+        fuse across the whole program. Dynamo only raises at the first CALL,
+        so the guard wraps invocation: if it still refuses (e.g. the
+        STATIC_STRIDES=False runtime-stride emission, or an op outside
+        dynamo's support), recompile that specialization with fullgraph=False
+        (graph breaks around the offending op, fuses the rest) and record the
+        event in self.used_fullgraph_fallback."""
+        import torch._dynamo
+
+        state = {"fn": torch.compile(fn, fullgraph=True, dynamic=False)}
+
+        def wrapper(*args):
+            try:
+                return state["fn"](*args)
+            except torch._dynamo.exc.TorchDynamoException:
+                self.used_fullgraph_fallback = True
+                state["fn"] = torch.compile(fn, fullgraph=False, dynamic=False)
+                return state["fn"](*args)
+
+        wrapper._source = fn._source  # keep the generated source inspectable
+        return wrapper
 
     def _resolve_dims(self, values, shapes):
         dims = dict(shapes) if shapes else {}
@@ -117,12 +148,7 @@ class CompiledProgram:
         if fn is None:
             fn = self.codegen.specialize(dims, verbose=self.verbose, dtype=dtype)
             if self.torch_compile:
-                # Straight-line torch calls, no eval, no named tensors — but
-                # affine view rewrites query .stride()/.storage_offset() at
-                # runtime, which dynamo cannot trace fullgraph (returns
-                # non-Tensor ints). fullgraph=False graph-breaks around them
-                # and fuses the rest; measured at/below autograd either way.
-                fn = torch.compile(fn, fullgraph=False, dynamic=False)
+                fn = self._torch_compile(fn)
             self._specializations[key] = fn
             if len(self._specializations) > SPECIALIZATION_CACHE_SIZE:
                 self._specializations.popitem(last=False)
