@@ -493,4 +493,141 @@ nothing. \textbf{\texttt{\char`\\vecmatvec} / \texttt{\char`\\trace} /
 \texttt{\char`\\detstack} rows:} the existing macros already beat
 everything; they stay.
 
+
+% =====================================================================
+\clearpage
+\section*{H. Advanced combinations}
+
+% ---------------------------------------------------------------
+\subsection*{H1. eig$(A \otimes B)$, eq (519) --- triangles + copydots + labels + bundles}
+\begin{tcblisting}{title={OLD (17 lines)}}
+\begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+   \node[triangle, rotate=180] (F0) at (0,0) {};
+   \node (Q1) at (.6,.25) {$Q_1$};
+   \node (Q2) at (.6,-.25) {$Q_2$};
+   \node[copydot] (b1) at (1.25,.25) {};
+   \node[copydot] (b2) at (1.25,-.25) {};
+   \node (Q1i) at (2,.25) {$Q_1^{-1}$};
+   \node (Q2i) at (2,-.25) {$Q_2^{-1}$};
+   \node[triangle] (F1) at (2.7,0) {};
+   \draw[double] (F0) -- ++(-.4,0);
+   \draw[double] (F1) -- ++(.4,0);
+   \draw (F0) -- (Q1) -- (b1) -- (Q1i) -- (F1);
+   \draw (F0) -- (Q2) -- (b2) -- (Q2i) -- (F1);
+   \draw (b1) -- ++(0, .25) node[anchor=south] {$\lambda_1$};
+   \draw (b2) -- ++(0, -.25) node[anchor=north] {$\lambda_2$};
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (12 lines)}}
+\begin{tikzpicture}[tn, leg length=.25,
+    every leg label/.style={}]
+  \node[triangle, rotate=180,
+        double legs={180}] (F0) {};
+  \node (Q1) at (.6,.25) {$Q_1$};
+  \node (Q2) at (.6,-.25) {$Q_2$};
+  \node[copydot, legs={90/\lambda_1}] (b1) at (1.25,.25) {};
+  \node[copydot, legs={270/\lambda_2}] (b2) at (1.25,-.25) {};
+  \node (Q1i) at (2,.25) {$Q_1^{-1}$};
+  \node (Q2i) at (2,-.25) {$Q_2^{-1}$};
+  \node[triangle, double legs={0}] (F1) at (2.7,0) {};
+  \draw (F0) -- (Q1) -- (b1) -- (Q1i) -- (F1);
+  \draw (F0) -- (Q2) -- (b2) -- (Q2i) -- (F1);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{H2. Second derivative (functions ch.) --- NESTED loops}
+\begin{tcblisting}{title={OLD (9 lines; two hand-tuned ellipses)}}
+\begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+   \node (n0) {$f$};
+   \node[below=1em of n0] (n1) {$v$};
+   \node[below=1em of n1] (n2) {$x$};
+   \draw[->] (n2) -- (n1);
+   \draw[->] (n1) -- (n0);
+   \drawellipse{0}{-.55}{.5}{1}{180/4}
+   \drawellipse{0}{-.55}{.7}{1.2}{180/4}
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (10 lines; loops fit themselves and nest)}}
+\begin{tikzpicture}[tn, baseline=-1em]
+   \node (n0) {$f$};
+   \node[below=1em of n0] (n1) {$v$};
+   \node[below=1em of n1] (n2) {$x$};
+   \draw[->] (n2) -- (n1);
+   \draw[->] (n1) -- (n0);
+   \dloop[35]{(n0)(n1)(n2)}
+   \draw (ddot) -- ++(.4,0);
+   \dloop[25]{(dE)}
+   \draw (ddot) -- ++(.4,0);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{H3. Wick pairing terms, Var$[x^T A x]$ (statistics)}
+\begin{tcblisting}{title={OLD ($\kappa_4$ term, 9 lines)}}
+\begin{tikzpicture}[baseline=-.25em, inner sep=0pt]
+    \node (A1) at (0,0) {$A$};
+    \node[copydot] (bullet) at (.8,0) {};
+    \node[anchor=west] (A2) at (1.4,0) {$A$};
+    \draw (A1.east) to[out=45,in=135] (bullet)
+       to[out=45,in=135] (A2.west);
+    \draw (A1.east) to[out=-45,in=-135] (bullet)
+       to[out=-45,in=-135] (A2.west);
+\end{tikzpicture}
+\end{tcblisting}
+The pairing curves ARE the content here: the library's role is only the
+\texttt{tn} defaults and the \texttt{copydot} border behaviour (edges land
+exactly on the dot). Verdict: parity, no line savings --- and none needed.
+
+% ---------------------------------------------------------------
+\subsection*{H4. Direct sum block $e^{(0)} \otimes A \otimes e^{(0)}$ --- labeled double legs}
+\begin{tcblisting}{title={OLD (13 lines)}}
+\begin{tikzpicture}[baseline=.25em, inner sep=1pt]
+   \node (e0l) at (-.35,.4) {$e^{(0)}$};
+   \node (A) at (0,0) {$A$};
+   \node (e0r) at (.35,.4) {$e^{(0)}$};
+   \node[triangle, rotate=180] (F1) at (-1.3,.2) {};
+   \node[triangle] (F2) at (1.3,.2) {};
+   \draw[double] (F1) -- (-.9,.4) -- (e0l);
+   \draw (F1) -- (-.9,0) -- (A);
+   \draw (A) -- (.9,0) -- (F2);
+   \draw (e0r) -- (.9,.4) -- (F2);
+   \draw[double] (F1) -- ++(-0.4,0)
+      node[midway, above, font=\tiny] {$i$};
+   \draw[double] (F2) -- ++(0.4,0)
+      node[midway, above, font=\tiny] {$j$};
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (11 lines)}}
+\begin{tikzpicture}[tn, baseline=.25em]
+   \node (e0l) at (-.35,.4) {$e^{(0)}$};
+   \node (A) at (0,0) {$A$};
+   \node (e0r) at (.35,.4) {$e^{(0)}$};
+   \node[triangle, rotate=180,
+         double legs={180/i}] (F1) at (-1.3,.2) {};
+   \node[triangle, double legs={0/j}] (F2) at (1.3,.2) {};
+   \draw[double] (F1) -- (-.9,.4) -- (e0l);
+   \draw (F1) -- (-.9,0) -- (A);
+   \draw (A) -- (.9,0) -- (F2);
+   \draw (e0r) -- (.9,.4) -- (F2);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{H5. TT inner-product zipper --- plain TikZ foreach already wins}
+\begin{tcblisting}{title={NEW-style (8 lines; the library only supplies tn)}}
+\begin{tikzpicture}[tn]
+ \foreach \i in {1,...,4} {
+  \node (G\i) at (\i,.45) {$G_\i$};
+  \node (H\i) at (\i,-.45) {$G'_\i$};
+  \draw (G\i) -- (H\i)
+     node[midway, left, font=\tiny] {$i_\i$};}
+ \foreach \i in {2,...,4} {
+  \draw (G\the\numexpr\i-1) -- (G\i);
+  \draw (H\the\numexpr\i-1) -- (H\i);}
+\end{tikzpicture}
+\end{tcblisting}
+Regular grids are \texttt{foreach} territory (as the book's FFT diagrams
+already do); a diagram library adds only its defaults here.
+
 \end{document}
