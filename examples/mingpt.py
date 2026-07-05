@@ -14,9 +14,9 @@ is DERIVED symbolically instead of traced by autograd?
 
 * No autograd. torch.set_grad_enabled(False) below is global and permanent:
   loss.grad(p) builds a symbolic derivative, and compile_to_callable turns
-  the loss plus one gradient per parameter into ONE fused straight-line
-  program in which forward work is shared across outputs. PyTorch is used
-  purely as a tensor library.
+  the loss, one gradient per parameter, AND the AdamW update into ONE fused
+  straight-line program in which forward work is shared across outputs.
+  PyTorch is used purely as a tensor library.
 
 * No hand-written backward rules for composites. layer_norm below is three
   lines of mean/sqrt and its Jacobian is derived; softmax (and the
@@ -25,15 +25,24 @@ is DERIVED symbolically instead of traced by autograd?
 
 * Integer tokens stay integers: F.gather indexes the embedding table
   directly (index_select forward; the derived gradient is a scatter-add).
-  No one-hot matmuls.
+  Integer TARGETS stay integers too: F.one_hot builds the target
+  distribution inside the program, and minGPT's ignore_index=-1 becomes a
+  0/1 mask that is just another input tensor. No host-side encoding.
+
+* No optimizer library. AdamW is elementwise algebra on a weight, its
+  gradient and two moment estimates, so it compiles INTO the step program:
+  one call maps (weights, moments, batch) to (loss, new weights, new
+  moments), and the python training loop is a dict reassignment. No
+  in-place tensor mutation anywhere.
 
 Running this file trains the full 3-block gpt-nano on karpathy's sorting
 task ("given 6 digits, emit them sorted") to >90% held-out sequence
-accuracy in under a minute on CPU: ~30s to derive, plan and code-generate
-the ~2900-op fused step program, ~15s of training (it converges in about
-50 steps at ~4-5 steps/s eager). PyTorch eager is the default backend here
-— torch_compile=True trains ~1.5x faster per step but pays ~4.5 minutes of
-torch.compile warmup on a program this size.
+accuracy in under a minute on CPU: ~35s to derive, plan and code-generate
+the ~4100-op fused step program (160 outputs: loss, 53 weights, 106
+moments), then training at ~19 steps/s eager — each step one call, weights
+in, weights out. PyTorch eager is the default backend here —
+torch_compile=True trains faster per step but pays minutes of torch.compile
+warmup on a program this size.
 """
 
 import math
@@ -84,12 +93,13 @@ def param(name: str, **edges) -> Variable:
 
 
 # -------------------------------------------------------------- the model
-# Inputs. Tokens are integer ids (carried as floats); targets are one-hot
-# rows, with all-zero rows where minGPT would use ignore_index=-1. The causal
-# mask enters as data: 0 on/below the diagonal, -1e9 above (masked_fill).
+# Inputs. Tokens AND target tokens are integer ids (carried as floats);
+# loss_mask is 0 at the positions minGPT would mark ignore_index=-1. The
+# causal mask enters as data: 0 on/below the diagonal, -1e9 above.
 
 tokens = Variable("tokens", batch, seq)
-targets = Variable("targets", batch, seq, vocab)
+target_ids = Variable("target_ids", batch, seq)
+loss_mask = Variable("loss_mask", batch, seq)
 causal_mask = Variable("causal_mask", seq=seq, key=seq)
 
 
@@ -131,20 +141,44 @@ def gpt(idx):
 
 
 logits = gpt(tokens)
-ce = F.cross_entropy(logits, targets, dim="vocab")      # (batch, seq); 0 at ignored positions
+targets = F.one_hot(target_ids, vocab, dim="vocab") * loss_mask  # ignored rows -> all-zero
+ce = F.cross_entropy(logits, targets, dim="vocab")      # (batch, seq); 0 at masked positions
 loss = F.sum(ce) / (BATCH * LENGTH)
 
-# ------------------------------------------------------------- data + adamw
+# -------------------------------------------------------- adamw as algebra
+# The optimizer is also just algebra. AdamW is elementwise arithmetic on a
+# weight, its gradient and two moment estimates, so instead of a host-side
+# update loop it is three more symbolic outputs per parameter of the SAME
+# compiled program: the forward pass, all 53 gradients, AND AdamW fuse into
+# one straight-line step. The only numbers computed outside the program are
+# the bias corrections 1/(1-b^t) -- that's the schedule, not tensor
+# compute -- fed per step as the 0-dim inputs c1, c2.
+
+B1, B2, WD, EPS = 0.9, 0.95, 0.1, 1e-8
+c1, c2 = Variable("c1"), Variable("c2")                 # 1/(1-B1^t), 1/(1-B2^t)
+moments = {n: (Variable(f"m.{n}", **dict(p.shape)), Variable(f"v.{n}", **dict(p.shape)))
+           for n, p in params.items()}
+
+
+def adamw(w, g, m, v):
+    """One AdamW step, written exactly as the update equations -> (w', m', v')."""
+    m = B1 * m + (1 - B1) * g
+    v = B2 * v + (1 - B2) * g * g
+    decay = 1 - LR * WD if len(w.edges) >= 2 else 1     # decoupled wd, matrices only
+    return w * decay - LR * (c1 * m) / (F.sqrt(c2 * v) + EPS), m, v
+
+
+# ----------------------------------------------------------------- data
 
 
 def sort_batch(n, gen):
-    """x = "digits then their sorted order", y = x shifted left; the first
-    LENGTH-1 targets are zeroed one-hot rows (= minGPT's ignore_index=-1)."""
+    """x = "digits then their sorted order", y = x shifted left -- both plain
+    integer ids; the mask zeroes the first LENGTH-1 targets (= minGPT's
+    ignore_index=-1). One-hot encoding happens inside the compiled program."""
     inp = torch.randint(VOCAB, (n, LENGTH), generator=gen)
     cat = torch.cat([inp, inp.sort(dim=1).values], dim=1)
-    tgt = torch.nn.functional.one_hot(cat[:, 1:], VOCAB).float()
-    tgt[:, : LENGTH - 1] = 0.0
-    return cat[:, :-1].float(), tgt
+    mask = (torch.arange(SEQ) >= LENGTH - 1).float().expand(n, SEQ)
+    return cat[:, :-1].float(), cat[:, 1:].float(), mask
 
 
 def init_weights(gen):
@@ -158,41 +192,34 @@ def init_weights(gen):
     return ws
 
 
-def adamw_update(ws, opt_m, opt_v, grads, t, b1=0.9, b2=0.95, wd=0.1):
-    for name, g in grads.items():
-        w, m, v = ws[name], opt_m[name], opt_v[name]
-        if w.dim() >= 2:
-            w.mul_(1 - LR * wd)
-        m.mul_(b1).add_(g, alpha=1 - b1)
-        v.mul_(b2).addcmul_(g, g, value=1 - b2)
-        w.sub_(LR * (m / (1 - b1**t)) / ((v / (1 - b2**t)).sqrt() + 1e-8))
-
-
 # ---------------------------------------------------------------- training
 
 
 def main():
     names = list(params)
     t0 = time.perf_counter()
-    # THE line: loss + one symbolic gradient per parameter, compiled together.
-    # (torch_compile=True is ~1.5x faster per step but pays ~4.5 min of
-    # torch.compile warmup; eager converges in ~10s of training anyway.)
-    step = compile_to_callable(loss, *[loss.grad(params[n]) for n in names],
-                               torch_compile=False)
+    # THE lines: loss + one symbolic gradient per parameter + the AdamW
+    # update of every (weight, m, v) triple, compiled together into ONE
+    # program. (torch_compile=True is faster per step but pays minutes of
+    # torch.compile warmup; eager converges in seconds anyway.)
+    new_ws, new_ms, new_vs = zip(
+        *(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
+    step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False)
     predict = compile_to_callable(logits)  # forward-only program for evaluation
     from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
     n_ops = sum(not isinstance(n, (InputNode, ConstNode))
                 for n in toposort([n for n, _ in step.outputs]))
-    print(f"compiled loss + {len(names)} gradients into one program of "
-          f"{n_ops} tensor ops ({time.perf_counter() - t0:.1f}s)")
+    print(f"compiled loss + {len(names)} gradients + adamw ({len(step.outputs)} "
+          f"outputs) into one program of {n_ops} tensor ops "
+          f"({time.perf_counter() - t0:.1f}s)")
 
     gen = torch.Generator().manual_seed(0)
-    ws = init_weights(gen)
-    opt_m = {n: torch.zeros_like(w) for n, w in ws.items()}
-    opt_v = {n: torch.zeros_like(w) for n, w in ws.items()}
-    feed = {params[n]: ws[n] for n in names}  # tensors updated in place by adamw
-    feed[causal_mask] = torch.triu(torch.full((SEQ, SEQ), -1e9), diagonal=1)
-    # (per-call inputs -- tokens/targets -- are merged in fresh each call)
+    state_vars = ([params[n] for n in names]           # mirrors the output order
+                  + [moments[n][0] for n in names]
+                  + [moments[n][1] for n in names])
+    state = {params[n]: w for n, w in init_weights(gen).items()}
+    state |= {mv: torch.zeros_like(state[params[n]]) for n in names for mv in moments[n]}
+    data = {causal_mask: torch.triu(torch.full((SEQ, SEQ), -1e9), diagonal=1)}
 
     def held_out_accuracy(n=256, seed=1234):
         """Greedy autoregressive decode on fresh problems; exact-match rate."""
@@ -201,7 +228,7 @@ def main():
         ctx = torch.zeros(n, SEQ, dtype=torch.long)
         ctx[:, :LENGTH] = inp
         for t in range(LENGTH - 1, SEQ):
-            out = predict({**feed, tokens: ctx.float()})
+            out = predict({**state, **data, tokens: ctx.float()})
             nxt = out.align_to("batch", "seq", "vocab").rename(None)[:, t].argmax(-1)
             if t + 1 < SEQ:
                 ctx[:, t + 1] = nxt
@@ -210,11 +237,11 @@ def main():
 
     acc, t_start = 0.0, time.perf_counter()
     for it in range(1, MAX_STEPS + 1):
-        xs, ys = sort_batch(BATCH, gen)
-        loss_val, *grad_vals = step({**feed, tokens: xs, targets: ys})
-        grads = {n: g.align_to(*params[n].edges).rename(None)  # match param layout
-                 for n, g in zip(names, grad_vals)}
-        adamw_update(ws, opt_m, opt_v, grads, it)
+        xs, ys, mk = sort_batch(BATCH, gen)
+        bias = {c1: torch.tensor(1 / (1 - B1**it)), c2: torch.tensor(1 / (1 - B2**it))}
+        loss_val, *new_state = step({**state, **data, **bias,
+                                     tokens: xs, target_ids: ys, loss_mask: mk})
+        state = dict(zip(state_vars, new_state))  # the whole optimizer step
         if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
             print(f"first step (planning + codegen): {warmup:.1f}s")
