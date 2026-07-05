@@ -6,8 +6,8 @@ Origin: a researcher telling the author how hard the (cross-entropy ∘) softmax
 Hessian was to derive by hand.
 
 Every expression here uses ONLY leaf primitives (exp, log, pow, sum) — no
-F.softmax, no fused signatures. When these pass, _SoftmaxJacFunction demotes to
-a validation oracle.
+F.softmax, no fused signatures. Hand-fused Jacobian signatures no longer exist:
+F.softmax's own derivative is derived from this same primitive definition.
 
 Tier 1 — gradients of primitives-defined softmax / gelu / layernorm:
     loss = sum(f(x) * w);  g = loss.grad(x).simplify()   [zero hand rules]
@@ -25,7 +25,7 @@ Tier 2 — the founding problem: the CE∘softmax Hessian wrt logits, batched.
       TERM COUNT   simplified H is a 2-term Sum: diag(s) - s s^T shape  [passes]
       CORRECT      matches torch.autograd.functional.hessian, tiny dims [passes]
       Y-FREE       with y declared simplex (sum_v y[b,v] = 1, true for one-hot
-                   targets, via Variable.with_constraint), the compiled H has no
+                   targets, via Variable.with_eq_constraint), the compiled H has no
                    InputNode for y — with a *general* y the Hessian provably
                    retains the factor sum_v y[b,v]                      [passes]
       HVP FAST     compiled HVP beats torch double-backward, B=64 V=256 [needs #17:
@@ -378,12 +378,13 @@ def _stage_tier2_hessian():
 
 def _stage_tier2_hessian_simplex():
     """The founding cancellation. Targets y are one-hot (rows on the simplex), so the
-    researcher declares sum_v y[b,v] = 1 via Variable.with_constraint. The Hessian
+    researcher declares sum_v y[b,v] = 1 via Variable.with_eq_constraint. The Hessian
     H = (sum_v y[b,v]) * delta_{b,b2} (diag(s) - s s^T) / B must then simplify to a
     y-FREE 2-term form, and the compiled program must not consume y at all."""
     b, v = symbols("b v")
     x = Variable("x", b, v)
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y0 = Variable("y", b, v)
+    y = y0.with_eq_constraint(F.sum(y0, dim=("v",)), 1)
     s = primitive_softmax(x, "v")
     L = -F.sum(y * F.log(s)) / Delta(b)  # mean over the batch
     H = L.grad(x).grad(x, new_names={"b": "b2", "v": "v2"})

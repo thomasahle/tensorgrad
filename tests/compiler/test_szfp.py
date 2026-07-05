@@ -145,30 +145,37 @@ def test_rational_identity_over_atoms():
 
 
 def test_softmax_primitive_vs_fused_false_negative():
-    """DOCUMENTED FALSE NEGATIVE (by design of the atoms formulation).
+    """DOCUMENTED FALSE NEGATIVE (by design of the atoms formulation) — for
+    the FORWARD only.
 
-    The fused gradient is expressed in softmax(x) atoms (ReduceNode), the
-    primitive gradient in exp(x) and pow atoms. They are equal only through
-    the *analytic* identity softmax(x) = exp(x)/sum(exp(x)), which the
+    The fused forward is a softmax(x) atom (ReduceNode), the primitive
+    forward is exp(x) and pow atoms. They are equal only through the
+    *analytic* identity softmax(x) = exp(x)/sum(exp(x)), which the
     fingerprint deliberately does not know: each atom kind gets independent
     random values. So equal_szfp says UNEQUAL even though the expressions
     are semantically equal. This is the same blindness class as syntactic
-    methods; #17 must whitelist atom-folding rewrites (exp/sum -> softmax)
-    rather than rely on verify_rewrite for them.
+    methods; whitelisting the atom-folding rewrite (exp/sum -> softmax) is
+    the compiler's job (stabilize.py), not verify_rewrite's.
+
+    GRADIENTS no longer exhibit the false negative at all: the fused
+    wrapper's derivative is DERIVED from the same primitive definition (no
+    hand-fused Jacobian in softmax atoms exists anymore), so both gradients
+    are literally the same exp/pow expression and fingerprint EQUAL.
     """
     s_fused = F.softmax(x, ["i"])
     e = F.exp(x)
     s_prim = e * F.pow(e @ Delta(i, "i"), -1)
 
-    # Semantically equal, but different atoms -> unequal fingerprints:
+    # Semantically equal forwards, but different atoms -> unequal fingerprints:
     assert not equal_szfp(s_fused, s_prim)
+    assert not verify_rewrite(s_prim, s_fused)  # -> whitelisted in the compiler instead
 
+    # The derived gradients coincide down to the atom level: true positive.
     grad_fused = (s_fused @ g).grad(x).full_simplify()
     grad_prim = (s_prim @ g).grad(x).full_simplify()
-    assert not equal_szfp(grad_fused, grad_prim)  # false negative, by design
-    assert not verify_rewrite(grad_prim, grad_fused)  # -> needs a whitelisted rule in #17
+    assert equal_szfp(grad_fused, grad_prim)
 
-    # Within each atom formulation the fingerprint is exact and stable:
+    # Within each formulation the fingerprint is exact and stable:
     assert equal_szfp(grad_fused, (s_fused @ g).grad(x).full_simplify())
     assert equal_szfp(grad_prim, (s_prim @ g).grad(x).full_simplify())
 

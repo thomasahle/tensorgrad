@@ -14,7 +14,6 @@ from tensorgrad.functions import (
     _MatrixInverseFunction,
     _SimpleFunction,
     _ArgMaxFunction,
-    _GatherFunction,
     _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
@@ -426,17 +425,6 @@ def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
 def _(func: _EqualFunction, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """Evaluate element-wise equality comparison."""
     return (x.rename(None) == y.rename(None)).float().rename(*x.names)
-
-
-@evaluate_function.register
-def _(func: _GatherFunction, table: torch.Tensor, idx: torch.Tensor) -> torch.Tensor:
-    """out[*idx_edges, *other_table_edges] = table[idx[...], ...] with idx
-    holding integral values stored as floats (like argmax output)."""
-    other = [n for n in table.names if n != func.dim]
-    t = table.align_to(func.dim, *other).rename(None)
-    flat = idx.rename(None).long().reshape(-1)
-    out = t.index_select(0, flat).reshape(tuple(idx.shape) + t.shape[1:])
-    return out.rename(*idx.names, *other)
 
 
 @evaluate_function.register

@@ -25,7 +25,7 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
 )
-from tensorgrad.compiler.ir import Builder, Node
+from tensorgrad.compiler.ir import Builder, GatherNode, Node
 from tensorgrad.compiler.affine import Affine
 
 # Elementwise function signatures with "scalar" shape (edges pass through).
@@ -239,8 +239,43 @@ class Lowerer:
         if not ops and not out_subs and not constraints:
             return self.b.scalar(weight), ()
 
+        self._fuse_gathers(ops, in_subs, out_subs, constraints)
+
         node = self.b.einsum(ops, in_subs, tuple(out_subs), wire_dims, weight, constraints)
         return node, out_order
+
+    def _fuse_gathers(self, ops: list, in_subs: list, out_subs: list, constraints: list) -> None:
+        """index_select peephole (in place): a one_hot indicator whose class
+        wire is contracted against exactly one co-operand is an integer table
+        lookup — sum_v [idx == v] * T[..., v, ...] == T[..., idx, ...] — so the
+        pair is replaced by a GatherNode, which codegen emits as
+        torch.index_select instead of a dense one-hot contraction.
+
+        The mirrored gradient pattern (class wire free, idx wires contracted)
+        is deliberately left as an einsum: codegen's scatter peephole
+        (_try_scatter) turns it into zeros().index_add_."""
+        constrained = {w for row, _ in constraints for w, _ in row}
+        changed = True
+        while changed:
+            changed = False
+            for i, (op, subs) in enumerate(zip(ops, in_subs)):
+                if not (isinstance(op, GatherNode) and op.op == "one_hot"):
+                    continue
+                if len(set(subs)) != len(subs):
+                    continue  # diagonal one-hot: keep the dense fallback
+                wc = subs[0]  # the class wire (one_hot's axis 0 is the class axis)
+                if wc in out_subs or wc in constrained:
+                    continue  # class wire free: scatter/jacobian territory
+                carriers = [j for j in range(len(ops)) if j != i and wc in in_subs[j]]
+                if len(carriers) != 1 or in_subs[carriers[0]].count(wc) != 1:
+                    continue  # not a plain table contraction over the class wire
+                j = carriers[0]
+                axis = in_subs[j].index(wc)
+                ops[j] = self.b.gather(ops[j], op.ops[0], axis)
+                in_subs[j] = in_subs[j][:axis] + tuple(subs[1:]) + in_subs[j][axis + 1 :]
+                del ops[i], in_subs[i]
+                changed = True
+                break
 
     # ---- Function -----------------------------------------------------
 
@@ -280,14 +315,6 @@ class Lowerer:
             (dims,) = sig.inputs
             axes = tuple(order.index(e) for e in dims)
             return self.b.reduce("log_softmax", axes, node), order
-
-        if isinstance(sig, F._GatherFunction):
-            tnode, torder = self.lower(t.inputs[0])
-            inode, iorder = self.lower(t.inputs[1])
-            axis = torder.index(sig.dim)
-            node = self.b.gather(tnode, inode, axis)
-            out_order = torder[:axis] + iorder + torder[axis + 1 :]
-            return node, out_order
 
         if isinstance(sig, F._OneHotFunction):
             # inputs = (idx, size_carrier); the carrier only fixes the number

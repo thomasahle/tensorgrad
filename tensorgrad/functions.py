@@ -11,6 +11,7 @@ from sympy import Symbol
 from tensorgrad.tensor import (
     Constant,
     Delta,
+    Derivative,
     Function,
     FunctionSignature,
     Ones,
@@ -949,9 +950,9 @@ def log(t: Tensor) -> Tensor:
 class _ExprGradFunction(FunctionSignature):
     """Elementwise derivative signature defined by an expression builder.
     simplify() unconditionally rewrites Function(self, [x]) -> expr(x) in terms
-    of other (native) functions, so it never reaches a backend. This mirrors
-    _SoftmaxJacFunction, and follows the relu -> gt0 pattern for derivatives
-    that are themselves compositions (e.g. tanh' = 1 - tanh^2)."""
+    of other (native) functions, so it never reaches a backend. It follows the
+    relu -> gt0 pattern for derivatives of true leaves that are themselves
+    compositions (e.g. tanh' = 1 - tanh^2)."""
 
     def __init__(self, name: str, expr, derivative_factory=None):
         super().__init__(name, frozenset(), (frozenset(),))
@@ -1044,11 +1045,100 @@ def sigmoid(t: Tensor) -> Tensor:
     return 1 / (1 + exp(-t))
 
 
+class _AutoDerivFunction(FunctionSignature):
+    """A derivative signature whose math is DERIVED, never written by hand.
+
+    Fused wrapper functions (softmax, log_softmax, ...) exist purely for
+    pattern recognition: a stable native kernel on the forward path. Their
+    derivatives must not be hand-fused Jacobians — the whole point of
+    tensorgrad is that composites get their backwards from the language
+    itself. The only hand-written content here is `expr`, the wrapper's own
+    primitive definition (e.g. softmax(x) = exp(x) / sum(exp(x))).
+
+    simplify() rebuilds that definition on a fresh Variable, differentiates
+    it len(renames) times with the ordinary Derivative machinery (so every
+    Jacobian/Hessian comes from the primitive rules), restricts to the
+    diagonal over broadcast (batch) edges — the derivative of a
+    broadcast-elementwise function is exactly batch-diagonal — and
+    substitutes the real input back in.
+
+    The result is expanded primitive algebra (exp / sum / pow). Numerical
+    stability and native-kernel fusion of those forms is recovered at
+    compile time by the IR stabilization pass
+    (tensorgrad/compiler/stabilize.py), not by hand-fused Jacobians here.
+    """
+
+    def __init__(self, base_name: str, expr, dims: Iterable[str], renames: tuple[dict[str, str], ...]):
+        dims = frozenset(dims)
+        edges = set(dims)
+        for rn in renames:
+            if rn.keys() != dims:
+                raise ValueError(f"Expected new edges for {set(dims)}, got {rn}")
+            if set(rn.values()) & edges:
+                raise ValueError(f"New edges {set(rn.values())} clash with {edges}")
+            edges |= set(rn.values())
+        order = len(renames)
+        prefix = "D" if order == 1 else f"D{order}"
+        super().__init__(f"{prefix}_{base_name}", frozenset(edges), (dims,))
+        self.base_name = base_name
+        self.expr = expr
+        self.dims = dims
+        self.renames = tuple(dict(rn) for rn in renames)
+
+    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+        assert i == 0
+        if new_edges is None or new_edges.keys() != self.dims:
+            raise ValueError(f"Expected new edges for {set(self.dims)}, got {new_edges}")
+        return _AutoDerivFunction(self.base_name, self.expr, self.dims, self.renames + (new_edges,))
+
+    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
+        (inner,) = f.inputs
+        # A stand-in variable with the input's full shape (consumed dims plus
+        # broadcast edges), so the derivation is independent of `inner`.
+        v = Variable(f"_d_{self.base_name}", **inner.shape)
+        res = self.expr(v, self.dims)
+        batch = tuple(e for e in inner.edges if e not in self.dims)
+        used = set(f.shape.keys()) | set(inner.edges)
+        batch_names: list[dict[str, str]] = []
+        for rn in self.renames:
+            bn = _unused_edge_names(batch, used)
+            used |= set(bn.values())
+            res = Derivative(res, v, rn | bn)
+            batch_names.append(bn)
+        # Resolve the Derivative nodes using the primitive rules only.
+        res = res.simplify()
+        # The derivative of a function applied elementwise over its broadcast
+        # edges is zero off the batch diagonal, so restricting every copy of a
+        # batch edge to one shared index is exact — and it is what the
+        # Function chain rule (which joins batch edges elementwise) expects.
+        for e in batch:
+            copies = [e] + [bn[e] for bn in batch_names]
+            (tmp,) = _unused_edge_names([e], used).values()
+            used.add(tmp)
+            res = (res @ Delta(inner.shape[e], *copies, tmp)).rename(**{tmp: e})
+        res = res.substitute(v, inner)
+        assert res.shape == f.shape, f"{res.shape=} != {f.shape=}"
+        return res.simplify(args)
+
+
+def _softmax_expr(v: Tensor, dims: frozenset[str]) -> Tensor:
+    """softmax's primitive definition — the only 'rule' its derivatives use."""
+    e = exp(v)
+    return e / sum(e, dims, keepdims=True)
+
+
+def _log_softmax_expr(v: Tensor, dims: frozenset[str]) -> Tensor:
+    """log_softmax's primitive definition, for automatic differentiation."""
+    return v - log(sum(exp(v), dims, keepdims=True))
+
+
 class _SoftmaxFunction(FunctionSignature):
     # We don't really need this function signature, as we could just use the basic
     # functions of exp, sum and pow(-1) to implement it. However keeping softmax
     # "unexpanded" (fused) is both numerically stable (the exp/sum expansion
     # overflows for |logits| >~ 50) and lets backends emit a native softmax kernel.
+    # Derivatives carry NO hand math: they are derived from the primitive
+    # definition via _AutoDerivFunction.
 
     def __init__(self, dims: set[str]):
         super().__init__("softmax", frozenset(dims), (frozenset(dims),))
@@ -1058,7 +1148,7 @@ class _SoftmaxFunction(FunctionSignature):
         (dims,) = self.inputs
         if new_edges is None or new_edges.keys() != dims:
             raise ValueError(f"Expected new edges for {dims}, got {new_edges}")
-        return _SoftmaxJacFunction(dims, new_edges)
+        return _AutoDerivFunction("softmax", _softmax_expr, dims, (new_edges,))
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         # Expansion is opt-in via simplify({"expand_softmax": True}): the fused
@@ -1067,90 +1157,8 @@ class _SoftmaxFunction(FunctionSignature):
             (dims,) = self.inputs
             (inner,) = f.inputs
             assert dims.issubset(inner.edges)
-            e = exp(inner)
-            res = e / sum(e, dims, keepdims=True)
-            return res.simplify(args)
+            return _softmax_expr(inner, dims).simplify(args)
         return super().simplify(f, args)
-
-
-class _SoftmaxJacFunction(FunctionSignature):
-    """Jacobian of softmax: J[d, d'] = s[d] (delta_{d,d'} - s[d']), elementwise
-    over any broadcast (batch) edges of the input. Rewritten unconditionally by
-    simplify() into fused softmax tensors, so it never reaches a backend."""
-
-    def __init__(self, dims: Iterable[str], new_edges: dict[str, str]):
-        dims = frozenset(dims)
-        if new_edges.keys() != dims:
-            raise ValueError(f"{new_edges.keys()=} must match {dims=}")
-        if dims & set(new_edges.values()):
-            raise ValueError(f"New edges {new_edges.values()} clash with {dims=}")
-        super().__init__("D_softmax", dims | frozenset(new_edges.values()), (dims,))
-        self.dims = dims
-        self.new_edges = dict(new_edges)
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
-        assert i == 0
-        if new_edges is None or new_edges.keys() != self.dims:
-            raise ValueError(f"Expected new edges for {self.dims}, got {new_edges}")
-        if set(new_edges.values()) & self.edges:
-            raise ValueError(f"New edges {new_edges.values()} clash with {self.edges=}")
-        return _SoftmaxHessFunction(self.dims, self.new_edges, new_edges)
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        (inner,) = f.inputs
-        s = softmax(inner, self.dims)
-        # The same softmax with its output edges renamed to the derivative edges.
-        s1 = s.rename(**self.new_edges)
-        delta_pairs = Product([Delta(f.shape[d], d, self.new_edges[d]) for d in self.dims])
-        # `*` is the elementwise (Hadamard) product, which joins the shared
-        # edges (softmax dims AND broadcast/batch edges) with order-3 Delta
-        # hyperedges. This keeps the Jacobian diagonal over batch edges.
-        res = s * (delta_pairs - s1)
-        assert res.shape == f.shape
-        return res.simplify(args)
-
-
-class _SoftmaxHessFunction(FunctionSignature):
-    """Second derivative of softmax. With s = softmax(x) and multi-indices
-    i (output), j (first derivative), k (second derivative):
-    H_{ijk} = s_i d_ij d_ik - s_i s_k d_ij - s_i s_j d_ik - s_i s_j d_jk + 2 s_i s_j s_k
-    """
-
-    def __init__(self, dims: Iterable[str], new_edges1: dict[str, str], new_edges2: dict[str, str]):
-        dims = frozenset(dims)
-        e1, e2 = set(new_edges1.values()), set(new_edges2.values())
-        if new_edges1.keys() != dims or new_edges2.keys() != dims:
-            raise ValueError(f"{new_edges1.keys()=} and {new_edges2.keys()=} must match {dims=}")
-        if (dims | e1) & e2 or dims & e1:
-            raise ValueError(f"Edge groups must be disjoint: {dims=}, {e1=}, {e2=}")
-        super().__init__("D2_softmax", dims | frozenset(e1) | frozenset(e2), (dims,))
-        self.dims = dims
-        self.new_edges1 = dict(new_edges1)
-        self.new_edges2 = dict(new_edges2)
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
-        raise NotImplementedError("Simplify the softmax Hessian first, then differentiate")
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        (inner,) = f.inputs
-        n1, n2 = self.new_edges1, self.new_edges2
-        s = softmax(inner, self.dims)
-        s1 = s.rename(**n1)
-        s2 = s.rename(**n2)
-        d3 = Product([Delta(f.shape[d], d, n1[d], n2[d]) for d in self.dims])
-        d01 = Product([Delta(f.shape[d], d, n1[d]) for d in self.dims])
-        d02 = Product([Delta(f.shape[d], d, n2[d]) for d in self.dims])
-        d12 = Product([Delta(f.shape[d], n1[d], n2[d]) for d in self.dims])
-        terms = [
-            s * d3,  # s_i d_ij d_ik
-            (s * s2) * d01,  # s_i s_k d_ij
-            (s * s1) * d02,  # s_i s_j d_ik
-            (s * s1) * d12,  # s_i s_j d_jk
-            (s * s1) * s2,  # s_i s_j s_k
-        ]
-        res = Sum(terms, [1, -1, -1, -1, 2])
-        assert res.shape == f.shape
-        return res.simplify(args)
 
 
 def softmax(t: Tensor, dim: DimType = None) -> Tensor:
@@ -1160,7 +1168,8 @@ def softmax(t: Tensor, dim: DimType = None) -> Tensor:
 
 class _LogSoftmaxFunction(FunctionSignature):
     """log(softmax(x)) as a single fused function. Numerically stable
-    (log_softmax never underflows to log(0)) and maps to torch.log_softmax."""
+    (log_softmax never underflows to log(0)) and maps to torch.log_softmax.
+    Derivatives are derived from the primitive definition (_AutoDerivFunction)."""
 
     def __init__(self, dims: set[str]):
         super().__init__("log_softmax", frozenset(dims), (frozenset(dims),))
@@ -1170,84 +1179,15 @@ class _LogSoftmaxFunction(FunctionSignature):
         (dims,) = self.inputs
         if new_edges is None or new_edges.keys() != dims:
             raise ValueError(f"Expected new edges for {dims}, got {new_edges}")
-        return _LogSoftmaxJacFunction(dims, new_edges)
+        return _AutoDerivFunction("log_softmax", _log_softmax_expr, dims, (new_edges,))
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         if args.get("expand_softmax", False):
             (dims,) = self.inputs
             (inner,) = f.inputs
             assert dims.issubset(inner.edges)
-            res = inner - log(sum(exp(inner), dims, keepdims=True))
-            return res.simplify(args)
+            return _log_softmax_expr(inner, dims).simplify(args)
         return super().simplify(f, args)
-
-
-class _LogSoftmaxJacFunction(FunctionSignature):
-    """Jacobian of log_softmax: J[d, d'] = delta_{d,d'} - s[d'], elementwise
-    over broadcast (batch) edges. Rewritten unconditionally by simplify()."""
-
-    def __init__(self, dims: Iterable[str], new_edges: dict[str, str]):
-        dims = frozenset(dims)
-        if new_edges.keys() != dims:
-            raise ValueError(f"{new_edges.keys()=} must match {dims=}")
-        if dims & set(new_edges.values()):
-            raise ValueError(f"New edges {new_edges.values()} clash with {dims=}")
-        super().__init__("D_log_softmax", dims | frozenset(new_edges.values()), (dims,))
-        self.dims = dims
-        self.new_edges = dict(new_edges)
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
-        assert i == 0
-        if new_edges is None or new_edges.keys() != self.dims:
-            raise ValueError(f"Expected new edges for {self.dims}, got {new_edges}")
-        if set(new_edges.values()) & self.edges:
-            raise ValueError(f"New edges {new_edges.values()} clash with {self.edges=}")
-        return _LogSoftmaxHessFunction(self.dims, self.new_edges, new_edges)
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        (inner,) = f.inputs
-        s1 = softmax(inner, self.dims).rename(**self.new_edges)
-        delta_pairs = Product([Delta(f.shape[d], d, self.new_edges[d]) for d in self.dims])
-        # Sum broadcasts delta_pairs over the batch edges and s1 over the dims.
-        res = delta_pairs - s1
-        assert res.shape == f.shape
-        return res.simplify(args)
-
-
-class _LogSoftmaxHessFunction(FunctionSignature):
-    """Second derivative of log_softmax: with multi-indices j, k for the two
-    derivatives, H_{ijk} = -s_j d_jk + s_j s_k, independent of the output
-    index i (broadcast over it)."""
-
-    def __init__(self, dims: Iterable[str], new_edges1: dict[str, str], new_edges2: dict[str, str]):
-        dims = frozenset(dims)
-        e1, e2 = set(new_edges1.values()), set(new_edges2.values())
-        if new_edges1.keys() != dims or new_edges2.keys() != dims:
-            raise ValueError(f"{new_edges1.keys()=} and {new_edges2.keys()=} must match {dims=}")
-        if (dims | e1) & e2 or dims & e1:
-            raise ValueError(f"Edge groups must be disjoint: {dims=}, {e1=}, {e2=}")
-        super().__init__("D2_log_softmax", dims | frozenset(e1) | frozenset(e2), (dims,))
-        self.dims = dims
-        self.new_edges1 = dict(new_edges1)
-        self.new_edges2 = dict(new_edges2)
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
-        raise NotImplementedError("Simplify the log_softmax Hessian first, then differentiate")
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        (inner,) = f.inputs
-        n1, n2 = self.new_edges1, self.new_edges2
-        s = softmax(inner, self.dims)
-        s1 = s.rename(**n1)
-        s2 = s.rename(**n2)
-        d12 = Product([Delta(f.shape[d], n1[d], n2[d]) for d in self.dims])
-        res = Sum([s1 * d12, s1 * s2], [-1, 1])
-        # Broadcast over the output (dims) edges, which the Hessian is constant in.
-        missing = f.shape.keys() - res.edges
-        if missing:
-            res = res @ Ones(**{e: f.shape[e] for e in missing})
-        assert res.shape == f.shape
-        return res.simplify(args)
 
 
 def log_softmax(t: Tensor, dim: DimType = None) -> Tensor:
@@ -1502,7 +1442,7 @@ class _MultiZeroFunction(FunctionSignature):
     """A zero tensor posing as a function of (possibly several) inputs.
 
     Unlike _ZeroFunction this keeps an arbitrary `inputs` signature, so it can
-    stand in as the derivative of any multi-input function (e.g. gather) whose
+    stand in as the derivative of any multi-input function (e.g. one_hot) whose
     gradient vanishes. simplify() collapses it to Zero with the Function's
     (broadcast-aware) shape, so it never needs to be evaluated directly.
     """
@@ -1518,72 +1458,16 @@ class _MultiZeroFunction(FunctionSignature):
         return Zero(**t.shape)
 
 
-class _GatherFunction(FunctionSignature):
-    """Integer indexing into `table` along the edge `dim`.
-
-    gather(table, idx)[..., *idx_edges] = table[idx[*idx_edges], ...] where
-    `idx` holds integral values (carried as floats, like argmax output).
-    The signature consumes only {dim} from the table; every other table edge
-    and every idx edge is broadcast, so the output edges are
-    (table.edges - {dim}) | idx.edges.
-    """
-
-    def __init__(self, dim: str):
-        super().__init__("gather", frozenset(), (frozenset([dim]), frozenset()))
-        self.dim = dim
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
-        if i == 0:
-            # d gather / d table[v'] = [idx == v'] (the scatter / one-hot pattern)
-            if new_edges is None or new_edges.keys() != {self.dim}:
-                raise ValueError(f"Expected new edges for {{{self.dim!r}}}, got {new_edges}")
-            return _GatherJacFunction(self.dim, new_edges[self.dim])
-        # The output is piecewise constant in the (integer-valued) indices,
-        # so the derivative wrt idx is zero, just like argmax/sign.
-        assert i == 1 and not new_edges
-        return _MultiZeroFunction(self.edges, self.inputs)
-
-
-class _GatherJacFunction(FunctionSignature):
-    """Derivative of gather wrt the table: J[v', *idx_edges] = [idx == v'],
-    broadcast over the table's non-vocab edges. simplify() rewrites it
-    unconditionally into one_hot(idx) x Ones(broadcast), so backends only ever
-    see the single-input one-hot function."""
-
-    def __init__(self, dim: str, new_edge: str):
-        # Note new_edge may coincide with dim: the jacobian's output edge only
-        # needs to avoid the *output* edges of gather, which never include dim.
-        super().__init__("D_gather", frozenset([new_edge]), (frozenset([dim]), frozenset()))
-        self.dim = dim
-        self.new_edge = new_edge
-
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
-        # Constant in the table values, piecewise constant in the indices.
-        new_edges = new_edges or {}
-        return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        table, idx = f.inputs
-        vocab_size = table.shape[self.dim]
-        onehot = Function(
-            _OneHotFunction(self.new_edge, self.dim),
-            # Delta(V, dim) is a ones-vector that only carries the vocab size,
-            # so the one-hot does not depend on (or broadcast over) the table.
-            [idx, Delta(vocab_size, self.dim)],
-            {self.new_edge: vocab_size},
-        )
-        broadcast = {e: s for e, s in table.shape.items() if e != self.dim}
-        res = onehot @ Ones(**broadcast) if broadcast else onehot
-        assert res.shape == f.shape
-        return res.simplify(args)
-
-
 class _OneHotFunction(FunctionSignature):
     """one_hot(idx, size_carrier)[eq_edge, *idx_edges] = [idx == eq_edge].
 
     The second input is any tensor with a single edge `dim` whose size is the
     number of classes (a Delta/ones vector); only its size is used. All idx
     edges are broadcast.
+
+    This is the gather-family's only primitive: an indicator of integer data.
+    Its derivative is Zero (a true leaf rule, like argmax/sign): `idx` holds
+    integers carried as floats, so the indicator is piecewise constant.
     """
 
     def __init__(self, eq_edge: str, dim: str):
@@ -1596,6 +1480,19 @@ class _OneHotFunction(FunctionSignature):
         return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
 
 
+def one_hot(idx: Tensor, size: Symbol, dim: str) -> Tensor:
+    """Indicator tensor one_hot(idx)[dim, *idx.edges] = [idx[...] == dim-index].
+
+    `idx` holds integral values carried as floats (like argmax output). The
+    indicator has no differentiable inputs, so anything contracted with it
+    differentiates by the ordinary product rule."""
+    if dim in idx.edges:
+        raise ValueError(f"{dim=} must not be an edge of idx: {idx.edges=}")
+    # Delta(size, dim) is a ones-vector that only carries the number of
+    # classes, so the one-hot does not depend on (or broadcast over) a table.
+    return Function(_OneHotFunction(dim, dim), [idx, Delta(size, dim)], {dim: size})
+
+
 def gather(table: Tensor, idx: Tensor, dim: str) -> Tensor:
     """Integer embedding lookup: index `table` along edge `dim` with `idx`.
 
@@ -1603,8 +1500,13 @@ def gather(table: Tensor, idx: Tensor, dim: str) -> Tensor:
     F.argmax). The result has edges (table.edges - {dim}) | idx.edges, with
     gather(table, idx, dim)[d..., b...] = table[idx[b...], d...].
 
-    The derivative wrt `table` is the scatter (index_add) pattern; the
-    derivative wrt `idx` is zero (indices are discrete).
+    gather is just the contraction of the table with the one_hot indicator of
+    idx: sum_v table[v, d...] * [idx[b...] == v]. It is LINEAR in the table,
+    so its gradient DERIVES automatically as the transposed contraction (the
+    scatter pattern) — no hand-written Jacobian anywhere. The derivative wrt
+    `idx` is zero (indices are discrete). The compiler recognizes the
+    indicator contractions and emits torch.index_select for the forward and
+    zeros().index_add_ for the gradient instead of dense one-hot matmuls.
     """
     if dim not in table.edges:
         raise ValueError(f"{dim=} is not an edge of the table: {table.edges=}")
@@ -1612,7 +1514,7 @@ def gather(table: Tensor, idx: Tensor, dim: str) -> Tensor:
         raise ValueError(f"{dim=} must not be an edge of idx: {idx.edges=}")
     if (table.edges - {dim}) & idx.edges:
         raise ValueError(f"table and idx must not share edges: {table.edges=} {idx.edges=}")
-    return Function(_GatherFunction(dim), (table, idx), {})
+    return table @ one_hot(idx, table.shape[dim], dim)
 
 
 def concat(*ts: Tensor, dim: str):
