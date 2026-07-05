@@ -69,14 +69,18 @@ class Affine(Constant):
         ]
         return Affine(rows, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
-    def structural_graph(self):
+    def structure(self):
         # Two Affines with the same shape but different rows must NOT be
         # isomorphic. Conservative: bake the canonical row signature (with
-        # edge names) into the node name. This may miss some true
-        # isomorphisms under renaming (a CSE opportunity, not a bug).
-        G, edges = super().structural_graph()
-        G.nodes[0]["name"] = ("Affine", self._canonical_rows())
-        return G, edges
+        # edge names) into the label. This may miss some true isomorphisms
+        # under renaming (a CSE opportunity, not a bug).  Orbits/sizes come
+        # from the Constant junctions (they are part of the identity: an
+        # Affine with declared symmetries differs from one without — the old
+        # canon fingerprint ignored symmetries here while the old graph did
+        # not, an unsoundness this resolves).
+        import dataclasses
+
+        return dataclasses.replace(super().structure(), label=("Affine", self._canonical_rows()))
 
 
 # ---- derived structured tensors (the re-derivations) -----------------------

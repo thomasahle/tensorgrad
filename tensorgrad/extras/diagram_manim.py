@@ -1,3 +1,6 @@
+# pyright: reportArgumentType=false
+# (manim stubs expect Point3DLike/Vector3DLike; the plain lists passed here
+#  are accepted at runtime — same stub-gap category as torch._dynamo.)
 """Optional Manim renderer for tensor diagram IR.
 
 Manim is intentionally not a tensorgrad dependency.  Importing this module is

@@ -5,18 +5,21 @@ import math
 from string import ascii_letters
 from types import ModuleType
 from typing import (
+    TYPE_CHECKING,
     AbstractSet,
     Any,
     Generator,
     Iterable,
     KeysView,
-    Literal,
     Optional,
     Sequence,
     Union,
     cast,
     final,
 )
+
+if TYPE_CHECKING:  # type-only: tensor.py imports tensorgrad.structure lazily
+    from tensorgrad.structure import Structure
 from abc import ABC, ABCMeta
 from fractions import Fraction
 from numbers import Number
@@ -41,22 +44,19 @@ _SCALAR_TYPES = (int, float, Fraction, Number)
 
 _lazy_rename = False
 
-# Lazily imported tensorgrad.compiler.canon module (compositional structural
-# hashing). Loaded on first use to avoid a circular import (canon imports this
-# module) and to keep `import tensorgrad` light. False means "unavailable".
-_canon_mod: Union[ModuleType, None, Literal[False]] = None
+# Lazily imported tensorgrad.structure module (declarative structural
+# identity: the graph and fingerprint folds). Loaded on first use to keep
+# `import tensorgrad` light; always available (stdlib + networkx only).
+_canon_mod: Optional[ModuleType] = None
 
 
-def _get_canon() -> Optional[ModuleType]:
+def _get_canon() -> ModuleType:
     global _canon_mod
     if _canon_mod is None:
-        try:
-            import tensorgrad.compiler.canon as canon
+        import tensorgrad.structure as canon
 
-            _canon_mod = canon
-        except ImportError:  # e.g. torch missing: fall back to the nx path
-            _canon_mod = False
-    return _canon_mod or None
+        _canon_mod = canon
+    return _canon_mod
 
 
 def set_lazy_rename(enable: bool = True) -> bool:
@@ -250,12 +250,10 @@ class Tensor(metaclass=TensorMeta):
         # assert below).
         memo = key = None
         if args.get("memoize") and args["grad_steps"] == float("inf"):
-            canon = _get_canon()
-            if canon is not None:
-                memo = args.setdefault("_memo", {})
-                key = (canon.refined_sort_key(self), tuple(self.edges), args["expand"])
-                if (hit := memo.get(key)) is not None:
-                    return hit
+            memo = args.setdefault("_memo", {})
+            key = (_get_canon().refined_sort_key(self), tuple(self.edges), args["expand"])
+            if (hit := memo.get(key)) is not None:
+                return hit
 
         result = self._simplify(args)
 
@@ -306,19 +304,9 @@ class Tensor(metaclass=TensorMeta):
 
     def __hash__(self) -> int:
         # Isomorphism-invariant hash (a == b implies equal hashes), computed
-        # compositionally and memoized on the object by canon.canon_info, so
-        # shared subexpressions are hashed once (the nx WL hash rebuilds the
-        # tree-expanded graph and is exponential on DAG-shaped expressions).
-        canon = _get_canon()
-        if canon is not None:
-            return canon.structural_hash(self)
-        return hash(self.weisfeiler_lehman)
-
-    @cached_property
-    def weisfeiler_lehman(self) -> str:
-        """Hexadecimal string for WL-hash of the input graph."""
-        G, _ = self.edge_structural_graph(match_edges=False)
-        return nx.algorithms.weisfeiler_lehman_graph_hash(G, node_attr="name")
+        # compositionally and memoized on the object by structure.canon_info,
+        # so shared subexpressions are hashed once.
+        return _get_canon().structural_hash(self)
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Tensor):
@@ -345,18 +333,29 @@ class Tensor(metaclass=TensorMeta):
     def _depends_on(self, x: "Variable") -> bool:
         raise NotImplementedError
 
+    def structure(self) -> "Structure":
+        """Declarative structural identity of this node (the single source of
+        truth for isomorphism and hashing; see tensorgrad/structure.py).
+
+        Returns a Structure(label, children, child_roles, junctions) from
+        which both the networkx structural graph and the canonical
+        fingerprints are derived by generic folds."""
+        raise NotImplementedError
+
+    @final
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        """Create a graph representation of the tensor, which can be used for isomorphism testing.
+        """Graph representation of the tensor for isomorphism testing,
+        derived generically from :meth:`structure` (a single mutable graph
+        threaded through the fold).
 
         Returns:
-            A tuple with the following values:
-            - A NetworkX directed graph.
-                - Each node in the top tree is labeled with the producing tensor.
-                - Use name=hashable to label vertices
-            - "edges", a dict of edge_name -> node id
-            - Node 0 should be the root
+            A tuple (G, edges): node 0 is the root; nodes carry a
+            ``name=hashable`` label; ``edges`` maps each free edge name to
+            the node id it attaches to.
         """
-        raise NotImplementedError
+        from tensorgrad.structure import build_graph
+
+        return build_graph(self)
 
     def edge_structural_graph(
         self, match_edges: bool = True, edge_names: Optional[dict[str, Any]] = None
@@ -496,33 +495,30 @@ class Tensor(metaclass=TensorMeta):
             True if the tensors are isomorphic; False otherwise.
         """
         canon = _get_canon()
-        if canon is not None:
-            a, b = canon.canon_info(self), canon.canon_info(other)
-            # Sound reject: any isomorphism (with or without edge matching)
-            # implies equal invariant hashes.
-            if a.coarse_fp != b.coarse_fp:
-                return False
-            if a.refined_fp == b.refined_fp:
-                if not match_edges and not edge_names:
-                    # Sound accept: equal fingerprints imply isomorphic.
-                    return True
-                # Name-sensitive accept: by (I1) equal fingerprints yield a
-                # color-preserving isomorphism, and by (I2) any
-                # color-preserving edge permutation is an automorphism, so a
-                # label-preserving isomorphism exists iff the (color, label)
-                # multisets agree. (Labels mirror edge_structural_graph.)
-                def label(e: str):
-                    default = ("Outer Edge", e) if match_edges else ""
-                    return default if edge_names is None else edge_names.get(e, default)
-
-                if Counter((a.refined_colors[e], label(e)) for e in self.edges) == Counter(
-                    (b.refined_colors[e], label(e)) for e in other.edges
-                ):
-                    return True
-            # Ambiguous (hash-equal but fingerprint/label-distinct): only now
-            # pay for the exact nx isomorphism test.
-        elif self.weisfeiler_lehman != other.weisfeiler_lehman:
+        a, b = canon.canon_info(self), canon.canon_info(other)
+        # Sound reject: any isomorphism (with or without edge matching)
+        # implies equal invariant hashes.
+        if a.coarse_fp != b.coarse_fp:
             return False
+        if a.refined_fp == b.refined_fp:
+            if not match_edges and not edge_names:
+                # Sound accept: equal fingerprints imply isomorphic.
+                return True
+            # Name-sensitive accept: by (I1) equal fingerprints yield a
+            # color-preserving isomorphism, and by (I2) any
+            # color-preserving edge permutation is an automorphism, so a
+            # label-preserving isomorphism exists iff the (color, label)
+            # multisets agree. (Labels mirror edge_structural_graph.)
+            def label(e: str):
+                default = ("Outer Edge", e) if match_edges else ""
+                return default if edge_names is None else edge_names.get(e, default)
+
+            if Counter((a.refined_colors[e], label(e)) for e in self.edges) == Counter(
+                (b.refined_colors[e], label(e)) for e in other.edges
+            ):
+                return True
+        # Ambiguous (hash-equal but fingerprint/label-distinct): only now
+        # pay for the exact nx isomorphism test.
         G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
         return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
@@ -681,18 +677,17 @@ class Variable(Tensor):
         self._symmetries = self._check_symmetries(self._shape, _symmetries)
         self._constraints = self._check_constraints(_constraints)
         # Deterministic, hash-stable identity keys for the equations, used by
-        # structural_graph/node_name and repr (tensors aren't orderable).
+        # structure() (the structural-identity label) and repr (tensors aren't
+        # orderable).
         self._constraint_keys = tuple(sorted(self._equation_key(l, r) for l, r in self._constraints))
 
     @staticmethod
     def _equation_key(lhs: "Tensor", rhs: "Tensor") -> tuple:
         canon = _get_canon()
-        if canon is not None:
-            return (
-                canon.structural_hash(lhs), tuple(sorted(lhs.edges)),
-                canon.structural_hash(rhs), tuple(sorted(rhs.edges)),
-            )
-        return (repr(lhs), (), repr(rhs), ())
+        return (
+            canon.structural_hash(lhs), tuple(sorted(lhs.edges)),
+            canon.structural_hash(rhs), tuple(sorted(rhs.edges)),
+        )
 
     def _check_constraints(
         self, constraints: Optional[Iterable[tuple["Tensor", "Tensor"]]]
@@ -882,43 +877,26 @@ class Variable(Tensor):
         constraints = f".with_eq_constraint(<{len(self._constraints)} equations>)" if self._constraints else ""
         return f"Variable({', '.join(args)}){symmetries}{constraints}"
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        # Constraints are part of the node name (like the variable name itself), so a
-        # constrained variable is never isomorphic to an unconstrained one, and rename/
-        # substitute (which go through isomorphism) keep track of them for free.
-        node_name = ("Variable", self.name)
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure, size_key
+
+        # Constraints are part of the label (like the variable name itself),
+        # so a constrained variable is never isomorphic to an unconstrained
+        # one, and rename/substitute (which go through isomorphism) keep
+        # track of them for free.
+        label = ("Variable", self.name)
         if self._constraints:
-            node_name += (self._constraint_keys,)
-        G.add_node(0, name=node_name, tensor=self)
-        edges = {}
-        # Symmetries are more fine-grained than shapes, since two dims can have
-        # the same size, but not be symmetric. E.g. an asymmetric square matrix.
-        # Example of variable with 2 sizes, 3 symmetry orbits and 4 edges:
-        # +-size 1-sym 1-e 1
-        # |  +-----sym 2-e 2
-        # +-size 2-sym 3-e 3
-        #           +----e 4
-        for size in set(self.shape.values()):
-            # Symbols are identified by name and assumptions. We might want to have edges
-            # with the same name but different assumptions, so add the id to the node name.
-            G.add_node(size_node := G.number_of_nodes(), name=(f"size={size.name}", id(size)))
-            G.add_edge(0, size_node)
-            # Find each orbit with the given size (see note above about fine-grained-ness)
-            for orbit in self._symmetries:
-                e, *_ = orbit
-                if self.shape[e] != size:
-                    continue
-                # Orbits are named after the variable edges. This ensures that variables are only
-                # isomoprhic with other variables with the same edge names.
-                orbit_name = " ".join(sorted(orbit))
-                G.add_node(orbit_node := G.number_of_nodes(), name=("Orbit Node", orbit_name))
-                G.add_edge(size_node, orbit_node)
-                # All the free edges point to an orbit node
-                for e in orbit:
-                    edges[e] = orbit_node
-        assert edges.keys() == self.edges
-        return G, edges
+            label += (self._constraint_keys,)
+        # One junction per symmetry orbit: its edges are the same wire.  The
+        # orbit port is named after the (sorted) edge names, so variables are
+        # only isomorphic to variables with the SAME edge names — the names
+        # are load-bearing identity for Variables (unlike every other node).
+        junctions = []
+        for orbit in self._symmetries:
+            e0 = next(iter(orbit))
+            port = ("port", ("orbit", size_key(self._shape[e0]), " ".join(sorted(orbit))))
+            junctions.append(frozenset({port} | {("free", e) for e in orbit}))
+        return Structure(label, junctions=frozenset(junctions))
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
         return self
@@ -1022,18 +1000,18 @@ class Rename(Tensor):
         inner = _substitute_memo(self.tensor, x, y, memo)
         return self if inner is self.tensor else Rename(inner, self.mapping)
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        # Rename is the only tensor that doesn't actually create its own node in the graph
-        # This allows Variable(i, j=i).with_symmetries("i j") to be isomorphic to
-        # Rename(Variable(j, i=j).with_symmetries("i j"), {"i": "j", "j": "i"})
-        G, t_edges = self.tensor.structural_graph()
-        edges = {}
-        for o, node in t_edges.items():
-            e = self.mapping.get(o, o)
-            edges[e] = node
-        assert edges.keys() == self.edges
-        return G, edges
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure
 
+        # Rename is the only tensor that doesn't exist structurally
+        # (transparent=True): the folds splice the inner tensor through and
+        # just relocate its free edges.  This allows
+        # Variable(i, j=i).with_symmetries("i j") to be isomorphic to
+        # Rename(Variable(j, i=j).with_symmetries("i j"), {"i": "j", "j": "i"})
+        junctions = frozenset(
+            frozenset({("child", 0, o), ("free", self.mapping.get(o, o))}) for o in self.tensor.edges
+        )
+        return Structure(("Rename",), (self.tensor,), ("inner",), junctions, transparent=True)
 
 class Constant(Tensor, ABC):
     """
@@ -1061,24 +1039,17 @@ class Constant(Tensor, ABC):
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Constant":
         return type(self)(_symmetries=symmetries, **self._shape)
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name=type(self).__name__, tensor=self)
-        edges = {}
-        for size in set(self.shape.values()):
-            # All of this is more or less equal to Variable
-            G.add_node(size_node := G.number_of_nodes(), name=f"size={size.name}({id(size)})")
-            G.add_edge(0, size_node)
-            # Find each orbit with the given size (see note above about fine-grained-ness)
-            for orbit in self._symmetries:
-                e, *_ = orbit
-                if self.shape[e] != size:
-                    continue
-                G.add_node(orbit_node := G.number_of_nodes(), name="Orbit Node")
-                G.add_edge(size_node, orbit_node)
-                for e in orbit:
-                    edges[e] = orbit_node
-        return G, edges
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure, size_key
+
+        # Like Variable, but orbits are anonymous (no edge names in the
+        # port): orbits of equal size are interchangeable as blocks.
+        junctions = []
+        for orbit in self._symmetries:
+            e0 = next(iter(orbit))
+            port = ("port", ("orbit", size_key(self._shape[e0])))
+            junctions.append(frozenset({port} | {("free", e) for e in orbit}))
+        return Structure(("Constant", type(self).__name__), junctions=frozenset(junctions))
 
     def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
         return self
@@ -1136,12 +1107,14 @@ class Delta(Constant):
                 break
         return tensors
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name=type(self).__name__, tensor=self)
-        G.add_node(size_node := G.number_of_nodes(), name=f"size={self.size.name}({id(self.size)})")
-        G.add_edge(0, size_node)
-        return G, {e: size_node for e in self.edges}
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure, size_key
+
+        # ALL edges are the same wire: one junction with one port.  The order
+        # of the Delta is implied by the junction's free-edge count.
+        sk = size_key(self._size)
+        junction = frozenset({("port", ("Delta", sk))} | {("free", e) for e in self.edges})
+        return Structure(("Delta", sk), junctions=frozenset({junction}))
 
     ################################################################################
     # There are many simplify rules for Delta. We split them into separate methods for clarity.
@@ -1416,6 +1389,15 @@ class FunctionSignature(ABC):
         """
         return t
 
+    def param_key(self) -> tuple:
+        """Structural identity of the signature's parameters beyond `name`.
+
+        Enters the Function's structural label (hashing/isomorphism).
+        Subclasses whose behavior depends on parameters NOT reflected in
+        their `name` should override this (pow/scale already bake `k`/`alpha`
+        into the name).  Must return a (nested) tuple of str/int/bool."""
+        return ()
+
     def __repr__(self) -> str:
         return f"FunctionSignature('{self.name}', {set(self.edges)}, {[set(s) for s in self.inputs]})"
 
@@ -1607,35 +1589,30 @@ class Function(Tensor):
             parts.append(part)
         return Sum(parts)
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name=(type(self).__name__, self.signature.name), tensor=self)
-        edges = {}
-        # (1) We add a node for the "function" tensor itself
-        # TODO: Why is this needed?
-        G.add_node(1, name=("f", self.signature.name), tensor=self)
-        G.add_edge(0, 1)
-        # (2) We add a node for each output edge
-        # TODO: We should group out-edges by the size-type, similarly to Variable/Constant
-        # And of course when we add symmetries to outputs, we need to add that too.
-        for i, e in enumerate(self.shape_out):
-            G.add_node(i + 2, name=("Edge Out", e))
-            G.add_edge(1, i + 2)
-            edges[e] = i + 2
-        # (3) And we add nodes for all the input tensors
-        for i, (t, input_edges) in enumerate(zip(self.inputs, self.signature.inputs)):
-            # Compute graph from input tensor, and ensure it uses distinct node numbers
-            # Tag the inputs with {i} since order matters for function inputs.
-            G, t_edges = _add_structural_graph(G, t, root_edge_label=f"{i}")
-            # Connect tensor to function. We don't need to label here, since
-            # the input tensor already has labeled its own edges as much as it needs to.
-            for e in input_edges:
-                G.add_edge(t_edges[e], 1)
-            # Finally register free edges
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure
+
+        # Inputs are ordered (slotted roles 0..n-1).  A consumed edge wires
+        # its input to an anonymous per-input port (which consumed edges an
+        # input provides is distinguished by the input's own structure, not
+        # by the edge names); a non-consumed input edge broadcasts through as
+        # a free edge; output edges are ports named after the output edge —
+        # output NAMES are part of the function's identity.
+        junctions = set()
+        for k, (t, es) in enumerate(zip(self.inputs, self.signature.inputs)):
             for e in t.edges:
-                if e not in input_edges:
-                    edges[e] = t_edges[e]
-        return G, edges
+                if e in es:
+                    junctions.add(frozenset({("child", k, e), ("port", ("in", k))}))
+                else:
+                    junctions.add(frozenset({("child", k, e), ("free", e)}))
+        for e in self.shape_out:
+            junctions.add(frozenset({("port", ("out", e)), ("free", e)}))
+        return Structure(
+            ("Function", self.signature.name, self.signature.param_key()),
+            tuple(self.inputs),
+            tuple(range(len(self.inputs))),
+            frozenset(junctions),
+        )
 
     def __repr__(self) -> str:
         args = []
@@ -1702,19 +1679,16 @@ class Derivative(Tensor):
             {o: kwargs.get(e, e) for o, e in self.new_names.items()},
         )
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name="Derivative", tensor=self)
-        edges = {}
-        # We add a node for the "wrt" tensor
-        # and connect new_edges to point to the respective edges in self.x
-        G, x_edges = _add_structural_graph(G, self.x, root_edge_label="self.x")
-        edges |= {e: x_edges[oe] for oe, e in self.new_names.items()}
-        # Then we add the differentiated tensor
-        G, t_edges = _add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
-        edges |= t_edges
-        assert edges.keys() == self.edges
-        return G, edges
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure
+
+        # The wrt-variable is a slotted child (its full identity counts); each
+        # new_names edge is a free edge on the same wire as the corresponding
+        # edge of x (so symmetric x-edges make the new edges interchangeable,
+        # and the CHOICE of new names is transparent).
+        junctions = {frozenset({("child", 1, e), ("free", e)}) for e in self.tensor.edges}
+        junctions |= {frozenset({("child", 0, o), ("free", n)}) for o, n in self.new_names.items()}
+        return Structure(("Derivative",), (self.x, self.tensor), ("wrt", "tensor"), frozenset(junctions))
 
     def __repr__(self) -> str:
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
@@ -1868,8 +1842,7 @@ class Product(Tensor):
         # Deterministic factor order: sort by the seed-stable structural
         # fingerprint, so commutative construction order (and PYTHONHASHSEED)
         # doesn't leak into the simplified result.
-        if (canon := _get_canon()) is not None:
-            tensors.sort(key=canon.refined_sort_key)
+        tensors.sort(key=_get_canon().refined_sort_key)
 
         # Base cases
         if len(tensors) == 1:
@@ -1922,29 +1895,25 @@ class Product(Tensor):
         assert Product(components).edges == self.edges
         return components
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name=self.__class__.__name__, tensor=self)
-        edges = {}
-        inner_edges = defaultdict(list)
-        for t in self.factors:
-            G, t_edges = _add_structural_graph(G, t)
-            for e, node in t_edges.items():
-                inner_edges[e].append(node)
-        for e, nodes in inner_edges.items():
-            if len(nodes) == 2:
-                # Note that inner edges are bidirectional, since tensor products
-                # are associative.
-                n1, n2 = nodes
-                G.add_edge(n1, n2)
-                G.add_edge(n2, n1)
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure
+
+        # Factors are an interchangeable multiset (all the same role).  An
+        # edge name shared by exactly two factors is an inner wire (the name
+        # itself is discarded); a single-occurrence edge is free.
+        owners: dict[str, list[int]] = defaultdict(list)
+        for i, f in enumerate(self.factors):
+            for e in f.edges:
+                owners[e].append(i)
+        junctions = set()
+        for e, os in owners.items():
+            if len(os) == 2:
+                junctions.add(frozenset({("child", os[0], e), ("child", os[1], e)}))
             else:
-                # If the edge is only present once, it's an outer edge
-                assert e in self.edges, f"{e} not in {self.edges}"
-                (n1,) = nodes
-                edges[e] = n1
-        assert edges.keys() == self.edges
-        return G, edges
+                junctions.add(frozenset({("child", os[0], e), ("free", e)}))
+        return Structure(
+            ("Product",), tuple(self.factors), ("factor",) * len(self.factors), frozenset(junctions)
+        )
 
     def _depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.factors)
@@ -2086,8 +2055,8 @@ class Sum(Tensor):
         # structural fingerprint, so commutative construction order (and
         # PYTHONHASHSEED) doesn't leak into the simplified result. Positive
         # weights sort first purely for presentation (avoid a leading minus).
-        if (canon := _get_canon()) is not None:
-            ws_tensors.sort(key=lambda wt: (wt[0] < 0, canon.refined_sort_key(wt[1]), str(wt[0])))
+        canon = _get_canon()
+        ws_tensors.sort(key=lambda wt: (wt[0] < 0, canon.refined_sort_key(wt[1]), str(wt[0])))
         weights, tensors = zip(*ws_tensors)
         # If there is just one tensor with weight 1, we don't need LinearComb
         if weights == (1,):
@@ -2097,24 +2066,21 @@ class Sum(Tensor):
     def __repr__(self) -> str:
         return f"Sum({self.terms}, {self.weights})"
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name=self.__class__.__name__, tensor=self)
-        edges = {}
-        # Create special "Plus nodes" to collect common edges
-        for i, e in enumerate(self.edges):
-            # Note: No need to add the shape here. It's already in the sub-tensors
-            G.add_node(i + 1, name="Plus Node")
-            edges[e] = i + 1
-        for t, w in zip(self.terms, self.weights):
-            # The weights are a little akward. There a lot of options for how to handle them.
-            # E.g. the idea of just using a weighted Delta([]) somehow. But this works.
-            G, t_edges = _add_structural_graph(G, t, root_edge_label=f"Weight {w}")
-            # Connect tensor edges to the plus nodes
-            for e, node in t_edges.items():
-                G.add_edge(node, edges[e])
-        assert edges.keys() == self.edges
-        return G, edges
+    def structure(self) -> "Structure":
+        from tensorgrad.structure import Structure
+
+        # Terms with equal weights are interchangeable (roles carry str(w),
+        # matching numerically-equal weights of different types the same way
+        # the old nx labels f"Weight {w}" did).  Per free edge, one hyper-
+        # junction over all terms: __init__ broadcasts, so every term has
+        # every edge.
+        n = len(self.terms)
+        junctions = frozenset(
+            frozenset({("child", i, e) for i in range(n)} | {("free", e)}) for e in self.edges
+        )
+        return Structure(
+            ("Sum",), tuple(self.terms), tuple(("term", str(w)) for w in self.weights), junctions
+        )
 
     def _depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.terms)
@@ -2150,41 +2116,6 @@ def _record_simplify_provenance(args: dict[str, Any], before: Tensor, after: Ten
     recorder = args.get("provenance")
     if recorder is not None:
         recorder.record(before, after)
-
-
-def _add_structural_graph(
-    G: nx.MultiDiGraph, tensor: Tensor, root_edge_label: Optional[Union[bool, str]] = None
-) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-    """
-    Compute the structural graph for a tensor and merge it with an existing graph G.
-
-    Args:
-        G: An existing MultiDiGraph.
-        tensor: The tensor whose graph is to be added.
-        root_edge_label: An optional label for the root edge.
-
-    Returns:
-        A tuple (G, t_edges) where G is the updated graph and t_edges maps edge names to node IDs.
-    """
-    assert set(G.nodes()) == set(range(G.number_of_nodes())), f"{G.nodes()}"
-    Gx, x_edges = tensor.structural_graph()
-    offset = G.number_of_nodes()
-    assert set(Gx.nodes()) == set(range(Gx.number_of_nodes())), f"{Gx.nodes()}"
-    # We also assume that 0 is the root
-    Gx = nx.relabel_nodes(Gx, {i: i + offset for i in Gx.nodes()})
-    x_root = offset
-    x_edges = {e: (n + offset) for e, n in x_edges.items()}
-    G = cast(nx.MultiDiGraph, nx.union(G, Gx))
-    # Make sure to connect the root of Gx to the root of G, possibly with an "edge label"
-    if root_edge_label is not None:
-        e = G.number_of_nodes()
-        G.add_node(e, name=root_edge_label)
-        G.add_edge(e, x_root)
-        G.add_edge(0, e)
-    else:
-        G.add_edge(0, x_root)
-    assert x_edges.keys() == tensor.edges, f"{x_edges.keys()} != {tensor.edges}"
-    return G, x_edges
 
 
 def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = "") -> dict[str, str]:

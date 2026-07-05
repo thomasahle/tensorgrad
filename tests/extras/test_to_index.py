@@ -113,8 +113,8 @@ def test_higher_order_trace():
 
     trace_ABC = F.trace(A @ B @ C).simplify()
     # simplify() orders Product factors canonically (by structural
-    # fingerprint); tr(B C A) is the same trace up to cyclic rotation.
-    assert to_index_free(trace_ABC) == "tr(B C A)"
+    # fingerprint); any cyclic rotation is the same trace.
+    assert to_index_free(trace_ABC) == "tr(A B C)"
 
 
 def test_complex_expression():
@@ -174,12 +174,12 @@ def test_mixed_product():
 
     p = (v1 @ A @ v2).simplify()
     # simplify() orders Product factors canonically (by structural fingerprint).
-    assert to_index(p) == "A_{i,j} x_{i} y_{j}"
+    assert to_index(p) == "x_{i} A_{i,j} y_{j}"
     assert to_index_free(p) == "x^T A y"
 
     p = (v1 @ A).simplify()
-    assert to_index(p) == "A_{i,j} x_{i}"
-    assert to_index_free(p) == "A^T x"
+    assert to_index(p) == "x_{i} A_{i,j}"
+    assert to_index_free(p) == "x^T A"
 
     p = (A @ v2).simplify()
     assert to_index(p) == "A_{i,j} y_{j}"

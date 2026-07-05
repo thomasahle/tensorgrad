@@ -5,7 +5,6 @@ from tensorgrad.tensor import (
     Sum,
     Tensor,
     Variable,
-    _add_structural_graph,
     _unused_edge_names,
     Delta,
     Zero,
@@ -14,8 +13,6 @@ from tensorgrad.tensor import (
 import tensorgrad.functions as F
 from tensorgrad.functions import _PowerFunction
 from typing import cast
-
-import networkx as nx
 
 
 class Expectation(Tensor):
@@ -227,15 +224,19 @@ class Expectation(Tensor):
     def __repr__(self):
         return f"E[{self.tensor}]"
 
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        G = nx.MultiDiGraph()
-        G.add_node(0, name=type(self).__name__, tensor=self)
-        G, t_edges = _add_structural_graph(G, self.tensor, root_edge_label="self.tensor")
-        G, _ = _add_structural_graph(G, self.wrt, root_edge_label="self.wrt")
-        G, _ = _add_structural_graph(G, self.mu, root_edge_label="self.mu")
+    def structure(self):
+        from tensorgrad.structure import Structure
+
+        # Free edges are the tensor's; wrt/mu/covar contribute their full
+        # identity as slotted children but expose no edges.
         # TODO: We should add the covar_names here
-        G, _ = _add_structural_graph(G, self.covar, root_edge_label="self.covar")
-        return G, t_edges
+        junctions = frozenset(frozenset({("child", 0, e), ("free", e)}) for e in self.tensor.edges)
+        return Structure(
+            ("Expectation",),
+            (self.tensor, self.wrt, self.mu, self.covar),
+            ("tensor", "wrt", "mu", "covar"),
+            junctions,
+        )
 
     def _rename(self, **kwargs: str):
         # The variables, wrt, mu, covar shouldn't influence our free edge names

@@ -191,11 +191,17 @@ class TorchCodegen:
         # factoring pass can merge/cancel, and re-factoring in turn co-locates
         # numerator/denominator pairs for one more stabilization sweep.
         outputs = factor_outputs(self.builder, outputs, dims)
-        outputs = stabilize_outputs(self.builder, outputs)
         # Consolidation: Schwartz-Zippel value numbering merges nodes that
         # compute the same tensor (up to an axis permutation) through
         # different groupings — chiefly the per-gradient-output cotangent
         # chains that no structural pass can unify (see consolidate.py).
+        # Running it BEFORE the final stabilization sweep also unifies
+        # axis-permuted twins (the same subexpression lowered with two wire
+        # orders), which the stabilizer's hash-consed identity checks cannot
+        # see through — e.g. the gelu-grad sinh/cosh ratio only fuses to tanh
+        # once numerator and denominator share one exponent node.
+        outputs = consolidate_outputs(self.builder, outputs)
+        outputs = stabilize_outputs(self.builder, outputs)
         outputs = consolidate_outputs(self.builder, outputs)
 
         order = toposort([node for node, _ in outputs])
