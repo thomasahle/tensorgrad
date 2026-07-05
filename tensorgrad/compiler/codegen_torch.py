@@ -34,6 +34,7 @@ from tensorgrad.compiler.ir import (
     toposort,
 )
 from tensorgrad.compiler.affine import indicator_tensor
+from tensorgrad.compiler.consolidate import consolidate_outputs
 from tensorgrad.compiler.factor import factor_outputs
 from tensorgrad.compiler.layout import assign_layouts, matmul_groups
 from tensorgrad.compiler.stabilize import stabilize_outputs
@@ -187,6 +188,11 @@ class TorchCodegen:
         # numerator/denominator pairs for one more stabilization sweep.
         outputs = factor_outputs(self.builder, outputs, dims)
         outputs = stabilize_outputs(self.builder, outputs)
+        # Consolidation: Schwartz-Zippel value numbering merges nodes that
+        # compute the same tensor (up to an axis permutation) through
+        # different groupings — chiefly the per-gradient-output cotangent
+        # chains that no structural pass can unify (see consolidate.py).
+        outputs = consolidate_outputs(self.builder, outputs)
 
         order = toposort([node for node, _ in outputs])
         output_ids = {id(node) for node, _ in outputs}
