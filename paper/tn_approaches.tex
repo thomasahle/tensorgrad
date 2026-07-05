@@ -32,9 +32,13 @@
   \iftn@dseen \fill (\tikzlastnode.north east) circle (1.2pt);\fi}
 \def\tn@leg#1/#2/#3\@nil{%
   \tn@checkstar#1*\@nil
-  \iftn@d % derivative whisker: fans out from the SINGLE dot at north east
+  \iftn@d % derivative whisker from the SINGLE dot; bends toward its side
     \global\tn@dseentrue
-    \draw[every leg] (\tikzlastnode.north east) -- ++(\tn@ang:\pgfkeysvalueof{/tikz/leg length});%
+    \ifdim\tn@ang pt<90pt
+      \draw[every leg] (\tikzlastnode.north east) .. controls +(45:.12) .. ++(.28,.18);%
+    \else
+      \draw[every leg] (\tikzlastnode.north east) .. controls +(80:.12) .. ++(-.2,.28);%
+    \fi
   \else
     \if\relax\detokenize{#2}\relax
       \draw[every leg] (\tikzlastnode) -- ++(\tn@ang:\pgfkeysvalueof{/tikz/leg length});%
@@ -88,7 +92,7 @@
   \tl_if_in:NnTF \l_tmpb_tl { ' }
    {
     \tl_remove_all:Nn \l_tmpb_tl { ' }
-    \use:x { \exp_not:N \node [ legs = { 40 * , 20 * } ]
+    \use:x { \exp_not:N \node [ legs = { 135 * , 45 * } ]
              ( n \int_use:N \l_tmpa_int ) at \tl_use:N \l_tmpa_tl }
       { $ ( \tl_use:N \l_tmpb_tl ) $ } ;
    }
@@ -143,7 +147,7 @@ Same test diagrams in each approach. Shared base: \texttt{tn} picture style,
 \begin{tcblisting}{title=A1: derivative of $a^T X b$}
 \begin{tikzpicture}[tn]
   \node[legs={180}] (a) {$a$};
-  \node[right=.8em of a, legs={40*,20*}] (X) {$(X)$};
+  \node[right=.8em of a, legs={135*,45*}] (X) {$(X)$};
   \node[right=.8em of X, legs={0}]   (b) {$b$};
   \draw (a) -- (X) -- (b);
 \end{tikzpicture}
@@ -176,7 +180,7 @@ Same test diagrams in each approach. Shared base: \texttt{tn} picture style,
 \begin{tikzpicture}[tn]
 \graph[grow right sep=.8em] {
   l[as=, coordinate] -- a[as=$a$] --
-  X[as=$(X)$, legs={40*,20*}] --
+  X[as=$(X)$, legs={135*,45*}] --
   b[as=$b$] -- r[as=, coordinate]
 };
 \end{tikzpicture}

@@ -21,8 +21,8 @@ When there are not too many edges, we will use a simple inline notation like thi
    \draw (T) -- ++(-.5,-.1);
    \draw (T) -- ++(-.5,+.1);
    \draw (T) -- ++(+.5,0);
-   \draw[d] (T.east) -- ++(.2,.2);
-   \draw[d] (T.east) -- ++(.3,.1);
+   \draw[d] (T.east) .. controls +(80:.12) .. ++(-.2,.28);
+   \draw[d] (T.east) .. controls +(45:.12) .. ++(.28,.18);
 \end{tikzpicture}
 \]
 
@@ -125,8 +125,8 @@ The following first order derivatives show the basic linearity properties of the
          \node[right=1em of a1] (a2) {$b)$};
          \path (a0) edge (a1);
          \path (a1) edge (a2);
-         \draw[d] (a2.east) -- ++(.2,.2);
-         \draw[d] (a2.east) -- ++(.3,.1);
+         \draw[d] (a2.east) .. controls +(80:.12) .. ++(-.2,.28);
+         \draw[d] (a2.east) .. controls +(45:.12) .. ++(.28,.18);
       \end{tikzpicture}
    &=
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -135,8 +135,8 @@ The following first order derivatives show the basic linearity properties of the
          \node[right=1em of a1] (a2) {$b$};
          \path (a0) edge (a1);
          \path (a1) edge (a2);
-         \draw[d] (a1.east) -- ++(.2,.2);
-         \draw[d] (a1.east) -- ++(.3,.1);
+         \draw[d] (a1.east) .. controls +(80:.12) .. ++(-.2,.28);
+         \draw[d] (a1.east) .. controls +(45:.12) .. ++(.28,.18);
       \end{tikzpicture}
       =
       \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
@@ -155,8 +155,8 @@ The following first order derivatives show the basic linearity properties of the
          \node[right=1em of a0] (a1) {$X$};
          \node[right=1em of a1] (a2) {$)$};
          \draw (a0) -- (a1) -- (a2);
-         \draw[d] (a2.east) -- ++(.2,.2) node[midway, above left, font=\tiny] {i};
-         \draw[d] (a2.east) -- ++(.3,.1) node[midway, below right, font=\tiny] {j};
+         \draw[d] (a2.east) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny] {i};
+         \draw[d] (a2.east) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny] {j};
       \end{tikzpicture}
    &=
       \begin{tikzpicture}[baseline=(a.base), inner sep=1pt]
@@ -178,8 +178,8 @@ The following first order derivatives show the basic linearity properties of the
          \draw (a0) -- (a1) node[midway, above left, font=\tiny] {i};
          \draw (a1) -- (a2);
          \draw (a2) -- (a3) node[midway, below right, font=\tiny] {j};
-         \draw[d] (a3.east) -- ++(.2,.2) node[midway, above left, font=\tiny] {m};
-         \draw[d] (a3.east) -- ++(.3,.1) node[midway, below right, font=\tiny] {n};
+         \draw[d] (a3.east) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny] {m};
+         \draw[d] (a3.east) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny] {n};
       \end{tikzpicture}
    &=
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -190,8 +190,8 @@ The following first order derivatives show the basic linearity properties of the
          \path (a0) edge (a1);
          \path (a1) edge (a2);
          \path (a2) edge (a3);
-         \draw[d] (a1.east) -- ++(.2,.2);
-         \draw[d] (a1.east) -- ++(.3,.1);
+         \draw[d] (a1.east) .. controls +(80:.12) .. ++(-.2,.28);
+         \draw[d] (a1.east) .. controls +(45:.12) .. ++(.28,.18);
       \end{tikzpicture}
  \\&&&=
       \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -234,8 +234,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \path (b1) edge (b2);
       \node at (-.25, .25) {$\bigg($};
       \node at (1.25, .25) {$\bigg)$};
-      \draw[d] (1.35, .4) -- ++(.2,.2) node[midway, above left, font=\tiny] {i};
-      \draw[d] (1.35, .4) -- ++(.3,.1) node[midway, below right, font=\tiny] {j};
+      \draw[d] (1.35, .4) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny] {i};
+      \draw[d] (1.35, .4) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny] {j};
    \end{tikzpicture}
    &=
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
@@ -249,8 +249,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \node[copydot] (b2) at (1, .5) {};
       \path (b0) edge (b1);
       \path (b1) edge (b2);
-      \draw[d] (.83,.0) -- ++(.2,.2);
-      \draw[d] (.83,.0) -- ++(.3,.1);
+      \draw[d] (.83,.0) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (.83,.0) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    +
    \begin{tikzpicture}[baseline=.5em, inner sep=1pt]
@@ -264,8 +264,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \node[copydot] (b2) at (1, .5) {};
       \path (b0) edge (b1);
       \path (b1) edge (b2);
-      \draw[d] (0.83,.5) -- ++(.2,.2);
-      \draw[d] (0.83,.5) -- ++(.3,.1);
+      \draw[d] (0.83,.5) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (0.83,.5) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    %\\[.3em]
    \\
@@ -293,8 +293,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
    &
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a0) {$(\vecmatvec{.5em}{b}{X^T,X}{c})$};
-      \draw[d] (a0.east) -- ++(.2,.2);
-      \draw[d] (a0.east) -- ++(.3,.1);
+      \draw[d] (a0.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a0.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    &=
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -305,8 +305,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \draw (a0) -- (a1);
       \draw (a1) -- (a2);
       \draw (a2) -- (a3);
-      \draw[d] (a2.east) -- ++(.2,.2);
-      \draw[d] (a2.east) -- ++(.3,.1);
+      \draw[d] (a2.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a2.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
  \\&&&+
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -317,8 +317,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \draw (a0) -- (a1);
       \draw (a1) -- (a2);
       \draw (a2) -- (a3);
-      \draw[d] (a1.east) -- ++(.2,.2);
-      \draw[d] (a1.east) -- ++(.3,.1);
+      \draw[d] (a1.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a1.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    \\[.3em]&&&=
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -374,8 +374,8 @@ Note that this rule holds independently of how many edges are between $T$ and $U
       \draw (a1) -- (a2);
       \draw (a2) -- (a3);
       \draw (a3) -- (a4) node[midway, below right, font=\tiny] {l};
-      \draw[d] (a4.east) -- ++(.2,.2) node[midway, above left, font=\tiny] {i};
-      \draw[d] (a4.east) -- ++(.3,.1) node[midway, below right, font=\tiny] {j};
+      \draw[d] (a4.east) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny] {i};
+      \draw[d] (a4.east) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny] {j};
    \end{tikzpicture}
    &=
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
@@ -481,8 +481,8 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
       \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
       \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
-      \draw[d] (X4.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
-      \draw[d] (X4.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
+      \draw[d] (X4.east) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny]{i};
+      \draw[d] (X4.east) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny]{j};
    \end{tikzpicture}
    \\
    &&&=\quad
@@ -495,8 +495,8 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
       \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
       \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
-      \draw[d] (X0.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
-      \draw[d] (X0.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
+      \draw[d] (X0.east) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny]{i};
+      \draw[d] (X0.east) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny]{j};
    \end{tikzpicture}
  \\&&&+\quad\dots
  \\&&&+\quad
@@ -509,8 +509,8 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \draw (X0) -- ++(-.5,0) node[midway, above left, font=\tiny] {k};
       \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
       \draw (X4) -- ++(.5,0) node[midway, below right, font=\tiny] {l};
-      \draw[d] (X4.east) -- ++(.2,.2)node[midway, above left, font=\tiny]{i};
-      \draw[d] (X4.east) -- ++(.3,.1)node[midway, below right, font=\tiny]{j};
+      \draw[d] (X4.east) .. controls +(80:.12) .. ++(-.2,.28) node[pos=1, anchor=south east, font=\tiny]{i};
+      \draw[d] (X4.east) .. controls +(45:.12) .. ++(.28,.18) node[pos=1, anchor=west, font=\tiny]{j};
    \end{tikzpicture}
  \\&&&=\quad
  \sum_{r=0}^{n-1}
@@ -532,8 +532,8 @@ The Matrix Cookbook includes a few derivatives we can handle this way.
       \node[right=.25 of X0] (X3) {$\dots$};
       \node[right=.25 of X3] (X4) {$X-b)$};
       \draw (X0) -- (X3) -- (X4);
-      \draw[d] (X4.east) -- ++(.2,.2);
-      \draw[d] (X4.east) -- ++(.3,.1);
+      \draw[d] (X4.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (X4.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    \\
    &&&=\quad
@@ -579,8 +579,8 @@ These can be elegant in classical notation, since traces are scalar, so the deri
       \node[right=1em of a0] (a1) {$X$};
       \node[right=1em of a1] (a3) {$)$};
       \path (a1) edge[out=160, in=20, loop] (a1);
-      \draw[d] (a3.east) -- ++(.2,.2);
-      \draw[d] (a3.east) -- ++(.3,.1);
+      \draw[d] (a3.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a3.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    \hspace{-1em}
    &=
@@ -588,8 +588,8 @@ These can be elegant in classical notation, since traces are scalar, so the deri
    \begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
       \node (a1) {$(X)$};
       \path (a1) edge[out=160, in=20, loop, looseness=4] (a1);
-      \draw[d] (a1.south east) -- ++(.2,-.2);
-      \draw[d] (a1.south east) -- ++(.3,-.1);
+      \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-2em}
  \\&&&=
@@ -616,8 +616,8 @@ These can be elegant in classical notation, since traces are scalar, so the deri
       \node[right=1em of a2] (a3) {$)$};
       \draw (a1) -- (a2);
       \path (a1) edge[out=160, in=20, looseness=2] (a2);
-      \draw[d] (a3.east) -- ++(.2,.2);
-      \draw[d] (a3.east) -- ++(.3,.1);
+      \draw[d] (a3.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a3.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    &=
    \hspace{-2em}
@@ -626,8 +626,8 @@ These can be elegant in classical notation, since traces are scalar, so the deri
       \node[right=1em of a1] (a2) {$A$};
       \draw (a1) -- (a2);
       \path (a1) edge[out=160, in=20, looseness=2] (a2);
-      \draw[d] (a1.south east) -- ++(.2,-.2);
-      \draw[d] (a1.south east) -- ++(.3,-.1);
+      \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-2em}
  \\&&&=
@@ -658,8 +658,8 @@ These can be elegant in classical notation, since traces are scalar, so the deri
       \node[right=1em of a3] (a4) {$)$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a4.east) -- ++(.2,.2);
-      \draw[d] (a4.east) -- ++(.3,.1);
+      \draw[d] (a4.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a4.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
    &=
    \hspace{-1em}
@@ -669,8 +669,8 @@ These can be elegant in classical notation, since traces are scalar, so the deri
       \node[right=1em of a2] (a3) {$B$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a2.south east) -- ++(.2,-.2);
-      \draw[d] (a2.south east) -- ++(.3,-.1);
+      \draw[d] (a2.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a2.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
  \\&&&=
    \hspace{-1em}
@@ -704,8 +704,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=.5em of a2] (a3) {$)$};
       \draw (a1) -- (a2);
       \path (a1) edge[out=160, in=20, looseness=2] (a2);
-      \draw[d] (a3.east) -- ++(.2,.2);
-      \draw[d] (a3.east) -- ++(.3,.1);
+      \draw[d] (a3.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a3.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
  \\&&&=
    \hspace{-2em}
@@ -714,8 +714,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a1] (a2) {$X$};
       \draw (a1) -- (a2);
       \path (a1) edge[out=160, in=20, looseness=2] (a2);
-      \draw[d] (a1.south east) -- ++(.2,-.2);
-      \draw[d] (a1.south east) -- ++(.3,-.1);
+      \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-2em}
    +
@@ -725,8 +725,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a1] (a2) {$(X)$};
       \draw (a1) -- (a2);
       \path (a1) edge[out=160, in=20, looseness=2] (a2);
-      \draw[d] (a2.south east) -- ++(.2,-.2);
-      \draw[d] (a2.south east) -- ++(.3,-.1);
+      \draw[d] (a2.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a2.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-2em}
  \\&&&=
@@ -767,8 +767,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=.5em of a3] (a4) {$)$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a4.east) -- ++(.2,.2);
-      \draw[d] (a4.east) -- ++(.3,.1);
+      \draw[d] (a4.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a4.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
   \\&&&=
    \hspace{-1.5em}
@@ -778,8 +778,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$B$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a1.south east) -- ++(.2,-.2);
-      \draw[d] (a1.south east) -- ++(.3,-.1);
+      \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-1.5em}
    +
@@ -790,8 +790,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$B$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a2.south east) -- ++(.2,-.2);
-      \draw[d] (a2.south east) -- ++(.3,-.1);
+      \draw[d] (a2.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a2.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-1.5em}
  \\&&&=
@@ -836,8 +836,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=.5em of a3] (a4) {$)$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a4.east) -- ++(.2,.2);
-      \draw[d] (a4.east) -- ++(.3,.1);
+      \draw[d] (a4.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a4.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
  \\&
    =\frac{\partial}{\partial X} \mathrm{Tr}(B X X^T)
@@ -849,8 +849,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$X$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a1.south east) -- ++(.2,-.2);
-      \draw[d] (a1.south east) -- ++(.3,-.1);
+      \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-2em}
    +
@@ -861,8 +861,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$(X)$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a3.south east) -- ++(.2,-.2);
-      \draw[d] (a3.south east) -- ++(.3,-.1);
+      \draw[d] (a3.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a3.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
  \\&
    =(B+B^T)X
@@ -908,8 +908,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=.5em of a3] (a4) {$)$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a4.east) -- ++(.2,.2);
-      \draw[d] (a4.east) -- ++(.3,.1);
+      \draw[d] (a4.east) .. controls +(80:.12) .. ++(-.2,.28);
+      \draw[d] (a4.east) .. controls +(45:.12) .. ++(.28,.18);
    \end{tikzpicture}
  \\&
    =\frac{\partial}{\partial X} \mathrm{Tr}(B X^T X)
@@ -921,8 +921,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$X^T$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a1.south east) -- ++(.2,-.2);
-      \draw[d] (a1.south east) -- ++(.3,-.1);
+      \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \hspace{-2em}
    +
@@ -933,8 +933,8 @@ The last one uses the Kronecker product, which we may have to introduce first.
       \node[right=1em of a2] (a3) {$(X^T)$};
       \draw (a1) -- (a2) -- (a3);
       \path (a1) edge[out=160, in=20, looseness=1] (a3);
-      \draw[d] (a3.south east) -- ++(.2,-.2);
-      \draw[d] (a3.south east) -- ++(.3,-.1);
+      \draw[d] (a3.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (a3.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
  \\&
    =X(B^T+B)
@@ -1007,8 +1007,8 @@ $\frac{\partial}{\partial X} f(X)$ with $X$ replaced by $X^T$.
       \node[right=.25 of X3] (X4) {$X)$};
       \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
       \path (X0) edge[out=160, in=20, looseness=1] (X4);
-      \draw[d] (X4.south east) -- ++(.2,-.2);
-      \draw[d] (X4.south east) -- ++(.3,-.1);
+      \draw[d] (X4.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (X4.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \\
    &&&=\quad
@@ -1039,8 +1039,8 @@ $\frac{\partial}{\partial X} f(X)$ with $X$ replaced by $X^T$.
       \node[right=.25 of X3] (X4) {$X)$};
       \draw (X0) -- (X1) -- (X2) -- (X3) -- (X4);
       \path (X0) edge[out=160, in=20, looseness=1] (X4);
-      \draw[d] (X4.south east) -- ++(.2,-.2);
-      \draw[d] (X4.south east) -- ++(.3,-.1);
+      \draw[d] (X4.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+      \draw[d] (X4.south east) .. controls +(315:.12) .. ++(.28,-.18);
    \end{tikzpicture}
    \\
    &&&=\quad
