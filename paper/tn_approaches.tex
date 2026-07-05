@@ -300,4 +300,190 @@ $=$
 \end{tikzpicture}
 \end{tcblisting}
 
+
+% =====================================================================
+\clearpage
+\section*{F. Before/after gallery (old code verbatim from the book)}
+
+% ---------------------------------------------------------------
+\subsection*{G1. Derivative row (70) LHS \hfill \normalfont\small new = if Penrose loops are adopted}
+\begin{tcblisting}{title={OLD (9 lines)}}
+\begin{tikzpicture}[baseline=(a0.base), inner sep=1pt]
+   \node (a0) {$(a$};
+   \node[right=1em of a0] (a1) {$X$};
+   \node[right=1em of a1] (a2) {$b)$};
+   \path (a0) edge (a1);
+   \path (a1) edge (a2);
+   \draw[d] (a2.east) .. controls +(80:.12) .. ++(-.2,.28);
+   \draw[d] (a2.east) .. controls +(45:.12) .. ++(.28,.18);
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (8 lines)}}
+\begin{tikzpicture}[tn, baseline=(a0.base)]
+   \node (a0) {$a$};
+   \node[right=.8em of a0] (a1) {$X$};
+   \node[right=.8em of a1] (a2) {$b$};
+   \draw (a0) -- (a1) -- (a2);
+   \dloop[55]{(a0)(a2)}
+   \dwhiskers
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G2. Trace row (108), middle step \hfill \normalfont\small loop + down whiskers}
+\begin{tcblisting}{title={OLD (6 lines)}}
+\begin{tikzpicture}[baseline=(a1.base), inner sep=1pt]
+   \node (a1) {$(X)$};
+   \path (a1) edge[out=160, in=20, loop, looseness=4] (a1);
+   \draw[d] (a1.south east) .. controls +(280:.12) .. ++(-.2,-.28);
+   \draw[d] (a1.south east) .. controls +(315:.12) .. ++(.28,-.18);
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (6 lines)}}
+\begin{tikzpicture}[tn, baseline=(a1.base)]
+   \node (a1) {$X$};
+   \path (a1) edge[out=150, in=30, loop, looseness=7] (a1);
+   \dloop[-55]{(a1)}
+   \dwhiskersdown
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G3. Eigendecomposition (1.1)}
+\begin{tcblisting}{title={OLD (11 lines)}}
+\begin{tikzpicture}[baseline=(Q.base), inner sep=1pt]
+\node (Q) {$Q$};
+\draw (Q.west) -- ++(-.3, 0);
+\node[right=1em of Q, copydot] (dot) {};
+\path (Q) edge (dot);
+\node[below=.3em of dot] (e) {$\lambda$};
+\path (dot) edge (e);
+\node[right=1em of dot] (Qi) {$Q^{-1}$};
+\path (dot) edge (Qi);
+\draw (Qi.east) -- ++(.3, 0);
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (7 lines)}}
+\begin{tikzpicture}[tn, baseline=(Q.base),
+    every leg label/.style={}]
+  \node[legs={180}] (Q) {$Q$};
+  \node[right=1em of Q, copydot,
+        legs={270/\lambda}] (dot) {};
+  \node[right=1em of dot, legs={0}] (Qi) {$Q^{-1}$};
+  \draw (Q) -- (dot) -- (Qi);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G4. Strassen star}
+\begin{tcblisting}{title={OLD (19 lines)}}
+\begin{tikzpicture}[inner sep=1pt, baseline=.0em]
+    \node[copydot] (m) at (0,0) {};
+    \node (W) at (0,.5) {$W$};
+    \node (SB) at (-30:.5) {$S_B$};
+    \node (SA) at (-150:.5) {$S_A$};
+    \node (w1) at (60:1) {};
+    \node (w2) at (120:1) {};
+    \node (sa1) at (-120:1) {};
+    \node (sa2) at (-180:1) {};
+    \node (sb1) at (-0:1) {};
+    \node (sb2) at (-60:1) {};
+    \draw (m) -- (W);
+    \draw (m) -- (SA);
+    \draw (m) -- (SB);
+    \draw (W) -- (w1) {};
+    \draw (W) -- (w2) {};
+    \draw (SB) -- (sb1) {};
+    \draw (SB) -- (sb2) {};
+    \draw (SA) -- (sa1) {};
+    \draw (SA) -- (sa2) {};
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (7 lines)}}
+\begin{tikzpicture}[tn, baseline=0em, leg length=.5]
+  \node[copydot] (m) at (0,0) {};
+  \node[legs={60,120}]   (W)  at (0,.5)    {$W$};
+  \node[legs={-120,180}] (SA) at (-150:.5) {$S_A$};
+  \node[legs={0,-60}]    (SB) at (-30:.5)  {$S_B$};
+  \draw (m) -- (W)  (m) -- (SA)  (m) -- (SB);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G5. Kronecker-vector product $A \otimes v$}
+\begin{tcblisting}{title={OLD (9 lines)}}
+\begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+   \node[triangle, rotate=180] (F0) at (0,0) {};
+   \node (A) at (.5,.25) {A};
+   \node (B) at (.5,-.25) {v};
+   \draw[double] (F0) -- ++(-.4,0);
+   \draw (F0) -- (A) -- ++(.5, 0);
+   \draw (F0) -- (B);
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (6 lines)}}
+\begin{tikzpicture}[tn]
+   \node[triangle, rotate=180, legs={180},
+         every leg/.style={double}] (F0) {};
+   \node[legs={0}] (A) at (.5,.25) {A};
+   \node (v) at (.5,-.25) {v};
+   \draw (F0) -- (A)  (F0) -- (v);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G6. Chain rule (functions ch.) --- manual ellipse vs auto-fit}
+\begin{tcblisting}{title={OLD (10 lines; hand-tuned center and radii)}}
+\begin{tikzpicture}[baseline=-1em, inner sep=1pt]
+   \node (n0) {$f$};
+   \node[below=1em of n0] (n1) {$v$};
+   \node[below=1em of n1] (n2) {$x$};
+   \draw[->] (n2) -- (n1);
+   \draw[->] (n1) -- (n0);
+   \drawellipse{0}{-.55}{.5}{1}{180/4}
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (8 lines; ellipse fits itself)}}
+\begin{tikzpicture}[tn, baseline=-1em]
+   \node (n0) {$f$};
+   \node[below=1em of n0] (n1) {$v$};
+   \node[below=1em of n1] (n2) {$x$};
+   \draw[->] (n2) -- (n1);
+   \draw[->] (n1) -- (n0);
+   \dloop[30]{(n0)(n1)(n2)}
+   \draw (ddot) -- ++(.45,0);
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G7. Order-4 tensor with labeled legs}
+\begin{tcblisting}{title={OLD style (9 lines)}}
+\begin{tikzpicture}[baseline=-.25em, inner sep=1pt]
+   \node (T) {$T$};
+   \draw (T) -- ++(-.4,.3)
+      node[pos=1.3, font=\tiny] {i};
+   \draw (T) -- ++(.4,.3)
+      node[pos=1.3, font=\tiny] {j};
+   \draw (T) -- ++(-.4,-.3)
+      node[pos=1.3, font=\tiny] {k};
+   \draw (T) -- ++(.4,-.3)
+      node[pos=1.3, font=\tiny] {l};
+\end{tikzpicture}
+\end{tcblisting}
+\begin{tcblisting}{title={NEW (3 lines)}}
+\begin{tikzpicture}[tn]
+  \node[legs={143/i, 37/j, 217/k, -37/l}] (T) {$T$};
+\end{tikzpicture}
+\end{tcblisting}
+
+% ---------------------------------------------------------------
+\subsection*{G8. Where the new approach does NOT win}
+\textbf{Kronecker sandwich (511):} approach A saves only the two outer
+stub lines; the real compression is approach D's \texttt{kron} pic (16
+$\to$ 7, shown in D2 above). \textbf{Bent identity wires (511b), twists
+(510), wrapped traces:} plain TikZ is already minimal --- a library adds
+nothing. \textbf{\texttt{\char`\\vecmatvec} / \texttt{\char`\\trace} /
+\texttt{\char`\\detstack} rows:} the existing macros already beat
+everything; they stay.
+
 \end{document}
