@@ -202,4 +202,102 @@ but branching shapes should use approach A or D.
 \end{tikzpicture}
 \end{tcblisting}
 
+
+% =====================================================================
+\subsection*{E. Paper reproduction test (approach A + \texttt{\char`\\dloop})}
+The forms the book actually uses, including subset loops.
+
+\begin{tcblisting}{title={R1: eq (70) full derivation --- whole loop, X-only loop, result}}
+\begin{tikzpicture}[tn]
+  \node (a) {$a$};
+  \node[right=.7em of a] (X) {$X$};
+  \node[right=.7em of X] (b) {$b$};
+  \draw (a) -- (X) -- (b);
+  \dloop[55]{(a)(b)}
+  \dwhiskers
+\end{tikzpicture}
+$=$
+\begin{tikzpicture}[tn]
+  \node (a) {$a$};
+  \node[right=1em of a] (X) {$X$};
+  \node[right=1em of X] (b) {$b$};
+  \draw (a) -- (X) -- (b);
+  \dloop[55]{(X)}
+  \dwhiskers
+\end{tikzpicture}
+$=$
+\begin{tikzpicture}[tn]
+  \node (a) {$a$};
+  \node[right=2.2em of a] (b) {$b$};
+  \draw (a.east) -- ++(.25,.28);
+  \draw (b.west) -- ++(-.25,.28);
+\end{tikzpicture}
+\end{tcblisting}
+
+\begin{tcblisting}{title={R2: eq (73) --- lone X, labeled whiskers, free edges through the loop}}
+\begin{tikzpicture}[tn]
+  \node (X) {$X$};
+  \draw (X) -- ++(-.8,0);
+  \draw (X) -- ++(.8,0);
+  \dloop[55]{(X)}
+  \draw (ddot) .. controls +(80:.12) .. ++(-.2,.28)
+     node[pos=1, anchor=south east, font=\tiny] {i};
+  \draw (ddot) .. controls +(45:.12) .. ++(.28,.18)
+     node[pos=1, anchor=west, font=\tiny] {j};
+\end{tikzpicture}
+\end{tcblisting}
+
+\begin{tcblisting}{title=R3: eq (74) --- X-only loop inside a longer chain}
+\begin{tikzpicture}[tn]
+  \node (X) {$X$};
+  \node[right=1em of X] (A) {$A$};
+  \draw (X) -- ++(-.8,0)
+     node[pos=1, above, font=\tiny] {i};
+  \draw (X) -- (A);
+  \draw (A) -- ++(.8,0)
+     node[pos=1, above, font=\tiny] {j};
+  \dloop[55]{(X)}
+  \draw (ddot) .. controls +(80:.12) .. ++(-.2,.28)
+     node[pos=1, anchor=south east, font=\tiny] {m};
+  \draw (ddot) .. controls +(45:.12) .. ++(.28,.18)
+     node[pos=1, anchor=west, font=\tiny] {n};
+\end{tikzpicture}
+\end{tcblisting}
+
+\begin{tcblisting}{title={R4: trace row (108) --- arc crossing the loop, dot below}}
+\begin{tikzpicture}[tn]
+  \node (X) {$X$};
+  \node[right=1em of X] (B) {$B$};
+  \draw (X) -- (B);
+  \path (X) edge[out=140, in=40, looseness=2.6] (B);
+  \dloop[-55]{(X)(B)}
+  \dwhiskersdown
+\end{tikzpicture}
+\end{tcblisting}
+
+\begin{tcblisting}{title=R5: subset loop spanning two nodes mid-chain}
+\begin{tikzpicture}[tn]
+  \node (A) {$A$};
+  \node[right=1em of A] (X) {$X$};
+  \node[right=.7em of X] (B) {$B$};
+  \node[right=1em of B] (C) {$C$};
+  \draw (A) -- (X) -- (B) -- (C);
+  \draw (A) -- ++(-.6,0);
+  \draw (C) -- ++(.6,0);
+  \dloop[55]{(X)(B)}
+  \dwhiskers
+\end{tikzpicture}
+\end{tcblisting}
+
+\begin{tcblisting}{title=R6: splitting-rule mid-step --- loop around an inverse}
+\begin{tikzpicture}[tn]
+  \node (a) {$a$};
+  \node[right=1em of a] (X) {$X^{-1}$};
+  \node[right=1em of X] (b) {$b$};
+  \draw (a) -- (X) -- (b);
+  \dloop[55]{(X)}
+  \dwhiskers
+\end{tikzpicture}
+\end{tcblisting}
+
 \end{document}
