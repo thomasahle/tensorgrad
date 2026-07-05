@@ -179,6 +179,21 @@ It uses graph isomorphism detection to eliminate common subexpressions.
 Tensorgrad can convert your diagrams back into pytorch code.
 This gives a super optimized way to do gradients and higher order derivatives in neural networks.
 
+The ahead-of-time compiler (`tensorgrad.compiler`) turns a loss and its raw
+symbolic gradients into one fused straight-line torch program:
+
+```python
+from tensorgrad.compiler import compile_to_callable
+
+step = compile_to_callable(loss, *[loss.grad(p) for p in params])
+```
+
+Primitives-defined layernorm/gelu gradients come out *faster* than torch
+autograd, convolutions 2–5x faster, and a 12-block GPT-2-sized gradient
+graph that would naively need exabytes of intermediates compiles to
+megabyte-scale nodes. Architecture, design principles, and benchmarks:
+[docs/compiler.md](docs/compiler.md).
+
 
 ### Matrix Calculus
 
