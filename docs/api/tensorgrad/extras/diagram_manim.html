@@ -86,7 +86,7 @@ safe without Manim installed; calling the renderer requires Manim.</p>
 </span><span id="L-22"><a href="#L-22"><span class="linenos"> 22</span></a><span class="sd">    &quot;&quot;&quot;</span>
 </span><span id="L-23"><a href="#L-23"><span class="linenos"> 23</span></a>
 </span><span id="L-24"><a href="#L-24"><span class="linenos"> 24</span></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="L-25"><a href="#L-25"><span class="linenos"> 25</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="L-25"><a href="#L-25"><span class="linenos"> 25</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>  <span class="c1"># pyright: ignore[reportMissingImports]  # optional dependency</span>
 </span><span id="L-26"><a href="#L-26"><span class="linenos"> 26</span></a>            <span class="n">BLUE</span><span class="p">,</span>
 </span><span id="L-27"><a href="#L-27"><span class="linenos"> 27</span></a>            <span class="n">GREEN</span><span class="p">,</span>
 </span><span id="L-28"><a href="#L-28"><span class="linenos"> 28</span></a>            <span class="n">ORANGE</span><span class="p">,</span>
@@ -174,7 +174,7 @@ safe without Manim installed; calling the renderer requires Manim.</p>
 </span><span id="L-110"><a href="#L-110"><span class="linenos">110</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Play a generic Manim transform to another diagram snapshot.&quot;&quot;&quot;</span>
 </span><span id="L-111"><a href="#L-111"><span class="linenos">111</span></a>
 </span><span id="L-112"><a href="#L-112"><span class="linenos">112</span></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="L-113"><a href="#L-113"><span class="linenos">113</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transform</span>
+</span><span id="L-113"><a href="#L-113"><span class="linenos">113</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transform</span>  <span class="c1"># pyright: ignore[reportMissingImports]  # optional dependency</span>
 </span><span id="L-114"><a href="#L-114"><span class="linenos">114</span></a>    <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># pragma: no cover - depends on optional package</span>
 </span><span id="L-115"><a href="#L-115"><span class="linenos">115</span></a>        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s2">&quot;play_diagram_transform requires Manim. Install `manim` to use it.&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 </span><span id="L-116"><a href="#L-116"><span class="linenos">116</span></a>
@@ -234,7 +234,7 @@ safe without Manim installed; calling the renderer requires Manim.</p>
 </span><span id="diagram_mobject-23"><a href="#diagram_mobject-23"><span class="linenos"> 23</span></a><span class="sd">    &quot;&quot;&quot;</span>
 </span><span id="diagram_mobject-24"><a href="#diagram_mobject-24"><span class="linenos"> 24</span></a>
 </span><span id="diagram_mobject-25"><a href="#diagram_mobject-25"><span class="linenos"> 25</span></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="diagram_mobject-26"><a href="#diagram_mobject-26"><span class="linenos"> 26</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="diagram_mobject-26"><a href="#diagram_mobject-26"><span class="linenos"> 26</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>  <span class="c1"># pyright: ignore[reportMissingImports]  # optional dependency</span>
 </span><span id="diagram_mobject-27"><a href="#diagram_mobject-27"><span class="linenos"> 27</span></a>            <span class="n">BLUE</span><span class="p">,</span>
 </span><span id="diagram_mobject-28"><a href="#diagram_mobject-28"><span class="linenos"> 28</span></a>            <span class="n">GREEN</span><span class="p">,</span>
 </span><span id="diagram_mobject-29"><a href="#diagram_mobject-29"><span class="linenos"> 29</span></a>            <span class="n">ORANGE</span><span class="p">,</span>
@@ -343,7 +343,7 @@ otherwise a deterministic circular fallback layout is used.</p>
 </span><span id="play_diagram_transform-111"><a href="#play_diagram_transform-111"><span class="linenos">111</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Play a generic Manim transform to another diagram snapshot.&quot;&quot;&quot;</span>
 </span><span id="play_diagram_transform-112"><a href="#play_diagram_transform-112"><span class="linenos">112</span></a>
 </span><span id="play_diagram_transform-113"><a href="#play_diagram_transform-113"><span class="linenos">113</span></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="play_diagram_transform-114"><a href="#play_diagram_transform-114"><span class="linenos">114</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transform</span>
+</span><span id="play_diagram_transform-114"><a href="#play_diagram_transform-114"><span class="linenos">114</span></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">manim</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transform</span>  <span class="c1"># pyright: ignore[reportMissingImports]  # optional dependency</span>
 </span><span id="play_diagram_transform-115"><a href="#play_diagram_transform-115"><span class="linenos">115</span></a>    <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># pragma: no cover - depends on optional package</span>
 </span><span id="play_diagram_transform-116"><a href="#play_diagram_transform-116"><span class="linenos">116</span></a>        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s2">&quot;play_diagram_transform requires Manim. Install `manim` to use it.&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 </span><span id="play_diagram_transform-117"><a href="#play_diagram_transform-117"><span class="linenos">117</span></a>

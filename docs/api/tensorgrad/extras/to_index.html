@@ -72,7 +72,7 @@
 </span><span id="L-6"><a href="#L-6"><span class="linenos">  6</span></a>
 </span><span id="L-7"><a href="#L-7"><span class="linenos">  7</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">singledispatch</span>
 </span><span id="L-8"><a href="#L-8"><span class="linenos">  8</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">string</span>
-</span><span id="L-9"><a href="#L-9"><span class="linenos">  9</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span>
+</span><span id="L-9"><a href="#L-9"><span class="linenos">  9</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">cast</span>
 </span><span id="L-10"><a href="#L-10"><span class="linenos"> 10</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">networkx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nx</span>
 </span><span id="L-11"><a href="#L-11"><span class="linenos"> 11</span></a>
 </span><span id="L-12"><a href="#L-12"><span class="linenos"> 12</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.extras.expectation</span><span class="w"> </span><span class="kn">import</span> <span class="n">Expectation</span>
@@ -81,12 +81,12 @@
 </span><span id="L-15"><a href="#L-15"><span class="linenos"> 15</span></a>
 </span><span id="L-16"><a href="#L-16"><span class="linenos"> 16</span></a>
 </span><span id="L-17"><a href="#L-17"><span class="linenos"> 17</span></a><span class="nd">@singledispatch</span>
-</span><span id="L-18"><a href="#L-18"><span class="linenos"> 18</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index</span><span class="p">(</span><span class="n">expr</span><span class="p">):</span>
+</span><span id="L-18"><a href="#L-18"><span class="linenos"> 18</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 </span><span id="L-19"><a href="#L-19"><span class="linenos"> 19</span></a>    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Index notation not implemented for type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="L-20"><a href="#L-20"><span class="linenos"> 20</span></a>
 </span><span id="L-21"><a href="#L-21"><span class="linenos"> 21</span></a>
 </span><span id="L-22"><a href="#L-22"><span class="linenos"> 22</span></a><span class="nd">@singledispatch</span>
-</span><span id="L-23"><a href="#L-23"><span class="linenos"> 23</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index_free</span><span class="p">(</span><span class="n">expr</span><span class="p">):</span>
+</span><span id="L-23"><a href="#L-23"><span class="linenos"> 23</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index_free</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 </span><span id="L-24"><a href="#L-24"><span class="linenos"> 24</span></a>    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Index notation not implemented for type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="L-25"><a href="#L-25"><span class="linenos"> 25</span></a>
 </span><span id="L-26"><a href="#L-26"><span class="linenos"> 26</span></a>
@@ -199,7 +199,7 @@
 </span><span id="L-133"><a href="#L-133"><span class="linenos">133</span></a>    <span class="k">return</span> <span class="n">rename</span>
 </span><span id="L-134"><a href="#L-134"><span class="linenos">134</span></a>
 </span><span id="L-135"><a href="#L-135"><span class="linenos">135</span></a>
-</span><span id="L-136"><a href="#L-136"><span class="linenos">136</span></a><span class="k">def</span><span class="w"> </span><span class="nf">_handle_path</span><span class="p">(</span><span class="n">tensors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Tensor</span><span class="p">],</span> <span class="n">edges</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+</span><span id="L-136"><a href="#L-136"><span class="linenos">136</span></a><span class="k">def</span><span class="w"> </span><span class="nf">_handle_path</span><span class="p">(</span><span class="n">tensors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Tensor</span><span class="p">],</span> <span class="n">edges</span><span class="p">:</span> <span class="s2">&quot;list[Optional[str]]&quot;</span><span class="p">):</span>
 </span><span id="L-137"><a href="#L-137"><span class="linenos">137</span></a>    <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
 </span><span id="L-138"><a href="#L-138"><span class="linenos">138</span></a>    <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">in_edge</span><span class="p">,</span> <span class="n">out_edge</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tensors</span><span class="p">,</span> <span class="n">edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">edges</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
 </span><span id="L-139"><a href="#L-139"><span class="linenos">139</span></a>        <span class="n">inner_str</span> <span class="o">=</span> <span class="n">to_index_free</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
@@ -223,7 +223,7 @@
 </span><span id="L-157"><a href="#L-157"><span class="linenos">157</span></a>    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">tensors</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span>
 </span><span id="L-158"><a href="#L-158"><span class="linenos">158</span></a>
 </span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a>    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Delta</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tensors</span><span class="p">):</span>
-</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a>        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">tensors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">_size</span><span class="p">)</span>
+</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a>        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">Delta</span><span class="p">,</span> <span class="n">tensors</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
 </span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a>
 </span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a>    <span class="n">in_edges</span> <span class="o">=</span> <span class="n">out_edges</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span> <span class="o">+</span> <span class="n">out_edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 </span><span id="L-163"><a href="#L-163"><span class="linenos">163</span></a>    <span class="n">factors</span> <span class="o">=</span> <span class="p">[]</span>
@@ -381,14 +381,14 @@
                     <div class="decorator decorator-singledispatch">@singledispatch</div>
 
         <span class="def">def</span>
-        <span class="name">to_index</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">expr</span></span><span class="return-annotation">):</span></span>
+        <span class="name">to_index</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">expr</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
 
                 <label class="view-source-button" for="to_index-view-source"><span>View Source</span></label>
 
     </div>
     <a class="headerlink" href="#to_index"></a>
             <div class="pdoc-code codehilite"><pre><span></span><span id="to_index-18"><a href="#to_index-18"><span class="linenos">18</span></a><span class="nd">@singledispatch</span>
-</span><span id="to_index-19"><a href="#to_index-19"><span class="linenos">19</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index</span><span class="p">(</span><span class="n">expr</span><span class="p">):</span>
+</span><span id="to_index-19"><a href="#to_index-19"><span class="linenos">19</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 </span><span id="to_index-20"><a href="#to_index-20"><span class="linenos">20</span></a>    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Index notation not implemented for type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span></pre></div>
 
@@ -402,14 +402,14 @@
                     <div class="decorator decorator-singledispatch">@singledispatch</div>
 
         <span class="def">def</span>
-        <span class="name">to_index_free</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">expr</span></span><span class="return-annotation">):</span></span>
+        <span class="name">to_index_free</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">expr</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
 
                 <label class="view-source-button" for="to_index_free-view-source"><span>View Source</span></label>
 
     </div>
     <a class="headerlink" href="#to_index_free"></a>
             <div class="pdoc-code codehilite"><pre><span></span><span id="to_index_free-23"><a href="#to_index_free-23"><span class="linenos">23</span></a><span class="nd">@singledispatch</span>
-</span><span id="to_index_free-24"><a href="#to_index_free-24"><span class="linenos">24</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index_free</span><span class="p">(</span><span class="n">expr</span><span class="p">):</span>
+</span><span id="to_index_free-24"><a href="#to_index_free-24"><span class="linenos">24</span></a><span class="k">def</span><span class="w"> </span><span class="nf">to_index_free</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 </span><span id="to_index_free-25"><a href="#to_index_free-25"><span class="linenos">25</span></a>    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Index notation not implemented for type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span></pre></div>
 
