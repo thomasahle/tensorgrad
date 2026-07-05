@@ -1,5 +1,6 @@
 \usetikzlibrary{
     arrows.meta,
+    fit,
     automata,
     positioning,
     shadows,
@@ -158,6 +159,25 @@
       \draw[line width=2pt] (a0top -| a0.west) -- (a1top -| a1.east);
       \draw[line width=2pt] (a0bot -| a0.west) -- (a1bot -| a1.east);
    \end{tikzpicture}}
+}
+
+% Penrose derivative loop: \dloop[<dot angle>]{<fit spec>} draws an ellipse
+% around the given nodes with a filled dot ON the loop at the given angle.
+% Names the ellipse node `dE` and the dot coordinate (ddot); whiskers are
+% drawn afterwards from (ddot). Following Penrose, the row whisker bends
+% left and the column whisker bends right (see \dwhiskers / \dwhiskersdown).
+\newcommand{\dloop}[2][55]{%
+   \node[ellipse, draw, inner sep=2.5pt, fit=#2] (dE) {};%
+   \fill (dE.#1) circle (1.4pt);%
+   \coordinate (ddot) at (dE.#1);%
+}
+\newcommand{\dwhiskers}{%
+   \draw (ddot) .. controls +(80:.12) .. ++(-.2,.28);%
+   \draw (ddot) .. controls +(45:.12) .. ++(.28,.18);%
+}
+\newcommand{\dwhiskersdown}{%
+   \draw (ddot) .. controls +(280:.12) .. ++(-.2,-.28);%
+   \draw (ddot) .. controls +(315:.12) .. ++(.28,-.18);%
 }
 
 % Define a new command for drawing the ellipse

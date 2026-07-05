@@ -2,134 +2,107 @@
 \usepackage[margin=1.6cm]{geometry}
 \usepackage{amsmath}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc, graphs, quotes}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc, fit, graphs,
+                decorations.pathmorphing, decorations.pathreplacing,
+                decorations.shapes, decorations.markings, automata, shadows, math}
+% Use the BOOK's actual styles, so output is ground truth
+\input{/Users/ahle/repos/tensorgrad/paper/chapters/tikz-styles.tex}
 \usepackage[most]{tcolorbox}
 \tcbset{listing side text, size=small, fonttitle=\bfseries,
         colback=black!2, colframe=black!40, listing options={
         basicstyle=\ttfamily\footnotesize, breaklines=true}}
 
-% ================= SHARED BASE (all approaches) =================
+% ================= Approach A: legs as node options =================
 \makeatletter
 \tikzset{
   tn/.style={inner sep=1pt, baseline=-.25em},
-  copy/.style={circle, draw, inner sep=0pt, outer sep=0pt, minimum size=3pt},
-  flat right/.style={regular polygon, regular polygon sides=3,
-    shape border rotate=270, scale=.5, inner sep=3pt, draw},
-  flat left/.style={regular polygon, regular polygon sides=3,
-    shape border rotate=90, scale=.5, inner sep=3pt, draw},
-  dmark/.style={{Circle[length=2.6pt]}-},
   every leg/.style={},
   leg length/.initial=.35,
-}
-% ---------- Approach A: legs as node options ----------
-% legs={<angle>, <angle>/<label>, <angle>*, ...}   (* = derivative dot)
-\tikzset{
   legs/.style={append after command={\pgfextra{\tn@legs{#1}}}},
 }
-\def\tn@legs#1{%
-  \global\tn@dseenfalse
-  \foreach \tn@item in {#1}{\expandafter\tn@leg\tn@item//\@nil}%
-  \iftn@dseen \fill (\tikzlastnode.north east) circle (1.2pt);\fi}
+\def\tn@legs#1{\foreach \tn@item in {#1}{\expandafter\tn@leg\tn@item//\@nil}}
 \def\tn@leg#1/#2/#3\@nil{%
-  \tn@checkstar#1*\@nil
-  \iftn@d % derivative whisker from the SINGLE dot; bends toward its side
-    \global\tn@dseentrue
-    \ifdim\tn@ang pt<90pt
-      \draw[every leg] (\tikzlastnode.north east) .. controls +(45:.12) .. ++(.28,.18);%
-    \else
-      \draw[every leg] (\tikzlastnode.north east) .. controls +(80:.12) .. ++(-.2,.28);%
-    \fi
+  \if\relax\detokenize{#2}\relax
+    \draw[every leg] (\tikzlastnode) -- ++(#1:\pgfkeysvalueof{/tikz/leg length});%
   \else
-    \if\relax\detokenize{#2}\relax
-      \draw[every leg] (\tikzlastnode) -- ++(\tn@ang:\pgfkeysvalueof{/tikz/leg length});%
-    \else
-      \pgfmathsetmacro\tn@anch{\tn@ang+180}%
-      \draw[every leg] (\tikzlastnode) -- ++(\tn@ang:\pgfkeysvalueof{/tikz/leg length})
-         node[font=\tiny, anchor=\tn@anch, inner sep=1.5pt] {$#2$};%
-    \fi
+    \pgfmathsetmacro\tn@anch{#1+180}%
+    \draw[every leg] (\tikzlastnode) -- ++(#1:\pgfkeysvalueof{/tikz/leg length})
+       node[font=\tiny, anchor=\tn@anch, inner sep=1.5pt] {$#2$};%
   \fi}
-\newif\iftn@d
-\newif\iftn@dseen
-\def\tn@checkstar#1*#2\@nil{%
-  \def\tn@ang{#1}%
-  \if\relax\detokenize{#2}\relax \tn@dfalse\else \tn@dtrue\fi}
 \makeatother
 
-% ---------- Approach C: mini-DSL ----------
-% \tn{-a-{X'}-b-}  : dash-separated chain; leading/trailing dash = free end;
-%  * = copy dot, > = right triangle, < = left triangle, trailing ' = d-legs
+% ================= Approach C: mini-DSL (chains) =================
 \ExplSyntaxOn
-\NewDocumentCommand{\tn}{ O{2.0} m }
+\NewDocumentCommand{\tn}{ O{.7em} m }
  {
   \begin{tikzpicture}[tn]
   \seq_set_split:Nnn \l_tmpa_seq { - } { #2 }
   \int_zero:N \l_tmpa_int
+  \tl_clear:N \l_tmpa_tl
   \seq_map_inline:Nn \l_tmpa_seq
    {
     \int_incr:N \l_tmpa_int
-    \tl_set:Nx \l_tmpa_tl { ( \fp_eval:n { (\l_tmpa_int - 1) * #1 } em , 0 ) }
+    \int_compare:nNnTF { \l_tmpa_int } = { 1 }
+     { \tl_set:Nn \l_tmpb_tl { } }
+     { \tl_set:Nx \l_tmpb_tl { right = #1~of~n \int_eval:n { \l_tmpa_int - 1 } } }
     \str_case:nnF { ##1 }
      {
-      { }  { \tn_place:nn { coordinate } { } }
-      { * }{ \tn_place:nn { copy } { } }
-      { > }{ \tn_place:nn { flat~right } { } }
-      { < }{ \tn_place:nn { flat~left } { } }
+      { }  { \tn_place:nnn { coordinate } { } { } }
+      { * }{ \tn_place:nnn { copydot } { } { } }
+      { > }{ \tn_place:nnn { triangle } { } { } }
+      { < }{ \tn_place:nnn { triangle, rotate=180 } { } { } }
      }
      { \tn_letter:n { ##1 } }
     \int_compare:nNnT { \l_tmpa_int } > { 1 }
      { \draw (n\int_eval:n{\l_tmpa_int-1}) -- (n\int_use:N\l_tmpa_int); }
    }
+  \tl_use:N \l_tmpa_tl % deferred derivative loops, drawn last
   \end{tikzpicture}
  }
-\cs_new_protected:Npn \tn_place:nn #1 #2
+\cs_new_protected:Npn \tn_place:nnn #1 #2 #3
  {
-  \use:x { \exp_not:N \node [ #1 ] ( n \int_use:N \l_tmpa_int )
-           at \tl_use:N \l_tmpa_tl } { #2 } ;
+  \use:x { \exp_not:N \node [ #1 , \tl_use:N \l_tmpb_tl ]
+           ( n \int_use:N \l_tmpa_int ) } { #2 } ;
  }
 \cs_new_protected:Npn \tn_letter:n #1
  {
-  \tl_set:Nn \l_tmpb_tl { #1 }
-  \tl_if_in:NnTF \l_tmpb_tl { ' }
+  \tl_set:Nn \l_tmpc_tl { #1 }
+  \tl_if_in:NnTF \l_tmpc_tl { ' }
    {
-    \tl_remove_all:Nn \l_tmpb_tl { ' }
-    \use:x { \exp_not:N \node [ legs = { 135 * , 45 * } ]
-             ( n \int_use:N \l_tmpa_int ) at \tl_use:N \l_tmpa_tl }
-      { $ ( \tl_use:N \l_tmpb_tl ) $ } ;
+    \tl_remove_all:Nn \l_tmpc_tl { ' }
+    \use:x { \exp_not:N \node [ \tl_use:N \l_tmpb_tl ]
+             ( n \int_use:N \l_tmpa_int ) } { $ \tl_use:N \l_tmpc_tl $ } ;
+    % defer the loop so it fits over the finished node
+    \tl_put_right:Nx \l_tmpa_tl
+     { \exp_not:N \dloop [ 55 ] { ( n \int_use:N \l_tmpa_int ) } \exp_not:N \dwhiskers }
    }
    {
-    \use:x { \exp_not:N \node ( n \int_use:N \l_tmpa_int )
-             at \tl_use:N \l_tmpa_tl } { $ #1 $ } ;
+    \use:x { \exp_not:N \node [ \tl_use:N \l_tmpb_tl ]
+             ( n \int_use:N \l_tmpa_int ) } { $ #1 $ } ;
    }
  }
 \ExplSyntaxOff
 
-% ---------- Approach D: pics (molecules) ----------
+% ================= Approach D: pics =================
 \tikzset{
   pics/kron/.style 2 args={code={
-    \node[flat left]  (-in)  at (0,0) {};
-    \node (-A) at (.55,.22) {$#1$};
-    \node (-B) at (.55,-.22) {$#2$};
-    \node[flat right] (-out) at (1.1,0) {};
+    \node[triangle, rotate=180] (-in) at (0,0) {};
+    \node (-A) at (.6,.25) {#1};
+    \node (-B) at (.6,-.25) {#2};
+    \node[triangle] (-out) at (1.2,0) {};
     \draw (-in) -- (-A) -- (-out);
     \draw (-in) -- (-B) -- (-out);
   }},
   pics/det stack/.style={code={
     \node (-a) at (0,0) {$#1$};
-    \node (-dots) at (.55,0) {$\cdots$};
-    \node (-b) at (1.1,0) {$#1$};
-    \draw (-a.north) -- ++(0,.18) coordinate (-at);
-    \draw (-b.north) -- ++(0,.18) coordinate (-bt);
-    \draw (-a.south) -- ++(0,-.18) coordinate (-ab);
-    \draw (-b.south) -- ++(0,-.18) coordinate (-bb);
-    \draw[line width=1.6pt] (-at -| -a.west) -- (-bt -| -b.east);
-    \draw[line width=1.6pt] (-ab -| -a.west) -- (-bb -| -b.east);
-  }},
-  pics/tt chain/.style={code={
-    \foreach \g [count=\c] in {#1} {
-      \node (-g\c) at (\c*1.1, 0) {$\g$};
-      \draw (-g\c) -- ++(0,-.35) node[font=\tiny, below, inner sep=1pt] {$i_\c$};
-      \ifnum\c>1 \draw (-g\the\numexpr\c-1) -- (-g\c); \fi
-    }
+    \node (-dots) at (.65,0) {$\cdots$};
+    \node (-b) at (1.3,0) {$#1$};
+    \draw (-a.north) -- ++(0,.2) coordinate (-at);
+    \draw (-b.north) -- ++(0,.2) coordinate (-bt);
+    \draw (-a.south) -- ++(0,-.2) coordinate (-ab);
+    \draw (-b.south) -- ++(0,-.2) coordinate (-bb);
+    \draw[line width=2pt] (-at -| -a.west) -- (-bt -| -b.east);
+    \draw[line width=2pt] (-ab -| -a.west) -- (-bb -| -b.east);
   }},
 }
 
@@ -137,23 +110,26 @@
 \setlength\parindent{0pt}
 \begin{document}
 
-\section*{Four approaches to a tensor-diagram library}
-Same test diagrams in each approach. Shared base: \texttt{tn} picture style,
-\texttt{copy}, \texttt{flat left/right} node styles.
+\section*{Round 2: every approach targets the book's \emph{current} notation}
+All approaches now share the book's real \texttt{tikz-styles.tex}
+(\texttt{triangle}, \texttt{copydot}, \texttt{\char`\\dloop}, \texttt{\char`\\dwhiskers}).
+Test: eq.\ (70)-style derivative row with the Penrose loop.
 
 % =====================================================================
-\subsection*{A. Legs as node options \hfill \normalfont\small (plain tikz + two new keys)}
+\subsection*{A. Legs as node options}
 
-\begin{tcblisting}{title=A1: derivative of $a^T X b$}
+\begin{tcblisting}{title=A1: derivative of $a^T X b$ (Penrose loop)}
 \begin{tikzpicture}[tn]
   \node[legs={180}] (a) {$a$};
-  \node[right=.8em of a, legs={135*,45*}] (X) {$(X)$};
-  \node[right=.8em of X, legs={0}]   (b) {$b$};
+  \node[right=.7em of a] (X) {$X$};
+  \node[right=.7em of X, legs={0}] (b) {$b$};
   \draw (a) -- (X) -- (b);
+  \dloop[55]{(a)(b)}
+  \dwhiskers
 \end{tikzpicture}
 \end{tcblisting}
 
-\begin{tcblisting}{title=A2: TT chain with labeled legs}
+\begin{tcblisting}{title=A2: TT chain}
 \begin{tikzpicture}[tn]
   \node[legs={270/i_1}] (G1) {$G_1$};
   \node[right=1em of G1, legs={270/i_2}] (G2) {$G_2$};
@@ -162,95 +138,67 @@ Same test diagrams in each approach. Shared base: \texttt{tn} picture style,
 \end{tikzpicture}
 \end{tcblisting}
 
-\begin{tcblisting}{title=A3: Khatri--Rao $A \ast B$}
+\begin{tcblisting}{title=A3: Khatri--Rao $A \ast B$ (book geometry)}
 \begin{tikzpicture}[tn]
-  \node[flat left, legs={180}] (f) {};
-  \node (A) at (.55,.22)  {$A$};
-  \node (B) at (.55,-.22) {$B$};
-  \node[copy, legs={0}] (c) at (1.1,0) {};
+  \node[triangle, rotate=180] (f) {};
+  \node (A) at (.6,.25)  {A};
+  \node (B) at (.6,-.25) {B};
+  \node[copydot, legs={0}] (c) at (1.2,0) {};
   \draw (f) -- (A) -- (c);
   \draw (f) -- (B) -- (c);
+  \draw[double] (f) -- ++(-.4,0);
 \end{tikzpicture}
 \end{tcblisting}
 
 % =====================================================================
-\subsection*{B. The \texttt{graphs} library \hfill \normalfont\small (chains as one expression)}
+\subsection*{B. The \texttt{graphs} library}
 
-\begin{tcblisting}{title=B1: derivative of $a^T X b$}
+\begin{tcblisting}{title=B1: chain + loop drawn after}
 \begin{tikzpicture}[tn]
-\graph[grow right sep=.8em] {
+\graph[grow right sep=.7em] {
   l[as=, coordinate] -- a[as=$a$] --
-  X[as=$(X)$, legs={135*,45*}] --
-  b[as=$b$] -- r[as=, coordinate]
+  X[as=$X$] -- b[as=$b$] --
+  r[as=, coordinate]
 };
+\dloop[55]{(a)(b)}
+\dwhiskers
 \end{tikzpicture}
 \end{tcblisting}
 
-\begin{tcblisting}{title=B2: TT chain}
-\begin{tikzpicture}[tn]
-\graph[grow right sep=1em] {
-  G1[as=$G_1$, legs={270/i_1}] --
-  G2[as=$G_2$, legs={270/i_2}] --
-  G3[as=$G_3$, legs={270/i_3}]
-};
-\end{tikzpicture}
-\end{tcblisting}
-
-\begin{tcblisting}{title=B3: Khatri--Rao (fan-out/fan-in)}
-\begin{tikzpicture}[tn]
-\graph[grow right sep=.6em,
-       branch down sep=.5em] {
-  l[as=, coordinate] --
-  f[as=, flat left] --
-  { A[as=$A$], B[as=$B$] } --
-  c[as=, copy] -- r[as=, coordinate]
-};
-\end{tikzpicture}
-\end{tcblisting}
+\textbf{B3: Khatri--Rao fan --- does not work.} Two attempts (\texttt{branch
+down sep}, explicit \texttt{yshift}s) could not make the \texttt{graphs}
+placement engine center a fan-out/fan-in between two triangles; the branch
+nodes land on or below the chain axis and downstream nodes misalign. Verdict:
+approach B is pleasant for \emph{chains} (B1 composes fine with \texttt{\char`\\dloop}),
+but branching shapes should use approach A or D.
 
 % =====================================================================
-\subsection*{C. A mini-DSL \hfill \normalfont\small (dashes are edges, like the book's inline notation)}
+\subsection*{C. Mini-DSL (scope: inline chains)}
 
-\begin{tcblisting}{title=C1: derivative of $a^T X b$}
+\begin{tcblisting}{title=C1: derivative row --- loop via trailing '}
 \tn{-a-{X'}-b-}
 \end{tcblisting}
 
-\begin{tcblisting}{title=C2: matrix chain with copy dot}
+\begin{tcblisting}{title=C2: Hadamard-style chain}
 \tn{-A-*-B-}
 \end{tcblisting}
 
-\begin{tcblisting}{title=C3: Khatri--Rao-ish chain}
-\tn{-<-M-*-}
-\end{tcblisting}
-
 % =====================================================================
-\subsection*{D. Pics: reusable molecules \hfill \normalfont\small (with anchors, so they compose)}
-
-\begin{tcblisting}{title=D1: Kronecker bundle}
-\begin{tikzpicture}[tn]
-  \pic (k) {kron={A}{B}};
-  \draw[double] (k-in) -- ++(-.35,0);
-  \draw[double] (k-out) -- ++(.35,0);
-\end{tikzpicture}
-\end{tcblisting}
+\subsection*{D. Pics (molecules)}
 
 \begin{tcblisting}{title=D2: mixed product (511) by composition}
 \begin{tikzpicture}[tn]
   \pic (k1) {kron={A}{B}};
-  \pic (k2) at (1.6,0) {kron={C}{D}};
+  \pic (k2) at (1.7,0) {kron={C}{D}};
   \draw[double] (k1-in) -- ++(-.35,0);
   \draw[double] (k1-out) -- (k2-in);
   \draw[double] (k2-out) -- ++(.35,0);
 \end{tikzpicture}
 \end{tcblisting}
 
-\begin{tcblisting}{title=D3: determinant stack + TT chain}
+\begin{tcblisting}{title=D3: determinant stack}
 \begin{tikzpicture}[tn]
   \pic {det stack=X};
-\end{tikzpicture}
-\qquad
-\begin{tikzpicture}[tn]
-  \pic {tt chain={G_1,G_2,G_3}};
 \end{tikzpicture}
 \end{tcblisting}
 
