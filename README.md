@@ -50,6 +50,32 @@ To run the examples for yourself, use [the playground](https://tensorcookbook.co
 see [this notebook](https://colab.research.google.com/drive/10Lk39tTgRd-cCo5gNNe3KvdDcVP2F5aB?usp=sharing).
 
 
+### minGPT, symbolically
+
+[examples/mingpt.py](examples/mingpt.py) is karpathy's
+[minGPT](https://github.com/karpathy/minGPT) rebuilt as a tensorgrad program
+and trained on his sorting task — with `torch.set_grad_enabled(False)` at the
+top. There is no autograd: every gradient is a symbolic derivative, compiled
+together with the loss into one fused program:
+
+```python
+step = compile_to_callable(loss, *[loss.grad(p) for p in params], torch_compile=True)
+```
+
+Because tensor edges have names, multi-head attention needs no
+`view`/`transpose` gymnastics — heads are just an edge named `head`, and
+attention keys are made by renaming `seq` to `key`:
+
+```python
+att = F.softmax(F.dot(q, k, dim="hs") / math.sqrt(head_size) + causal_mask, dim="key")
+```
+
+LayerNorm is written in three lines of `mean`/`sqrt` and its backward pass is
+*derived*, token embeddings are a real integer `F.gather` (scatter-add
+gradient included), and softmax comes out fused and numerically stabilized at
+compile time.
+
+
 ### Derivative of L2 Loss
 
 ```python
