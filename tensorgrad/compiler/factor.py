@@ -45,11 +45,14 @@ import string
 import opt_einsum as oe
 import sympy
 
+from tensorgrad.compiler import adjoint as _adj
+from tensorgrad.compiler.adjoint import splice_child
 from tensorgrad.compiler.ir import (
     Builder,
     ConstNode,
     EinsumNode,
     GatherNode,
+    InputNode,
     LinearNode,
     MapNode,
     Node,
@@ -72,6 +75,18 @@ MAX_SWEEPS = 20  # sweeps early-exit at the fixpoint; deep module graphs need ~1
 MAX_DIST_TERMS = 8  # never distribute an einsum over a huge sum
 MAX_FLAT_OPS = 10  # keep flattened einsums inside the DP planner's comfort zone
 
+# ---- adjoint (reverse-mode) chain collapse -------------------------------
+# Forward-mode-shaped Jacobian chains (gradients of deep parameters) are
+# collapsed by the one-shot pre-pass in compiler/adjoint.py — that module's
+# docstring is the design note, and it owns the inflation knob
+# (INFLATE_MARGIN). The sweeps below deliberately do NOT attempt that
+# collapse themselves: the local cost model cannot approve it (peeling ONE
+# chain boundary improves the local score by <2%, measured 0.2% at the
+# GPT-2 chain head, below DIST_MARGIN), and unconditional sweep overrides
+# were measured to churn candidates for 100+ seconds per sweep on deep
+# stacks. The sweeps' only adjoint-awareness is the _hoist guard: never
+# re-extract an inflated operand out of a collapsed einsum.
+
 _LETTERS = string.ascii_letters
 _HUGE = 1e30
 
@@ -85,8 +100,21 @@ def factor_outputs(builder: Builder, outputs, dims) -> list:
     """
     if not FACTOR:
         return list(outputs)
+    # One-shot reverse-mode chain collapse FIRST (see adjoint.py): the cost
+    # model below must never see forward-mode Jacobian nodes — scoring and
+    # candidate-building around them is what made deep stacks intractable.
+    outputs = _adj.collapse_chains(builder, outputs, dims)
     rw = _Rewriter(builder, dims)
     nodes = [n for n, _ in outputs]
+    # Baseline scale for the inflation test: the largest program input or
+    # output. Anything INFLATE_MARGIN above this is a transient Jacobian.
+    base = 1.0
+    for nd in toposort(list(nodes)):
+        if isinstance(nd, InputNode):
+            base = max(base, rw._numel(nd.dims))
+    for nd in nodes:
+        base = max(base, rw._numel(nd.dims))
+    rw._base = base
     for _ in range(MAX_SWEEPS):
         new_nodes = rw.sweep(nodes)
         if all(a is b for a, b in zip(new_nodes, nodes)):
@@ -104,6 +132,13 @@ class _Rewriter:
         self.counts: dict[int, int] = {}
         # canonical-order einsum twin -> first node registered under it
         self._cse_seen: dict[int, Node] = {}
+        # Largest program input/output numel (set by factor_outputs).
+        self._base = 1.0
+
+    def _inflated(self, dims) -> bool:
+        """A forward-mode-shaped transient: bigger than every program input
+        and output by INFLATE_MARGIN (nothing that big enters or leaves)."""
+        return self._numel(dims) > _adj.INFLATE_MARGIN * self._base
 
     # ---- infrastructure ---------------------------------------------------
 
@@ -295,12 +330,24 @@ class _Rewriter:
             eq = key[0]
             info = None
             try:
+                # The scoring cap stays at 12 even though collapsed adjoint
+                # einsums run larger: _escore is called ~10^5 times per deep
+                # program and DP at 13-16 clique-connected operands costs
+                # ~ms each (measured 100s+ sweeps at 3 transformer layers).
+                # Codegen's one-shot emission planner uses DP up to 16.
                 if len(subs) <= 12:
                     _, info = oe.contract_path(
                         eq, *shapes, shapes=True, optimize=oe.DynamicProgramming(minimize="combo")
                     )
-                else:
+                elif len(subs) <= 16:
                     _, info = oe.contract_path(eq, *shapes, shapes=True, optimize="auto")
+                else:
+                    # 'greedy' above 16 operands: only the adjoint pass's
+                    # collapsed chains reach this size, auto's branching
+                    # search costs seconds per call at 20+ operands, and
+                    # greedy follows a cotangent chain fine (the small end
+                    # is always the locally cheapest contraction).
+                    _, info = oe.contract_path(eq, *shapes, shapes=True, optimize="greedy")
             except Exception:
                 info = None
             if info is None:
@@ -416,26 +463,8 @@ class _Rewriter:
 
     # ---- einsum-into-einsum flattening ----------------------------------------
 
-    @staticmethod
-    def _splice(ops, in_subs, wire_dims, rows, child: EinsumNode, child_subs):
-        """Append `child`'s operands/constraints to einsum parts under
-        construction: child's out wires alias the parent wires `child_subs`,
-        its internal wires become fresh parent wires. Returns child.weight."""
-        base = (max(wire_dims) + 1) if wire_dims else 0
-        wmap = {tw: child_subs[a] for a, tw in enumerate(child.out_subs)}
-        inner = {w2 for s in child.in_subs for w2 in s}
-        inner |= {w2 for cs, _ in child.constraints for w2, _ in cs}
-        for tw in sorted(inner):
-            if tw not in wmap:
-                wmap[tw] = base
-                wire_dims[base] = child.wire_dims[tw]
-                base += 1
-        for op, s in zip(child.ops, child.in_subs):
-            ops.append(op)
-            in_subs.append(tuple(wmap[w2] for w2 in s))
-        for cs, const in child.constraints:
-            rows.append((tuple((wmap[w2], c) for w2, c in cs), const))
-        return child.weight
+    # Einsum-into-einsum splicing is shared with the adjoint pre-pass.
+    _splice = staticmethod(splice_child)
 
     def _flatten(self, n: EinsumNode) -> Node:
         """Fuse a single-consumer EinsumNode operand into its parent when the
@@ -841,6 +870,13 @@ class _Rewriter:
             live_order = sorted(live)
             interface = self._numel([class_dim[c] for c in live_order])
             numel_L = self._numel(L.dims)
+            # Never hoist a transient Jacobian back out of collapsed adjoint
+            # einsums, and never create an inflated inner-Linear interface:
+            # this is the hysteresis that keeps the adjoint overrides in
+            # _flatten/_distribute (which ignore the shared cost model) from
+            # oscillating with the tie-accepting hoist.
+            if self._inflated(n.dims) or interface > _adj.INFLATE_MARGIN * self._base:
+                continue
 
             keep = 0.0
             hoist = 0.0

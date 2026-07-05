@@ -79,6 +79,12 @@ MATMUL_CELLS = True
 # term is suppressed and computed inside the Linear emission).
 ADDMM_FUSION = True
 
+# Emit `del name` after each intermediate's last use, so peak memory tracks
+# the live set instead of the sum of all intermediates. False keeps every
+# intermediate alive to function end (the old behavior); kept as a flag so
+# the memory effect can be measured and tested against the plain emission.
+EMIT_DEL = True
+
 
 def _fmt_weight(w: float) -> str:
     return repr(w)
@@ -305,6 +311,36 @@ class TorchCodegen:
             if len(keep) == len(lines):
                 break
             lines = keep
+
+        # Liveness: free every intermediate at its last textual use. The
+        # program is straight-line SSA, so a name's final occurrence ends its
+        # live range exactly. For deep-gradient programs the SUM of all
+        # intermediates can be 10-100x the peak LIVE set (measured 2.25 GB
+        # total vs ~0.1 GB live on a GPT-2 block loss+grads program); without
+        # the dels the peak RSS is the sum. Views keep their base storage
+        # alive through torch's refcounting, so deleting a base name early is
+        # safe. Return values and closed-over constants are never deleted
+        # (constants arrive as default parameters, inputs as positional
+        # parameters — neither is ever in assigned_names).
+        if EMIT_DEL:
+            ret_names = set(re.findall(r"\w+", " ".join(rets)))
+            assigned_names = {
+                m.group(1) for line in lines if (m := re.match(r"([A-Za-z_]\w*) = ", line))
+            }
+            last_use: dict[str, int] = {}
+            for i, line in enumerate(lines):
+                for tok in set(re.findall(r"\w+", line)):
+                    if tok in assigned_names:
+                        last_use[tok] = i
+            by_line: dict[int, list[str]] = {}
+            for nm, i in last_use.items():
+                if nm not in ret_names:
+                    by_line.setdefault(i, []).append(nm)
+            lines = [
+                text
+                for i, line in enumerate(lines)
+                for text in ([line] + ([f"del {', '.join(sorted(by_line[i]))}"] if i in by_line else []))
+            ]
 
         params = [emitted_inputs.get(v, f"_unused_{v}") for v in self.input_names]
         params += [f"{k}={k}" for k in consts]
@@ -1023,10 +1059,13 @@ class TorchCodegen:
         out_size = _prod([dim_of(wire_dims[w]) for w in out_ws])
         limit = 4 * max(sizes + [out_size])
         path_info = None
-        if len(shapes) <= 12:
+        if len(shapes) <= 16:
             # DP with combined flops+memory objective finds equal-FLOP
             # orders with orders-of-magnitude smaller intermediates
-            # (e.g. 268MB -> 4MB on the MLP softmax gradient).
+            # (e.g. 268MB -> 4MB on the MLP softmax gradient). The cap is 16
+            # (not 12) because factor.py's adjoint chain collapse emits
+            # 11-16 operand einsums for deep-parameter gradients, and only
+            # the DP objective reliably finds their cotangent-first path.
             try:
                 _, path_info = oe.contract_path(
                     eq, *shapes, shapes=True, optimize=oe.DynamicProgramming(minimize="combo")

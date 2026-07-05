@@ -28,8 +28,9 @@ is DERIVED symbolically instead of traced by autograd?
   No one-hot matmuls.
 
 Running this file trains a small GPT on karpathy's sorting task ("given 6
-digits, emit them sorted") to >90% held-out sequence accuracy in about two
-minutes on CPU (most of it torch.compile warmup; training itself is seconds).
+digits, emit them sorted") to >90% held-out sequence accuracy in about four
+minutes on CPU (nearly all of it torch.compile warmup on the ~600-op fused
+step program; training itself is under a minute).
 """
 
 import math
@@ -53,17 +54,24 @@ torch.set_num_threads(2)
 set_lazy_rename(True)
 
 # ----------------------------------------------------------------- config
-# KNOWN LIMITATION (the second reason this is a 1-layer "gpt-pico" and not
-# 3-layer gpt-nano): the compiler's factoring passes do not yet recover
-# reverse-mode contraction order across a deep stack of nonlinearities, so
-# symbolic gradients of parameters far below the loss compile into
-# forward-mode-shaped chains that drag the wrt-parameter's axes through every
-# layer above (rank-6 intermediates). At n_layer=3, n_embd=48 that is >3GB
-# and minutes per step; at this config it is fast and small. The model is
-# still the full GPT recipe: multi-head attention, pre-LN, gelu MLP,
-# residuals, learned embeddings.
+# One transformer block at gpt-nano width (n_embd=48). Every parameter's
+# gradient here — including those under the softmax stack, the gelu and the
+# LayerNorms — compiles into reverse-mode (cotangent-first) contraction
+# order automatically: the adjoint pass (tensorgrad/compiler/adjoint.py)
+# collapses the forward-mode-shaped Jacobian chains that symbolic
+# differentiation produces. Before that pass, this exact width was
+# infeasible (the mlp.w1 gradient materialized a multi-GB rank-5 Jacobian;
+# n_embd=24 was the practical ceiling).
+#
+# KNOWN LIMITATION (why this is not 3-layer gpt-nano): a gradient that
+# crosses SEVERAL stacked blocks needs cotangent contributions accumulated
+# across different sums and different gradients. The adjoint pass currently
+# re-merges branches only within one Sum, so at multi-block depth the
+# branch count grows geometrically; it detects that and falls back to the
+# (huge) forward-mode form. The frontier — true per-node adjoint
+# accumulation — is documented in adjoint.py.
 
-N_LAYER, N_HEAD, N_EMBD = 1, 3, 24
+N_LAYER, N_HEAD, N_EMBD = 1, 3, 48
 VOCAB, LENGTH = 3, 6                     # sort 6 digits from {0,1,2}
 SEQ = 2 * LENGTH - 1                     # input digits + sorted digits, shifted
 BATCH, LR, MAX_STEPS = 64, 1e-3, 400
