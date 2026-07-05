@@ -631,69 +631,192 @@ class Variable(Tensor):
             name: The name of the variable.
             shape0: Positional Sympy symbols for dimensions.
             _symmetries: Optional symmetries (as a string or set of frozensets).
-            _constraints: Optional value constraints as (constraint_name, edge) pairs.
-                Use :meth:`with_constraint` instead of passing this directly.
+            _constraints: Optional value constraints as (lhs, rhs) Tensor equation
+                pairs. Use :meth:`with_constraint` instead of passing this directly.
             shape1: Keyword arguments for dimensions.
         """
         self.name = name
         self._shape = self._check_shape(shape0, shape1)
         self._symmetries = self._check_symmetries(self._shape, _symmetries)
         self._constraints = self._check_constraints(_constraints)
+        # Deterministic, hash-stable identity keys for the equations, used by
+        # structural_graph/node_name and repr (tensors aren't orderable).
+        self._constraint_keys = tuple(sorted(self._equation_key(l, r) for l, r in self._constraints))
 
-    #: Constraint names that :meth:`with_constraint` accepts.
-    CONSTRAINTS = frozenset({"simplex"})
+    @staticmethod
+    def _equation_key(lhs: "Tensor", rhs: "Tensor") -> tuple:
+        canon = _get_canon()
+        if canon is not None:
+            return (
+                canon.structural_hash(lhs), tuple(sorted(lhs.edges)),
+                canon.structural_hash(rhs), tuple(sorted(rhs.edges)),
+            )
+        return (repr(lhs), (), repr(rhs), ())
 
-    def _check_constraints(self, constraints: None | Iterable[tuple[str, str]]) -> frozenset[tuple[str, str]]:
+    def _check_constraints(self, constraints) -> frozenset:
         if constraints is None:
-            return frozenset()
-        constraints = frozenset(constraints)
-        for cname, e in constraints:
-            if cname not in self.CONSTRAINTS:
-                raise ValueError(f"Unknown constraint {cname!r}. Supported: {sorted(self.CONSTRAINTS)}")
-            if e not in self._shape:
-                raise ValueError(f"Constraint {cname!r} names edge {e!r} not in shape {self._shape}")
-        # Constrained edges must be closed under the symmetry orbits: an automorphism may
-        # permute the edges of an orbit, so a constraint on only part of an orbit would make
-        # the isomorphism test (which colors an orbit's edges identically) unsound.
-        for cname in {c for c, _ in constraints}:
-            edges = {e for c, e in constraints if c == cname}
-            for orbit in self._symmetries:
-                if orbit & edges and not orbit <= edges:
-                    raise ValueError(
-                        f"Constraint {cname!r} on {sorted(edges)} must include all edges of "
-                        f"the symmetry orbit {sorted(orbit)} (or none of them)"
-                    )
+            return ()
+        # Dedup by the edge-name-aware key, NOT by tensor equality (which is
+        # isomorphism and would collapse distinct equations that differ only
+        # in free-edge names — e.g. the i-sum and j-sum of a symmetric matrix).
+        constraints = tuple({self._equation_key(l, r): (l, r) for l, r in constraints}.values())
+        for lhs, rhs in constraints:
+            if not (isinstance(lhs, Tensor) and isinstance(rhs, Tensor)):
+                raise ValueError("Constraints must be (lhs, rhs) Tensor equation pairs")
+            if lhs.shape != rhs.shape:
+                raise ValueError(
+                    f"Constraint sides must have equal shape: {lhs.shape} != {rhs.shape}"
+                )
+            if not any(
+                v.name == self.name and v.shape == self.shape
+                for v in self._find_variables(lhs)
+            ):
+                raise ValueError(f"Constraint lhs does not mention variable {self.name!r}")
+        # The equation SET must be invariant under the variable's symmetry
+        # orbits: an automorphism may permute an orbit's edges, so for every
+        # orbit transposition the swapped equation must itself be declared.
+        # (Generalizes the old "constrained edges must cover the orbit" check
+        # to arbitrary equations.)
+        bare = None
+        for orbit in self._symmetries:
+            orbit = sorted(orbit)
+            for a, b in zip(orbit, orbit[1:]):
+                swap = {a: b, b: a}
+                if bare is None:
+                    bare = Variable(self.name, **self.shape, _symmetries=self._symmetries)
+                swapped_anchor = bare.rename(**swap)
+                for lhs, rhs in constraints:
+                    sl = lhs.substitute(bare, swapped_anchor)
+                    sr = rhs.substitute(bare, swapped_anchor)
+                    sl = sl.rename(**{k: v for k, v in swap.items() if k in sl.edges})
+                    sr = sr.rename(**{k: v for k, v in swap.items() if k in sr.edges})
+                    if not any(
+                        sl.is_isomorphic(l2, match_edges=True) and sr.is_isomorphic(r2, match_edges=True)
+                        for l2, r2 in constraints
+                    ):
+                        raise ValueError(
+                            f"Constraint equations on {self.name!r} are not closed under the "
+                            f"symmetry orbit {orbit}: the {a!r}<->{b!r} swap of an equation is "
+                            "not itself declared (declare it for all edges of the orbit, or none)"
+                        )
         return constraints
 
+    @staticmethod
+    def _find_variables(t: "Tensor", cap: int = 64) -> list["Variable"]:
+        """Bounded walk collecting Variable leaves (cap guards huge subtrees:
+        beyond it we may only MISS constraint matches, never miscompute)."""
+        seen: set[int] = set()
+        out: list[Variable] = []
+        stack = [t]
+        while stack and len(seen) < cap:
+            u = stack.pop()
+            if id(u) in seen:
+                continue
+            seen.add(id(u))
+            if isinstance(u, Variable):
+                out.append(u)
+                continue
+            stack.extend(getattr(u, "factors", ()) or ())
+            stack.extend(getattr(u, "terms", ()) or ())
+            stack.extend(getattr(u, "inputs", ()) or ())
+            if (inner := getattr(u, "tensor", None)) is not None:
+                stack.append(inner)
+        return out
+
+    @staticmethod
+    def _strip_constraints(t: "Tensor") -> "Tensor":
+        """Replace every constrained Variable in t with its bare twin.
+        Equations are stored anchored on bare variables (storing them on the
+        constrained variable would make its identity self-referential), so
+        matching compares bare against bare."""
+        for v in Variable._find_variables(t):
+            if v._constraints:
+                bare = Variable(v.name, **v.shape, _symmetries=v._symmetries)
+                t = t.substitute(v, bare)
+        return t
+
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Variable":
-        return Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=self._constraints)
+        # Constraint equations are anchored on this variable's bare (constraint-
+        # free) twin, whose identity includes the symmetries — re-anchor them.
+        constraints = self._constraints
+        if constraints:
+            old_bare = Variable(self.name, **self.shape, _symmetries=self._symmetries)
+            new_bare = Variable(self.name, **self.shape, _symmetries=symmetries)
+            constraints = tuple(
+                (l.substitute(old_bare, new_bare), r.substitute(old_bare, new_bare))
+                for l, r in constraints
+            )
+        return Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=constraints)
 
-    def with_constraint(self, name: str, *edges: str) -> "Variable":
-        """Declare a value constraint on this variable.
+    def with_eq_constraint(self, lhs: "Tensor", rhs) -> "Variable":
+        """Declare a value constraint on this variable, as an EQUATION written
+        in tensorgrad itself: ``with_eq_constraint(lhs, rhs)`` states that the
+        expression ``lhs`` (which must mention this variable) always EQUALS the
+        expression ``rhs``. During ``simplify``, any subnetwork isomorphic to
+        ``lhs`` is replaced by ``rhs``.
 
-        Supported constraints:
-            - ``"simplex"``: for each listed edge, the entries along that edge sum to one
-              (e.g. one-hot targets or probability distributions):
-              ``Variable("y", b, v).with_constraint("simplex", "v")`` declares
-              ``sum_v y[b, v] = 1`` for every ``b``. During ``simplify``, contracting the
-              constrained edge against an all-ones vector (the pattern ``F.sum`` produces)
-              drops the variable, leaving all-ones on its remaining edges. Only the
-              sum-to-one property is used; nonnegativity is not modeled.
+        Examples::
 
-        NOTE: Constraints describe the VALUES the variable will hold; they do not change
-        differentiation. ``grad`` still treats the variable as a free, unconstrained
-        parameter (derivatives are taken in the full ambient space), so gradients of and
-        with respect to a constrained variable are unchanged.
+            y = Variable("y", b, v)
+            y = y.with_eq_constraint(F.sum(y, ["v"]), Ones(b))  # rows sum to 1
+            W = Variable("W", d=d, i=i)
+            W = W.with_eq_constraint(W @ W.rename(i="j"), Delta(i, "i", "j"))  # orthonormal
+            u = Variable("u", i)
+            u = u.with_eq_constraint(F.sum(u * u, ["i"]), 1)    # unit norm
+
+        A plain number ``rhs`` is promoted to ``number * Ones(...)`` over the
+        lhs's free edges.
+
+        The rhs must be strictly smaller (node count) than the lhs: equations
+        are applied as left-to-right rewrite rules during simplify, so
+        shrinking is what guarantees termination.
+
+        Matching currently recognizes equations whose (simplified) lhs is a
+        contraction of two factors — which covers sums against ones-vectors,
+        Hadamard powers (``x*x`` canonicalizes to ``pow``), and two-instance
+        products like orthogonality. If the variable has symmetries, the
+        declared equation set must be closed under the symmetry orbits
+        (checked at declaration; e.g. sum-to-one over edge ``i`` of an
+        ``i j``-symmetric matrix requires the ``j`` equation too).
+
+        NOTE: Constraints describe the VALUES the variable will hold; they do
+        not change differentiation. ``grad`` still treats the variable as a
+        free, unconstrained parameter (derivatives are taken in the full
+        ambient space).
         """
-        if not edges:
-            raise ValueError("with_constraint requires at least one edge")
-        new = {(name, e) for e in edges}
+        lhs = self._strip_constraints(lhs).simplify()
+        if isinstance(rhs, (int, float)):
+            ones = Product([Delta(s, e) for e, s in lhs.shape.items()])
+            rhs = ones if rhs == 1 else rhs * ones
+        rhs = self._strip_constraints(rhs).simplify()
+        if (nr := self._node_count(rhs)) >= (nl := self._node_count(lhs)):
+            raise ValueError(
+                f"Constraint rhs must be strictly smaller than lhs ({nr} vs {nl} nodes): "
+                "equations rewrite lhs -> rhs during simplify, and shrinking is what "
+                "guarantees termination"
+            )
         return Variable(
             self.name,
             **self.shape,
             _symmetries=self._symmetries,
-            _constraints=self._constraints | new,
+            _constraints=self._constraints + ((lhs, rhs),),
         )
+
+    @staticmethod
+    def _node_count(t: "Tensor") -> int:
+        seen: set[int] = set()
+        stack = [t]
+        while stack:
+            u = stack.pop()
+            if id(u) in seen:
+                continue
+            seen.add(id(u))
+            stack.extend(getattr(u, "factors", ()) or ())
+            stack.extend(getattr(u, "terms", ()) or ())
+            stack.extend(getattr(u, "inputs", ()) or ())
+            if (inner := getattr(u, "tensor", None)) is not None:
+                stack.append(inner)
+        return len(seen)
 
     def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
         # Note: Constraints (see with_constraint) deliberately do NOT affect the gradient.
@@ -713,10 +836,7 @@ class Variable(Tensor):
         if self._symmetries != {frozenset({e}) for e in self.edges}:
             groups = ", ".join(sorted(" ".join(sorted(group)) for group in self._symmetries))
             symmetries = f'.with_symmetries("{groups}")'
-        constraints = ""
-        for cname in sorted({c for c, _ in self._constraints}):
-            edges = ", ".join(f'"{e}"' for e in sorted(e for c, e in self._constraints if c == cname))
-            constraints += f'.with_constraint("{cname}", {edges})'
+        constraints = f".with_eq_constraint(<{len(self._constraints)} equations>)" if self._constraints else ""
         return f"Variable({', '.join(args)}){symmetries}{constraints}"
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
@@ -726,7 +846,7 @@ class Variable(Tensor):
         # substitute (which go through isomorphism) keep track of them for free.
         node_name = ("Variable", self.name)
         if self._constraints:
-            node_name += (tuple(sorted(self._constraints)),)
+            node_name += (self._constraint_keys,)
         G.add_node(0, name=node_name, tensor=self)
         edges = {}
         # Symmetries are more fine-grained than shapes, since two dims can have
@@ -997,7 +1117,7 @@ class Delta(Constant):
             for simplification in [
                 cls._merge_copy_tensors,
                 cls._remove_identity_matrix,
-                cls._sum_constrained_variable,
+                cls._apply_variable_equation,
             ]:
                 if (new := simplification(t1, t2, e)) is not None:
                     return other + new, False
@@ -1047,34 +1167,52 @@ class Delta(Constant):
         return None
 
     @staticmethod
-    def _sum_constrained_variable(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
-        """Sum over a simplex-constrained edge of a Variable.
+    def _apply_variable_equation(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
+        """General constraint-equation rewriting (see Variable.with_constraint).
 
-        Contracting an edge with an order-1 Delta (an all-ones vector; the pattern
-        ``F.sum`` produces) computes the sum over that edge. If the edge is declared
-        ``simplex`` on the variable (see ``Variable.with_constraint``), that sum is 1,
-        so the variable and the ones-vector are replaced by all-ones on the variable's
-        remaining edges.
+        If the 2-factor subnetwork (t1, t2) is isomorphic — free edges matched
+        under some renaming σ — to a declared equation's lhs, replace it by the
+        equation's rhs renamed by σ. Simplex sums, unit norms and orthogonality
+        all arrive here as pairwise patterns, because tensorgrad canonicalizes
+        Hadamard squares to pow-Functions and sums to order-1 Delta
+        contractions. Sound by construction: a rewrite only fires on a
+        verified isomorphism, and the pair's contracted edges are private to
+        the pair (Product edges are binary), so splicing rhs is local.
         """
-        # Make t1 the all-ones vector
-        if not (isinstance(t1, Delta) and t1.order == 1):
-            t1, t2 = t2, t1
-        if not (isinstance(t1, Delta) and t1.order == 1):
+        from itertools import permutations
+
+        cvars = [v for t in (t1, t2) for v in Variable._find_variables(t) if v._constraints]
+        if not cvars:
             return None
-        # Peel lazy Rename wrappers off t2 to find the underlying Variable, tracking the
-        # accumulated original -> outer name mapping.
-        inner, mapping = t2, {}
-        while isinstance(inner, Rename):
-            mapping = Rename.merge_renames(inner.mapping, mapping)
-            inner = inner.tensor
-        if not isinstance(inner, Variable):
-            return None
-        # Map the contracted edge back to the variable's original edge name, since
-        # constraints are declared in terms of the original names.
-        orig_e = {mapping.get(o, o): o for o in inner.edges}.get(e)
-        if ("simplex", orig_e) not in inner._constraints:
-            return None
-        return [Delta(s, e2) for e2, s in t2.shape.items() if e2 != e]
+        cand = None
+        tried = set()
+        for v in cvars:
+            for lhs, rhs in v._constraints:
+                key = v._equation_key(lhs, rhs)
+                if key in tried:
+                    continue
+                tried.add(key)
+                if not isinstance(lhs, Product) or len(lhs.factors) != 2:
+                    continue  # only pairwise patterns are matched (documented)
+                if cand is None:
+                    cand = Variable._strip_constraints(Product([t1, t2]))
+                cfree, lfree = list(cand.edges), list(lhs.edges)
+                if len(cfree) != len(lfree):
+                    continue
+                if sorted(map(str, cand.shape.values())) != sorted(map(str, lhs.shape.values())):
+                    continue
+                # Try name-preserving assignment first (the common, un-renamed case),
+                # then all size-consistent bijections of free edges.
+                candidates = []
+                if set(cfree) == set(lfree):
+                    candidates.append({a: a for a in lfree})
+                candidates += [dict(zip(lfree, p)) for p in permutations(cfree)]
+                for sigma in candidates:
+                    if any(lhs.shape[a] != cand.shape[b] for a, b in sigma.items()):
+                        continue
+                    if cand.is_isomorphic(lhs.rename(**sigma), match_edges=True):
+                        return [rhs.rename(**{a: sigma[a] for a in rhs.edges})]
+        return None
 
 
 class Zero(Constant):

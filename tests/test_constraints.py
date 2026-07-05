@@ -1,9 +1,11 @@
-"""Tests for Variable value constraints (Variable.with_constraint).
+"""Tests for Variable value constraints (Variable.with_eq_constraint).
 
-The only constraint so far is "simplex": the entries along the constrained edge sum
-to one (e.g. one-hot targets or probability distributions). simplify uses it in one
-place: contracting the constrained edge against an all-ones vector (the order-1
-Delta that F.sum produces) drops the variable, leaving all-ones on its other edges.
+A constraint is an EQUATION written in tensorgrad itself: with_eq_constraint(lhs, rhs)
+declares that lhs (an expression mentioning the variable) always equals rhs. simplify
+replaces any subnetwork isomorphic to lhs by rhs. The classic example is the simplex
+fact sum_v y[b,v] = 1 (one-hot targets, probability rows), which is what makes the
+cross-entropy softmax Hessian come out target-free; but orthogonality, unit norms
+etc. are the same mechanism.
 
 Constraints describe the VALUES a variable will hold, not the space it is optimized
 over, so grad treats a constrained variable exactly like an unconstrained one.
@@ -20,6 +22,11 @@ from tensorgrad.tensor import Delta, Ones, Product, Variable
 b, v, c = symbols("b v c")
 
 
+def simplex(var: Variable, edge: str) -> Variable:
+    """Entries along `edge` sum to one."""
+    return var.with_eq_constraint(F.sum(var, dim=(edge,)), 1)
+
+
 def _one_hot(B, V, dtype=torch.float32):
     torch.manual_seed(0)
     yt = torch.zeros(B, V, dtype=dtype)
@@ -33,24 +40,24 @@ def _one_hot(B, V, dtype=torch.float32):
 
 
 def test_sum_over_constrained_edge():
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     assert F.sum(y, dim=("v",)).simplify() == Delta(b, "b")
 
 
 def test_sum_order_one_variable_is_scalar_one():
-    p = Variable("p", v).with_constraint("simplex", "v")
+    p = simplex(Variable("p", v), "v")
     # The scalar 1 is the empty product
     assert F.sum(p).simplify() == Product([])
 
 
 def test_sum_over_all_edges():
     # sum_b sum_v y[b, v] = sum_b 1 = |b|, the order-0 Delta
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     assert F.sum(y).simplify() == Delta(b)
 
 
 def test_sum_over_wrong_edge_does_not_fire():
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     s = F.sum(y, dim=("b",)).simplify()
     assert s.depends_on(y)
     assert s != Delta(v, "v")
@@ -64,7 +71,7 @@ def test_unconstrained_sum_does_not_fire():
 def test_elementwise_factor_survives():
     # sum_v (y * s) is NOT sum_v y: the constrained edge is contracted with s's edge
     # through a hyperedge, not with a lone ones-vector, so nothing may cancel.
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     s = Variable("s", b, v)
     expr = F.sum(y * s, dim=("v",)).simplify()
     assert expr.depends_on(y) and expr.depends_on(s)
@@ -72,14 +79,14 @@ def test_elementwise_factor_survives():
 
 def test_scalar_factor_pulls_through():
     # (sum_v y[b,v]) * z[b] = z[b]
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     z = Variable("z", b)
     assert (F.sum(y, dim=("v",)) * z).simplify() == z
 
 
 def test_two_constrained_variables():
-    y1 = Variable("y1", b, v).with_constraint("simplex", "v")
-    y2 = Variable("y2", b, v).with_constraint("simplex", "v")
+    y1 = simplex(Variable("y1", b, v), "v")
+    y2 = simplex(Variable("y2", b, v), "v")
     expr = F.sum(y1, dim=("v",)) * F.sum(y2, dim=("v",))
     assert expr.simplify() == Delta(b, "b")
     # Only the summed variable drops; the other one stays.
@@ -88,7 +95,7 @@ def test_two_constrained_variables():
 
 
 def test_constraint_survives_rename():
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     yr = y.rename(v="w", b="batch")
     assert F.sum(yr, dim=("w",)).simplify() == Delta(b, "batch")
     # The unconstrained edge, renamed, still does not fire.
@@ -98,8 +105,42 @@ def test_constraint_survives_rename():
 def test_constraint_survives_substitute():
     t = Variable("t", b, v)
     expr = F.sum(t, dim=("v",))
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     assert expr.substitute(t, y).simplify() == Delta(b, "b")
+
+
+# ---------------------------------------------------------------------------
+# Generality: other equations, same mechanism
+# ---------------------------------------------------------------------------
+
+
+def test_orthogonal_columns():
+    # W^T W = I: projecting two vectors through W preserves their dot product.
+    d, i = symbols("d i")
+    W0 = Variable("W", d=d, i=i)
+    W = W0.with_eq_constraint(W0 @ W0.rename(i="j"), Delta(i, "i", "j"))
+    x = Variable("x", i=i)
+    z = Variable("z", j=i)
+    expr = ((W @ x) @ (W.rename(i="j") @ z)).simplify()
+    assert not expr.depends_on(W)
+    assert expr == (x.rename(i="j") @ z).simplify()
+    # Numerics with an actual orthonormal matrix (columns orthonormal needs d >= i).
+    D, I = 5, 3
+    Wt = torch.linalg.qr(torch.randn(D, I)).Q.rename("d", "i")
+    xt, zt = torch.randn(I).rename("i"), torch.randn(I).rename("j")
+    raw = evaluate((W @ x) @ (W.rename(i="j") @ z), {W: Wt, x: xt, z: zt}, {d: D, i: I})
+    torch.testing.assert_close(
+        raw.rename(None), (xt.rename(None) * zt.rename(None)).sum(), rtol=1e-5, atol=1e-6
+    )
+
+
+def test_unit_norm():
+    i = symbols("i")
+    u0 = Variable("u", i)
+    u = u0.with_eq_constraint(F.sum(u0 * u0, dim=("i",)), 1)
+    assert F.sum(u * u, dim=("i",)).simplify() == Product([])
+    # But a plain (unsquared) sum over u must NOT fire.
+    assert F.sum(u, dim=("i",)).simplify().depends_on(u)
 
 
 # ---------------------------------------------------------------------------
@@ -109,41 +150,43 @@ def test_constraint_survives_substitute():
 
 def test_constrained_not_isomorphic_to_unconstrained():
     y = Variable("y", b, v)
-    yc = y.with_constraint("simplex", "v")
+    yc = simplex(y, "v")
     assert y != yc
-    assert yc == Variable("y", b, v).with_constraint("simplex", "v")
-    assert "with_constraint" in repr(yc)
+    assert yc == simplex(Variable("y", b, v), "v")
+    assert "with_eq_constraint" in repr(yc)
 
 
 def test_with_symmetries_preserves_constraints():
     n = symbols("n")
-    M = Variable("M", i=n, j=n).with_constraint("simplex", "i", "j").with_symmetries("i j")
-    assert ("simplex", "i") in M._constraints and ("simplex", "j") in M._constraints
+    M0 = Variable("M", i=n, j=n)
+    M = simplex(simplex(M0, "i"), "j").with_symmetries("i j")
+    assert len(M._constraints) == 2  # one sum equation per edge
     assert F.sum(M, dim=("i",)).simplify() == Delta(n, "j")
 
 
 def test_constraint_must_cover_symmetry_orbit():
     n = symbols("n")
     with pytest.raises(ValueError):
-        Variable("M", i=n, j=n).with_symmetries("i j").with_constraint("simplex", "i")
+        simplex(Variable("M", i=n, j=n).with_symmetries("i j"), "i")
     with pytest.raises(ValueError):
-        Variable("M", i=n, j=n).with_constraint("simplex", "i").with_symmetries("i j")
+        simplex(Variable("M", i=n, j=n), "i").with_symmetries("i j")
 
 
 def test_constraint_validation():
     y = Variable("y", b, v)
-    with pytest.raises(ValueError):
-        y.with_constraint("banana", "v")
-    with pytest.raises(ValueError):
-        y.with_constraint("simplex", "nope")
-    with pytest.raises(ValueError):
-        y.with_constraint("simplex")
+    z = Variable("z", b)
+    with pytest.raises(ValueError):  # lhs does not mention y
+        y.with_eq_constraint(F.sum(z, dim=("b",)), 1)
+    with pytest.raises(ValueError):  # free edges of lhs and rhs differ
+        y.with_eq_constraint(F.sum(y, dim=("v",)), Ones(v))
+    with pytest.raises(ValueError):  # rhs not smaller: no termination guarantee
+        y.with_eq_constraint(F.sum(y, dim=("v",)), F.sum(Variable("w", b, v), dim=("v",)))
 
 
 def test_grad_is_unchanged_by_constraint():
     # Constraints describe values, not the optimization manifold: grad is untouched.
     y = Variable("y", b, v)
-    yc = Variable("y", b, v).with_constraint("simplex", "v")
+    yc = simplex(Variable("y", b, v), "v")
     new = {"b": "b2", "v": "v2"}
     assert yc.grad(yc, new_names=new).simplify() == y.grad(y, new_names=new).simplify()
 
@@ -155,7 +198,7 @@ def test_grad_is_unchanged_by_constraint():
 
 def test_evaluate_matches_rule():
     B, V = 3, 5
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     yt = _one_hot(B, V)
     expr = F.sum(y, dim=("v",))
     raw = evaluate(expr, {y: yt}, {b: B, v: V})
@@ -168,7 +211,7 @@ def test_compiled_program_drops_input():
     from tensorgrad.compiler import compile_to_callable
 
     B, V = 3, 5
-    y = Variable("y", b, v).with_constraint("simplex", "v")
+    y = simplex(Variable("y", b, v), "v")
     fn = compile_to_callable(F.sum(y, dim=("v",)).simplify())
     assert "y" not in fn.input_names
     out = fn({}, {b: B, v: V})

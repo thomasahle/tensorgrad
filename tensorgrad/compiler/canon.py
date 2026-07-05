@@ -234,7 +234,7 @@ def _canon_variable(v: Variable) -> CanonInfo:
         e0 = next(iter(orbit))
         orbits.append((_size_key(v._shape[e0]), " ".join(sorted(orbit))))
     fp = _H("Variable", v.name, tuple(sorted(orbits)))
-    # Value constraints (tensor.py Variable.with_constraint) are part of the structural
+    # Value constraints (tensor.py Variable.with_eq_constraint) are part of the structural
     # node name, so they must enter the fingerprint too: a constrained variable is NOT
     # isomorphic to an unconstrained one (soundness of the refined-accept path).
     # Constrained edges are validated to be unions of orbits, so orbit colors stay sound.

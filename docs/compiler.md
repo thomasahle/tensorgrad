@@ -65,7 +65,7 @@ semantically), `affine.py` (the structured-sparsity language, below).
 gelu written from primitives get fast, stable backward passes *derived* —
 the researcher benchmark (`tests/compiler/test_researcher_benchmark.py`)
 enforces this, up to the cross-entropy∘softmax Hessian, which simplifies to
-the two-term `diag(s) − ssᵀ` (y-free, given `y.with_constraint("simplex")`).
+the two-term `diag(s) − ssᵀ` (y-free, given the declared fact `y.with_eq_constraint(F.sum(y, ["v"]), 1)`).
 
 **Structure is born named, never inferred.** `Delta`, `Convolution`,
 `Reshape`, gathers are indicators of integer-affine index relations
