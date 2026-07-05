@@ -102,7 +102,7 @@ of planned intermediates → 19.8 GB (largest node 23 MB).
 | conv1d forward+backward | **2.4–4.8× faster** |
 | CE∘softmax Hessian-vector product | parity with double-backward |
 | MLP loss+grads (Wine) | ~1.6× slower eager, parity compiled |
-| 3-block GPT step (loss + 53 grads) | dispatch-bound; consolidation in progress |
+| 3-block GPT step (loss + 53 grads) | 3× slower compiled (25 vs 8.4 ms; was 138 ms pre-consolidation) |
 
 Gradients are verified against `torch.autograd` (typically ≤1e-6 relative)
 and against the `evaluate()` interpreter; `szfp` pins every rewrite exactly.
@@ -123,9 +123,12 @@ numeric comparison needs an `atol` floor to survive.
 
 ## Frontiers
 
-- **Consolidation** (in progress): the deep-model monolith is memory-compact
-  but dispatch-heavy (~3k small ops); horizontal/vertical fusion toward the
-  proven per-module-VJP op count.
+- **Consolidation** (`consolidate.py`, landed): Schwartz–Zippel value
+  numbering modulo axis permutation merges the per-gradient cotangent
+  strands that compute equal tensors through different groupings —
+  2925 → 844 nodes on the 3-block GPT monolith, guarded by a fresh-seed
+  refusal gate so a bad merge is a no-op, never a miscompile. Remaining
+  headroom: ~2× further kernel-count reduction to the per-module-VJP shape.
 - **GPU**: Triton emission for fused affine regions; `F.conv2d`/SDPA
   peepholes become load-bearing on GPU.
 - **Tech-mapping phase 2**: cut-based DP covering over a cost-characterized
