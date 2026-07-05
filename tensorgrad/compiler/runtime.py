@@ -163,11 +163,18 @@ class CompiledProgram:
             named = out.refine_names(*edge_order)
             # API parity with the old backends: if an output has the same edge
             # set as an input variable but different order (common for
-            # gradients), align it to the variable's order.
-            for var in self.vars:
-                if set(edge_order) == set(var.edges) and list(edge_order) != list(var.edges):
-                    named = named.align_to(*var.edges)
-                    break
+            # gradients), align it to the variable's order. When several
+            # variables share the edge set (e.g. tied embeddings: wte (vocab,d)
+            # vs lm_head (d,vocab)), an ORDERED match wins — the output is
+            # already in that variable's order and must not adopt another's
+            # (grad(wte) once got silently permuted to lm_head's axis order
+            # because lm_head came first in the var scan). If no variable
+            # matches the order exactly, align only when every tied variable
+            # agrees on ONE order; otherwise provenance is ambiguous and the
+            # output stays in its own declared edge order rather than guessing.
+            tie_orders = {tuple(var.edges) for var in self.vars if set(edge_order) == set(var.edges)}
+            if tuple(edge_order) not in tie_orders and len(tie_orders) == 1:
+                named = named.align_to(*next(iter(tie_orders)))
             wrapped.append(named)
         if len(wrapped) == 1:
             return wrapped[0]

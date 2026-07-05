@@ -971,13 +971,24 @@ class _ExprGradFunction(FunctionSignature):
         return res.simplify(args)
 
 
+# Module-level defs (not lambdas) so _ExprGradFunction instances — which end
+# up inside cached/pickled expressions like d/dx tanh(x) — remain picklable.
+def _tanh_grad_expr(x: Tensor) -> Tensor:
+    # d/dx tanh(x) = 1 - tanh(x)^2
+    return 1 - pow(tanh(x), 2)
+
+
+def _tanh_grad2_expr(x: Tensor) -> Tensor:
+    # d^2/dx^2 tanh(x) = -2 tanh(x) (1 - tanh(x)^2)
+    return -2 * tanh(x) * (1 - pow(tanh(x), 2))
+
+
+def _Tanh2GradFunction() -> FunctionSignature:
+    return _ExprGradFunction("D2_tanh", _tanh_grad2_expr)
+
+
 def _TanhGradFunction() -> FunctionSignature:
-    # d/dx tanh(x) = 1 - tanh(x)^2; d^2/dx^2 tanh(x) = -2 tanh(x) (1 - tanh(x)^2)
-    return _ExprGradFunction(
-        "D_tanh",
-        lambda x: 1 - pow(tanh(x), 2),
-        lambda: _ExprGradFunction("D2_tanh", lambda x: -2 * tanh(x) * (1 - pow(tanh(x), 2))),
-    )
+    return _ExprGradFunction("D_tanh", _tanh_grad_expr, _Tanh2GradFunction)
 
 
 def tanh(t: Tensor) -> Tensor:

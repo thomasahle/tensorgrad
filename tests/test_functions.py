@@ -765,3 +765,32 @@ def test_keepdim_keepdims_consistency():
     
     with pytest.raises(TypeError, match="unexpected keyword argument"):
         F.max(x, dim="i", keepdim=True)  # Wrong parameter name (now fixed)
+
+
+def test_tanh_derivative_pickle_roundtrip():
+    # tanh's FunctionSignature carries its derivative factory (D_tanh, an
+    # _ExprGradFunction); these used to be lambdas, which broke pickling of
+    # any cached expression containing tanh or its derivative.
+    import pickle
+    from tensorgrad.tensor import Function
+    from tensorgrad.functions import _TanhGradFunction
+
+    i = symbols("i")
+    x = Variable("x", i)
+
+    expr = F.tanh(x)
+    d_tanh = Function(_TanhGradFunction(), (x,), {})  # explicit D_tanh signature
+    grad = expr.grad(x)
+
+    for t in (expr, d_tanh, grad):
+        t2 = pickle.loads(pickle.dumps(t))
+        assert t2 == t
+        assert pickle.loads(pickle.dumps(t2)) == t2  # roundtrip is stable
+
+    # The roundtripped derivative still evaluates: D_tanh(x) == 1 - tanh(x)^2.
+    d2 = pickle.loads(pickle.dumps(d_tanh)).simplify()
+    dims = {i: 5}
+    vals = rand_values([x], dims)
+    got = evaluate(d2, dict(vals), dims).rename(None)
+    want = 1 - torch.tanh(vals[x].rename(None)) ** 2
+    torch.testing.assert_close(got, want)

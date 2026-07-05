@@ -738,6 +738,76 @@ def test_einsum_count_mlp_loss_and_grads(mlp_program):
     assert n_einsum <= 35, f"einsum count regressed: {n_einsum} > 35\n{fn._source}"
 
 
+def _check_del_invariants(src: str):
+    """No name may be referenced after its `del`; return names are never
+    deleted. Applies to any generated straight-line program."""
+    import re
+
+    body_lines = src.split("\n")
+    dead: set[str] = set()
+    for line in body_lines:
+        stripped = line.strip()
+        toks = set(re.findall(r"\w+", stripped))
+        used_after_del = toks & dead
+        assert not used_after_del, f"deleted name(s) {used_after_del} referenced in: {stripped}\n{src}"
+        if stripped.startswith("del "):
+            dead |= {n.strip() for n in stripped[4:].split(",")}
+
+
+def test_liveness_del_emission(mlp_program):
+    # Intermediates are freed at their last use (codegen_torch.EMIT_DEL):
+    # the source must contain dels, obey the no-use-after-del invariant,
+    # and produce values identical to the EMIT_DEL=False emission.
+    from tensorgrad.compiler import codegen_torch
+
+    _, f = mlp_program
+    dims = {batch: 4, in_dim: 5, hidden: 6, out_dim: 3}
+    torch.manual_seed(0)
+    vals = _mlp_values(dims)
+    outs = f(dict(vals), dims)
+    fn = _specialized_fn(f, dims)
+    assert "del " in fn._source, fn._source
+    _check_del_invariants(fn._source)
+
+    exprs, _ = mlp_program
+    old = codegen_torch.EMIT_DEL
+    codegen_torch.EMIT_DEL = False
+    try:
+        f2 = compile_to_callable(*exprs)
+        outs2 = f2(dict(vals), dims)
+        fn2 = _specialized_fn(f2, dims)
+    finally:
+        codegen_torch.EMIT_DEL = old
+    assert "del " not in fn2._source
+    for a, b in zip(outs, outs2):
+        torch.testing.assert_close(a.rename(None), b.align_to(*a.names).rename(None))
+
+
+def test_output_alignment_ordered_match_wins():
+    # Two variables share an edge SET with different order (tied-embedding
+    # shape: wte (vocab, d) vs lm_head (d, vocab)). A gradient output whose
+    # declared edge order exactly matches one variable must keep that order —
+    # not be silently align_to'd onto the other variable (grad(wte) once
+    # adopted lm_head's axis order because it came first in the var scan).
+    i, j = sympy.symbols("i j")
+    A = Variable("A", i, j)
+    B = Variable("B", j, i)
+    loss = F.sum(A * B)
+    prog = compile_to_callable(loss.full_simplify(), loss.grad(B).full_simplify())
+    dims = {i: 3, j: 4}
+    torch.manual_seed(0)
+    va, vb = rand_named(A, dims), rand_named(B, dims)
+    _, g = prog({A: va, B: vb}, dims)
+    declared = prog.outputs[1][1]
+    assert tuple(g.names) == tuple(declared), (
+        f"output permuted away from its declared order {declared} -> {g.names}"
+    )
+    # dloss/dB = A; compare through names, which must survive unpermuted.
+    torch.testing.assert_close(
+        g.align_to("j", "i").rename(None), va.rename(None).T
+    )
+
+
 # ===========================================================================
 # 6. Known failures (xfail, strict=False: they PASS automatically once fixed)
 # ===========================================================================
