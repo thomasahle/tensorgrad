@@ -1,0 +1,8 @@
+{
+    "include": ["tensorgrad"],
+    "exclude": ["server", "paper", "**/__pycache__", "**/node_modules"],
+    "typeCheckingMode": "basic",
+    "venvPath": ".",
+    "venv": ".venv",
+    "pythonVersion": "3.12"
+}

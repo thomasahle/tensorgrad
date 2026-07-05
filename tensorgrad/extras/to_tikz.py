@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from typing import Optional
 from dataclasses import dataclass
 from functools import singledispatchmethod
 from functools import update_wrapper
@@ -84,7 +85,7 @@ class depth_tracking_dispatcher(singledispatchmethod):
 # The main TikzGraph class
 ###############################################################################
 class TikzGraph:
-    def __init__(self, namer: Namer = None, depth: int = 0):
+    def __init__(self, namer: Optional[Namer] = None, depth: int = 0):
         # We store lines of TikZ to build the final diagram.
         self.lines = []
         self.namer = Namer() if namer is None else namer
@@ -117,7 +118,9 @@ class TikzGraph:
 
         return "\n".join(code)
 
-    def add_node(self, name: str, node_type: str, label: str = None, degree: int = None, style=None):
+    def add_node(
+        self, name: str, node_type: str, label: Optional[str] = None, degree: Optional[int] = None, style=None
+    ):
         """
         Add a single node to this graph. We rely on node_ref.name for uniqueness.
         """
@@ -215,7 +218,9 @@ class TikzGraph:
             f"    ({ref1.name}){edge_type}[{style_str}, bend left={angle}, {side} {label_str}] ({ref2.name});"
         )
 
-    def add_subgraph(self, subgraph: "TikzGraph", cluster_id: str, *, style: str = None, layout: str = None):
+    def add_subgraph(
+        self, subgraph: "TikzGraph", cluster_id: str, *, style: Optional[str] = None, layout: Optional[str] = None
+    ):
         """
         Insert a subgraph as a cluster. We rely on subgraph.lines (already constructed),
         and we do not re-add subgraph's nodes individually if they've already been

@@ -77,7 +77,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from numbers import Number
-from typing import Callable, Optional
+from typing import Callable, Optional, cast
 
 from sympy import Symbol
 
@@ -164,7 +164,9 @@ def canon_info(t: Tensor) -> CanonInfo:
         if pending:
             stack.extend(pending)
             continue
-        node.__dict__[_ATTR] = _compute(node)
+        # (cast: pyright resolves instance __dict__ through the metaclass as a
+        # read-only mappingproxy; instances have a plain mutable dict)
+        cast(dict, node.__dict__)[_ATTR] = _compute(node)
         stack.pop()
     return t.__dict__[_ATTR]
 

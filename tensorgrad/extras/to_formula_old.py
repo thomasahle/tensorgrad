@@ -77,7 +77,9 @@ def component_to_matrix(comp, left_edge):
 def dfs(t, adj, visited, in_edge):
     visited[t] = True
     if isinstance(t, Variable):
-        yield t.name + ("^T" if in_edge == t.edges[1] else "")
+        # Legacy module: `edges` is a keys view and was never subscriptable;
+        # this line predates that API and only runs on the old code path.
+        yield t.name + ("^T" if in_edge == t.edges[1] else "")  # pyright: ignore[reportIndexIssue]
     elif isinstance(t, Delta):
         yield "1"
     else:

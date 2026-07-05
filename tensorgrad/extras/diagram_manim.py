@@ -22,7 +22,7 @@ def diagram_mobject(diagram: Tensor | DiagramSnapshot | dict[str, Any], *, scale
     """
 
     try:
-        from manim import (
+        from manim import (  # pyright: ignore[reportMissingImports]  # optional dependency
             BLUE,
             GREEN,
             ORANGE,
@@ -110,7 +110,7 @@ def play_diagram_transform(scene: Any, current: Any, target: Tensor | DiagramSna
     """Play a generic Manim transform to another diagram snapshot."""
 
     try:
-        from manim import Transform
+        from manim import Transform  # pyright: ignore[reportMissingImports]  # optional dependency
     except ImportError as exc:  # pragma: no cover - depends on optional package
         raise ImportError("play_diagram_transform requires Manim. Install `manim` to use it.") from exc
 

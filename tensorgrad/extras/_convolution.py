@@ -13,7 +13,11 @@ def naive_tensor(X: int, Z: int, Y: int) -> torch.Tensor:
     return conv
 
 
-def conv_einsum_dispatch(einsum_str: str, A: torch.Tensor | tuple, B: torch.Tensor | tuple) -> torch.Tensor:
+def conv_einsum_dispatch(
+    einsum_str: str,
+    A: torch.Tensor | tuple[int, int, int],
+    B: torch.Tensor | tuple[int, int, int],
+) -> torch.Tensor:
     lhs, rhs = einsum_str.split("->")
     A_dims, B_dims = lhs.split(",")
 
@@ -34,6 +38,10 @@ def conv_einsum_dispatch(einsum_str: str, A: torch.Tensor | tuple, B: torch.Tens
         einsum_str = f"{A_dims},{B_dims}->{rhs}"
         A, B = B, A
 
+    # From here on A is the data tensor and B the convolution size triple
+    # (the caller passes at least one triple; after the swap it is B).
+    assert isinstance(A, torch.Tensor) and isinstance(B, tuple)
+
     # If we have to do a hadamard multiplication, we can't handle that right now
     if set(A_dims) & set(B_dims) & set(rhs):
         return torch.einsum(einsum_str, A, naive_tensor(*B))
@@ -52,16 +60,16 @@ def conv_einsum_dispatch(einsum_str: str, A: torch.Tensor | tuple, B: torch.Tens
         A_flat = A_flat.flatten(0, len(batch_dims) - 1)
     elif len(batch_dims) == 0:
         A_flat = A_flat.unsqueeze(0)
-    B = A_flat.shape[0]
+    nbatch = A_flat.shape[0]
     # Figure out what dimensions we need from the convolution
     b_contract = [i for i, b in enumerate(B_dims) if b in A_dims]
 
-    res = None  # type: torch.Tensor
+    res: torch.Tensor | None = None
     # bx,xzy->bzy
     if b_contract == [0]:
         res = A_flat.unfold(dimension=1, size=Z, step=1)  # shape [B,Y,Z]
         res = res.permute(0, 2, 1)
-        assert res.shape == (B, Z, Y), f"{res.shape=}"
+        assert res.shape == (nbatch, Z, Y), f"{res.shape=}"
 
     # by,xzy->bxz
     elif b_contract == [2]:
@@ -69,27 +77,27 @@ def conv_einsum_dispatch(einsum_str: str, A: torch.Tensor | tuple, B: torch.Tens
         #   => typical "toeplitz" with negative shift
         #   => pad left/right by (Z-1), unfold(size=Z, step=1),
         #      slice first X, flip dimension 1
-        assert A_flat.shape == (B, Y), f"{A_flat.shape=}"
+        assert A_flat.shape == (nbatch, Y), f"{A_flat.shape=}"
         padded = F.pad(A_flat, (Z - 1, Z - 1))  # shape [Y + 2*(Z-1)]
-        assert padded.shape == (B, Y + 2 * (Z - 1)), f"{padded.shape=}"
+        assert padded.shape == (nbatch, Y + 2 * (Z - 1)), f"{padded.shape=}"
         tmp = padded.unfold(dimension=1, size=Z, step=1)  # => [B,Y+2*(Z-1),Z]
         tmp = tmp[:, :X]  # => [B,X,Z]
         res = tmp.flip(dims=(2,))  # => [B,X,Z]
-        assert res.shape == (B, X, Z), f"{res.shape=}"
+        assert res.shape == (nbatch, X, Z), f"{res.shape=}"
 
     # bz,xzy->bxy, using symmetry
     elif b_contract == [1]:
         eq = f"{A_dims},{B_dims[0]}{B_dims[2]}{B_dims[1]}->{rhs}"
         res = conv_einsum_dispatch(eq, A, (X, Y, Z))
-        assert res.shape == (B, X, Y)
+        assert res.shape == (nbatch, X, Y)
 
     # bzy,xzy->bx, and byz,xzy->bx
     elif b_contract == [1, 2]:
         # if bzy
         if A_dims[contr_dims[0]] == B_dims[1]:
-            expanded = A_flat.reshape(B, Z, Y)
+            expanded = A_flat.reshape(nbatch, Z, Y)
         else:
-            expanded = A_flat.reshape(B, Y, Z).permute(0, 2, 1)
+            expanded = A_flat.reshape(nbatch, Y, Z).permute(0, 2, 1)
         # Fold assumes (B, C*K, L) => (B, C, H, W)
         res = F.fold(
             expanded,  # shape [B, Z, Y]
@@ -97,7 +105,7 @@ def conv_einsum_dispatch(einsum_str: str, A: torch.Tensor | tuple, B: torch.Tens
             kernel_size=(1, Z),
             stride=(1, 1),
         ).squeeze(1, 2)  # shape [B, X]
-        assert res.shape == (B, X)
+        assert res.shape == (nbatch, X)
 
     if res is not None:
         # Handle extra summations and permutations

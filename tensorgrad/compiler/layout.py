@@ -32,6 +32,8 @@ permute view where a producer could not comply, so disagreement costs a
 view — never wrong results.
 """
 
+from typing import Sequence, cast
+
 from tensorgrad.compiler.ir import (
     ConstNode,
     EinsumNode,
@@ -114,7 +116,7 @@ def _split_blocks(wires, batch, m, n):
     return None
 
 
-def _cell_feasible(node: Node, groups, wires) -> bool:
+def _cell_feasible(node: EinsumNode, groups, wires) -> bool:
     """Can this block-form output order be produced by mm/bmm WITHOUT
     permuting a PINNED operand? (Pinned operands lie in logical order; a
     block's intra order must be a subsequence match. Flexible operands are
@@ -172,7 +174,8 @@ def _decide(node: Node, votes: list) -> tuple:
             eb = list(node.in_subs[1]) if _pinned(node.ops[1]) else None
             if ea or eb:
                 ref = [out[j] for j in _majority(block_votes)] if block_votes else list(out)
-                b_ord = [w for w in (ea if ea is not None else eb) if w in batch]
+                # (cast: `if ea or eb` above guarantees the chosen list is not None)
+                b_ord = [w for w in cast(list, ea if ea is not None else eb) if w in batch]
                 if ea and eb and [w for w in eb if w in batch] != b_ord:
                     b_ord = None  # incompatible pinned batch orders: no bmm
                 if b_ord is not None:
@@ -339,7 +342,7 @@ def _refine(node: Node, phys: dict):
 def assign_layouts(
     order: list[Node],
     outputs: list[tuple[Node, tuple]],
-    var_orders: list[tuple] = (),
+    var_orders: "Sequence[tuple]" = (),
 ) -> dict[int, tuple]:
     """Three sweeps; returns {id(node): phys permutation}.
 

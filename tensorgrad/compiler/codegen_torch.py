@@ -18,6 +18,8 @@ import textwrap
 
 import opt_einsum as oe
 import sympy
+from typing import Optional, cast, Any
+
 import torch
 
 from tensorgrad.compiler.ir import (
@@ -159,7 +161,9 @@ class TorchCodegen:
         # Deterministic input order (sorted by variable name).
         self.input_names = sorted(builder.input_vars)
 
-    def specialize(self, dims: dict[sympy.Symbol, int], verbose: bool = False, dtype: torch.dtype = None):
+    def specialize(
+        self, dims: dict[sympy.Symbol, int], verbose: bool = False, dtype: Optional[torch.dtype] = None
+    ):
         """Generate and exec source for concrete dims.
         Returns a function f(*input_tensors) -> tuple[torch.Tensor, ...].
 
@@ -212,7 +216,10 @@ class TorchCodegen:
         # else is normalized with .contiguous() before being viewed.
         self._layouts: dict[str, tuple[tuple[int, ...], tuple[int, ...], int | None]] = {}
         names: dict[int, str] = {}
-        lines: list[str] = []
+        # None entries are deferred slots, filled or dropped before assembly
+        # (Any rather than Optional[str]: the None placeholders are all
+        # resolved before the string-assembly phase below).
+        lines: list[Any] = []
         consts: dict[str, torch.Tensor] = {}
         emitted_inputs: dict[str, str] = {}
         # Step-level CSE: identical pairwise contractions (same equation on the
@@ -291,6 +298,7 @@ class TorchCodegen:
         for line_idx, node, name in deferred_consts:
             if re.search(rf"\b{name}\b", used_text):
                 tensor = self._build_const(node, dim_of)
+                assert tensor is not None  # deferred consts are never 'scalar' kind
                 lines[line_idx] = f"{name} = {const_name(tensor, node.kind)}"
         for line_idx, name, text in deferred_lines:
             if re.search(rf"\b{name}\b", used_text):
@@ -1220,8 +1228,9 @@ class TorchCodegen:
                             t
                             for t in range(2)
                             if isinstance(cur.terms[t], EinsumNode)
-                            and len(cur.terms[t].ops) == 2
-                            and not cur.terms[t].constraints
+                            # (casts: guarded by the isinstance in the previous clause)
+                            and len(cast(EinsumNode, cur.terms[t]).ops) == 2
+                            and not cast(EinsumNode, cur.terms[t]).constraints
                         ),
                         None,
                     )

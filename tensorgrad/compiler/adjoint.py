@@ -220,6 +220,7 @@ class _Collapser:
 
         # X Linear: distribute einsum(u, X) over its terms (one boundary; the
         # next iteration's R handles what the terms contain).
+        assert isinstance(X, LinearNode)  # _pick_boundary only returns Linear or Einsum operands
         built = []
         for t, pm, w in zip(X.terms, X.perms, X.weights):
             subs_t = [0] * t.order
@@ -825,11 +826,12 @@ class _Accumulate(_Collapser):
 
     def _rewrite_head(self, n: EinsumNode, region: dict):
         """Reverse-mode program for one head, or None to leave it alone."""
-        n = self._inline_towers(n)
-        if n is None:
+        inlined = self._inline_towers(n)
+        if inlined is None:
             return None
-        if not isinstance(n, EinsumNode):
-            return n  # towers const-folded away: that IS the head's value
+        if not isinstance(inlined, EinsumNode):
+            return inlined  # towers const-folded away: that IS the head's value
+        n = inlined
         slots = [i for i, op in enumerate(n.ops) if id(op) in region]
         if not slots:
             self.stats["head:multislot"] = self.stats.get("head:multislot", 0) + 1

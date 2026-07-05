@@ -3,26 +3,51 @@ from dataclasses import dataclass
 from functools import cached_property
 import math
 from string import ascii_letters
-from typing import Any, Generator, Iterable, Optional, Union, final
+from types import ModuleType
+from typing import (
+    AbstractSet,
+    Any,
+    Generator,
+    Iterable,
+    KeysView,
+    Literal,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+    final,
+)
 from abc import ABC, ABCMeta
 from fractions import Fraction
-from numbers import Number, Rational
+from numbers import Number
 
 import networkx as nx
 from sympy import Symbol
 
 from tensorgrad.utils import _MatchEdgesKey
 
+# Plain numeric scalars accepted by Tensor's arithmetic operators and as Sum
+# weights. `numbers.Number` covers numeric types that only register with the
+# ABC at runtime (e.g. sympy/numpy scalars); int/float/Fraction are listed
+# explicitly because static checkers don't see virtual (ABC-registered)
+# subclassing, so `int` is not statically a `Number`.
+Scalar = Union[int, float, Fraction, Number]
+
+# Runtime twin of `Scalar` for isinstance checks. Semantically identical to
+# `isinstance(x, Number)` (int/float/Fraction all register with the Number
+# ABC), but listing the concrete types lets the type checker narrow the
+# non-scalar branch down to Tensor.
+_SCALAR_TYPES = (int, float, Fraction, Number)
 
 _lazy_rename = False
 
 # Lazily imported tensorgrad.compiler.canon module (compositional structural
 # hashing). Loaded on first use to avoid a circular import (canon imports this
 # module) and to keep `import tensorgrad` light. False means "unavailable".
-_canon_mod = None
+_canon_mod: Union[ModuleType, None, Literal[False]] = None
 
 
-def _get_canon():
+def _get_canon() -> Optional[ModuleType]:
     global _canon_mod
     if _canon_mod is None:
         try:
@@ -75,8 +100,13 @@ class TensorMeta(ABCMeta):
 
 
 class Tensor(metaclass=TensorMeta):
+    # Set by concrete subclasses in __init__ (declared here so the type is
+    # known; `shape` still uses hasattr to detect abstract tensors).
+    _shape: dict[str, Symbol]
+    _symmetries: set[frozenset[str]]
+
     @property
-    def edges(self) -> set[str]:
+    def edges(self) -> KeysView[str]:
         """Returns an _ordered_ set of edge names"""
         return self.shape.keys()
 
@@ -117,7 +147,7 @@ class Tensor(metaclass=TensorMeta):
 
         return result
 
-    def _check_grad(self, x: "Variable", new_names: dict[str, str]) -> dict[str, Symbol]:
+    def _check_grad(self, x: "Variable", new_names: Optional[dict[str, str]]) -> dict[str, str]:
         # When taking a derivative with respect to a variable, we need some edge names for the derivative.
         # If new_names is not given, we generate names based on the edge names of x.
         # However, we need to make sure they don't clash with any names already present in the tensor.
@@ -181,7 +211,7 @@ class Tensor(metaclass=TensorMeta):
         raise NotImplementedError
 
     @final
-    def simplify(self, args: dict[str, Any] = None) -> "Tensor":
+    def simplify(self, args: Optional[dict[str, Any]] = None) -> "Tensor":
         """
         Apply simplification rules to this tensor.
 
@@ -241,7 +271,7 @@ class Tensor(metaclass=TensorMeta):
         # Override this method to implement simplification
         return self
 
-    def full_simplify(self, expand=True) -> "Tensor":
+    def full_simplify(self, expand: bool = True) -> "Tensor":
         """Applies multiple simplification rules until the expression no longer changes"""
         expr = self
         while (new := expr.simplify()) != expr:
@@ -305,7 +335,9 @@ class Tensor(metaclass=TensorMeta):
         and Derivative._simplify queries it per Derivative node. Same disease
         and cure as the memoized Tensor.substitute.
         """
-        cache = self.__dict__.setdefault("_depends_on_cache", {})
+        # (cast: pyright resolves instance `__dict__` through the metaclass as
+        # a read-only mappingproxy; instances have a plain mutable dict.)
+        cache = cast(dict[str, Any], self.__dict__).setdefault("_depends_on_cache", {})
         if (hit := cache.get(id(x))) is None:
             cache[id(x)] = hit = (self._depends_on(x), x)  # x ref pins the id
         return hit[0]
@@ -327,7 +359,7 @@ class Tensor(metaclass=TensorMeta):
         raise NotImplementedError
 
     def edge_structural_graph(
-        self, match_edges: bool = True, edge_names: Optional[dict[str, str]] = None
+        self, match_edges: bool = True, edge_names: Optional[dict[str, Any]] = None
     ) -> tuple[nx.MultiDiGraph, list[str]]:
         """
         Build a structural graph of the tensor with dummy nodes for outer edges.
@@ -362,53 +394,61 @@ class Tensor(metaclass=TensorMeta):
             A string showing the graph structure.
         """
         G, _ = self.edge_structural_graph(match_edges=True)
-        return "\n".join(nx.generate_network_text(G, with_labels="name", sources=[0]))
+        # (networkx accepts an attribute name for with_labels; the stub says bool)
+        return "\n".join(
+            nx.generate_network_text(G, with_labels="name", sources=[0])  # pyright: ignore[reportArgumentType]
+        )
 
-    # Overloaded operators
+    # Overloaded operators.
+    # All binary operators accept a plain numeric scalar (int, float,
+    # Fraction, or any runtime numbers.Number) or another Tensor, and return a
+    # Tensor. A scalar is treated as a (weighted) order-0 tensor, so e.g.
+    # `2 * x == x * 2`, `1 - x`, `x / 3` and `1 @ x` (scalar product) all work.
 
-    def __add__(self, other: Union[Number, "Tensor"]) -> "Tensor":
-        w = 1
-        if isinstance(other, Number):
+    def __add__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
+        w: Any = 1  # Any: numbers.Number supports no static arithmetic
+        if isinstance(other, _SCALAR_TYPES):
             other, w = Product([]), other
         return Sum([self, other], [1, w])
 
-    def __radd__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __radd__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         return self + other
 
-    def __rsub__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __rsub__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         # Handle `other - self`
         return -self + other
 
-    def __sub__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __sub__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         # Handle `self - other`
-        w = 1
-        if isinstance(other, Number):
+        w: Any = 1  # Any: numbers.Number supports no static arithmetic
+        if isinstance(other, _SCALAR_TYPES):
             other, w = Product([]), other
         return Sum([self, other], [1, -w])
 
     def __neg__(self) -> "Tensor":
         return Sum([self], [-1])
 
-    def __matmul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
-        if isinstance(other, Number):
+    def __matmul__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
+        if isinstance(other, _SCALAR_TYPES):
             other = Sum([Product([])], [other])
         return Product([self, other])
 
-    def __rmatmul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
-        if isinstance(other, Number):
+    def __rmatmul__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
+        # `scalar @ tensor` is scalar multiplication (same as `scalar * tensor`).
+        if isinstance(other, _SCALAR_TYPES):
             return self * other
         return self @ other
 
-    def __rmul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __rmul__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         return self * other
 
-    def __mul__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __mul__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         """
         Contract self with other using tensor product and contraction rules.
         """
-        if isinstance(other, Number):
+        if isinstance(other, _SCALAR_TYPES):
             if other == 0:
-                return Zero(**self.shape)
+                return Zero(_symmetries=None, **self.shape)
             if other == 1:
                 return self
             return Sum([self], [other])
@@ -417,23 +457,24 @@ class Tensor(metaclass=TensorMeta):
 
         return prod(self, other)
 
-    def __rtruediv__(self, other: Union[Number, "Tensor"]) -> "Tensor":
+    def __rtruediv__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         # Handle other / self
         from tensorgrad.functions import pow  # Avoid circular import
 
         return other * pow(self, -1)
 
-    def __truediv__(self, other: Union[Rational, "Tensor"]) -> "Tensor":
+    def __truediv__(self, other: Union[Scalar, "Tensor"]) -> "Tensor":
         # Handle self / other
         from tensorgrad.functions import pow  # Avoid circular import
 
         if isinstance(other, int):
             return Sum([self], [Fraction(1, other)])
-        if isinstance(other, Number):
-            return Sum([self], [1 / other])
+        if isinstance(other, _SCALAR_TYPES):
+            w: Any = other  # Any: numbers.Number supports no static arithmetic
+            return Sum([self], [1 / w])
         return self * pow(other, -1)
 
-    def __pow__(self, other: Number) -> "Tensor":
+    def __pow__(self, other: Union[int, Fraction]) -> "Tensor":
         from tensorgrad.functions import pow  # Avoid circular import
 
         if not isinstance(other, (int, Fraction)):
@@ -441,7 +482,7 @@ class Tensor(metaclass=TensorMeta):
         return pow(self, other)
 
     def is_isomorphic(
-        self, other: "Tensor", match_edges: bool = False, edge_names: None | dict[str, str] = None
+        self, other: "Tensor", match_edges: bool = False, edge_names: None | dict[str, Any] = None
     ) -> bool:
         """
         Test whether this tensor is isomorphic to another tensor.
@@ -571,10 +612,10 @@ class Tensor(metaclass=TensorMeta):
         duplicates = {n for n in names if names.count(n) > 1}
         if duplicates:
             raise ValueError(f"Duplicate positional dimension names: {duplicates}")
-        shape0 = {s.name: s for s in shape0}
-        if double_keys := shape0.keys() & shape1.keys():
+        shape0_dict = {s.name: s for s in shape0}
+        if double_keys := shape0_dict.keys() & shape1.keys():
             raise ValueError(f"Duplicate edge names: {double_keys}")
-        return shape0 | shape1
+        return shape0_dict | shape1
 
     @staticmethod
     def _check_symmetries(
@@ -621,7 +662,7 @@ class Variable(Tensor):
         name: str,
         *shape0: Symbol,
         _symmetries: None | str | set[frozenset[str]] = None,
-        _constraints: None | Iterable[tuple[str, str]] = None,
+        _constraints: None | Iterable[tuple["Tensor", "Tensor"]] = None,
         **shape1: Symbol,
     ):
         """
@@ -653,7 +694,9 @@ class Variable(Tensor):
             )
         return (repr(lhs), (), repr(rhs), ())
 
-    def _check_constraints(self, constraints) -> frozenset:
+    def _check_constraints(
+        self, constraints: Optional[Iterable[tuple["Tensor", "Tensor"]]]
+    ) -> tuple[tuple["Tensor", "Tensor"], ...]:
         if constraints is None:
             return ()
         # Dedup by the edge-name-aware key, NOT by tensor equality (which is
@@ -683,7 +726,7 @@ class Variable(Tensor):
             for a, b in zip(orbit, orbit[1:]):
                 swap = {a: b, b: a}
                 if bare is None:
-                    bare = Variable(self.name, **self.shape, _symmetries=self._symmetries)
+                    bare = Variable(self.name, **self.shape, _symmetries=self._symmetries, _constraints=None)
                 swapped_anchor = bare.rename(**swap)
                 for lhs, rhs in constraints:
                     sl = lhs.substitute(bare, swapped_anchor)
@@ -731,7 +774,7 @@ class Variable(Tensor):
         matching compares bare against bare."""
         for v in Variable._find_variables(t):
             if v._constraints:
-                bare = Variable(v.name, **v.shape, _symmetries=v._symmetries)
+                bare = Variable(v.name, **v.shape, _symmetries=v._symmetries, _constraints=None)
                 t = t.substitute(v, bare)
         return t
 
@@ -740,15 +783,15 @@ class Variable(Tensor):
         # free) twin, whose identity includes the symmetries — re-anchor them.
         constraints = self._constraints
         if constraints:
-            old_bare = Variable(self.name, **self.shape, _symmetries=self._symmetries)
-            new_bare = Variable(self.name, **self.shape, _symmetries=symmetries)
+            old_bare = Variable(self.name, **self.shape, _symmetries=self._symmetries, _constraints=None)
+            new_bare = Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=None)
             constraints = tuple(
                 (l.substitute(old_bare, new_bare), r.substitute(old_bare, new_bare))
                 for l, r in constraints
             )
         return Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=constraints)
 
-    def with_eq_constraint(self, lhs: "Tensor", rhs) -> "Variable":
+    def with_eq_constraint(self, lhs: "Tensor", rhs: Union["Tensor", int, float]) -> "Variable":
         """Declare a value constraint on this variable, as an EQUATION written
         in tensorgrad itself: ``with_eq_constraint(lhs, rhs)`` states that the
         expression ``lhs`` (which must mention this variable) always EQUALS the
@@ -828,7 +871,7 @@ class Variable(Tensor):
             return Product(Delta(s, e, new_names[e]) for e, s in self.shape.items())
         # Note: We don't need to tell Zero the symmetries, since it's automatically
         # symmetric in all dimensions that have compatible sizes.
-        return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
+        return Zero(_symmetries=None, **(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
     def __repr__(self) -> str:
         args = [f"\"{self.name}\", {', '.join(self.edges)}"]
@@ -997,7 +1040,9 @@ class Constant(Tensor, ABC):
     An abstract tensor that represents a constant (non-variable) tensor.
     """
 
-    def __init__(self, *shape0: Symbol, _symmetries: Optional[set[frozenset[str]]] = None, **shape1: Symbol):
+    def __init__(
+        self, *shape0: Symbol, _symmetries: None | str | set[frozenset[str]] = None, **shape1: Symbol
+    ):
         """
         A constant tensor with the given edges.
 
@@ -1014,7 +1059,7 @@ class Constant(Tensor, ABC):
         return f"{type(self).__name__}({self.shape})"
 
     def with_symmetries(self, symmetries: str | set[frozenset[str]]) -> "Constant":
-        return type(self)(self.name, **self._shape, _symmetries=symmetries)
+        return type(self)(_symmetries=symmetries, **self._shape)
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
         G = nx.MultiDiGraph()
@@ -1039,10 +1084,10 @@ class Constant(Tensor, ABC):
         return self
 
     def _rename(self, **kwargs: str) -> Tensor:
-        return type(self)(**{kwargs.get(e, e): s for e, s in self.shape.items()})
+        return type(self)(_symmetries=None, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
+        return Zero(_symmetries=None, **(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
     def _depends_on(self, x: "Variable") -> bool:
         return False
@@ -1065,8 +1110,8 @@ class Delta(Constant):
             size: The size (dimension) of the tensor.
             edges: The names of the tensor edges.
         """
-        edges = self._check_edges(edges)
-        super().__init__(**{e: size for e in edges})
+        edge_list = self._check_edges(edges)
+        super().__init__(_symmetries=None, **{e: size for e in edge_list})
         assert isinstance(size, (Symbol, Number)), "Size must be a sympy symbol"
         self._size = size
 
@@ -1338,14 +1383,15 @@ class FunctionSignature(ABC):
 
     name: str
     # The output edges of the function. Note no Symbols here, since we don't know the sizes yet.
-    edges: set[str]
+    # (Any set-like collection of edge names: set, frozenset or dict keys.)
+    edges: AbstractSet[str]
     # Defines the number of input tensors the function takes, and what edges it needs from each
-    inputs: tuple[set[str], ...]
+    inputs: Sequence[AbstractSet[str]]
 
     # TODO: Functions should support symmetric outputs, just like Constant and Variable.
     # Actually we could define symmetries for the inputs too, since the order doesn't always matter.
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> "FunctionSignature":
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> "FunctionSignature":
         """
         Returns a new FunctionSignature that represents the derivative
         with respect to the i-th input, and where edges are created
@@ -1359,11 +1405,14 @@ class FunctionSignature(ABC):
             raise ValueError(f"New edges {new_edges.values()} clash with {self.edges=}")
         return FunctionSignature(f"D_{i}{self.name}", self.edges | set(new_edges.values()), self.inputs)
 
-    def simplify(self, t: "Function", args: dict[str, Any]) -> Tensor:
+    def simplify(self, t: "Function", args: dict[str, Any], /) -> Tensor:
         """
         Simplifies the Function tensor that uses this signature.
         Default implementation returns `t` unchanged.
         Subclasses can override this method for custom simplifications.
+
+        (The parameters are positional-only: subclasses name the Function
+        parameter differently, e.g. `f` or `func`.)
         """
         return t
 
@@ -1388,13 +1437,15 @@ def function(
     Returns:
         A Function tensor.
     """
+    # Each input tuple is (tensor, edge_name, ...); the heterogeneous tuple
+    # type can't express that, hence the casts.
     return Function(
         FunctionSignature(
             name,
             output_shape.keys(),
-            [set(es) for (t, *es) in inputs],
+            [cast(set[str], set(es)) for (t, *es) in inputs],
         ),
-        [t for (t, *es) in inputs],
+        [cast(Tensor, t) for (t, *es) in inputs],
         output_shape,
     )
 
@@ -1625,7 +1676,7 @@ class Derivative(Tensor):
 
     def _simplify(self, args: dict[str, Any]) -> Tensor:
         if not self.tensor.depends_on(self.x):
-            return Zero(**self.shape)
+            return Zero(_symmetries=None, **self.shape)
         inner = self.tensor.simplify(args)
         if args["grad_steps"] == 0:
             # If grad_steps is 0, we pass the simplify through the derivative.
@@ -1773,7 +1824,7 @@ class Product(Tensor):
 
         # If any tensor in a product is 0, so is the whole product
         if any(isinstance(t, Zero) for t in tensors):
-            return Zero(**self.shape)
+            return Zero(_symmetries=None, **self.shape)
 
         # Decide whether to push products through sums. This can be useful to simplify networks for
         # presentation, but it can also blow up the number of terms. So we make it optional.
@@ -1790,7 +1841,8 @@ class Product(Tensor):
         # Also, if a child is a sum with a single element, we can pull the weight up.
         # In general, we can pull out the least common multiple of the weights of the children.
         if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.terms) == 1]:
-            tensors = [t if t not in single_sums else t.terms[0] for t in tensors]
+            # (cast: membership in single_sums implies t is a Sum)
+            tensors = [t if t not in single_sums else cast(Sum, t).terms[0] for t in tensors]
             res_weight = math.prod(t.weights[0] for t in single_sums)
         else:
             res_weight = 1
@@ -1955,7 +2007,7 @@ class Sum(Tensor):
     A weighted sum of several tensors.
     """
 
-    def __init__(self, terms: Iterable[Tensor], weights: Optional[Iterable[Number]] = None):
+    def __init__(self, terms: Iterable[Tensor], weights: Optional[Iterable[Scalar]] = None):
         """
         A weighted sum of multiple tensors.
 
@@ -1982,7 +2034,10 @@ class Sum(Tensor):
             # Ones([]) objects after simplification is supposed to have completed.
             self.terms.append(t @ Ones(**missing) if missing else t)
 
-        self.weights = [1] * len(terms) if weights is None else list(weights)
+        # Typed list[Any] (not list[Scalar]): numbers.Number is a virtual ABC
+        # with no static arithmetic, so precise typing would force a cast at
+        # every `w1 * w2` site.
+        self.weights: list[Any] = [1] * len(terms) if weights is None else list(weights)
         assert len(terms) == len(self.weights)
 
     def _rename(self, **kwargs: str) -> Tensor:
@@ -2026,7 +2081,7 @@ class Sum(Tensor):
         ws_tensors = [(w, t) for w, t in ws_tensors if w != 0 and not isinstance(t, Zero)]
         # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
         if not ws_tensors:
-            return Zero(**self.shape)
+            return Zero(_symmetries=None, **self.shape)
         # Deterministic term order: sort by the seed-stable (name-sensitive)
         # structural fingerprint, so commutative construction order (and
         # PYTHONHASHSEED) doesn't leak into the simplified result. Positive
@@ -2119,7 +2174,7 @@ def _add_structural_graph(
     Gx = nx.relabel_nodes(Gx, {i: i + offset for i in Gx.nodes()})
     x_root = offset
     x_edges = {e: (n + offset) for e, n in x_edges.items()}
-    G = nx.union(G, Gx)
+    G = cast(nx.MultiDiGraph, nx.union(G, Gx))
     # Make sure to connect the root of Gx to the root of G, possibly with an "edge label"
     if root_edge_label is not None:
         e = G.number_of_nodes()

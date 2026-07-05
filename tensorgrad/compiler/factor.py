@@ -41,6 +41,7 @@ the same cost function.
 """
 
 import string
+from typing import Any, cast
 
 import opt_einsum as oe
 import sympy
@@ -48,6 +49,7 @@ import sympy
 from tensorgrad.compiler import adjoint as _adj
 from tensorgrad.compiler.adjoint import splice_child
 from tensorgrad.compiler.ir import (
+    Dim,
     Builder,
     ConstNode,
     EinsumNode,
@@ -408,7 +410,7 @@ class _Rewriter:
                     # materialized ±w*y copies feeding contractions).
                     (t,) = op.terms
                     (pm,) = op.perms
-                    new_subs = [None] * t.order
+                    new_subs: list[Any] = [None] * t.order
                     for j in range(len(pm)):
                         new_subs[pm[j]] = subs[j]
                     weight = weight * sympy.sympify(op.weights[0])
@@ -434,13 +436,13 @@ class _Rewriter:
 
         new_subs = [tuple(find(w) for w in s) for _, s in items]
         new_out = tuple(find(w) for w in n.out_subs)
-        wire_dims: dict[int, object] = {}
+        wire_dims: dict[int, Dim] = {}
         for w, d in enumerate(n.wire_dims):
             wire_dims.setdefault(find(w), d)
 
         rows = []
         for coeffs, const in n.constraints:
-            merged: dict[int, object] = {}
+            merged: dict[int, Any] = {}
             for w, c in coeffs:
                 r = find(w)
                 merged[r] = sympy.sympify(merged.get(r, 0)) + sympy.sympify(c)
@@ -565,7 +567,9 @@ class _Rewriter:
             weight = n.weight * sympy.sympify(w)
             rows = list(n.constraints)
             if splice:
-                weight = weight * self._splice(ops, in_subs, wire_dims, rows, t, subs_t)
+                # (cast: build(True) is only reached when can_splice verified
+                # that t is an EinsumNode)
+                weight = weight * self._splice(ops, in_subs, wire_dims, rows, cast(EinsumNode, t), subs_t)
             else:
                 ops.append(t)
                 in_subs.append(tuple(subs_t))
@@ -736,6 +740,7 @@ class _Rewriter:
         bax = self._broadcast_axes(E)
         if not bax:
             return nd
+        assert isinstance(E, EinsumNode)  # nonempty _broadcast_axes implies EinsumNode
         keep = [a for a in range(E.order) if a not in bax]
         core_out = tuple(E.out_subs[a] for a in keep)
         core = self.b.einsum(
@@ -767,6 +772,8 @@ class _Rewriter:
         keep_j = [j for j in range(m) if j not in baxes]
         new_terms, new_perms = [], []
         for t, pm in zip(L.terms, L.perms):
+            # (cast: every term passed _broadcast_axes above, so it is an EinsumNode)
+            t = cast(EinsumNode, t)
             drop_a = {pm[j] for j in baxes}
             keep_a = [a for a in range(t.order) if a not in drop_a]
             core = self.b.einsum(
@@ -798,13 +805,12 @@ class _Rewriter:
         # term is its own single operand.
         views = []
         for t, pm, w in zip(L.terms, L.perms, L.weights):
-            plain = (
+            if (
                 isinstance(t, EinsumNode)
                 and not t.constraints
                 and len(set(t.out_subs)) == len(t.out_subs)
                 and self.counts.get(id(t), 2) == 1
-            )
-            if plain:
+            ):
                 views.append(
                     (list(t.ops), [tuple(s) for s in t.in_subs], tuple(t.out_subs),
                      dict(enumerate(t.wire_dims)), t.weight, pm, w)

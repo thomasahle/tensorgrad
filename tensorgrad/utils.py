@@ -1,4 +1,4 @@
-from typing import Any, TypeVar, Generic
+from typing import Any, Optional, TypeVar, Generic
 
 
 class _MatchEdgesKey:
@@ -68,10 +68,10 @@ class DisjointSets(Generic[K, V]):
     def __getitem__(self, key: K) -> V:
         return self.values[self.find(key)]
 
-    def get(self, key: K, default: V = None) -> V:
+    def get(self, key: K, default: Optional[V] = None) -> Optional[V]:
         return self.values.get(self.find(key), default)
 
-    def items(self) -> list[tuple[list[K], V]]:
+    def items(self) -> list[tuple[list[K], Optional[V]]]:
         groups = {}
         for key in self.parent:
             root = self.find(key)

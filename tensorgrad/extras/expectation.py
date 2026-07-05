@@ -13,6 +13,8 @@ from tensorgrad.tensor import (
 )
 import tensorgrad.functions as F
 from tensorgrad.functions import _PowerFunction
+from typing import cast
+
 import networkx as nx
 
 
@@ -48,7 +50,7 @@ class Expectation(Tensor):
         self.wrt = wrt
 
         if mu is None:
-            mu = Zero(**wrt.shape)
+            mu = Zero(_symmetries=None, **wrt.shape)
         assert mu.shape == wrt.shape, f"{mu.shape=} != {wrt.shape=}"
         self.mu = mu
 
@@ -209,7 +211,8 @@ class Expectation(Tensor):
         # If the function is a power function with a positive exponent, we can simplify it
         if isinstance(fn.signature, _PowerFunction) and fn.signature.k >= 0:
             (inner,) = fn.inputs
-            prod = F.prod(*[inner] * fn.signature.k)
+            # (cast: replication only happens for integer powers at runtime)
+            prod = F.prod(*[inner] * cast(int, fn.signature.k))
             assert isinstance(prod, Product), f"{prod=}"
             res = self._simplify_product(prod, args)
             return res
@@ -234,7 +237,7 @@ class Expectation(Tensor):
         G, _ = _add_structural_graph(G, self.covar, root_edge_label="self.covar")
         return G, t_edges
 
-    def _rename(self, **kwargs: dict[str, str]):
+    def _rename(self, **kwargs: str):
         # The variables, wrt, mu, covar shouldn't influence our free edge names
         return Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
 

@@ -11,6 +11,8 @@ embedding, e.g. the output of d(diag(x))/dx) falls back to an explicit
 constant, which is hoisted and built once per shape-specialization.
 """
 
+from typing import Any, Optional
+
 import sympy
 
 from tensorgrad import functions as F
@@ -25,7 +27,7 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
 )
-from tensorgrad.compiler.ir import Builder, GatherNode, Node
+from tensorgrad.compiler.ir import Builder, Dim, GatherNode, Node
 from tensorgrad.compiler.affine import Affine
 
 # Elementwise function signatures with "scalar" shape (edges pass through).
@@ -42,7 +44,7 @@ _SIMPLE_OPS = {
 
 
 class Lowerer:
-    def __init__(self, builder: Builder = None):
+    def __init__(self, builder: Optional[Builder] = None):
         self.b = builder or Builder()
         # Cache: id(tensor) -> (node, edge_order). Tensor __eq__ is graph
         # isomorphism (expensive); identity is a cheap first-level cache.
@@ -140,8 +142,8 @@ class Lowerer:
             parent[find(e2)] = find(e1)
 
         # General affine rows (edge-name form): (coeffs {edge: sympy}, const).
-        raw_rows: list[tuple[dict[str, object], object]] = []
-        edge_dims: dict[str, object] = {}
+        raw_rows: list[tuple[dict[str, Any], Any]] = []
+        edge_dims: dict[str, Dim] = {}
 
         operands_t: list[Tensor] = []
         for ft in t.factors:
@@ -178,7 +180,7 @@ class Lowerer:
 
         # Wire = union-find class. Assign wire ids.
         wire_of: dict[str, int] = {}
-        wire_dims: dict[int, object] = {}
+        wire_dims: dict[int, Dim] = {}
 
         def wire(e: str, dim) -> int:
             r = find(e)
@@ -224,7 +226,7 @@ class Lowerer:
         # the indicator is unsatisfiable and the whole product is zero.
         constraints = []
         for coeffs, const in raw_rows:
-            wire_coeffs: dict[int, object] = {}
+            wire_coeffs: dict[int, Any] = {}
             for e, c in coeffs.items():
                 w = wire(e, edge_dims[e])
                 wire_coeffs[w] = sympy.sympify(wire_coeffs.get(w, 0)) + sympy.sympify(c)

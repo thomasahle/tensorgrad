@@ -65,6 +65,8 @@ randomized equivalence tests in tests/compiler/test_stabilize.py); the point
 is that the stable form's rounding does not overflow.
 """
 
+from typing import cast
+
 import sympy
 
 from tensorgrad.compiler.ir import (
@@ -201,7 +203,8 @@ class _Stabilizer:
         for t in (t1, t2):
             if not (isinstance(t, MapNode) and t.op == "exp" and t.perms[0] == _identity(t.order)):
                 return None
-        y1, y2 = t1.ops[0], t2.ops[0]
+        # (casts: the loop above verified both terms are exp MapNodes)
+        y1, y2 = cast(MapNode, t1).ops[0], cast(MapNode, t2).ops[0]
         if self._negate(y1) is y2 or self._negate(y2) is y1:
             return (y1, p1, node.weights[0], node.weights[1])
         return None
@@ -565,7 +568,7 @@ class _Stabilizer:
                 def pairs(R: Node) -> bool:
                     if not self._is_neg_pow(R):
                         return False
-                    Z = R.ops[0]
+                    Z = cast(MapNode, R).ops[0]  # _is_neg_pow verified R is a pow MapNode
                     if Z is A:
                         return True
                     se = self._sum_exp(Z)
@@ -637,7 +640,8 @@ class _Stabilizer:
             L2 = self.b.map("log", (), [S2])
             self._log_done.add(id(L2))
             m_perm = tuple(kept.index(a) for a in a_of_out)
-            terms, perms, ws = [M, L2], [m_perm, _identity(S.order)], [1, 1]
+            terms, perms = [M, L2], [m_perm, _identity(S.order)]
+            ws: list = [1, 1]
             if w_z != 1:
                 ones = self.b.einsum([], [], _identity(S.order), dict(enumerate(S.dims)))
                 terms.append(ones)

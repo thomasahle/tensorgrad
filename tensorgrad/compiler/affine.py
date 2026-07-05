@@ -16,7 +16,7 @@ rows into strided views (as_strided / pad+flip) when possible and falls back
 to a hoisted dense indicator otherwise.
 """
 
-from typing import Union
+from typing import Union, Any, Mapping, Sequence
 
 import sympy
 from sympy import Symbol
@@ -24,7 +24,9 @@ import torch
 
 from tensorgrad.tensor import Constant, Tensor  # noqa: F401  (Tensor for docs/typing)
 
-Rows = list[tuple[dict[str, Union[int, Symbol]], Union[int, Symbol]]]
+# Coefficient rows: {edge: coeff} == const. Mapping/Sequence (not dict/list)
+# so callers may pass narrower value types (dict is invariant in its values).
+Rows = Sequence[tuple[Mapping[str, Union[int, Symbol, sympy.Expr]], Union[int, Symbol, sympy.Expr]]]
 
 
 class Affine(Constant):
@@ -82,9 +84,9 @@ class Affine(Constant):
 
 def affine_delta(size: Symbol, *edges: str) -> Affine:
     """Delta re-derived: all edges equal."""
-    edges = list(edges)
-    rows = [({edges[i]: 1, edges[i + 1]: -1}, 0) for i in range(len(edges) - 1)]
-    return Affine(rows, **{e: size for e in edges})
+    edge_list = list(edges)
+    rows = [({edge_list[i]: 1, edge_list[i + 1]: -1}, 0) for i in range(len(edge_list) - 1)]
+    return Affine(rows, **{e: size for e in edge_list})
 
 
 def affine_convolution(*shape0, stride: int = 1, dilation: int = 1, **shape1) -> Affine:
@@ -126,7 +128,7 @@ def affine_basis(index: int, **shape1) -> Affine:
 # ---- dense indicator materialization (fallback + oracle) -------------------
 
 
-def _norm_row(row):
+def _norm_row(row) -> tuple[str, Any, Any, Any]:
     """Accept ('eq', coeffs, const), ('range', coeffs, k, X) or the legacy
     bare (coeffs, const) equality form."""
     if len(row) == 2:

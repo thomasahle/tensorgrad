@@ -1,7 +1,7 @@
 import itertools
 from sympy import Symbol, symbols
 import torch
-from typing import Iterable, Tuple, Dict
+from typing import Iterable, Sequence, Tuple, Dict
 import random
 import string
 from tensorgrad import Delta, Ones, Tensor, Zero, Variable
@@ -80,7 +80,7 @@ def broadcast_tensors(left_torch, right_torch):
     return left_aligned, right_aligned
 
 
-def generate_copy(dim: int, edges: Iterable[str]):
+def generate_copy(dim: int, edges: "Sequence[str]"):
     copy = torch.zeros((dim,) * len(edges))
     for i in range(dim):
         copy[(i,) * len(edges)] = 1
@@ -102,12 +102,14 @@ def generate_random_tensor_expression(
                     [(Zero, torch.zeros), (Ones, torch.ones), (Delta, generate_copy)]
                 )
                 edges = random.choice([["a"], ["a", "b"], ["a", "b", "c"]])
+                # This branch is unreachable (random() < 1 above is always
+                # true) and predates the sympy-Symbol shape API.
                 if tensor_class == Delta:
                     dim = random.choice([2, 3])
-                    return tensor_class(edges), torch_func(dim, edges)
+                    return tensor_class(edges), torch_func(dim, edges)  # pyright: ignore
                 else:
                     dims = tuple(random.choice([2, 3]) for _ in range(len(edges)))
-                    return tensor_class(edges), torch_func(dims, names=edges)
+                    return tensor_class(edges), torch_func(dims, names=edges)  # pyright: ignore
         else:
             # Recursive case: generate subexpressions and combine them
             left_size = random.randint(1, size // 2 + 1)
@@ -145,7 +147,9 @@ def generate_random_tensor_expression(
         ]
         # dims = [random.choice([2, 3]) for _ in range(len(edges))]
         dims = [ds[e] for e in edges]
-        variables[Variable(var_name, edges)] = torch.randn(dims, names=edges)
+        # String edges: tests monkeypatch testutils.Variable with a shim that
+        # converts string edge lists to the sympy-Symbol API (see test_szfp).
+        variables[Variable(var_name, edges)] = torch.randn(dims, names=edges)  # pyright: ignore
 
     while True:
         try:
@@ -184,11 +188,11 @@ def make_random_tree(nodes: int):
         ts = [f"{names[min(i,j)]}|{names[max(i,j)]}" for j in adj[i]]
         while len(ts) < 3 and len(vectors) < nodes + 1:
             vi = len(vectors)
-            vectors.append(Variable(f"V{vi}", f"v{vi}"))
+            vectors.append(Variable(f"V{vi}", f"v{vi}"))  # pyright: ignore  (string-edge shim, see above)
             ts.append(f"v{vi}")
         if len(ts) != 3:
             ts.append("free")
-        variables.append(Variable(names[i], ts))
+        variables.append(Variable(names[i], ts))  # pyright: ignore  (string-edge shim, see above)
 
     return vectors, variables
 

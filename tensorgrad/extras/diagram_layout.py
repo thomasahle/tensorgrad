@@ -11,7 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from math import cos, hypot, pi, sin, sqrt
-from typing import Any
+from typing import Any, cast
 
 from tensorgrad.extras.to_diagram import DiagramSnapshot
 
@@ -521,11 +521,12 @@ def _wire_label_candidates(frame: dict[str, Any], layout: DiagramLayout) -> dict
 
 
 def _is_derivative_boundary_endpoint(endpoint: dict[str, Any], boxes_by_id: dict[str, dict[str, Any]]) -> bool:
-    return endpoint.get("owner_kind") == "box" and boxes_by_id.get(endpoint.get("owner"), {}).get("kind") == "derivative"
+    # (cast: endpoints with owner_kind == "box" always carry an "owner" id)
+    return endpoint.get("owner_kind") == "box" and boxes_by_id.get(cast(str, endpoint.get("owner")), {}).get("kind") == "derivative"
 
 
 def _is_delta_endpoint(endpoint: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]) -> bool:
-    return endpoint.get("owner_kind") == "node" and nodes_by_id.get(endpoint.get("owner"), {}).get("kind") == "delta"
+    return endpoint.get("owner_kind") == "node" and nodes_by_id.get(cast(str, endpoint.get("owner")), {}).get("kind") == "delta"
 
 
 def _candidate(point: Point, *, anchor: str = "center", penalty: float = 0) -> dict[str, Any]:

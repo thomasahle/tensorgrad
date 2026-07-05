@@ -97,12 +97,13 @@ def _(expr: Product) -> str:
 
 @to_latex_indexed.register
 def _(expr: Derivative) -> str:
-    return rf"\frac{{d\bigl({to_latex_indexed(expr.of)})\bigr}}{{d\bigl({to_latex_indexed(expr.x)})\bigr}}"
+    # (was `expr.of`; Derivative stores the differentiated tensor as `.tensor`)
+    return rf"\frac{{d\bigl({to_latex_indexed(expr.tensor)})\bigr}}{{d\bigl({to_latex_indexed(expr.x)})\bigr}}"
 
 
 @to_latex_indexed.register
 def _(expr: F.Function) -> str:
-    """
+    r"""
     If trace => produce the diagonal form, e.g. X_{i,i}.
     (Or just show X_{i} if 1D.)
     But we do *not* produce \mathrm{tr}(\dots) here, per your statement that
@@ -220,7 +221,7 @@ def _(expr: Derivative) -> str:
 
 @to_latex_index_free.register
 def _(expr: F.Function) -> str:
-    """
+    r"""
     If trace => \mathrm{tr}(X).
     """
     fn = expr.signature.name

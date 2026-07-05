@@ -15,6 +15,8 @@ Input tensors are torch *named* tensors; outputs are named tensors too.
 from collections import OrderedDict
 
 import sympy
+from typing import Any, Optional
+
 import torch
 
 from tensorgrad.tensor import Tensor, Variable
@@ -82,7 +84,8 @@ class CompiledProgram:
                     self.symbols.add(s)
         # LRU cache of shape/dtype specializations (bounded: a training loop
         # sweeping many batch sizes must not accumulate compiled code forever).
-        self._specializations: OrderedDict[tuple, object] = OrderedDict()
+        # key -> generated specialization function (Any: exec-produced callables)
+        self._specializations: "OrderedDict[tuple, Any]" = OrderedDict()
 
     # -----------------------------------------------------------------
 
@@ -105,7 +108,7 @@ class CompiledProgram:
         def wrapper(*args):
             try:
                 return state["fn"](*args)
-            except torch._dynamo.exc.TorchDynamoException:
+            except torch._dynamo.exc.TorchDynamoException:  # pyright: ignore[reportAttributeAccessIssue]  # dynamo has no stubs
                 self.used_fullgraph_fallback = True
                 state["fn"] = torch.compile(fn, fullgraph=False, dynamic=False)
                 return state["fn"](*args)
@@ -138,7 +141,7 @@ class CompiledProgram:
             return t  # unnamed: trust the caller's order
         return t.align_to(*want)
 
-    def __call__(self, values: dict, shapes: dict = None):
+    def __call__(self, values: dict, shapes: "Optional[dict]" = None):
         dims = self._resolve_dims(values, shapes)
 
         args = []

@@ -1,6 +1,7 @@
 from collections import Counter
 from functools import singledispatch, singledispatchmethod
 import math
+from typing import cast
 import torch
 from sympy import Symbol
 from tensorgrad import Tensor, Variable, Derivative, Function, Product
@@ -62,6 +63,7 @@ class Context:
             other, torch_tensor = other_tensor
             assert torch_tensor.names == tuple(other.edges)
             mapping = next(other.isomorphisms(tensor), None)
+            assert mapping is not None  # get_with_key matched, so an isomorphism exists
             res = torch_tensor.rename(**mapping).align_to(*tensor.edges)
 
             if __debug__:
@@ -299,8 +301,10 @@ class Context:
         if Counter([w_in, k_size, w_out])[None] >= 2:
             raise ValueError(f"Convolution expects >= 2 of {conv.shape.keys()} to be given")
         if w_in is None:
+            assert w_out is not None and k_size is not None  # at most one None, see above
             w_in = w_out + k_size - 1
         elif k_size is None:
+            assert w_out is not None
             k_size = w_in - w_out + 1
         elif w_out is None:
             w_out = w_in - k_size + 1
@@ -334,7 +338,8 @@ def evaluate_function(func: FunctionSignature, *xs: torch.Tensor) -> torch.Tenso
 
 @evaluate_function.register
 def _(func: _ScaleFunction, *xs: torch.Tensor):
-    return func.alpha * evaluate_function(func.inner, *xs)
+    # (cast: alpha is a plain numeric scalar; numbers.Number has no static operators)
+    return cast(float, func.alpha) * evaluate_function(func.inner, *xs)
 
 
 def _(func: _DeterminantFunction, x: torch.Tensor):
@@ -345,7 +350,7 @@ def _(func: _DeterminantFunction, x: torch.Tensor):
 
 @evaluate_function.register
 def _(func: _MatrixInverseFunction, x: torch.Tensor) -> torch.Tensor:
-    if not func.edges.issubset(x.names):
+    if not set(func.edges).issubset(x.names):
         raise ValueError(f"Input {x.names} didn't have all edges {func.edges}")
     d1, d2 = func.edges
     # torch.inverse assumes matrix dimensions are at the end.
@@ -359,7 +364,9 @@ def _(func: _MatrixInverseFunction, x: torch.Tensor) -> torch.Tensor:
 
 @evaluate_function.register
 def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
-    return func._eval_fn(x)
+    # Dead code: the later _SimpleFunction registration below replaces this
+    # entry in the singledispatch registry (and _eval_fn never existed).
+    return func._eval_fn(x)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 @evaluate_function.register
@@ -419,6 +426,7 @@ def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
         return torch.erf(x)
     if func.name == "gt0":
         return torch.where(x.rename(None) > 0, 1.0, 0.0).rename(*x.names)
+    raise NotImplementedError(f"Cannot evaluate simple function {func.name!r}")
 
 
 @evaluate_function.register
@@ -431,7 +439,7 @@ def _(func: _EqualFunction, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 def _(func: _OneHotFunction, idx: torch.Tensor, size_carrier: torch.Tensor) -> torch.Tensor:
     """out[eq_edge, *idx_edges] = 1.0 where idx == eq_edge index. The second
     input only carries the number of classes (its single edge's size)."""
-    num_classes = size_carrier.size(func.dim)
+    num_classes = size_carrier.size(func.dim)  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     flat = idx.rename(None).long().reshape(1, -1)
     onehot = (flat == torch.arange(num_classes).unsqueeze(1)).to(torch.float32)
     return onehot.reshape((num_classes,) + tuple(idx.shape)).rename(func.eq_edge, *idx.names)
@@ -440,9 +448,9 @@ def _(func: _OneHotFunction, idx: torch.Tensor, size_carrier: torch.Tensor) -> t
 @evaluate_function.register
 def _(func: _SoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
     (dims,) = func.inputs
-    sizes = [x.size(d) for d in dims]
+    sizes = [x.size(d) for d in dims]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     names = [d for d in x.names if d not in dims]
-    other_sizes = [x.size(n) for n in names]
+    other_sizes = [x.size(n) for n in names]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     # Softmax doesn't support named dimensions, so we have to rename them to None.
     # We move the affected dimensions to the front, then flatten them.
     y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
@@ -452,9 +460,9 @@ def _(func: _SoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
 @evaluate_function.register
 def _(func: _LogSoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
     (dims,) = func.inputs
-    sizes = [x.size(d) for d in dims]
+    sizes = [x.size(d) for d in dims]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     names = [d for d in x.names if d not in dims]
-    other_sizes = [x.size(n) for n in names]
+    other_sizes = [x.size(n) for n in names]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     # log_softmax doesn't support named dimensions, so we have to rename them to None.
     # We move the affected dimensions to the front, then flatten them.
     y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
@@ -463,7 +471,9 @@ def _(func: _LogSoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
 
 @evaluate_function.register
 def _(func: _RenameFunction, x: torch.Tensor) -> torch.Tensor:
-    return func.inner.eval(x).rename(**func.renames)
+    # (was `func.inner.eval(x)`; FunctionSignature never had an `eval` method,
+    # so this path could only raise AttributeError before)
+    return evaluate_function(func.inner, x).rename(**func.renames)
 
 
 @evaluate_function.register
@@ -472,7 +482,7 @@ def _(func: _ZeroFunction, x: torch.Tensor) -> torch.Tensor:
     # which names are in x, which are not consumed in self.inputs
     broadcasted = [e for e in x.names if e not in func.inputs[0]]
     return torch.zeros(
-        size=[x.size(o) for o in broadcasted + list(func.new_edges.values())],
+        size=[x.size(o) for o in broadcasted + list(func.new_edges.values())],  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
         names=broadcasted + list(func.new_edges.keys()),
     )
 

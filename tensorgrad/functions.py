@@ -3,8 +3,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from fractions import Fraction
-from numbers import Number
-from typing import Any, Iterable, Iterator, Optional, Sequence, Union
+from typing import AbstractSet, Any, Collection, Iterable, Iterator, Optional, Sequence, Union, cast
 
 from sympy import Symbol
 
@@ -17,6 +16,7 @@ from tensorgrad.tensor import (
     Ones,
     Product,
     Rename,
+    Scalar,
     Sum,
     Tensor,
     Variable,
@@ -79,7 +79,7 @@ def symmetrize(t: Tensor, dims: DimType = None, signed: bool = False) -> Tensor:
     dims = parse_dim(t.edges, dims, none_is="all")
     edges = list(dims)
     res: list[Tensor] = []
-    weights: list[Number] = []
+    weights: list[int] = []
     for i_perm in itertools.permutations(range(len(edges))):
         perm = [edges[i] for i in i_perm]
         res.append(t.rename(**dict(zip(edges, perm))))
@@ -169,7 +169,9 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
     # and "A -i- B - C" -> [("A", "i", "i", "B"), ("B", "i", "i", "C")]
     # and "*1 - *2" -> ("*1", None, None, "*2")
     lines = re.split(r"[\n;]", dot_graph.strip())
-    edges = []
+    # (Any: rows are (var_or_None, edge, edge, var_or_None); the *edge_names
+    # splat keeps the tuple length opaque to the type checker.)
+    edges: list[tuple[Any, ...]] = []
     for line in lines:
         parts = line.split()
         last_var = None
@@ -218,6 +220,7 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
         # The case 'X -i-' or '-i- X', where an edge is free
         elif v0 is None or v1 is None:
             v, e, eo = (v1, e1, e0) if v0 is None else (v0, e0, e1)
+            assert v is not None  # the both-None case was rejected above
             # In the case "*0 -i-" we add the edge to the hyperedge
             if v.startswith("*"):
                 hyperedges[v].append(e)
@@ -264,13 +267,13 @@ def graph(dot_graph: str, **vars: Tensor) -> Tensor:
             vars[v1] = vars[v1].rename(**{e1: e})
 
     copies = []
-    for he, edges in hyperedges.items():
+    for he, he_edges in hyperedges.items():
         size = hypersizes.get(he)
         if size is None:
             raise ValueError(f"Hyperedge {he} has no size")
-        if len(edges) != len(set(edges)):
+        if len(he_edges) != len(set(he_edges)):
             raise ValueError("Hyperedges must be disjoint")
-        copies.append(Delta(size, *edges))
+        copies.append(Delta(size, *he_edges))
 
     return Product(copies + list(vars.values()))
 
@@ -310,7 +313,7 @@ def trace(tensor: Tensor) -> Tensor:
     return diag(tensor, [])
 
 
-def parse_dim(tensor_edges: set[str], dim: DimType = None, none_is: str = "error") -> set[str]:
+def parse_dim(tensor_edges: AbstractSet[str], dim: DimType = None, none_is: str = "error") -> set[str]:
     if dim is None:
         if none_is == "all":
             dim = frozenset(tensor_edges)
@@ -446,7 +449,7 @@ def contract(ts: list[Tensor], inputs: list[dict[str, str]], output: set[str]) -
 
 
 class _ScaleFunction(FunctionSignature):
-    def __init__(self, inner: FunctionSignature, alpha: Number):
+    def __init__(self, inner: FunctionSignature, alpha: Scalar):
         # Represents alpha * inner(x, ...)
         # This mostly exists to help represent the PowerFunction derivative
         self.name = f"{alpha} * {inner.name}"
@@ -455,7 +458,7 @@ class _ScaleFunction(FunctionSignature):
         self.inner = inner
         self.alpha = alpha
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         return _ScaleFunction(self.inner.derivative(i, new_edges), self.alpha)
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
@@ -464,13 +467,13 @@ class _ScaleFunction(FunctionSignature):
 
 
 class _PowerFunction(FunctionSignature):
-    def __init__(self, k: int):
+    def __init__(self, k: Union[int, Fraction]):
         self.name = f"pow({k=})"
         self.edges = frozenset()
         self.inputs = (frozenset(),)
         self.k = k
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         assert i == 0 and (new_edges is None or not new_edges)
         return _ScaleFunction(_PowerFunction(self.k - 1), self.k)
 
@@ -526,7 +529,7 @@ class _PowerFunction(FunctionSignature):
         return func
 
     @staticmethod
-    def _pointwise_split(inner: Product) -> tuple[list[Tensor], list[Tensor]] | None:
+    def _pointwise_split(inner: Product) -> tuple[list[Tensor], list[Product]] | None:
         """Split a connected product into diagonally-joined groups.
 
         A Delta factor with at least one free edge never sums: it aligns the indices of
@@ -540,7 +543,8 @@ class _PowerFunction(FunctionSignature):
         Returns (joining_deltas, groups) or None if there is nothing to split.
         """
         free = inner.edges
-        joins, rest = [], []
+        joins: list[Tensor] = []
+        rest: list[Tensor] = []
         for t in inner.factors:
             (joins if isinstance(t, Delta) and set(t.edges) & set(free) else rest).append(t)
         if not joins or len(rest) < 2:
@@ -551,7 +555,7 @@ class _PowerFunction(FunctionSignature):
         return joins, groups
 
     @classmethod
-    def simplify_outer(cls, tensors: list[Tensor], args: dict[str, Any] = None) -> list[Tensor]:
+    def simplify_outer(cls, tensors: list[Tensor], args: Optional[dict[str, Any]] = None) -> list[Tensor]:
         """Simplify a product by combining pow functions.
 
         This canonicalizes the "rational layer" of the product: the multiset of base
@@ -562,6 +566,7 @@ class _PowerFunction(FunctionSignature):
         pow(x, -1) * x -> 1.
         """
         # This is not a general FunctionSignature method, but a special case for pow.
+        assert args is not None, "simplify args are required"
         original_edges = Product(tensors).edges
 
         # Combining powers may leave behind Ones caps that must be re-absorbed into the
@@ -614,7 +619,7 @@ class _PowerFunction(FunctionSignature):
         return isinstance(t, Product) and not t.factors
 
     @staticmethod
-    def _is_idempotent_power(t: Tensor, power: int) -> bool:
+    def _is_idempotent_power(t: Tensor, power: Union[int, Fraction]) -> bool:
         """True when pow(t, power) == t, so the base can be passed through unchanged.
         Copy tensors of order >= 1 have only 0/1 entries, so any positive elementwise
         power is a no-op; order-1 Deltas (Ones caps) are all-ones, so every power is.
@@ -625,7 +630,7 @@ class _PowerFunction(FunctionSignature):
         return power >= 1 or t.order == 1
 
     @staticmethod
-    def _combinable(ts: list[tuple[int, Tensor]]) -> bool:
+    def _combinable(ts: list[tuple[Union[int, Fraction], Tensor]]) -> bool:
         """Whether a class of equal bases should actually be combined. Creating a new
         pow of a Sum base from bare occurrences (e.g. (x+y) @ (x+y) -> pow(x+y, 2)) is
         sum-level polynomial rewriting, which downstream tools like collect() do not
@@ -638,7 +643,7 @@ class _PowerFunction(FunctionSignature):
         return True
 
     @classmethod
-    def _emit_combined(cls, out: list[Tensor], ts: list[tuple[int, Tensor]]) -> None:
+    def _emit_combined(cls, out: list[Tensor], ts: list[tuple[Union[int, Fraction], Tensor]]) -> None:
         """Append pow(base, sum of multiplicities) for a class of equal bases,
         plus Ones caps replacing the absorbed occurrences (so no edges are left
         unattached on adjacent copy tensors)."""
@@ -674,7 +679,8 @@ class _PowerFunction(FunctionSignature):
                 break
             seen.add(t)
 
-            power = t.signature.k
+            # (cast: the generator above selected t with a _PowerFunction signature)
+            power = cast(_PowerFunction, t.signature).k
             (inner,) = t.inputs
             if cls._is_trivial_scalar(inner):
                 # pow(1, k) = 1; don't anchor on powers of nothing.
@@ -697,9 +703,9 @@ class _PowerFunction(FunctionSignature):
             # We remove the tensor, as well as all Delta that it's connected to,
             # which makes the rest of the graph fall apart.
             others = tensors[:i] + tensors[i + 1 :]
-            copys = [t for t in others if isinstance(t, Delta) and t.edges & inner.edges]
+            copys: list[Tensor] = [t for t in others if isinstance(t, Delta) and t.edges & inner.edges]
             others = [t for t in others if not (isinstance(t, Delta) and t.edges & inner.edges)]
-            passthrough = []
+            passthrough: list[Tensor] = []
             for comp in Product(others).components():
                 power = 1
                 # Unwrap (nested) single-factor products, e.g. Ones caps emitted by an
@@ -765,12 +771,12 @@ class _PowerFunction(FunctionSignature):
         # with match_edges=True, two factors only combine when all their edges
         # correspond, which makes the elementwise rewrite sound (e.g. the two factors
         # of Tr(X X) = X_ij X_ji do not match unless X is elementwise squared).
-        copys = [t for t in tensors if isinstance(t, Delta) and t.order >= 2]
+        copys: list[Tensor] = [t for t in tensors if isinstance(t, Delta) and t.order >= 2]
         others = [t for t in tensors if not (isinstance(t, Delta) and t.order >= 2)]
         hyperedges = {e: min(c.edges) for c in copys for e in c.edges}
 
         partition = defaultdict(list)
-        passthrough = []
+        passthrough: list[Tensor] = []
         for t in others:
             power = 1
             # Unwrap (nested) single-factor products, e.g. Ones caps.
@@ -813,13 +819,13 @@ def sqrt(tensor: Tensor) -> Tensor:
 
 
 class _MatrixInverseFunction(FunctionSignature):
-    def __init__(self, edges) -> None:
+    def __init__(self, edges: Collection[str]) -> None:
         if len(edges) != 2:
             raise ValueError(f"Called Matrix Inverse takes exactly 2 edges. Got {edges=}.")
         super().__init__("inv", frozenset(edges), (frozenset(edges),))
 
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
-        assert i == 0
+        assert i == 0 and new_edges is not None
         # Derivative gets new_edges : {old_name : new_name}
         return _MatrixInverseDerivative(self.edges, new_edges)
 
@@ -843,7 +849,7 @@ class _MatrixInverseFunction(FunctionSignature):
         return func
 
     @classmethod
-    def simplify_outer(cls, tensors: list[Tensor], args: dict[str, Any] = None) -> list[Tensor]:
+    def simplify_outer(cls, tensors: list[Tensor], args: Optional[dict[str, Any]] = None) -> list[Tensor]:
         """Simplify a product by combining pow functions."""
         # TODO: This is not a general FunctionSignature method, but a special case for pow.
         # Maybe we can make it more general, e.g. using FunctionSignature.instances to get
@@ -854,7 +860,7 @@ class _MatrixInverseFunction(FunctionSignature):
 
 
 class _MatrixInverseDerivative(FunctionSignature):
-    def __init__(self, edges: set[str], new_edges: dict[str, str]) -> None:
+    def __init__(self, edges: AbstractSet[str], new_edges: dict[str, str]) -> None:
         # Derivative gets new_edges : {old_name : new_name}
         super().__init__("inv_grad", edges | set(new_edges.values()), (edges,))
         self.new_edges = new_edges.copy()
@@ -877,7 +883,7 @@ class _MatrixInverseDerivative(FunctionSignature):
         return t
 
 
-def inverse(tensor: Tensor, dims: set[str] = None) -> Tensor:
+def inverse(tensor: Tensor, dims: Optional[AbstractSet[str]] = None) -> Tensor:
     """Matrix inverse over two target edges. Broadcasts over the rest.
     Mirrors torch.inverse / torch.linalg.inv.
 
@@ -915,16 +921,16 @@ class _LogFunction(FunctionSignature):
     def __init__(self):
         super().__init__("log", frozenset(), (frozenset(),))
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         return _PowerFunction(-1)
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
         (inner,) = f.inputs
         # log(1) = 0
         if isinstance(inner, Product) and all(isinstance(t, Delta) and t.order != 0 for t in inner.factors):
-            return Zero(**inner.shape)
+            return Zero(_symmetries=None, **inner.shape)
         if isinstance(inner, Delta) and inner.order >= 1:
-            return Zero(**inner.shape)
+            return Zero(_symmetries=None, **inner.shape)
         # log(exp(x)) = x (exp is a _SimpleFunction named "exp")
         if (
             isinstance(inner, Function)
@@ -1085,7 +1091,7 @@ class _AutoDerivFunction(FunctionSignature):
         self.dims = dims
         self.renames = tuple(dict(rn) for rn in renames)
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         assert i == 0
         if new_edges is None or new_edges.keys() != self.dims:
             raise ValueError(f"Expected new edges for {set(self.dims)}, got {new_edges}")
@@ -1095,7 +1101,7 @@ class _AutoDerivFunction(FunctionSignature):
         (inner,) = f.inputs
         # A stand-in variable with the input's full shape (consumed dims plus
         # broadcast edges), so the derivation is independent of `inner`.
-        v = Variable(f"_d_{self.base_name}", **inner.shape)
+        v = Variable(f"_d_{self.base_name}", _symmetries=None, _constraints=None, **inner.shape)
         res = self.expr(v, self.dims)
         batch = tuple(e for e in inner.edges if e not in self.dims)
         used = set(f.shape.keys()) | set(inner.edges)
@@ -1121,13 +1127,13 @@ class _AutoDerivFunction(FunctionSignature):
         return res.simplify(args)
 
 
-def _softmax_expr(v: Tensor, dims: frozenset[str]) -> Tensor:
+def _softmax_expr(v: Tensor, dims: AbstractSet[str]) -> Tensor:
     """softmax's primitive definition — the only 'rule' its derivatives use."""
     e = exp(v)
     return e / sum(e, dims, keepdims=True)
 
 
-def _log_softmax_expr(v: Tensor, dims: frozenset[str]) -> Tensor:
+def _log_softmax_expr(v: Tensor, dims: AbstractSet[str]) -> Tensor:
     """log_softmax's primitive definition, for automatic differentiation."""
     return v - log(sum(exp(v), dims, keepdims=True))
 
@@ -1140,10 +1146,10 @@ class _SoftmaxFunction(FunctionSignature):
     # Derivatives carry NO hand math: they are derived from the primitive
     # definition via _AutoDerivFunction.
 
-    def __init__(self, dims: set[str]):
+    def __init__(self, dims: Iterable[str]):
         super().__init__("softmax", frozenset(dims), (frozenset(dims),))
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None):
         assert i == 0
         (dims,) = self.inputs
         if new_edges is None or new_edges.keys() != dims:
@@ -1156,7 +1162,7 @@ class _SoftmaxFunction(FunctionSignature):
         if args.get("expand_softmax", False):
             (dims,) = self.inputs
             (inner,) = f.inputs
-            assert dims.issubset(inner.edges)
+            assert dims <= inner.edges
             return _softmax_expr(inner, dims).simplify(args)
         return super().simplify(f, args)
 
@@ -1171,10 +1177,10 @@ class _LogSoftmaxFunction(FunctionSignature):
     (log_softmax never underflows to log(0)) and maps to torch.log_softmax.
     Derivatives are derived from the primitive definition (_AutoDerivFunction)."""
 
-    def __init__(self, dims: set[str]):
+    def __init__(self, dims: Iterable[str]):
         super().__init__("log_softmax", frozenset(dims), (frozenset(dims),))
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None):
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None):
         assert i == 0
         (dims,) = self.inputs
         if new_edges is None or new_edges.keys() != dims:
@@ -1185,7 +1191,7 @@ class _LogSoftmaxFunction(FunctionSignature):
         if args.get("expand_softmax", False):
             (dims,) = self.inputs
             (inner,) = f.inputs
-            assert dims.issubset(inner.edges)
+            assert dims <= inner.edges
             return _log_softmax_expr(inner, dims).simplify(args)
         return super().simplify(f, args)
 
@@ -1222,7 +1228,7 @@ class _RenameFunction(FunctionSignature):
         self.renames = renames
         self.inner = inner
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         return _RenameFunction(self.inner.derivative(i, new_edges), self.renames)
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
@@ -1239,7 +1245,7 @@ class _RenameFunction(FunctionSignature):
 
 
 class _ZeroFunction(FunctionSignature):
-    def __init__(self, new_edges: dict[str, str] = None):
+    def __init__(self, new_edges: Optional[dict[str, str]] = None):
         """
         Takes an input with shape (i, j, ...) and outputs a zero tensor with shape
         {e: input_shape[o] for e, o in new_edges.items()}.
@@ -1250,8 +1256,9 @@ class _ZeroFunction(FunctionSignature):
         self.inputs = (frozenset(self.new_edges.values()),)
         self.edges = frozenset(self.new_edges.keys())
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         # Derivative gets new_edges : {old_name : new_name}
+        new_edges = new_edges or {}
         inverse_new_edges = {v: k for k, v in new_edges.items()}
         return _ZeroFunction(self.new_edges | inverse_new_edges)
 
@@ -1259,7 +1266,7 @@ class _ZeroFunction(FunctionSignature):
         # Instead of trying to calculate the shape ourselves, which is complicated
         # because of broadcasting, and that the function may have been renamed,
         # we can just copy the function's shape.
-        return Zero(**t.shape)
+        return Zero(_symmetries=None, **t.shape)
 
 
 class _SimpleFunction(FunctionSignature):
@@ -1363,14 +1370,15 @@ class _ArgMaxFunction(FunctionSignature):
 
 
 class _MaxGradFunction(FunctionSignature):
-    def __init__(self, dims: set[str]):
+    def __init__(self, dims: Iterable[str]):
         self.name = "max-grad"
-        self.inputs: tuple[set[str], ...] = (frozenset(dims),)
-        self.edges: set[str] = frozenset(dims)
+        self.inputs = (frozenset(dims),)
+        self.edges = frozenset(self.inputs[0])
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         # Zero doesn't broadcast edges that were given as input,
         # so we have to include them manually here
+        new_edges = new_edges or {}
         inverse = {n: o for o, n in new_edges.items()}
         identity = {o: o for o, e in new_edges.items()}
         return _ZeroFunction(inverse | identity)
@@ -1408,16 +1416,16 @@ def max_grad(t: Tensor, dim: DimType = None) -> Tensor:
 
 
 class _MaxFunction(FunctionSignature):
-    def __init__(self, dims: set[str]):
+    def __init__(self, dims: Iterable[str]):
         self.name = "max"
         self.edges = frozenset()
         self.inputs = (frozenset(dims),)
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         (dims,) = self.inputs
         # We only get new_edges for the self.inputs edges, not the broadcasted ones.
         # So our derivative function should handle this broadcasting by itself.
-        assert dims == new_edges.keys(), "New edges should be a dict: old -> new names"
+        assert new_edges is not None and dims == new_edges.keys(), "New edges should be a dict: old -> new names"
         return _RenameFunction(_MaxGradFunction(dims), new_edges)
 
 
@@ -1447,15 +1455,15 @@ class _MultiZeroFunction(FunctionSignature):
     (broadcast-aware) shape, so it never needs to be evaluated directly.
     """
 
-    def __init__(self, edges: Iterable[str], inputs: tuple[frozenset[str], ...]):
+    def __init__(self, edges: Iterable[str], inputs: Iterable[AbstractSet[str]]):
         super().__init__("multi-zero", frozenset(edges), tuple(frozenset(s) for s in inputs))
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         new_edges = new_edges or {}
         return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
 
     def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
-        return Zero(**t.shape)
+        return Zero(_symmetries=None, **t.shape)
 
 
 class _OneHotFunction(FunctionSignature):
@@ -1475,7 +1483,7 @@ class _OneHotFunction(FunctionSignature):
         self.eq_edge = eq_edge
         self.dim = dim
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         new_edges = new_edges or {}
         return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
 
@@ -1538,30 +1546,32 @@ def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:
 
 
 class _DeterminantDerivative(FunctionSignature):
-    def __init__(self, dims: set[str], new_edges: dict[str, str] = None):
+    def __init__(self, dims: AbstractSet[str], new_edges: dict[str, str]):
         self.name = "det_grad"
         self.edges = frozenset(new_edges.values())
         self.inputs = (frozenset(dims),)
         self.new_edges = new_edges
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
         raise NotImplementedError("Please expand with simplify() first")
 
-    def simplify(self, t: Function, args: dict[str, Any]):
+    def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
         (dims,) = self.inputs
         (inner,) = t.inputs
         if args["expand_functions"]:
             return det(inner, dims) * inverse(inner, dims).rename(**self.new_edges)
+        return t
 
 
 class _DeterminantFunction(FunctionSignature):
-    def __init__(self, dims: set[str]):
+    def __init__(self, dims: AbstractSet[str]):
         self.name = "det"
         self.edges = frozenset()
         assert len(dims) == 2, f"Determinant takes exactly 2 dims, got {dims=}"
         self.inputs = (frozenset(dims),)
 
-    def derivative(self, i: int, new_edges: dict[str, str] = None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
+        assert new_edges is not None
         return _DeterminantDerivative(self.inputs[0], new_edges)
 
     def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
@@ -1608,7 +1618,11 @@ def det(t: Tensor, dims: DimType = None) -> Tensor:
 
 class Convolution(Constant):
     def __init__(
-        self, *shape0: Symbol, _symmetries: set[frozenset[str]] = None, _stride: int = 1, **shape1: Symbol
+        self,
+        *shape0: Symbol,
+        _symmetries: None | str | set[frozenset[str]] = None,
+        _stride: int = 1,
+        **shape1: Symbol,
     ):
         """
         A Convolution is a 3-tensor such that C[i,j,k] = 1 if i=j+k and 0 otherwise.
@@ -1637,7 +1651,7 @@ class Convolution(Constant):
         return hash((type(self).__name__,) + tuple(self.shape.items()))
 
     def _rename(self, **kwargs: str) -> "Tensor":
-        return Convolution(**{kwargs.get(k, k): v for k, v in self.shape.items()}, _stride=self.stride)
+        return Convolution(_symmetries=None, _stride=self.stride, **{kwargs.get(k, k): v for k, v in self.shape.items()})
 
 
 class Reshape(Constant):
@@ -1654,4 +1668,4 @@ class Reshape(Constant):
         return hash((type(self).__name__,) + tuple(self.shape.items()))
 
     def _rename(self, **kwargs: str) -> "Tensor":
-        return Reshape(**{kwargs.get(k, k): v for k, v in self.shape.items()})
+        return Reshape(_symmetries=None, **{kwargs.get(k, k): v for k, v in self.shape.items()})

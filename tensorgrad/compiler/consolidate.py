@@ -118,6 +118,7 @@ def _canon_arr(arr: np.ndarray):
         b = np.ascontiguousarray(np.transpose(arr, p)).tobytes()
         if best is None or b < best:
             best, best_p = b, p
+    assert best is not None and best_p is not None  # _sort_perms is never empty
     return best, best_p
 
 
@@ -154,6 +155,7 @@ def _eval_map_equivariant(node: MapNode, vals, assign, ctx) -> np.ndarray:
         key = tuple(np.ascontiguousarray(np.transpose(a, p)).tobytes() for a in aligned)
         if best is None or key < best:
             best, best_p = key, p
+    assert best is not None and best_p is not None  # perms is never empty
     key = ("atom-map-eq", node.op, repr(node.params), tuple(_sz._h(b) for b in best))
     core = _sz._rand_tensor(tuple(aligned[0].shape[a] for a in best_p), *key)
     return np.transpose(core, _inv_perm(best_p))

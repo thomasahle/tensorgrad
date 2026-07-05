@@ -1,7 +1,7 @@
 import pytest
 from sympy import symbols
 from tensorgrad.functions import frobenius2
-from tensorgrad.tensor import Variable, Delta, Zero, Product, Sum, Ones, function
+from tensorgrad.tensor import Tensor, Variable, Delta, Zero, Product, Sum, Ones, function
 from tensorgrad.testutils import assert_close, rand_values
 from tensorgrad.extras.evaluate import evaluate
 
@@ -369,3 +369,62 @@ def test_transpose_mismatched():
         x = Variable("x", *symbols_tuple)
         with pytest.raises(ValueError):
             _ = x + x.rename(i="j", j="i")
+
+
+def test_scalar_operator_protocol():
+    """Plain Python scalars must work on both sides of every arithmetic
+    operator (the annotations in Tensor promise `int | float | Fraction |
+    Number` — verify the runtime semantics they describe)."""
+    from fractions import Fraction
+
+    i = symbols("i")
+    x = Variable("x", i)
+
+    # scalar @ tensor is scalar multiplication (equal to scalar * tensor)
+    assert (1 @ x).simplify() == x.simplify()
+    assert (2 @ x).simplify() == (2 * x).simplify()
+    assert (2 @ x).simplify() == (x * 2).simplify()
+
+    # the `acc = 1; acc @= Delta(...)` accumulation idiom (used by F.mean)
+    acc = 1
+    acc @= Delta(i)
+    assert acc == Delta(i)
+    acc @= Delta(i, "i")
+    assert acc.simplify() == (Delta(i) @ Delta(i, "i")).simplify()
+
+    # reflected add/sub/mul with ints and floats
+    assert (1 + x).simplify() == (x + 1).simplify()
+    assert (1 - x).simplify() == (-(x - 1)).simplify()
+    assert (0.5 * x).simplify() == (x * 0.5).simplify()
+
+    # division and powers
+    assert (x / 2).simplify() == (Fraction(1, 2) * x).simplify()
+    assert (x**1).simplify() == x.simplify()
+    assert isinstance(x**-1, Tensor)
+    assert isinstance(x ** Fraction(1, 2), Tensor)
+    with pytest.raises(ValueError):
+        x**0.5  # only int/Fraction exponents are supported
+
+    # neutral elements
+    assert (x * 1) is x
+    assert (x * 0).simplify() == Zero(i=i).simplify()
+
+
+def test_scalar_operator_values():
+    """Numeric check that the scalar operator results evaluate correctly."""
+    i = symbols("i")
+    x = Variable("x", i)
+    values = rand_values([x], {i: 3})
+    tx = values[x]
+
+    assert_close(evaluate((2 @ x).simplify(), values, {i: 3}), 2 * tx)
+    assert_close(evaluate((1 - x).simplify(), values, {i: 3}), 1 - tx)
+    assert_close(evaluate((x / 2).simplify(), values, {i: 3}), tx / 2)
+    assert_close(evaluate((3 + x).simplify(), values, {i: 3}), 3 + tx)
+
+
+def test_scalar_matmul_of_scalars():
+    """number @ tensor keeps working when the tensor is order-0."""
+    one = Product([])
+    assert (2 @ one).simplify() == Sum([Product([])], [2]).simplify()
+    assert (1 @ one).simplify() == one.simplify()

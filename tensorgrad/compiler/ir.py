@@ -16,7 +16,7 @@ ever asked to build a `batch x batch` diagonal blowup that a Delta merely
 from dataclasses import dataclass, field
 from fractions import Fraction
 from numbers import Number
-from typing import Optional, Union
+from typing import Any, Iterable, Optional, Sequence, SupportsFloat, Union, cast
 
 import sympy
 from sympy import Symbol
@@ -171,8 +171,9 @@ class Builder:
         self._cache: dict = {}
         # id(node) -> insertion index, to give deterministic topo/canonical order
         self._index: dict[int, int] = {}
-        # var_name -> the tensorgrad Variable object (for runtime binding)
-        self.input_vars: dict[str, object] = {}
+        # var_name -> the tensorgrad Variable object (for runtime binding).
+        # Typed Any: the IR deliberately does not import tensorgrad.tensor.
+        self.input_vars: dict[str, Any] = {}
 
     def _intern(self, key, make):
         if (node := self._cache.get(key)) is None:
@@ -205,28 +206,29 @@ class Builder:
 
     def einsum(
         self,
-        ops: list[Node],
-        in_subs: list[tuple[int, ...]],
+        ops: Sequence[Node],
+        in_subs: Sequence[tuple[int, ...]],
         out_subs: tuple[int, ...],
         wire_dims: dict[int, Dim],
-        weight=1,
-        constraints=(),
+        weight: Union[int, float, Fraction, sympy.Expr] = 1,
+        constraints: Iterable[tuple[Any, Any]] = (),
     ) -> Node:
-        weight = sympy.sympify(weight)
+        # (cast: sympify of a numeric scalar yields an Expr; the stub says Basic)
+        w_expr = cast(sympy.Expr, sympy.sympify(weight))
         # Constant folding: 0-dim scalar operands multiply into the weight
         # instead of becoming einsum operands.
         kept_ops, kept_subs = [], []
         for op, subs in zip(ops, in_subs):
             if isinstance(op, ConstNode) and op.kind == "scalar":
-                weight = weight * op.params[0]
+                w_expr = w_expr * op.params[0]
             elif isinstance(op, EinsumNode) and not op.ops and not op.out_subs and not op.constraints:
-                weight = weight * op.weight
+                w_expr = w_expr * op.weight
             else:
                 kept_ops.append(op)
                 kept_subs.append(subs)
         ops, in_subs = kept_ops, kept_subs
         if not ops and not out_subs and not constraints:
-            return self.scalar(weight)
+            return self.scalar(w_expr)
         # Canonicalize wire ids by first occurrence, so isomorphic einsum
         # structures share a node regardless of the wire numbers used.
         remap: dict[int, int] = {}
@@ -257,7 +259,7 @@ class Builder:
         # Trivial case: identity einsum over a single operand -> pass through.
         if (
             len(ops) == 1
-            and weight == 1
+            and w_expr == 1
             and not norm_rows
             and in_subs[0] == out_subs
             and len(set(out_subs)) == len(out_subs)
@@ -266,12 +268,13 @@ class Builder:
 
         dims = tuple(wdims[w] for w in out_subs)
         rows_key = tuple((tuple((w, str(c)) for w, c in row), str(const)) for row, const in norm_rows)
-        key = ("ein", tuple(id(op) for op in ops), in_subs, out_subs, wdims, weight, rows_key)
+        key = ("ein", tuple(id(op) for op in ops), in_subs, out_subs, wdims, w_expr, rows_key)
         return self._intern(
-            key, lambda: EinsumNode(dims, tuple(ops), in_subs, out_subs, wdims, weight, norm_rows)
+            # (cast: pyright widens the captured w_expr in the closure; it is always an Expr here)
+            key, lambda: EinsumNode(dims, tuple(ops), in_subs, out_subs, wdims, cast(sympy.Expr, w_expr), norm_rows)
         )
 
-    def linear(self, terms: list[Node], perms: list[tuple[int, ...]], weights: list) -> Node:
+    def linear(self, terms: Sequence[Node], perms: Sequence[tuple[int, ...]], weights: Sequence) -> Node:
         if len(terms) == 1 and weights[0] == 1 and perms[0] == tuple(range(len(perms[0]))):
             return terms[0]
         # Canonical order: sort by (node index, perm) for deterministic CSE.
@@ -284,7 +287,7 @@ class Builder:
         key = ("lin", tuple(id(t) for t in terms), perms, tuple(map(str, weights)))
         return self._intern(key, lambda: LinearNode(dims, terms, perms, weights))
 
-    def map(self, op: str, params: tuple, ops: list[Node], perms: Optional[list] = None) -> Node:
+    def map(self, op: str, params: tuple, ops: Sequence[Node], perms: Optional[Sequence] = None) -> Node:
         # Constant folding: elementwise ops on symbolic scalars stay symbolic.
         if len(ops) == 1 and isinstance(ops[0], ConstNode) and ops[0].kind == "scalar":
             (expr,) = ops[0].params
@@ -348,5 +351,6 @@ def to_float(w) -> float:
     if isinstance(w, Fraction):
         return w.numerator / w.denominator
     if isinstance(w, Number):
-        return float(w)
+        # (cast: concrete runtime Numbers all support float(); the ABC does not, statically)
+        return float(cast(SupportsFloat, w))
     return float(sympy.sympify(w))

@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 import json
-from numbers import Number
 from typing import Any, Iterable, Literal
 
 from tensorgrad.functions import Convolution, Reshape
@@ -47,9 +46,9 @@ class DiagramNode:
 
     id: str
     kind: str
-    label: str
+    label: str | None
     ports: list[str]
-    shape: dict[str, str]
+    shape: dict[str, str | None]
     semantic_key: str
     path: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -255,7 +254,7 @@ class _DiagramBuilder:
         self,
         *,
         kind: str,
-        label: str,
+        label: str | None,
         ports: Iterable[str],
         shape: dict[str, Any],
         path: str,
@@ -800,7 +799,7 @@ def _shape_dict(tensor: Tensor) -> dict[str, str]:
     return {e: _shape_name(s) or "" for e, s in tensor.shape.items()}
 
 
-def _semantic_key(kind: str, label: str, ports: Iterable[str], shape: dict[str, Any]) -> str:
+def _semantic_key(kind: str, label: str | None, ports: Iterable[str], shape: dict[str, Any]) -> str:
     shape_part = ",".join(f"{e}:{_shape_name(s)}" for e, s in sorted(shape.items()))
     port_part = ",".join(sorted(ports))
     return f"{kind}|{label}|{port_part}|{shape_part}"
@@ -815,7 +814,7 @@ def _wire_label(edge: str, endpoints: list[DiagramEndpoint]) -> str | None:
     return None
 
 
-def _format_weight(weight: Number, index: int) -> str:
+def _format_weight(weight: Any, index: int) -> str:  # weight: numeric scalar (Number has no static operators)
     if weight == 1:
         return "+" if index > 0 else ""
     if weight == -1:

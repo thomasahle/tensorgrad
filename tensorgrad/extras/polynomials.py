@@ -1,11 +1,18 @@
 from collections import defaultdict
+from fractions import Fraction
 from functools import singledispatch
-from tensorgrad import Tensor, Function, Product, Sum, Variable, Expectation, Zero, Delta
+from typing import Any, Union, cast
+from tensorgrad import Ones, Tensor, Function, Product, Sum, Variable, Expectation, Zero, Delta
 from tensorgrad import functions as F
+
+# A collected polynomial: exponent (may be fractional, e.g. from sqrt) ->
+# coefficient. Coefficients are Tensors, but the multiplicative identity is
+# carried as the plain number 1 (hence Any).
+Poly = dict[Union[int, Fraction], Any]
 
 
 @singledispatch
-def collect(expr: Tensor, x: Tensor) -> dict[int, Tensor]:
+def collect(expr: Tensor, x: Tensor) -> Poly:
     if expr == x:
         return {1: 1}
     return {0: expr}  # This is always the default
@@ -13,26 +20,26 @@ def collect(expr: Tensor, x: Tensor) -> dict[int, Tensor]:
 
 
 @collect.register
-def _(expr: Variable, x: Tensor) -> dict[int, Tensor]:
+def _(expr: Variable, x: Tensor) -> Poly:
     if expr == x:
         return {1: 1}
     return {0: expr}
 
 
-def _prod(c1, c2):
+def _prod(c1: Union[Tensor, int], c2: Union[Tensor, int]) -> Union[Tensor, int]:
     if isinstance(c1, int) or isinstance(c2, int):
         return c1 * c2
     return c1 @ c2
 
 
 @collect.register
-def _(expr: Product, x: Tensor) -> dict[int, Tensor]:
+def _(expr: Product, x: Tensor) -> Poly:
     # TODO: We may want to support the case where x is partially in the product
     # Using isomorphism stuff
 
-    res = {0: 1}  # The convolutional identity
+    res: Poly = {0: 1}  # The convolutional identity
     for factor in expr.factors:
-        new_res = defaultdict(int)
+        new_res: Poly = defaultdict(int)
         for k1, c1 in res.items():
             for k2, c2 in collect(factor, x).items():
                 new_res[k1 + k2] += _prod(c1, c2)
@@ -41,8 +48,8 @@ def _(expr: Product, x: Tensor) -> dict[int, Tensor]:
 
 
 @collect.register
-def _(expr: Sum, x: Tensor) -> dict[int, Tensor]:
-    res = defaultdict(int)
+def _(expr: Sum, x: Tensor) -> Poly:
+    res: Poly = defaultdict(int)
     for weight, term in zip(expr.weights, expr.terms):
         for k, v in collect(term, x).items():
             res[k] += weight * v
@@ -50,7 +57,7 @@ def _(expr: Sum, x: Tensor) -> dict[int, Tensor]:
 
 
 @collect.register
-def _(expr: Function, x: Tensor) -> dict[int, Tensor]:
+def _(expr: Function, x: Tensor) -> Poly:
     if isinstance(expr.signature, F._PowerFunction):
         k = expr.signature.k
         inner = collect(expr.inputs[0], x)
@@ -67,9 +74,9 @@ def _(expr: Function, x: Tensor) -> dict[int, Tensor]:
 
         # For positive integer powers, use repeated convolution
         if isinstance(k, int) and k > 0:
-            res = {0: 1}
+            res: Poly = {0: 1}
             for _ in range(k):
-                new_res = defaultdict(int)
+                new_res: Poly = defaultdict(int)
                 for k1, c1 in res.items():
                     for k2, c2 in inner.items():
                         new_res[k1 + k2] += c1 * c2  # mul instead of prod, since pow is hadamard
@@ -94,7 +101,9 @@ def _(expr: Function, x: Tensor) -> dict[int, Tensor]:
         raise NotImplementedError("Cannot collect inverse of sums or complex expressions")
 
     # For other functions like exp, log, etc., treat them as constants if they don't depend on x
-    if not expr.depends_on(x):
+    # (cast: collect may target a non-Variable tensor; depends_on only uses
+    # isomorphism equality on the target, so this is safe at runtime)
+    if not expr.depends_on(cast(Variable, x)):
         return {0: expr}
     
     # Otherwise, we can't handle it as a polynomial
@@ -102,13 +111,13 @@ def _(expr: Function, x: Tensor) -> dict[int, Tensor]:
 
 
 @collect.register
-def _(expr: Zero, x: Tensor) -> dict[int, Tensor]:
+def _(expr: Zero, x: Tensor) -> Poly:
     """Special handler for Zero tensors."""
     return {0: Zero()}
 
 
 @collect.register
-def _(expr: Delta, x: Tensor) -> dict[int, Tensor]:
+def _(expr: Delta, x: Tensor) -> Poly:
     """Special handler for Delta tensors."""
     if expr == x:
         return {1: 1}
@@ -116,7 +125,7 @@ def _(expr: Delta, x: Tensor) -> dict[int, Tensor]:
 
 
 @collect.register
-def _(expr: Expectation, x: Tensor) -> dict[int, Tensor]:
+def _(expr: Expectation, x: Tensor) -> Poly:
     if x.depends_on(expr.wrt):
         # TODO: What about depdence on mu and covar?
         raise ValueError("Cannot collect a variable that depends on the variable of the expectation")
@@ -131,7 +140,7 @@ def _(expr: Expectation, x: Tensor) -> dict[int, Tensor]:
     for k, v in res.items():
         if isinstance(v, (int, float)):
             # Convert scalar to Tensor with empty shape
-            v = TensorClass(v)
+            v = TensorClass(v)  # pyright: ignore[reportCallIssue]  # TensorMeta.__call__ shortcut wraps numbers
         result[k] = Expectation(v, expr.wrt, expr.mu, expr.covar, expr.covar_names)
 
     return result

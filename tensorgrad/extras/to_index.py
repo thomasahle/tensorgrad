@@ -6,7 +6,7 @@ Transforms a tensor expression into index notation.
 
 from functools import singledispatch
 import string
-from typing import Iterable
+from typing import Iterable, Optional, cast
 import networkx as nx
 
 from tensorgrad.extras.expectation import Expectation
@@ -15,12 +15,12 @@ from tensorgrad import functions as F  # if needed for function signatures
 
 
 @singledispatch
-def to_index(expr):
+def to_index(expr) -> str:
     raise NotImplementedError(f"Index notation not implemented for type {type(expr)}")
 
 
 @singledispatch
-def to_index_free(expr):
+def to_index_free(expr) -> str:
     raise NotImplementedError(f"Index notation not implemented for type {type(expr)}")
 
 
@@ -133,7 +133,7 @@ def _unused_edge_names(edges: Iterable[str], reserved_names: Iterable[str]) -> d
     return rename
 
 
-def _handle_path(tensors: list[Tensor], edges: list[str]):
+def _handle_path(tensors: list[Tensor], edges: "list[Optional[str]]"):
     res = []
     for t, in_edge, out_edge in zip(tensors, edges[:-1], edges[1:]):
         inner_str = to_index_free(t)
@@ -157,7 +157,7 @@ def _handle_trace(tensors: list[Tensor], out_edges: list[str]):
     assert len(tensors) >= 2
 
     if all(isinstance(t, Delta) for t in tensors):
-        return str(tensors[0]._size)
+        return str(cast(Delta, tensors[0]).size)
 
     in_edges = out_edges[-1:] + out_edges[:-1]
     factors = []
