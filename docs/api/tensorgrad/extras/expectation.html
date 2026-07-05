@@ -775,6 +775,12 @@ distribution with the given expectation and covariance.</p>
 
 
             <div class="docstring"><p>Check if this tensor depends on the variable x.</p>
+
+<p>Memoized per (self, x) object pair: the raw recursion visits every
+root-to-leaf PATH, which is exponential on shared-subtree DAGs
+(residual networks: x = x + f(x) doubles the path count per layer),
+and Derivative._simplify queries it per Derivative node. Same disease
+and cure as the memoized Tensor.substitute.</p>
 </div>
 
 
