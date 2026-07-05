@@ -532,14 +532,9 @@ def test_random_scalar_heavy_vs_compiler():
         for e in (expr, expr.simplify()):
             res = evaluate(e, {x: xv}, dims=dict(dims))
             assert_close(res, expected, rtol=1e-3, atol=5e-2)
-            try:
-                compiled = compile_aot(e)({x: xv}, dict(dims))
-            except (ValueError, TypeError):
-                # Known compiler gaps on scalar-only subgraphs:
-                # - factor.py _hoist: max() arg is an empty sequence
-                # - codegen einsum receiving a python float operand
-                continue
+            # The historical scalar-subgraph gaps (factor._hoist empty-max,
+            # codegen float operand) are fixed: every trial is strictly checked.
+            compiled = compile_aot(e)({x: xv}, dict(dims))
             n_compiler_checked += 1
             assert_close(compiled, expected, rtol=1e-3, atol=5e-2)
-    # Most expressions must actually be cross-checked against the compiler
-    assert n_compiler_checked >= 60, f"only {n_compiler_checked} compiler cross-checks ran"
+    assert n_compiler_checked == 100, f"only {n_compiler_checked} compiler cross-checks ran"

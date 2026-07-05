@@ -1,7 +1,7 @@
 """IR stabilization pass: re-fuse numerically unstable expanded forms.
 
-Researchers (and simplify({"expand_softmax": True})) spell softmax, log-softmax
-and tanh out of primitives:
+Researchers (and F.softmax / F.log_softmax themselves, which are plain
+compositions of primitives) spell softmax, log-softmax and tanh as:
 
     softmax(x) = exp(x) * pow(sum(exp(x)), -1)
     tanh(y)    = (exp(y) - exp(-y)) * pow(exp(y) + exp(-y), -1)
@@ -239,7 +239,7 @@ class _Stabilizer:
         while progress:
             progress = False
             for p in range(len(ops)):
-                factor = self._consume_power(ops, in_subs, p)
+                factor = self._consume_power(ops, in_subs, p, n.out_subs, n.wire_dims)
                 if factor is not None:
                     weight = weight * factor
                     changed = progress = True
@@ -250,7 +250,24 @@ class _Stabilizer:
             ops, in_subs, n.out_subs, dict(enumerate(n.wire_dims)), weight, n.constraints
         )
 
-    def _consume_power(self, ops: list, in_subs: list, p: int):
+    @staticmethod
+    def _orphan_factor(wires, in_subs, out_subs, wire_dims):
+        """Weight owed for contracted wires that lost their LAST holder.
+
+        The pointwise identity Z^-1 * Z = ones lets a rewrite delete both
+        operands — but if they were the only holders of a contracted wire w,
+        the einsum still sums over w, and sum_w 1 = dim(w). Dropping the wire
+        without paying dim(w) silently deletes that factor (found by the
+        oracle property tests: Product([pow(va,-1), va]) compiled to 1.0
+        instead of |a|)."""
+        factor = sympy.Integer(1)
+        held = {w for s in in_subs for w in s}
+        for w in set(wires):
+            if w not in held and w not in out_subs:
+                factor *= sympy.sympify(wire_dims[w])
+        return factor
+
+    def _consume_power(self, ops: list, in_subs: list, p: int, out_subs, wire_dims):
         """If ops[p] is pow(Z, -k) with Z a recognized denominator, try to
         consume ONE power against another operand (in place). Returns the
         scalar weight factor the rewrite contributes, or None."""
@@ -287,6 +304,8 @@ class _Stabilizer:
             if ki + 1 == 0:
                 for idx in sorted((p, q), reverse=True):
                     del ops[idx], in_subs[idx]
+                # Both holders gone: pay for any wire the pair contracted alone.
+                return self._orphan_factor(zwire, in_subs, out_subs, wire_dims)
             else:
                 ops[p] = self.b.map("pow", (ki + 1,), [Z], [prm])
                 del ops[q], in_subs[q]
@@ -336,7 +355,9 @@ class _Stabilizer:
                 ops[q] = zsum
                 in_subs[q] = tuple(zwire[a] for a in kept)
                 shrink()
-                return sympy.Integer(1)
+                # The softmax axes dropped from BOTH operands' wires: pay for
+                # any of them that the pair held alone (sum_a sumexp = |a|*sumexp).
+                return self._orphan_factor(zwire, in_subs, out_subs, wire_dims)
             return None
 
         # (b) tanh family: divide an aligned co-operand by a*(exp(Y)+exp(-Y))
