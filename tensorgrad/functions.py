@@ -20,10 +20,10 @@ from tensorgrad.tensor import (
     Tensor,
     Variable,
     Zero,
-    _MatchEdgesKey,
     _unused_edge_names,
 )
-from tensorgrad.utils import DisjointSets
+from tensorgrad.simplify import simplify_delta_products
+from tensorgrad.utils import DisjointSets, _MatchEdgesKey
 
 # We include a "sum" function, which overloads the python sum. So we keep a reference
 # here to the builtin, so we can use it in this module
@@ -596,7 +596,7 @@ class _PowerFunction(FunctionSignature):
             tensors = cls._flatten(tensors)
             # Re-contract the copy tensors, so Ones caps left behind by cancellations get
             # absorbed (e.g. Delta(i, "i,a,b") * Ones(a) -> Delta(i, "i,b")).
-            tensors = Delta.simplify_outer(tensors)
+            tensors = simplify_delta_products(tensors)
             assert Product(tensors).edges == original_edges
 
             if len(tensors) == len(before) and all(t1 == t2 for t1, t2 in zip(tensors, before)):

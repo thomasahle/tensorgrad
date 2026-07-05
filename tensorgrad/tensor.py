@@ -1,7 +1,6 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import cached_property
-import math
 from string import ascii_letters
 from types import ModuleType
 from typing import (
@@ -26,8 +25,6 @@ from numbers import Number
 
 import networkx as nx
 from sympy import Symbol
-
-from tensorgrad.utils import _MatchEdgesKey
 
 # Plain numeric scalars accepted by Tensor's arithmetic operators and as Sum
 # weights. `numbers.Number` covers numeric types that only register with the
@@ -57,6 +54,33 @@ def _get_canon() -> ModuleType:
 
         _canon_mod = canon
     return _canon_mod
+
+
+# Lazily imported operation modules (tensor.py defines the data types; the
+# operations over the closed node-type set live in their own modules).
+# tensorgrad.simplify holds the simplification rule catalog + engine and
+# tensorgrad.grad the differentiation rules; both import this module, so the
+# back edges here must be lazy.
+_simplify_mod: Optional[ModuleType] = None
+_grad_mod: Optional[ModuleType] = None
+
+
+def _get_simplify() -> ModuleType:
+    global _simplify_mod
+    if _simplify_mod is None:
+        import tensorgrad.simplify as simplify
+
+        _simplify_mod = simplify
+    return _simplify_mod
+
+
+def _get_grad() -> ModuleType:
+    global _grad_mod
+    if _grad_mod is None:
+        import tensorgrad.grad as grad
+
+        _grad_mod = grad
+    return _grad_mod
 
 
 def set_lazy_rename(enable: bool = True) -> bool:
@@ -140,7 +164,7 @@ class Tensor(metaclass=TensorMeta):
         """
 
         new_names = self._check_grad(x, new_names)
-        result = self._grad(x, new_names)
+        result = _get_grad().grad_step(self, x, new_names)
 
         # Check that the shape is preserved
         assert result.shape == self.shape | {n: x.shape[o] for o, n in new_names.items()}
@@ -164,7 +188,8 @@ class Tensor(metaclass=TensorMeta):
         return _unused_edge_names(x.edges, self.edges)
 
     def _grad(self, x: "Variable", new_names: dict[str, str]) -> "Tensor":
-        # Override this method to implement differentiation
+        # Fallback protocol for types outside the core dispatch table in
+        # tensorgrad/grad.py (extras like Expectation override this).
         raise NotImplementedError(f"Derivative not implemented for {type(self)}")
 
     @final
@@ -219,54 +244,17 @@ class Tensor(metaclass=TensorMeta):
 
         Args:
             args: Optional dictionary of arguments controlling the simplification.
+                The knobs (grad_steps, expand, memoize, ...) are documented at
+                the engine in tensorgrad/simplify.py.
 
         Returns:
             A simplified version of this tensor.
         """
-
-        if args is None:
-            args = {}
-        # args["grad_steps"] allows us to control how far we propagate the derivative.
-        args.setdefault("grad_steps", float("inf"))
-        args.setdefault("associative_products", True)
-        args.setdefault("associative_sums", True)
-        args.setdefault("sum_combine_terms", True)
-        args.setdefault("combine_products", True)
-        args.setdefault("factor_components", True)
-        args.setdefault("expand_functions", True)
-        args.setdefault("expand", False)
-
-        # Cross-subtree memoization. Without it, a node reachable by K distinct
-        # DAG paths is re-simplified K times; residual nets (x = x + f(x))
-        # double the path count per layer, so deep-model simplify is
-        # exponential in depth even though the tree stays small. Opt-in
-        # (args["memoize"]) because with the combine passes enabled the
-        # inflated intermediate tree's working set can exceed memory at depth;
-        # safe with the combine passes off. Gated on grad_steps == inf so the
-        # in-place decrement in Derivative._simplify (inf - 1 == inf) can never
-        # make a cached key stale. The key includes tuple(self.edges) so an
-        # isomorphic subtree with different free-edge names never returns a
-        # result with the wrong edges (the memo-hit path bypasses the shape
-        # assert below).
-        memo = key = None
-        if args.get("memoize") and args["grad_steps"] == float("inf"):
-            memo = args.setdefault("_memo", {})
-            key = (_get_canon().refined_sort_key(self), tuple(self.edges), args["expand"])
-            if (hit := memo.get(key)) is not None:
-                return hit
-
-        result = self._simplify(args)
-
-        # Check that the shape is preserved
-        assert result.shape == self.shape
-        _record_simplify_provenance(args, self, result)
-
-        if memo is not None:
-            memo[key] = result
-        return result
+        return _get_simplify().simplify(self, args)
 
     def _simplify(self, args: dict[str, Any]) -> "Tensor":
-        # Override this method to implement simplification
+        # Fallback protocol for types outside the core dispatch table in
+        # tensorgrad/simplify.py (extras like Expectation override this).
         return self
 
     def full_simplify(self, expand: bool = True) -> "Tensor":
@@ -856,18 +844,6 @@ class Variable(Tensor):
                 stack.append(inner)
         return len(seen)
 
-    def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
-        # Note: Constraints (see with_constraint) deliberately do NOT affect the gradient.
-        # They describe the values the variable will hold, not the space it is optimized
-        # over, so we differentiate as if the variable were unconstrained.
-        if x == self:
-            # TODO: If X has symmetries, the derivative can actually be more complex than this.
-            # See 2.8.2 Symmetric in the Cookbook: https://www2.imm.dtu.dk/pubdb/edoc/imm3274.pdf
-            return Product(Delta(s, e, new_names[e]) for e, s in self.shape.items())
-        # Note: We don't need to tell Zero the symmetries, since it's automatically
-        # symmetric in all dimensions that have compatible sizes.
-        return Zero(_symmetries=None, **(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
-
     def __repr__(self) -> str:
         args = [f"\"{self.name}\", {', '.join(self.edges)}"]
         symmetries = ""
@@ -897,9 +873,6 @@ class Variable(Tensor):
             port = ("port", ("orbit", size_key(self._shape[e0]), " ".join(sorted(orbit))))
             junctions.append(frozenset({port} | {("free", e) for e in orbit}))
         return Structure(label, junctions=frozenset(junctions))
-
-    def _simplify(self, args: dict[str, Any]) -> Tensor:
-        return self
 
     def _rename(self, **kwargs: str) -> Tensor:
         if not kwargs:
@@ -951,14 +924,6 @@ class Rename(Tensor):
     def _depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
 
-    def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
-        # If the new names are used in inner, we need to rename them, and then add the
-        # new names to our own rename dict.
-        middle = _unused_edge_names(new_names.values(), self.edges | self.tensor.edges)
-        middle_names = {o: middle[n] for o, n in new_names.items()}
-        middle_to_new = {middle[n]: n for o, n in new_names.items()}
-        return Rename(self.tensor.grad(x, middle_names), middle_to_new | self.mapping)
-
     @classmethod
     def merge_renames(cls, *renames: dict[str, str]) -> dict[str, str]:
         """
@@ -981,17 +946,6 @@ class Rename(Tensor):
                 if o not in used:
                     merged[o] = n
         return merged
-
-    def _simplify(self, args: dict[str, Any]) -> Tensor:
-        inner = self.tensor.simplify(args)
-        if isinstance(inner, Rename):
-            merged = self.merge_renames(inner.mapping, self.mapping)
-            res = inner.tensor.rename(**merged)
-        else:
-            res = inner.rename(**self.mapping)
-        while isinstance(res, Rename) and not res.mapping:
-            res = res.tensor
-        return res
 
     def _rename(self, **kwargs: str) -> Tensor:
         return Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
@@ -1058,7 +1012,11 @@ class Constant(Tensor, ABC):
         return type(self)(_symmetries=None, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        return Zero(_symmetries=None, **(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
+        # Thin delegate to the zero-gradient rule (tensorgrad.grad
+        # dispatches Delta/Zero there directly; this protocol fallback covers
+        # the Constant subclasses outside the core table: Convolution,
+        # Reshape, Affine).
+        return _get_grad().grad_constant(self, x, new_names)
 
     def _depends_on(self, x: "Variable") -> bool:
         return False
@@ -1098,15 +1056,6 @@ class Delta(Constant):
     def _rename(self, **kwargs: str) -> Tensor:
         return Delta(self.size, *[kwargs.get(e, e) for e in self.edges])
 
-    @classmethod
-    def simplify_outer(cls, tensors: list[Tensor]) -> list[Tensor]:
-        """Simplifies a list of tensors assumed to be a product."""
-        while True:
-            tensors, done = cls._simplify_step(tensors)
-            if done:
-                break
-        return tensors
-
     def structure(self) -> "Structure":
         from tensorgrad.structure import Structure, size_key
 
@@ -1116,121 +1065,8 @@ class Delta(Constant):
         junction = frozenset({("port", ("Delta", sk))} | {("free", e) for e in self.edges})
         return Structure(("Delta", sk), junctions=frozenset({junction}))
 
-    ################################################################################
-    # There are many simplify rules for Delta. We split them into separate methods for clarity.
-
-    @classmethod
-    def _simplify_step(cls, tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
-        """Performs one step of simplification. Returns a new list if changed, or the original if not."""
-        for e, ts in _group_edges(tensors).items():
-            if len(ts) == 1:
-                continue
-            t1, t2 = ts
-            assert t1.shape[e] == t2.shape[e], f"{t1.shape[e]=} != {t2.shape[e]}, {e=}"
-
-            # Remove t1 and t2 from tensors.  We use the "is" operator, since equality
-            # means isomorphic, so it might remove too many unintended tensors.
-            other = [t for t in tensors if t is not t1 and t is not t2]
-
-            for simplification in [
-                cls._merge_copy_tensors,
-                cls._remove_identity_matrix,
-                cls._apply_variable_equation,
-            ]:
-                if (new := simplification(t1, t2, e)) is not None:
-                    return other + new, False
-
-        return tensors, True
-
-    @staticmethod
-    def _merge_copy_tensors(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
-        if not (isinstance(t1, Delta) and isinstance(t2, Delta)):
-            return None
-
-        # We can't merge order 0 copy tensors, since we now give them a value equal to their size.
-        # In principle we could create a new Delta(size1 * size2, []) tensor, but then we start having
-        # arbitrary expressions as sizes, which I'm not sure we want yet.
-        # Also, merging an order 0 with an order > 0 was never going to work, unless the size of the
-        # order 0 Delta was 1, which it probably never is.
-        # In either case, this method should only be called if the tensors share an edge, which they
-        # can't if one of them has order 0.
-        assert t1.order != 0 and t2.order != 0, "Can't merge order 0 Delta tensors"
-
-        # Since the tensors are connected, we can assume they have the same size
-        assert t1.size == t2.size, "Contracted Delta tensors must have same size"
-        size = t1.size
-
-        # We don't just remove e, but remove all shared edges
-        # The amazing thing is that even in the case where all edges disappear, we
-        # still get to keep information on the "size" of the Delta tensor.
-        return [Delta(size, *(t1.edges ^ t2.edges))]
-
-    @staticmethod
-    def _remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
-        # If both are Delta's, we use the previous method
-        if isinstance(t1, Delta) and isinstance(t2, Delta):
-            return None
-
-        # Make t1 the identity matrix
-        if isinstance(t2, Delta) and t2.order == 2:
-            t1, t2 = t2, t1
-
-        if isinstance(t1, Delta) and t1.order == 2:
-            # Find the edge of t1 that's not e
-            other_edge = next(iter(set(t1.edges) - {e}))
-            # Don't create self loops. We never connect a tensor to itself.
-            # Unless it's another Delta, in which case we already handled it above.
-            if other_edge not in t2.edges:
-                return [t2.rename(**{e: other_edge})]
-        return None
-
-    @staticmethod
-    def _apply_variable_equation(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
-        """General constraint-equation rewriting (see Variable.with_constraint).
-
-        If the 2-factor subnetwork (t1, t2) is isomorphic — free edges matched
-        under some renaming σ — to a declared equation's lhs, replace it by the
-        equation's rhs renamed by σ. Simplex sums, unit norms and orthogonality
-        all arrive here as pairwise patterns, because tensorgrad canonicalizes
-        Hadamard squares to pow-Functions and sums to order-1 Delta
-        contractions. Sound by construction: a rewrite only fires on a
-        verified isomorphism, and the pair's contracted edges are private to
-        the pair (Product edges are binary), so splicing rhs is local.
-        """
-        from itertools import permutations
-
-        cvars = [v for t in (t1, t2) for v in Variable._find_variables(t) if v._constraints]
-        if not cvars:
-            return None
-        cand = None
-        tried = set()
-        for v in cvars:
-            for lhs, rhs in v._constraints:
-                key = v._equation_key(lhs, rhs)
-                if key in tried:
-                    continue
-                tried.add(key)
-                if not isinstance(lhs, Product) or len(lhs.factors) != 2:
-                    continue  # only pairwise patterns are matched (documented)
-                if cand is None:
-                    cand = Variable._strip_constraints(Product([t1, t2]))
-                cfree, lfree = list(cand.edges), list(lhs.edges)
-                if len(cfree) != len(lfree):
-                    continue
-                if sorted(map(str, cand.shape.values())) != sorted(map(str, lhs.shape.values())):
-                    continue
-                # Try name-preserving assignment first (the common, un-renamed case),
-                # then all size-consistent bijections of free edges.
-                candidates = []
-                if set(cfree) == set(lfree):
-                    candidates.append({a: a for a in lfree})
-                candidates += [dict(zip(lfree, p)) for p in permutations(cfree)]
-                for sigma in candidates:
-                    if any(lhs.shape[a] != cand.shape[b] for a, b in sigma.items()):
-                        continue
-                    if cand.is_isomorphic(lhs.rename(**sigma), match_edges=True):
-                        return [rhs.rename(**{a: sigma[a] for a in rhs.edges})]
-        return None
+    # The Delta pair rules (merging copy tensors, removing identity matrices,
+    # applying constraint equations) live in tensorgrad/simplify.py.
 
 
 class Zero(Constant):
@@ -1518,77 +1354,6 @@ class Function(Tensor):
             res = Rename(res, final_rename)
         return res
 
-    def _simplify(self, args: dict[str, Any]) -> Tensor:
-        new_inputs = [t.simplify(args=args) for t in self.inputs]
-
-        # Broadcasting can be pulled out of the function.
-        pulled_out = []
-        new_inputs2 = []
-        for t, es in zip(new_inputs, self.signature.inputs):
-            if isinstance(t, Product):
-                new_prod = []
-                for u in t.factors:
-                    if (
-                        isinstance(u, Delta)
-                        and u.order == 1
-                        and list(u.edges)[0] in t.edges
-                        and list(u.edges)[0] not in es
-                    ):
-                        pulled_out.append(u)
-                    else:
-                        new_prod.append(u)
-                new_inputs2.append(Product(new_prod))
-            else:
-                new_inputs2.append(t)
-        new_inputs = new_inputs2
-
-        res = Function(self.signature, new_inputs, self.shape_out)
-
-        # This results in an extra simplify call to all the children of the function.
-        # Maybe we can avoid this somehow?
-        old_shape = res.shape
-        res = self.signature.simplify(res, args)
-        assert res.shape == old_shape, "Function signature simplify should not change shape"
-
-        if pulled_out:
-            res = Product([res] + pulled_out)
-
-        return res
-
-    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        # We sum over each input function, just like the normal chain rule:
-        # d/dx f(g₁(x), …, gₖ(x)) = Σᵢ₌₁ᵏ (d/dx gᵢ(x)) Dᵢf(g₁(x), …, gₖ(x))
-
-        # D_i adds a new output edge to the function, which is contracted with
-        # the normal output edge of the tensor. So we need to make sure this doesn't
-        # clash with an existing output edge of f.
-        parts = []
-        for i, (t, input_edges) in enumerate(zip(self.inputs, self.signature.inputs)):
-            # Take the derivative of the outer function
-            # We need "connection" edges for each edge in input_edges. Mostly we could just use the same name
-            # but they need to avoid clashing with "new_names" and the output edges of the tensor.
-            connection_names = _unused_edge_names(input_edges, self.edges | new_names.values())
-            # Just like simple calculus, we need the derivative of the outside times the derivative of the inside
-            outside = Function(
-                self.signature.derivative(i, connection_names),
-                self.inputs,
-                self.shape_out | {connection_names[e]: t.shape[e] for e in input_edges},
-            )
-            assert outside.edges == self.edges | connection_names.values()
-
-            # The the derivative of the inner function
-            # We rename the (former) input edges to the connection edges, but keep the remaining edges
-            # (which are part of self.edges) untouched.
-            inner = Derivative(t.rename(**connection_names), x, new_names)
-
-            # The two parts are then multiplied together on the connection names,
-            # while broadcasted on their remaining shared edges.
-            import tensorgrad.functions as F  # Import here to avoid circular import
-
-            part = F.sum(outside * inner, connection_names.values())
-            parts.append(part)
-        return Sum(parts)
-
     def structure(self) -> "Structure":
         from tensorgrad.structure import Structure
 
@@ -1650,25 +1415,6 @@ class Derivative(Tensor):
         # If no edges were given, pick some names based on x, but avoid clashes with tensor.
         self.new_names = tensor._check_grad(wrt, new_names)
         self._shape = tensor.shape | {self.new_names[e]: wrt.shape[e] for e in wrt.edges}
-
-    def _simplify(self, args: dict[str, Any]) -> Tensor:
-        if not self.tensor.depends_on(self.x):
-            return Zero(_symmetries=None, **self.shape)
-        inner = self.tensor.simplify(args)
-        if args["grad_steps"] == 0:
-            # If grad_steps is 0, we pass the simplify through the derivative.
-            res = Derivative(inner, self.x, self.new_names)
-        else:
-            args["grad_steps"] -= 1
-            # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
-            grad = inner.grad(self.x, self.new_names)
-            _record_simplify_provenance(args, inner, grad)
-            res = grad.simplify(args)
-        return res
-
-    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        # To avoid an infinite loop, we let the grad pass through us, rather than creating a double derivative.
-        return Derivative(self.tensor.grad(x, new_names), self.x, self.new_names)
 
     def _rename(self, **kwargs: str) -> Tensor:
         # The free edges of Derivative are both the free edges of self.tensor and the new_names.
@@ -1763,23 +1509,6 @@ class Product(Tensor):
             used_edges.update(rename.values())  # Later renames should not clash with this one
         return Product(res)
 
-    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        # Since we are adding new edges to an internal tensor in the product, we need to make sure
-        # none of the other tensors in the product have edges that clash with these new edges.
-        inner_names = {e for t in self.factors for e in t.edges if e not in self.edges}
-        new_edges = set(new_names.values()) | self.edges
-        rename = _unused_edge_names(inner_names, new_edges)
-        new_prod = Product([t.rename(**rename) for t in self.factors])
-        assert new_prod.shape == self.shape, "Renaming should not change the product"
-
-        # The classic product rule of Calculus: d/dx (f * g) = f' * g + f * g'
-        return Sum(
-            [
-                Product(new_prod.factors[:i] + [Derivative(t, x, new_names)] + new_prod.factors[i + 1 :])
-                for i, t in enumerate(new_prod.factors)
-            ]
-        )
-
     def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
         factors = [_substitute_memo(t, x, y, memo) for t in self.factors]
         if all(a is b for a, b in zip(factors, self.factors)):
@@ -1792,87 +1521,6 @@ class Product(Tensor):
         else:
             inner = "    " + ",\n    ".join(map(repr, self.factors)) + ","
             return f"Product([\n{inner}\n])"
-
-    def _simplify(self, args: dict[str, Any]) -> Tensor:
-        tensors = [t.simplify(args=args) for t in self.factors]
-
-        # If any tensor in a product is 0, so is the whole product
-        if any(isinstance(t, Zero) for t in tensors):
-            return Zero(_symmetries=None, **self.shape)
-
-        # Decide whether to push products through sums. This can be useful to simplify networks for
-        # presentation, but it can also blow up the number of terms. So we make it optional.
-        if args.get("distributed_products", False):
-            raise NotImplementedError("Not implemented yet")
-
-        # Combine nested products. Note that not combining products may be useful to keep the
-        # "natural" contraction order. This can speed up evaluation, since sub-tensors can be reused.
-        if args["associative_products"]:
-            sub_products = [t if isinstance(t, Product) else Product([t]) for t in tensors]
-            tensors = Product.merge(sub_products).factors
-
-        # We can do a "small" kind of distributed products, which is handling children that are single sums
-        # Also, if a child is a sum with a single element, we can pull the weight up.
-        # In general, we can pull out the least common multiple of the weights of the children.
-        if single_sums := [t for t in tensors if isinstance(t, Sum) and len(t.terms) == 1]:
-            # (cast: membership in single_sums implies t is a Sum)
-            tensors = [t if t not in single_sums else cast(Sum, t).terms[0] for t in tensors]
-            res_weight = math.prod(t.weights[0] for t in single_sums)
-        else:
-            res_weight = 1
-
-        def verify_edges(ts: list[Tensor], msg: str = "") -> None:
-            cnt = Counter(e for t in ts for e in t.edges)
-            assert not cnt or cnt.most_common()[0][1] <= 2, msg
-
-        # Simplify Delta Tensors
-        verify_edges(tensors)
-        tensors = Delta.simplify_outer(tensors)
-        verify_edges(tensors)
-
-        # Combine / Cancel Product Functions
-        if args["combine_products"]:
-            from tensorgrad.functions import _PowerFunction
-
-            verify_edges(tensors)
-            before = tensors
-            tensors = _PowerFunction.simplify_outer(tensors, args)
-            verify_edges(tensors, f"{before} -> {tensors}")
-
-        # Deterministic factor order: sort by the seed-stable structural
-        # fingerprint, so commutative construction order (and PYTHONHASHSEED)
-        # doesn't leak into the simplified result.
-        tensors.sort(key=_get_canon().refined_sort_key)
-
-        # Base cases
-        if len(tensors) == 1:
-            res = tensors[0]
-        elif args["expand"]:
-            terms = [[]]
-            weights = [1]
-            for t in tensors:
-                # A (lazy) Rename wrapper can hide a Sum factor from the
-                # distribution below; push the rename through eagerly, but
-                # only here where expand needs to look through it.
-                while isinstance(t, Rename) and isinstance(t.tensor, Sum):
-                    t = t.tensor._rename(**t.mapping)
-                if isinstance(t, Sum):
-                    # Create cartesian product
-                    terms = [term + [t0] for term in terms for t0 in t.terms]
-                    weights = [w * w0 for w in weights for w0 in t.weights]
-                else:
-                    for term in terms:
-                        term.append(t)
-            # Recurse with expand=False to avoid infinite descent, but keep
-            # all other caller flags intact.
-            res = Sum([Product(ts) for ts in terms], weights).simplify(args={**args, "expand": False})
-        else:
-            res = Product(tensors)
-
-        if res_weight != 1:
-            res = res_weight * res
-
-        return res
 
     def components(self) -> list["Product"]:
         """
@@ -2012,56 +1660,11 @@ class Sum(Tensor):
     def _rename(self, **kwargs: str) -> Tensor:
         return Sum([t.rename(**kwargs) for t in self.terms], self.weights)
 
-    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        return Sum([Derivative(t, x, new_names) for t in self.terms], self.weights)
-
     def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
         terms = [_substitute_memo(t, x, y, memo) for t in self.terms]
         if all(a is b for a, b in zip(terms, self.terms)):
             return self
         return Sum(terms, self.weights)
-
-    def _simplify(self, args: dict[str, Any]) -> Tensor:
-        terms = [t.simplify(args=args) for t in self.terms]
-
-        term_counter = Counter()
-        for w, t in zip(self.weights, terms):
-            if args["associative_sums"] and isinstance(t, Sum):
-                for w1, t1 in zip(t.weights, t.terms):
-                    term_counter[_MatchEdgesKey(t1)] += w * w1
-            else:
-                term_counter[_MatchEdgesKey(t)] += w
-
-        if args["sum_combine_terms"]:
-            # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
-            # It is important that isomorphic tensors with different outer edge labels don't get matched. For example
-            # (o-i o-<jk) is isomorphic with (o-j o-<ik), but they shouldn't be combined. This example comes up in the
-            # Hessian of softmax.
-            ws_tensors = [
-                (w, key.value)
-                for key, w in term_counter.items()
-                if w != 0 and not isinstance(key.value, Zero)
-            ]
-        else:
-            ws_tensors = [(w, key.value) for key, w in term_counter.items()]
-
-        # Remove zero tensors or zero weights.
-        # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
-        ws_tensors = [(w, t) for w, t in ws_tensors if w != 0 and not isinstance(t, Zero)]
-        # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
-        if not ws_tensors:
-            return Zero(_symmetries=None, **self.shape)
-        # Deterministic term order: sort by the seed-stable (name-sensitive)
-        # structural fingerprint, so commutative construction order (and
-        # PYTHONHASHSEED) doesn't leak into the simplified result. Positive
-        # weights sort first purely for presentation (avoid a leading minus).
-        canon = _get_canon()
-        ws_tensors.sort(key=lambda wt: (wt[0] < 0, canon.refined_sort_key(wt[1]), str(wt[0])))
-        weights, tensors = zip(*ws_tensors)
-        # If there is just one tensor with weight 1, we don't need LinearComb
-        if weights == (1,):
-            return tensors[0]
-        return Sum(tensors, weights)
 
     def __repr__(self) -> str:
         return f"Sum({self.terms}, {self.weights})"
@@ -2110,12 +1713,6 @@ def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:
         for e in t.edges:
             groups[e].append(t)
     return groups
-
-
-def _record_simplify_provenance(args: dict[str, Any], before: Tensor, after: Tensor) -> None:
-    recorder = args.get("provenance")
-    if recorder is not None:
-        recorder.record(before, after)
 
 
 def _unused_edge_names(edges: Iterable[str], used_names: Iterable[str], suffix: str = "") -> dict[str, str]:
