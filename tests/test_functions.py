@@ -794,3 +794,32 @@ def test_tanh_derivative_pickle_roundtrip():
     got = evaluate(d2, dict(vals), dims).rename(None)
     want = 1 - torch.tanh(vals[x].rename(None)) ** 2
     torch.testing.assert_close(got, want)
+
+
+def test_erf_derivative_pickle_roundtrip():
+    # Same disease as tanh: erf's derivative factory used lambdas, breaking
+    # pickling of any cached expression containing erf or its derivative.
+    import math
+    import pickle
+    from tensorgrad.tensor import Function
+    from tensorgrad.functions import _ErfGradFunction
+
+    i = symbols("i")
+    x = Variable("x", i)
+
+    expr = F.erf(x)
+    d_erf = Function(_ErfGradFunction(), (x,), {})
+    grad = expr.grad(x)
+
+    for t in (expr, d_erf, grad):
+        t2 = pickle.loads(pickle.dumps(t))
+        assert t2 == t
+        assert pickle.loads(pickle.dumps(t2)) == t2
+
+    # The roundtripped derivative still evaluates: D_erf(x) = 2/sqrt(pi) e^{-x^2}.
+    d2 = pickle.loads(pickle.dumps(d_erf)).simplify()
+    dims = {i: 5}
+    vals = rand_values([x], dims)
+    got = evaluate(d2, dict(vals), dims).rename(None)
+    want = 2 / math.sqrt(math.pi) * torch.exp(-vals[x].rename(None) ** 2)
+    torch.testing.assert_close(got, want)

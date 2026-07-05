@@ -1001,15 +1001,23 @@ def tanh(t: Tensor) -> Tensor:
 _TWO_OVER_SQRT_PI = 2.0 / math.sqrt(math.pi)
 
 
+def _erf_grad_expr(x: Tensor) -> Tensor:
+    # d/dx erf(x) = 2/sqrt(pi) exp(-x^2)
+    return _TWO_OVER_SQRT_PI * exp(-pow(x, 2))
+
+
+def _erf_grad2_expr(x: Tensor) -> Tensor:
+    # d^2/dx^2 erf(x) = -4x/sqrt(pi) exp(-x^2)
+    return (-2 * _TWO_OVER_SQRT_PI) * x * exp(-pow(x, 2))
+
+
+def _Erf2GradFunction() -> FunctionSignature:
+    return _ExprGradFunction("D2_erf", _erf_grad2_expr)
+
+
 def _ErfGradFunction() -> FunctionSignature:
-    # d/dx erf(x) = 2/sqrt(pi) exp(-x^2); d^2/dx^2 erf(x) = -4x/sqrt(pi) exp(-x^2)
-    return _ExprGradFunction(
-        "D_erf",
-        lambda x: _TWO_OVER_SQRT_PI * exp(-pow(x, 2)),
-        lambda: _ExprGradFunction(
-            "D2_erf", lambda x: (-2 * _TWO_OVER_SQRT_PI) * x * exp(-pow(x, 2))
-        ),
-    )
+    # Module-level defs (not lambdas) for picklability, like tanh above.
+    return _ExprGradFunction("D_erf", _erf_grad_expr, _Erf2GradFunction)
 
 
 def erf(t: Tensor) -> Tensor:
