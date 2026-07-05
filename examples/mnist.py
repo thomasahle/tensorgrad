@@ -7,9 +7,7 @@ import argparse
 
 from tensorgrad import Variable
 from tensorgrad.testutils import rand_values
-from tensorgrad.extras.to_pytorch import compile_to_callable as compile_torch
-from tensorgrad.extras.to_numpy import compile_to_callable as compile_numpy
-from tensorgrad.compiler import compile_to_callable as compile_new
+from tensorgrad.compiler import compile_to_callable
 import tensorgrad.functions as F
 
 
@@ -93,12 +91,8 @@ def main(args):
     print("Computing and simplifying gradients")
     grad_tensors = [y.grad(param).full_simplify(expand=False) for param in layers]
 
-    if args.backend == "numpy":
-        backprop = compile_numpy(prediction, y, *grad_tensors, verbose=True, torch_compile=True)
-    elif args.backend == "compiler":
-        backprop = compile_new(prediction, y, *grad_tensors)
-    else:
-        backprop = compile_torch(prediction, y, *grad_tensors, verbose=True, torch_compile=True)
+    torch_compile = args.backend == "compiler-compile"
+    backprop = compile_to_callable(prediction, y, *grad_tensors, torch_compile=torch_compile)
 
     # Train
     print("Training...")
@@ -137,6 +131,8 @@ if __name__ == "__main__":
         "model", type=str, default="linear-1",
         choices=["conv-1", "conv-2", "linear-1", "linear-2"]
     )
-    parser.add_argument("--backend", type=str, default="torch", choices=["torch", "numpy", "compiler"])
+    parser.add_argument(
+        "--backend", type=str, default="compiler", choices=["compiler", "compiler-compile"]
+    )
     args = parser.parse_args()
     main(args)

@@ -3,7 +3,7 @@ import tensorgrad.functions as F
 from tensorgrad import Expectation
 from tensorgrad.extras.to_tikz import to_tikz
 from tensorgrad.imgtools import save_steps, save_as_image
-from tensorgrad.extras.to_pytorch import compile_to_callable
+from tensorgrad.compiler import compile_to_callable
 from tensorgrad.extras.to_index import to_index, to_index_free
 from tensorgrad.testutils import assert_close, rand_values
 from sympy import symbols

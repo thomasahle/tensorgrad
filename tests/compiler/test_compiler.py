@@ -871,19 +871,3 @@ def test_xfail_permuted_named_input():
     want = f({X: Xt, w: wt}, dims)
     got = f({X: Xt.align_to("d", "n"), w: wt}, dims)  # permuted edge order
     torch.testing.assert_close(got.rename(None), want.rename(None), rtol=RTOL, atol=ATOL)
-
-
-# Failure mode (pre-existing OLD-backend gap, not the new compiler): the old
-# to_pytorch backend's generated Reshape code calls math.isqrt but 'math' is
-# missing from its exec namespace -> NameError.
-@pytest.mark.xfail(strict=False, reason="not-implemented: old to_pytorch backend Reshape codegen references math without importing it")
-def test_xfail_old_backend_standalone_reshape():
-    from tensorgrad.extras.to_pytorch import compile_to_callable as compile_old
-
-    ri, rj, rl = symbols("ri rj rl")
-    rdims = {ri: 4, rj: 2, rl: 2}
-    resh = F.Reshape(ri=ri, rj=rj, rl=rl)
-    f = compile_old(resh)
-    out = f({}, rdims)
-    ref = evaluate(resh, {}, dict(rdims))
-    torch.testing.assert_close(out.rename(None), ref.align_to(*out.names).rename(None), rtol=RTOL, atol=ATOL)

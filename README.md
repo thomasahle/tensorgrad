@@ -103,17 +103,19 @@ This will output the tensor diagram:
 
 <img src="https://raw.githubusercontent.com/thomasahle/tensorgrad/main/docs/images/l2_grad_w_single_step.png" width="50%">
 
-Tensorgrad can also output pytorch code for numerically computing the gradient with respect to W:
+Tensorgrad can also compile the gradient to PyTorch code and show you exactly what it generated (`verbose=True` prints the kernel when it is first specialized to concrete sizes):
 ```python
->>> to_pytorch(grad)
-"""
-import torch
-WX = torch.einsum('xy,bx -> by', W, X)
-subtraction = WX - Y
-X_subtraction = torch.einsum('bx,by -> xy', X, subtraction)
-final_result = 2 * X_subtraction
-"""
+>>> from tensorgrad.compiler import compile_to_callable
+>>> step = compile_to_callable(expr, verbose=True)
+>>> grad_W = step({X: X_val, Y: Y_val, W: W_val}, {b: 128, x: 10, y: 5})
+def _compiled(t1, t0, t3):                     # t1 = W, t0 = X, t3 = Y
+    _e0 = torch.mm(t0, t1)                     # X @ W
+    t4 = _e0 - t3                              # X @ W - Y
+    _e1 = torch.mm(t0.transpose(-2, -1), t4)   # X.T @ (X @ W - Y)
+    t6 = 2.0 * _e1
+    return (t6,)
 ```
+(memory-freeing `del`s and alias assignments elided from the printed kernel)
 
 ### Hessian of CE Loss
 

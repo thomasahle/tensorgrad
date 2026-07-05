@@ -6,8 +6,7 @@ from tensorgrad.extras._convolution import conv_einsum_dispatch
 import tensorgrad.functions as F
 from tensorgrad.tensor import Product, Variable, Zero, Delta, Sum, Derivative, Ones
 
-# from tensorgrad.extras.to_pytorch import compile_to_callable
-from tensorgrad.extras.to_numpy import compile_to_callable
+from tensorgrad.compiler import compile_to_callable
 from tensorgrad.testutils import assert_close, rand_values
 from tensorgrad.extras.evaluate import evaluate
 

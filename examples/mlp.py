@@ -1,8 +1,6 @@
 from tensorgrad import Variable
 import tensorgrad.functions as F
-from tensorgrad.extras.to_pytorch import compile_to_callable as compile_to_pytorch
-from tensorgrad.extras.to_numpy import compile_to_callable as compile_to_numpy
-from tensorgrad.compiler import compile_to_callable as compile_new
+from tensorgrad.compiler import compile_to_callable
 from tensorgrad.extras.evaluate import evaluate
 from tensorgrad.testutils import init_tensor
 
@@ -20,9 +18,9 @@ parser = argparse.ArgumentParser(description="Train MLP with tensorgrad")
 parser.add_argument(
     "--backend",
     type=str,
-    default="pytorch",
-    choices=["pytorch", "pytorch-compile", "numpy", "eval", "compiler", "compiler-compile"],
-    help="Backend to use for compilation (default: pytorch)",
+    default="compiler",
+    choices=["compiler", "compiler-compile", "eval"],
+    help="Backend to use for compilation (default: compiler)",
 )
 parser.add_argument(
     "--verbose", action="store_true", help="Enable verbose output during compilation."
@@ -50,18 +48,12 @@ def evaluate_callable(*tensors, verbose=False):
     return forward_with_values
 
 
-if args.backend == "numpy":
-    compiler = partial(compile_to_numpy, verbose=args.verbose)
-elif args.backend == "pytorch":
-    compiler = partial( compile_to_pytorch, torch_compile=False, verbose=args.verbose)
-elif args.backend == "pytorch-compile":
-    compiler = partial( compile_to_pytorch, torch_compile=True, verbose=args.verbose)
-elif args.backend == "eval":
+if args.backend == "eval":
     compiler = partial(evaluate_callable, verbose=args.verbose)
 elif args.backend == "compiler":
-    compiler = partial(compile_new, verbose=args.verbose)
+    compiler = partial(compile_to_callable, verbose=args.verbose)
 elif args.backend == "compiler-compile":
-    compiler = partial(compile_new, torch_compile=True, verbose=args.verbose)
+    compiler = partial(compile_to_callable, torch_compile=True, verbose=args.verbose)
 
 
 print("Defining MLP architecture and loss symbolically...")
