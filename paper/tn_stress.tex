@@ -18,16 +18,21 @@
   every leg/.style={},
   every leg label/.style={font=\tiny},
   leg length/.initial=.35,
-  legs/.style={append after command={\pgfextra{\tn@legs{#1}}}},
+  legs/.style={append after command={\pgfextra{\def\tn@legopt{}\tn@legs{#1}}}},
+  double legs/.style={append after command={\pgfextra{\def\tn@legopt{double}\tn@legs{#1}}}},
 }
 \def\tn@legs#1{\foreach \tn@item in {#1}{\expandafter\tn@leg\tn@item//\@nil}}
 \def\tn@leg#1/#2/#3\@nil{%
-  % start at the BORDER anchor at that angle, so wide nodes don't eat the leg
+  % Border point along the PAGE-coordinate direction #1 (handles rotated
+  % shapes, unlike numeric anchors) so wide nodes don't eat the leg.
+  \pgfpointshapeborder{\tikzlastnode}{\pgfpointadd{%
+     \pgfpointanchor{\tikzlastnode}{center}}{\pgfpointpolar{#1}{10pt}}}%
+  \pgfgetlastxy{\tn@bx}{\tn@by}%
   \if\relax\detokenize{#2}\relax
-    \draw[every leg] (\tikzlastnode.#1) -- ++(#1:\pgfkeysvalueof{/tikz/leg length});%
+    \expandafter\draw\expandafter[\tn@legopt, every leg] (\tn@bx,\tn@by) -- ++(#1:\pgfkeysvalueof{/tikz/leg length});%
   \else
     \pgfmathsetmacro\tn@anch{#1+180}%
-    \draw[every leg] (\tikzlastnode.#1) -- ++(#1:\pgfkeysvalueof{/tikz/leg length})
+    \expandafter\draw\expandafter[\tn@legopt, every leg] (\tn@bx,\tn@by) -- ++(#1:\pgfkeysvalueof{/tikz/leg length})
        node[every leg label, anchor=\tn@anch, inner sep=1.5pt] {$#2$};%
   \fi}
 \makeatother
