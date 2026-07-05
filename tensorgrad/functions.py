@@ -10,7 +10,6 @@ from sympy import Symbol
 from tensorgrad.tensor import (
     Constant,
     Delta,
-    Derivative,
     Function,
     FunctionSignature,
     Ones,
@@ -938,10 +937,6 @@ class _LogFunction(FunctionSignature):
             and inner.signature.name == "exp"
         ):
             return inner.inputs[0]
-        # log(softmax(x)) = log_softmax(x), the numerically stable fused form
-        if isinstance(inner, Function) and isinstance(inner.signature, _SoftmaxFunction):
-            (dims,) = inner.signature.inputs
-            return Function(_LogSoftmaxFunction(dims), inner.inputs, inner.shape_out).simplify(args)
         # Other simplifications we could do:
         # - log(1/x) = -log(x)
         # - log(x^k) = k log(x)
@@ -1051,155 +1046,28 @@ def sigmoid(t: Tensor) -> Tensor:
     return 1 / (1 + exp(-t))
 
 
-class _AutoDerivFunction(FunctionSignature):
-    """A derivative signature whose math is DERIVED, never written by hand.
-
-    Fused wrapper functions (softmax, log_softmax, ...) exist purely for
-    pattern recognition: a stable native kernel on the forward path. Their
-    derivatives must not be hand-fused Jacobians — the whole point of
-    tensorgrad is that composites get their backwards from the language
-    itself. The only hand-written content here is `expr`, the wrapper's own
-    primitive definition (e.g. softmax(x) = exp(x) / sum(exp(x))).
-
-    simplify() rebuilds that definition on a fresh Variable, differentiates
-    it len(renames) times with the ordinary Derivative machinery (so every
-    Jacobian/Hessian comes from the primitive rules), restricts to the
-    diagonal over broadcast (batch) edges — the derivative of a
-    broadcast-elementwise function is exactly batch-diagonal — and
-    substitutes the real input back in.
-
-    The result is expanded primitive algebra (exp / sum / pow). Numerical
-    stability and native-kernel fusion of those forms is recovered at
-    compile time by the IR stabilization pass
-    (tensorgrad/compiler/stabilize.py), not by hand-fused Jacobians here.
-    """
-
-    def __init__(self, base_name: str, expr, dims: Iterable[str], renames: tuple[dict[str, str], ...]):
-        dims = frozenset(dims)
-        edges = set(dims)
-        for rn in renames:
-            if rn.keys() != dims:
-                raise ValueError(f"Expected new edges for {set(dims)}, got {rn}")
-            if set(rn.values()) & edges:
-                raise ValueError(f"New edges {set(rn.values())} clash with {edges}")
-            edges |= set(rn.values())
-        order = len(renames)
-        prefix = "D" if order == 1 else f"D{order}"
-        super().__init__(f"{prefix}_{base_name}", frozenset(edges), (dims,))
-        self.base_name = base_name
-        self.expr = expr
-        self.dims = dims
-        self.renames = tuple(dict(rn) for rn in renames)
-
-    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
-        assert i == 0
-        if new_edges is None or new_edges.keys() != self.dims:
-            raise ValueError(f"Expected new edges for {set(self.dims)}, got {new_edges}")
-        return _AutoDerivFunction(self.base_name, self.expr, self.dims, self.renames + (new_edges,))
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        (inner,) = f.inputs
-        # A stand-in variable with the input's full shape (consumed dims plus
-        # broadcast edges), so the derivation is independent of `inner`.
-        v = Variable(f"_d_{self.base_name}", _symmetries=None, _constraints=None, **inner.shape)
-        res = self.expr(v, self.dims)
-        batch = tuple(e for e in inner.edges if e not in self.dims)
-        used = set(f.shape.keys()) | set(inner.edges)
-        batch_names: list[dict[str, str]] = []
-        for rn in self.renames:
-            bn = _unused_edge_names(batch, used)
-            used |= set(bn.values())
-            res = Derivative(res, v, rn | bn)
-            batch_names.append(bn)
-        # Resolve the Derivative nodes using the primitive rules only.
-        res = res.simplify()
-        # The derivative of a function applied elementwise over its broadcast
-        # edges is zero off the batch diagonal, so restricting every copy of a
-        # batch edge to one shared index is exact — and it is what the
-        # Function chain rule (which joins batch edges elementwise) expects.
-        for e in batch:
-            copies = [e] + [bn[e] for bn in batch_names]
-            (tmp,) = _unused_edge_names([e], used).values()
-            used.add(tmp)
-            res = (res @ Delta(inner.shape[e], *copies, tmp)).rename(**{tmp: e})
-        res = res.substitute(v, inner)
-        assert res.shape == f.shape, f"{res.shape=} != {f.shape=}"
-        return res.simplify(args)
-
-
-def _softmax_expr(v: Tensor, dims: AbstractSet[str]) -> Tensor:
-    """softmax's primitive definition — the only 'rule' its derivatives use."""
-    e = exp(v)
-    return e / sum(e, dims, keepdims=True)
-
-
-def _log_softmax_expr(v: Tensor, dims: AbstractSet[str]) -> Tensor:
-    """log_softmax's primitive definition, for automatic differentiation."""
-    return v - log(sum(exp(v), dims, keepdims=True))
-
-
-class _SoftmaxFunction(FunctionSignature):
-    # We don't really need this function signature, as we could just use the basic
-    # functions of exp, sum and pow(-1) to implement it. However keeping softmax
-    # "unexpanded" (fused) is both numerically stable (the exp/sum expansion
-    # overflows for |logits| >~ 50) and lets backends emit a native softmax kernel.
-    # Derivatives carry NO hand math: they are derived from the primitive
-    # definition via _AutoDerivFunction.
-
-    def __init__(self, dims: Iterable[str]):
-        super().__init__("softmax", frozenset(dims), (frozenset(dims),))
-
-    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None):
-        assert i == 0
-        (dims,) = self.inputs
-        if new_edges is None or new_edges.keys() != dims:
-            raise ValueError(f"Expected new edges for {dims}, got {new_edges}")
-        return _AutoDerivFunction("softmax", _softmax_expr, dims, (new_edges,))
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        # Expansion is opt-in via simplify({"expand_softmax": True}): the fused
-        # form is numerically stable and compiles to a native torch.softmax.
-        if args.get("expand_softmax", False):
-            (dims,) = self.inputs
-            (inner,) = f.inputs
-            assert dims <= inner.edges
-            return _softmax_expr(inner, dims).simplify(args)
-        return super().simplify(f, args)
-
-
 def softmax(t: Tensor, dim: DimType = None) -> Tensor:
+    """softmax(t, dim) = exp(t) / sum(exp(t), dim, keepdims=True).
+
+    A plain composition of primitives — derivatives of any order come from
+    the language itself, with no fused signature and no hand-written
+    Jacobian. Eager evaluation of this expanded form overflows float32 at
+    |t| >= ~89; numerical stability at extreme logits is the COMPILER's
+    contract (tensorgrad/compiler/stabilize.py re-fuses the exp / sum-exp
+    ratio into a native torch.softmax kernel)."""
     dim = parse_dim(t.edges, dim)
-    return Function(_SoftmaxFunction(dim), [t], {e: t.shape[e] for e in dim})
-
-
-class _LogSoftmaxFunction(FunctionSignature):
-    """log(softmax(x)) as a single fused function. Numerically stable
-    (log_softmax never underflows to log(0)) and maps to torch.log_softmax.
-    Derivatives are derived from the primitive definition (_AutoDerivFunction)."""
-
-    def __init__(self, dims: Iterable[str]):
-        super().__init__("log_softmax", frozenset(dims), (frozenset(dims),))
-
-    def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None):
-        assert i == 0
-        (dims,) = self.inputs
-        if new_edges is None or new_edges.keys() != dims:
-            raise ValueError(f"Expected new edges for {dims}, got {new_edges}")
-        return _AutoDerivFunction("log_softmax", _log_softmax_expr, dims, (new_edges,))
-
-    def simplify(self, f: Function, args: dict[str, Any]) -> Tensor:
-        if args.get("expand_softmax", False):
-            (dims,) = self.inputs
-            (inner,) = f.inputs
-            assert dims <= inner.edges
-            return _log_softmax_expr(inner, dims).simplify(args)
-        return super().simplify(f, args)
+    e = exp(t)
+    return e / sum(e, dim, keepdims=True)
 
 
 def log_softmax(t: Tensor, dim: DimType = None) -> Tensor:
-    """Numerically stable log(softmax(t, dim))."""
+    """log_softmax(t, dim) = t - log(sum(exp(t), dim, keepdims=True)).
+
+    A plain composition, like softmax above. The compiler's stabilize pass
+    recovers torch.log_softmax / logsumexp for extreme inputs; eager
+    evaluation is only exact at moderate |t|."""
     dim = parse_dim(t.edges, dim)
-    return Function(_LogSoftmaxFunction(dim), [t], {e: t.shape[e] for e in dim})
+    return t - log(sum(exp(t), dim, keepdims=True))
 
 
 def pairwise_distance(t1: Tensor, t2: Tensor, dim: DimType = None) -> Tensor:

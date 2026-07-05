@@ -19,7 +19,7 @@ from sympy import symbols
 
 import tensorgrad.functions as F
 from tensorgrad import Delta, Product, Sum, Variable, Zero
-from tensorgrad.tensor import Derivative, Rename, Tensor
+from tensorgrad.tensor import Derivative, Rename, Tensor, function
 from tensorgrad.compiler.canon import (
     canon_info,
     structural_fingerprint,
@@ -166,15 +166,21 @@ def test_hash_invariance_on_variants():
 
 
 def test_hash_invariance_on_random_iso_pairs():
-    # Cross-check on organically isomorphic pairs (not built as variants).
+    # Cross-check on organically isomorphic pairs (not built as variants),
+    # using the exact nx isomorphism test as ground truth.
+    import networkx as nx
+
     pool = EXPRS
+    graphs = [t.edge_structural_graph(match_edges=False)[0] for t in pool]
     found = 0
     for i in range(len(pool)):
         for j in range(i + 1, len(pool)):
-            a, b = pool[i], pool[j]
-            if a.weisfeiler_lehman == b.weisfeiler_lehman and a.is_isomorphic(b):
+            G1, G2 = graphs[i], graphs[j]
+            if G1.number_of_nodes() != G2.number_of_nodes():
+                continue
+            if nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")):
                 found += 1
-                assert structural_hash(a) == structural_hash(b)
+                assert structural_hash(pool[i]) == structural_hash(pool[j])
     assert found > 0, "corpus produced no organic isomorphic pairs"
 
 
@@ -271,10 +277,14 @@ def _targeted_cases():
     # Sum combining is edge-structure sensitive.
     cases.append((Sum([v, v]), Sum([v, v.rename(i="j", j="i")]), False))
 
-    # Function output names matter; broadcast edge names do not.
+    # Function output names matter; broadcast edge names do not. (Uses the
+    # generic function() helper: F.softmax is a plain composition since task
+    # #34, so its "output" edge is an ordinary free edge and renaming it IS
+    # an isomorphism — a fused signature is needed to pin output names.)
     t = Variable("t", i=n, j=n)
-    cases.append((F.softmax(t, dim="j"), F.softmax(t.rename(i="z"), dim="j"), True))
-    cases.append((F.softmax(t, dim="j"), F.softmax(t.rename(j="z"), dim="z"), False))
+    f1 = function("f", {"j": n}, (t, "j"))
+    cases.append((f1, function("f", {"j": n}, (t.rename(i="z"), "j")), True))
+    cases.append((f1, function("f", {"z": n}, (t.rename(j="z"), "z")), False))
 
     # Deltas: name-insensitive, size- and order-sensitive.
     cases.append((Delta(n, "a", "b"), Delta(n, "x", "y"), True))

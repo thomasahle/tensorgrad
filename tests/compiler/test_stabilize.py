@@ -2,10 +2,11 @@
 
 Everything here spells softmax / log-softmax / tanh out of PRIMITIVES
 (exp, log, pow, sum) — exactly what a researcher writes, and exactly what
-simplify({"expand_softmax": True}) produces. The expanded forms overflow
-float32 at |x| >= ~89; the pass must re-fuse them into stable
-softmax/log_softmax/tanh/max-shifted-logsumexp kernels, INCLUDING the shapes
-they take inside gradient graphs, without changing semantics.
+the public F.softmax / F.log_softmax denote (they are plain compositions,
+task #34). The expanded forms overflow float32 at |x| >= ~89; the pass must
+re-fuse them into stable softmax/log_softmax/tanh/max-shifted-logsumexp
+kernels, INCLUDING the shapes they take inside gradient graphs, without
+changing semantics.
 """
 
 import pytest
@@ -209,27 +210,26 @@ def test_primitive_gelu_grad_stable_at_200():
 
 
 # ---------------------------------------------------------------------------
-# expand_softmax=True expansions (fused signature -> primitives -> re-fused)
+# the public F.softmax / F.log_softmax spellings (plain compositions of
+# primitives since task #34) -> re-fused
 # ---------------------------------------------------------------------------
 
 
-def test_expand_softmax_forward_restabilized():
+def test_public_softmax_forward_restabilized():
     b, v, x, _ = _setup()
-    sm = F.softmax(x, dim="v").simplify({"expand_softmax": True})
-    assert "softmax" not in repr(sm)  # really expanded to primitives
+    sm = F.softmax(x, dim="v").simplify()
+    assert "softmax" not in repr(sm)  # a composition of primitives, no wrapper
     fn = compile_to_callable(sm)
     xt, _ = _vals()
     out = fn({x: xt}, {b: B, v: V}).rename(None)
     torch.testing.assert_close(out, torch.softmax(xt.rename(None), dim=1), rtol=RTOL, atol=ATOL)
 
 
-def test_expand_softmax_grad_restabilized():
+def test_public_softmax_grad_restabilized():
     b, v, x, w = _setup()
     loss = F.sum(F.softmax(x, dim="v") * w)
     g = loss.grad(x)
-    fn = compile_to_callable(
-        loss.simplify({"expand_softmax": True}), g.simplify({"expand_softmax": True})
-    )
+    fn = compile_to_callable(loss.simplify(), g.simplify())
     xt, wt = _vals()
     lv, gv = fn({x: xt, w: wt}, {b: B, v: V})
     s = torch.softmax(xt.rename(None), dim=1)
@@ -240,9 +240,9 @@ def test_expand_softmax_grad_restabilized():
     torch.testing.assert_close(gv.rename(None), ref_g, rtol=RTOL, atol=ATOL)
 
 
-def test_expand_log_softmax_restabilized():
+def test_public_log_softmax_restabilized():
     b, v, x, _ = _setup()
-    ls = F.log_softmax(x, dim="v").simplify({"expand_softmax": True})
+    ls = F.log_softmax(x, dim="v").simplify()
     fn = compile_to_callable(ls)
     xt, _ = _vals()
     out = fn({x: xt}, {b: B, v: V}).rename(None)
@@ -312,9 +312,9 @@ def test_without_stabilize_softmax_grad_overflows():
     )
 
 
-def test_fused_softmax_path_untouched():
-    """Programs already using the fused F.softmax signature must compile to the
-    identical single-kernel form (the pass must not disturb them)."""
+def test_public_softmax_full_simplify_single_kernel():
+    """The public F.softmax spelling, fully simplified, must still compile to
+    the single-kernel form (no exp anywhere in the emitted program)."""
     b, v, x, w = _setup()
     loss = F.sum(F.softmax(x, dim="v") * w)
     fn = compile_to_callable(loss.full_simplify(), loss.grad(x).full_simplify())

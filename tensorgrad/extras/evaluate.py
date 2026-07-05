@@ -18,8 +18,6 @@ from tensorgrad.functions import (
     _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
-    _SoftmaxFunction,
-    _LogSoftmaxFunction,
     _ZeroFunction,
     Convolution,
     Reshape,
@@ -443,30 +441,6 @@ def _(func: _OneHotFunction, idx: torch.Tensor, size_carrier: torch.Tensor) -> t
     flat = idx.rename(None).long().reshape(1, -1)
     onehot = (flat == torch.arange(num_classes).unsqueeze(1)).to(torch.float32)
     return onehot.reshape((num_classes,) + tuple(idx.shape)).rename(func.eq_edge, *idx.names)
-
-
-@evaluate_function.register
-def _(func: _SoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
-    (dims,) = func.inputs
-    sizes = [x.size(d) for d in dims]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
-    names = [d for d in x.names if d not in dims]
-    other_sizes = [x.size(n) for n in names]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
-    # Softmax doesn't support named dimensions, so we have to rename them to None.
-    # We move the affected dimensions to the front, then flatten them.
-    y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
-    return y.softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
-
-
-@evaluate_function.register
-def _(func: _LogSoftmaxFunction, x: torch.Tensor) -> torch.Tensor:
-    (dims,) = func.inputs
-    sizes = [x.size(d) for d in dims]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
-    names = [d for d in x.names if d not in dims]
-    other_sizes = [x.size(n) for n in names]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
-    # log_softmax doesn't support named dimensions, so we have to rename them to None.
-    # We move the affected dimensions to the front, then flatten them.
-    y = x.align_to(*dims, *names).rename(None).flatten(start_dim=0, end_dim=len(dims) - 1)
-    return y.log_softmax(dim=0).reshape(sizes + other_sizes).rename(*dims, *names).align_to(*x.names)
 
 
 @evaluate_function.register

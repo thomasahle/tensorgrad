@@ -306,18 +306,6 @@ class Lowerer:
             out_order = tuple(e for e in order if e != sig.dim)
             return self.b.reduce("argmax", (axis,), node), out_order
 
-        if isinstance(sig, F._SoftmaxFunction):
-            node, order = self.lower(t.inputs[0])
-            (dims,) = sig.inputs
-            axes = tuple(order.index(e) for e in dims)
-            return self.b.reduce("softmax", axes, node), order
-
-        if isinstance(sig, F._LogSoftmaxFunction):
-            node, order = self.lower(t.inputs[0])
-            (dims,) = sig.inputs
-            axes = tuple(order.index(e) for e in dims)
-            return self.b.reduce("log_softmax", axes, node), order
-
         if isinstance(sig, F._OneHotFunction):
             # inputs = (idx, size_carrier); the carrier only fixes the number
             # of classes, so it is not lowered at all.

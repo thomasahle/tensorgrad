@@ -8,8 +8,8 @@ Acceptance table (task #19):
 
 Plus: soundness fuzz over testutils.generate_random_tensor_expression
 (fingerprints never disagree with ground truth), recursive atom consistency,
-and the documented false negative between primitive and fused softmax
-gradients (different atoms by design).
+and the documented false-negative class between a native atom and its
+primitive exp-spelling (tanh vs the exp ratio — different atoms by design).
 """
 
 import random
@@ -144,40 +144,43 @@ def test_rational_identity_over_atoms():
     assert verify_rewrite(grad, hand)
 
 
-def test_softmax_primitive_vs_fused_false_negative():
-    """DOCUMENTED FALSE NEGATIVE (by design of the atoms formulation) — for
-    the FORWARD only.
-
-    The fused forward is a softmax(x) atom (ReduceNode), the primitive
-    forward is exp(x) and pow atoms. They are equal only through the
-    *analytic* identity softmax(x) = exp(x)/sum(exp(x)), which the
-    fingerprint deliberately does not know: each atom kind gets independent
-    random values. So equal_szfp says UNEQUAL even though the expressions
-    are semantically equal. This is the same blindness class as syntactic
-    methods; whitelisting the atom-folding rewrite (exp/sum -> softmax) is
-    the compiler's job (stabilize.py), not verify_rewrite's.
-
-    GRADIENTS no longer exhibit the false negative at all: the fused
-    wrapper's derivative is DERIVED from the same primitive definition (no
-    hand-fused Jacobian in softmax atoms exists anymore), so both gradients
-    are literally the same exp/pow expression and fingerprint EQUAL.
-    """
-    s_fused = F.softmax(x, ["i"])
+def test_softmax_spellings_fingerprint_equal():
+    """The old softmax-atom false negative is GONE BY DESIGN (task #34):
+    F.softmax is a plain exp/pow composition, so the public and the
+    hand-primitive spellings are the same rational function over the exp
+    atoms and fingerprint EQUAL — forward and gradients alike. (ReduceNode
+    softmax atoms still exist in the IR, but only the compiler's stabilize
+    pass introduces them, downstream of szfp-verified rewrites.)"""
+    s_pub = F.softmax(x, ["i"])
     e = F.exp(x)
     s_prim = e * F.pow(e @ Delta(i, "i"), -1)
 
-    # Semantically equal forwards, but different atoms -> unequal fingerprints:
-    assert not equal_szfp(s_fused, s_prim)
-    assert not verify_rewrite(s_prim, s_fused)  # -> whitelisted in the compiler instead
+    assert equal_szfp(s_pub, s_prim)
+    assert verify_rewrite(s_prim, s_pub)
 
-    # The derived gradients coincide down to the atom level: true positive.
-    grad_fused = (s_fused @ g).grad(x).full_simplify()
+    grad_pub = (s_pub @ g).grad(x).full_simplify()
     grad_prim = (s_prim @ g).grad(x).full_simplify()
-    assert equal_szfp(grad_fused, grad_prim)
+    assert equal_szfp(grad_pub, grad_prim)
 
-    # Within each formulation the fingerprint is exact and stable:
-    assert equal_szfp(grad_fused, (s_fused @ g).grad(x).full_simplify())
+    # Within each spelling the fingerprint is exact and stable:
+    assert equal_szfp(grad_pub, (s_pub @ g).grad(x).full_simplify())
     assert equal_szfp(grad_prim, (s_prim @ g).grad(x).full_simplify())
+
+
+def test_native_atom_vs_exp_spelling_false_negative():
+    """DOCUMENTED FALSE NEGATIVE (by design of the atoms formulation).
+
+    A native atom (tanh) equals its primitive exp-ratio spelling only
+    through an *analytic* identity, which the fingerprint deliberately does
+    not know: each atom kind gets independent random values. So equal_szfp
+    says UNEQUAL even though the expressions are semantically equal. This is
+    the same blindness class as syntactic methods; whitelisting atom-folding
+    rewrites (exp-ratio -> tanh, exp/sum-exp -> softmax) is the compiler's
+    job (stabilize.py), not verify_rewrite's."""
+    e, em = F.exp(x), F.exp(-x)
+    t_prim = (e - em) * F.pow(e + em, -1)
+    assert not equal_szfp(F.tanh(x), t_prim)
+    assert not verify_rewrite(t_prim, F.tanh(x))  # -> whitelisted in the compiler instead
 
 
 # ---------------------------------------------------------------------------

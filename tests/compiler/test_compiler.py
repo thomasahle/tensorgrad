@@ -288,8 +288,9 @@ def test_softmax_expanded():
     run_case([F.softmax(fx, dim="fj")], [], values=_fvals(), dims=FDIMS)
 
 
-def test_softmax_unexpanded_native():
-    # Unexpanded Function node survives and compiles to native torch.softmax.
+def test_softmax_noexpand():
+    # F.softmax is a plain exp/sum composition (task #34); with function
+    # expansion off it still compiles (stabilize re-fuses to torch.softmax).
     sm = F.softmax(fx, dim="fj")
     run_case([sm], [], values=_fvals(), dims=FDIMS, simplify="noexpand")
 
@@ -845,11 +846,10 @@ def test_xfail_standalone_reshape():
     run_case([F.Reshape(ri=ri, rj=rj, rl=rl)], [], values={}, dims={ri: 4, rj: 2, rl: 2}, simplify=None)
 
 
-# Failure mode: codegen _emit_reduce only supports single-axis softmax;
-# an unexpanded multi-axis _SoftmaxFunction raises NotImplementedError.
-# (Workaround: full_simplify() expands it -- see test_softmax_two_axis_expanded.)
-@pytest.mark.xfail(strict=False, reason="not-implemented: multi-axis softmax in codegen _emit_reduce")
-def test_xfail_softmax_two_axis_unexpanded():
+# (Formerly xfail: the fused multi-axis _SoftmaxFunction had no codegen
+# lowering. F.softmax is now a plain composition (task #34), so the two-axis
+# form compiles on every simplify level.)
+def test_softmax_two_axis_noexpand():
     sm = F.softmax(fx, dim=("fi", "fj"))
     run_case([sm], [], values=_fvals(), dims=FDIMS, simplify="noexpand")
 

@@ -1,19 +1,21 @@
-"""Tests for the fused softmax forward and its DERIVED derivatives.
+"""Tests for F.softmax / F.log_softmax as PLAIN COMPOSITIONS (task #34).
 
-F.softmax / F.log_softmax are fused wrappers kept purely for pattern
-recognition (native stable kernels on the forward path). Their derivatives
-carry no hand math: they are derived from the primitive definition
-(exp / sum / pow) by the language itself. Numerical stability of the derived
-(expanded) gradients is the COMPILER's contract: the IR stabilization pass
-re-fuses exp-ratio patterns into torch.softmax / log_softmax / logsumexp.
+F.softmax and F.log_softmax are ordinary compositions of primitives
+(exp / sum / pow / log) — no fused wrapper signatures, no hand math anywhere:
+derivatives of every order come from the language itself. Numerical
+stability is the COMPILER's contract: the IR stabilization pass re-fuses
+exp-ratio patterns into torch.softmax / log_softmax / logsumexp. Eager
+evaluation of the expanded forms is exact only at moderate |x| (the exp/sum
+composition overflows float32 at |x| >= ~89) — that eager instability at
+extreme logits is BY DESIGN ("eager evaluation doesn't need to be smart").
 
 Covers:
 (a) softmax(x).grad(x) constructs directly and, after .simplify(), compiles to
     code that calls the native torch.softmax kernel with NO exp-expansion;
 (b) compiled gradient values match torch.autograd at |logits| up to 200
-    without NaN (the expanded exp/sum form overflows float32 at |x| >= ~89);
+    without NaN; eager values match at moderate |logits|;
 (c) an attention block softmax(q@kT/sqrt(d)+mask)@v compiles (loss + grad(q))
-    and matches autograd, with no more per-call ops than the expanded form;
+    and matches autograd on the single fused kernel;
 (d) order-1, batched (broadcast edge), and multi-dim softmax Jacobians and
     Hessians all match torch.autograd; log_softmax mirrors all of it.
 """
@@ -29,7 +31,6 @@ import tensorgrad.functions as F
 from tensorgrad import Variable
 from tensorgrad.compiler import compile_to_callable
 from tensorgrad.extras.evaluate import evaluate
-from tensorgrad.tensor import Function
 
 torch.set_num_threads(2)
 
@@ -41,12 +42,6 @@ def _source(fn, values, dims):
     fn(dict(values), dict(dims))  # force specialization
     (spec,) = fn._specializations.values()
     return spec._source
-
-
-def _op_count(src: str) -> int:
-    """Number of executable statements in a compiled body (excludes def/return)."""
-    lines = [ln.strip() for ln in src.splitlines()]
-    return sum(1 for ln in lines if ln and not ln.startswith(("def ", "return", "#")))
 
 
 # ---------------------------------------------------------------------------
@@ -73,19 +68,19 @@ def test_softmax_grad_compiles_to_native_softmax():
     assert "torch.exp" not in src  # no exp-expansion anywhere in the kernel
 
 
-def test_softmax_expansion_is_opt_in():
+def test_softmax_is_a_plain_composition():
+    """Task #34: no wrapper tier. F.softmax builds exp/sum/pow primitives
+    directly — no Function node named 'softmax' exists at any stage."""
     i = symbols("i")
     x = Variable("x", i)
     sm = F.softmax(x, dim="i")
-    fused = sm.simplify()
-    assert isinstance(fused, Function) and fused.signature.name == "softmax"
-    expanded = sm.simplify({"expand_softmax": True})
-    assert "softmax" not in repr(expanded)
-    # Expanded and fused forms agree numerically at small logits
+    assert "softmax" not in repr(sm)
+    assert "softmax" not in repr(sm.simplify())
+    # The composition agrees with torch's kernel at moderate logits (eager).
     ts = {x: torch.randn(4, names=("i",))}
     torch.testing.assert_close(
-        evaluate(fused, dict(ts), {i: 4}).rename(None),
-        evaluate(expanded, dict(ts), {i: 4}).rename(None),
+        evaluate(sm.simplify(), dict(ts), {i: 4}).rename(None),
+        torch.softmax(ts[x].rename(None), dim=0),
         rtol=RTOL,
         atol=ATOL,
     )
@@ -153,7 +148,7 @@ def test_softmax_grad_multidim():
 
 
 def test_softmax_multidim_compiles():
-    """Multi-axis fused softmax now compiles (stable max-subtracted form)."""
+    """Multi-axis softmax compiles (stable max-subtracted form)."""
     k, el, m = symbols("k el m")
     z = Variable("z", k, el, m)
     sm = F.softmax(z, dim=("k", "el")).full_simplify()
@@ -169,8 +164,8 @@ def test_softmax_multidim_compiles():
 
 
 # ---------------------------------------------------------------------------
-# Hessians: double grad through simplify, and the derived second-order
-# signature (grad twice BEFORE simplify)
+# Hessians: double grad through simplify, and grad twice BEFORE simplify
+# (second-order bookkeeping through the raw composition)
 # ---------------------------------------------------------------------------
 
 
@@ -188,10 +183,9 @@ def test_softmax_hessian_batched():
     )
 
 
-def test_softmax_second_derivative_signature():
-    """grad TWICE before simplify exercises the chained derived-derivative
-    signature (order 2). The third-order tensor d^2 softmax / dx dx must be
-    correct — derived from softmax's primitive definition, no hand Hessian."""
+def test_softmax_second_derivative():
+    """grad TWICE before simplify: the third-order tensor d^2 softmax / dx dx
+    must be correct — derived from the composition, no hand Hessian."""
     i = symbols("i")
     x = Variable("x", i)
     hf = F.softmax(x, dim="i").grad(x, {"i": "i_"}).grad(x, {"i": "i__"}).simplify()
@@ -206,7 +200,7 @@ def test_softmax_second_derivative_signature():
     )
 
 
-def test_log_softmax_second_derivative_signature():
+def test_log_softmax_second_derivative():
     i = symbols("i")
     x = Variable("x", i)
     hf = F.log_softmax(x, dim="i").grad(x, {"i": "i_"}).grad(x, {"i": "i__"}).simplify()
@@ -236,8 +230,14 @@ def test_log_softmax_value_and_grad(scale):
     vals = {y: yt.rename("b", "j")}
     dims = {b: 2, j: 3}
 
-    # The fused forward wrapper is stable even in eager evaluation.
-    res = evaluate(ls.simplify(), dict(vals), dict(dims))
+    # Forward: eager at moderate scale only. The old fused wrapper made eager
+    # forward stable at |x|=200; with F.log_softmax a plain composition that
+    # property is gone BY DESIGN (task #34) — extreme inputs go through the
+    # compiler, whose stabilize pass max-shifts the logsumexp.
+    if scale <= 1.0:
+        res = evaluate(ls.simplify(), dict(vals), dict(dims))
+    else:
+        res = compile_to_callable(ls.simplify())(dict(vals), dict(dims))
     ref = torch.log_softmax(yt, dim=1).rename("b", "j")
     torch.testing.assert_close(
         res.align_to(*ref.names).rename(None), ref.rename(None), rtol=RTOL, atol=ATOL
@@ -247,7 +247,7 @@ def test_log_softmax_value_and_grad(scale):
     if scale <= 1.0:
         resg = evaluate(g, dict(vals), dict(dims))
     else:
-        # The derived gradient is expanded-primitive algebra; at |x| ~ 200 its
+        # The gradient is expanded-primitive algebra; at |x| ~ 200 its
         # stability comes from the compiler's stabilize pass.
         resg = compile_to_callable(g)(dict(vals), dict(dims))
     assert not torch.isnan(resg.rename(None)).any()
@@ -257,15 +257,38 @@ def test_log_softmax_value_and_grad(scale):
     )
 
 
-def test_log_softmax_compiles_to_native_kernel():
+def test_log_softmax_forward_compiles_stable():
+    """The composition x - log(sum(exp(x))) compiles to a max-shifted
+    logsumexp (single torch.amax shift), exact at |x| = 200. (The fused
+    wrapper used to emit a literal torch.log_softmax call for the forward;
+    the shifted form is the stabilize pass's equally-exact spelling.)"""
     b, j = symbols("b j")
     y = Variable("y", b, j)
     ls = F.log_softmax(y, dim="j").simplify()
     fn = compile_to_callable(ls)
     torch.manual_seed(6)
+    yt = (torch.randn(2, 3) * 200).clamp(-200, 200)
+    vals = {y: yt.rename("b", "j")}
+    src = _source(fn, vals, {b: 2, j: 3})
+    assert src.count("torch.amax") == 1  # max-shifted exactly once
+    out = fn(dict(vals), {b: 2, j: 3})
+    ref = torch.log_softmax(yt, dim=1).rename("b", "j")
+    torch.testing.assert_close(
+        out.align_to(*ref.names).rename(None), ref.rename(None), rtol=RTOL, atol=ATOL
+    )
+
+
+def test_log_softmax_grad_compiles_to_native_softmax():
+    """The log_softmax gradient (delta - softmax) re-fuses to torch.softmax
+    with no exp-expansion anywhere in the kernel."""
+    b, j = symbols("b j")
+    y = Variable("y", b, j)
+    g = F.log_softmax(y, dim="j").grad(y).full_simplify()
+    fn = compile_to_callable(g)
+    torch.manual_seed(6)
     vals = {y: torch.randn(2, 3, names=("b", "j"))}
     src = _source(fn, vals, {b: 2, j: 3})
-    assert "torch.log_softmax" in src
+    assert "torch.softmax" in src
     assert "torch.exp" not in src
 
 
@@ -283,11 +306,25 @@ def test_log_softmax_hessian():
     )
 
 
-def test_log_of_softmax_rewrites_to_log_softmax():
+def test_log_of_softmax_compiles_to_log_softmax():
+    """log(softmax(x)) — log of the exp/sum ratio — re-fuses at compile time
+    into a native torch.log_softmax kernel. (This used to be a symbolic
+    rewrite on the fused signatures; it is now the stabilize pass's job.)"""
     b, j = symbols("b j")
     y = Variable("y", b, j)
     t = F.log(F.softmax(y, dim="j")).simplify()
-    assert isinstance(t, Function) and t.signature.name == "log_softmax"
+    fn = compile_to_callable(t)
+    torch.manual_seed(6)
+    yt = (torch.randn(2, 3) * 200).clamp(-200, 200)
+    vals = {y: yt.rename("b", "j")}
+    src = _source(fn, vals, {b: 2, j: 3})
+    assert "torch.log_softmax" in src
+    assert "torch.exp" not in src
+    out = fn(dict(vals), {b: 2, j: 3})
+    ref = torch.log_softmax(yt, dim=1).rename("b", "j")
+    torch.testing.assert_close(
+        out.align_to(*ref.names).rename(None), ref.rename(None), rtol=RTOL, atol=ATOL
+    )
 
 
 def test_log_of_exp_cancels():
@@ -332,7 +369,7 @@ def test_cross_entropy_fused_value_and_grad(scale):
 # ---------------------------------------------------------------------------
 
 
-def test_attention_block_fused_loss_and_grad(capsys):
+def test_attention_block_fused_loss_and_grad():
     seq_q, seq_k, dk, dv = symbols("seq_q seq_k dk dv")
     q = Variable("q", seq_q, dk)
     k = Variable("k", seq_k, dk)
@@ -372,18 +409,8 @@ def test_attention_block_fused_loss_and_grad(capsys):
         go.align_to("seq_q", "dk").rename(None), qr.grad, rtol=RTOL, atol=1e-5
     )
 
-    # fused kernel is smaller than the exp-expanded kernel
+    # The exp/sum composition re-fuses into a single native softmax kernel
+    # (there is no separate "expanded" form anymore: F.softmax IS the
+    # expansion, and stabilize/factoring collapse it back — task #34).
     src_fused = _source(fn, vals, dims)
     assert "torch.softmax" in src_fused and "torch.exp" not in src_fused
-    loss_e = loss.simplify({"expand_softmax": True})
-    gq_e = gq.simplify({"expand_softmax": True})
-    fn_e = compile_to_callable(loss_e, gq_e)
-    src_exp = _source(fn_e, vals, dims)
-    n_fused, n_exp = _op_count(src_fused), _op_count(src_exp)
-    print(f"\nattention per-call op count: fused={n_fused} expanded={n_exp}")
-    # <=: the factoring/stabilization passes now collapse the expanded form
-    # to the fused kernel's op count — the fused path must never be LARGER.
-    assert n_fused <= n_exp
-    # expanded form must agree at these (moderate) logits
-    lo_e, go_e = fn_e(dict(vals), dict(dims))
-    torch.testing.assert_close(lo_e.rename(None), lo.rename(None), rtol=1e-3, atol=1e-4)
