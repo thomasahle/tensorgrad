@@ -77,13 +77,20 @@ set_lazy_rename(True)
 # a megabyte.)
 
 N_LAYER, N_HEAD, N_EMBD = 3, 3, 48
-VOCAB, LENGTH = 3, 6                     # sort 6 digits from {0,1,2}
-SEQ = 2 * LENGTH - 1                     # input digits + sorted digits, shifted
+VOCAB, LENGTH = 3, 6  # sort 6 digits from {0,1,2}
+SEQ = 2 * LENGTH - 1  # input digits + sorted digits, shifted
 BATCH, LR, MAX_STEPS = 64, 1e-3, 400
 
 batch, seq, vocab, d, head, hs, d_mlp = symbols("batch seq vocab d head hs d_mlp")
-DIMS = {batch: BATCH, seq: SEQ, vocab: VOCAB, d: N_EMBD,
-        head: N_HEAD, hs: N_EMBD // N_HEAD, d_mlp: 4 * N_EMBD}
+DIMS = {
+    batch: BATCH,
+    seq: SEQ,
+    vocab: VOCAB,
+    d: N_EMBD,
+    head: N_HEAD,
+    hs: N_EMBD // N_HEAD,
+    d_mlp: 4 * N_EMBD,
+}
 
 params: dict[str, Variable] = {}
 
@@ -118,15 +125,16 @@ def attention(x, name):
     k = x @ param(name + ".wk", d=d, head=head, hs=hs) + param(name + ".bk", head=head, hs=hs)
     v = x @ param(name + ".wv", d=d, head=head, hs=hs) + param(name + ".bv", head=head, hs=hs)
     k, v = k.rename(seq="key"), v.rename(seq="key")
-    att = F.dot(q, k, dim="hs") / math.sqrt(DIMS[hs])   # (batch, head, seq, key)
-    att = F.softmax(att + causal_mask, dim="key")       # stabilized by the compiler
-    y = F.dot(att, v, dim="key")                        # (batch, head, seq, hs)
+    att = F.dot(q, k, dim="hs") / math.sqrt(DIMS[hs])  # (batch, head, seq, key)
+    att = F.softmax(att + causal_mask, dim="key")  # stabilized by the compiler
+    y = F.dot(att, v, dim="key")  # (batch, head, seq, hs)
     return y @ param(name + ".wo", head=head, hs=hs, d=d) + param(name + ".bo", d=d)
 
 
 def mlp(x, name):
-    h = F.gelu(x @ param(name + ".w1", d=d, d_mlp=d_mlp) + param(name + ".b1", d_mlp=d_mlp),
-               approximate="tanh")                      # minGPT's NewGELU, derivative derived
+    h = F.gelu(
+        x @ param(name + ".w1", d=d, d_mlp=d_mlp) + param(name + ".b1", d_mlp=d_mlp), approximate="tanh"
+    )  # minGPT's NewGELU, derivative derived
     return h @ param(name + ".w2", d_mlp=d_mlp, d=d) + param(name + ".b2", d=d)
 
 
@@ -142,7 +150,7 @@ def gpt(idx):
 
 logits = gpt(tokens)
 targets = F.one_hot(target_ids, vocab, dim="vocab") * loss_mask  # ignored rows -> all-zero
-ce = F.cross_entropy(logits, targets, dim="vocab")      # (batch, seq); 0 at masked positions
+ce = F.cross_entropy(logits, targets, dim="vocab")  # (batch, seq); 0 at masked positions
 loss = F.sum(ce) / (BATCH * LENGTH)
 
 # -------------------------------------------------------- adamw as algebra
@@ -155,16 +163,17 @@ loss = F.sum(ce) / (BATCH * LENGTH)
 # compute -- fed per step as the 0-dim inputs c1, c2.
 
 B1, B2, WD, EPS = 0.9, 0.95, 0.1, 1e-8
-c1, c2 = Variable("c1"), Variable("c2")                 # 1/(1-B1^t), 1/(1-B2^t)
-moments = {n: (Variable(f"m.{n}", **dict(p.shape)), Variable(f"v.{n}", **dict(p.shape)))
-           for n, p in params.items()}
+c1, c2 = Variable("c1"), Variable("c2")  # 1/(1-B1^t), 1/(1-B2^t)
+moments = {
+    n: (Variable(f"m.{n}", **dict(p.shape)), Variable(f"v.{n}", **dict(p.shape))) for n, p in params.items()
+}
 
 
-def adamw(w, g, m, v):
+def adamw(w, g, m, v) -> tuple[Variable, Variable, Variable]:
     """One AdamW step, written exactly as the update equations -> (w', m', v')."""
     m = B1 * m + (1 - B1) * g
     v = B2 * v + (1 - B2) * g * g
-    decay = 1 - LR * WD if len(w.edges) >= 2 else 1     # decoupled wd, matrices only
+    decay = 1 - LR * WD if len(w.edges) >= 2 else 1  # decoupled wd, matrices only
     return w * decay - LR * (c1 * m) / (F.sqrt(c2 * v) + EPS), m, v
 
 
@@ -186,9 +195,13 @@ def init_weights(gen):
     for name, var in params.items():
         shape = [DIMS[s] for s in var.shape.values()]
         last = name.rsplit(".", 1)[-1]
-        ws[name] = (torch.ones(shape) if last == "g"          # layer-norm gains
-                    else torch.zeros(shape) if last[0] == "b"  # biases
-                    else 0.02 * torch.randn(shape, generator=gen))
+        ws[name] = (
+            torch.ones(shape)
+            if last == "g"  # layer-norm gains
+            else torch.zeros(shape)
+            if last[0] == "b"  # biases
+            else 0.02 * torch.randn(shape, generator=gen)
+        )
     return ws
 
 
@@ -202,21 +215,24 @@ def main():
     # update of every (weight, m, v) triple, compiled together into ONE
     # program. (torch_compile=True is faster per step but pays minutes of
     # torch.compile warmup; eager converges in seconds anyway.)
-    new_ws, new_ms, new_vs = zip(
-        *(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
+    new_ws, new_ms, new_vs = zip(*(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
     step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False)
     predict = compile_to_callable(logits)  # forward-only program for evaluation
     from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
-    n_ops = sum(not isinstance(n, (InputNode, ConstNode))
-                for n in toposort([n for n, _ in step.outputs]))
-    print(f"compiled loss + {len(names)} gradients + adamw ({len(step.outputs)} "
-          f"outputs) into one program of {n_ops} tensor ops "
-          f"({time.perf_counter() - t0:.1f}s)")
+
+    n_ops = sum(not isinstance(n, (InputNode, ConstNode)) for n in toposort([n for n, _ in step.outputs]))
+    print(
+        f"compiled loss + {len(names)} gradients + adamw ({len(step.outputs)} "
+        f"outputs) into one program of {n_ops} tensor ops "
+        f"({time.perf_counter() - t0:.1f}s)"
+    )
 
     gen = torch.Generator().manual_seed(0)
-    state_vars = ([params[n] for n in names]           # mirrors the output order
-                  + [moments[n][0] for n in names]
-                  + [moments[n][1] for n in names])
+    state_vars = (
+        [params[n] for n in names]  # mirrors the output order
+        + [moments[n][0] for n in names]
+        + [moments[n][1] for n in names]
+    )
     state = {params[n]: w for n, w in init_weights(gen).items()}
     state |= {mv: torch.zeros_like(state[params[n]]) for n in names for mv in moments[n]}
     data = {causal_mask: torch.triu(torch.full((SEQ, SEQ), -1e9), diagonal=1)}
@@ -239,8 +255,7 @@ def main():
     for it in range(1, MAX_STEPS + 1):
         xs, ys, mk = sort_batch(BATCH, gen)
         bias = {c1: torch.tensor(1 / (1 - B1**it)), c2: torch.tensor(1 / (1 - B2**it))}
-        loss_val, *new_state = step({**state, **data, **bias,
-                                     tokens: xs, target_ids: ys, loss_mask: mk})
+        loss_val, *new_state = step({**state, **data, **bias, tokens: xs, target_ids: ys, loss_mask: mk})
         state = dict(zip(state_vars, new_state))  # the whole optimizer step
         if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
@@ -248,12 +263,10 @@ def main():
         if it % 50 == 0:
             acc = held_out_accuracy()
             rate = (it - 1) / (time.perf_counter() - t_start)
-            print(f"step {it:4d}  loss {loss_val.item():.4f}  "
-                  f"held-out acc {acc:.3f}  ({rate:.1f} steps/s)")
+            print(f"step {it:4d}  loss {loss_val.item():.4f}  held-out acc {acc:.3f}  ({rate:.1f} steps/s)")
             if acc >= 0.99:
                 break
-    print(f"final held-out accuracy: {acc:.3f} "
-          f"({'PASS' if acc > 0.9 else 'FAIL'}, target 0.9)")
+    print(f"final held-out accuracy: {acc:.3f} ({'PASS' if acc > 0.9 else 'FAIL'}, target 0.9)")
 
 
 if __name__ == "__main__":
