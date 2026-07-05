@@ -304,6 +304,164 @@ def test_block_deep_grads_match_autograd():
 
 
 # ---------------------------------------------------------------------------
+# Multi-block stacks: per-node adjoint accumulation (#31)
+# ---------------------------------------------------------------------------
+#
+# Gradients that cross SEVERAL stacked blocks accumulate cotangent
+# contributions across different Sums (residual diamonds) and different
+# gradient outputs. Rule R/M alone forked branches geometrically here and
+# aborted via the growth guard, falling back to forward mode (3-layer
+# gpt-nano: 522 GB planned). Stage A (_Accumulate) walks each head's region
+# once, merging contributions per (node, interface signature) — these tests
+# pin that multi-block programs plan reverse-mode compact and stay exact.
+
+
+def build_resmlp3():
+    """Three stacked residual blocks h <- h + v(gelu(h @ w)); loss =
+    sum(h3 * gy). The w0/w1 gradients cross the blocks above them and share
+    the upper chain — the smallest program with cross-Sum accumulation."""
+    batch, d, dh = symbols("batch d dh")
+    x = Variable("x", batch, d)
+    gy = Variable("gy", batch, d)
+    ws, h = [], x
+    for i in range(3):
+        wi = Variable(f"w{i}", d=d, dh=dh)
+        vi = Variable(f"v{i}", dh=dh, d2=d)
+        ws.append((wi, vi))
+        h = h + (F.gelu(h @ wi, approximate="tanh") @ vi).rename(d2="d")
+    loss = F.sum(h * gy)
+    return loss, x, gy, ws, (batch, d, dh)
+
+
+def test_resmlp3_deep_grads_plan_reverse_mode():
+    """Deep gradients through 3 residual blocks, TWO gradient outputs
+    sharing the upper chain. Reverse mode needs nothing larger than an
+    activation/weight; before per-node accumulation this program fell back
+    to forward mode with (batch, d, d, dh)-sized chain nodes (~0.5 TB)."""
+    loss, x, gy, ws, (batch, d, dh) = build_resmlp3()
+    prog = compile_to_callable(loss, loss.grad(ws[0][0]), loss.grad(ws[1][0]))
+    dims = {batch: 256, d: 512, dh: 2048}
+    sizes = plan_numels(prog, dims)
+    assert max(sizes) <= 4e6, f"max planned node {max(sizes):.2e} elements"
+    assert sum(sizes) <= 80e6, f"total planned {sum(sizes):.2e} elements"
+
+
+def test_resmlp3_deep_grads_match_autograd():
+    """Same stack at small dims, adjoint overrides forced on: loss plus the
+    two deep gradients match torch.autograd."""
+    loss, x, gy, ws, (batch, d, dh) = build_resmlp3()
+    dims = {batch: 4, d: 6, dh: 9}
+    torch.manual_seed(3)
+    vals = {
+        x: torch.randn(4, 6).rename("batch", "d"),
+        gy: torch.randn(4, 6).rename("batch", "d"),
+    }
+    for i, (wi, vi) in enumerate(ws):
+        vals[wi] = (0.5 * torch.randn(6, 9)).rename("d", "dh")
+        vals[vi] = (0.5 * torch.randn(9, 6)).rename("dh", "d2")
+    with forced_adjoint():
+        (lv, g0, g1), _ = run_compiled(
+            [loss, loss.grad(ws[0][0]), loss.grad(ws[1][0])], vals, dims
+        )
+
+    tw = [vals[wi].rename(None).clone().requires_grad_(True) for wi, _ in ws]
+    h = vals[x].rename(None)
+    for i, (_, vi) in enumerate(ws):
+        h = h + torch.nn.functional.gelu(h @ tw[i], approximate="tanh") @ vals[vi].rename(None)
+    ref_loss = (h * vals[gy].rename(None)).sum()
+    ref_g0, ref_g1 = torch.autograd.grad(ref_loss, [tw[0], tw[1]])
+
+    torch.testing.assert_close(lv.rename(None), ref_loss, rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(g0.align_to("d", "dh").rename(None), ref_g0, rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(g1.align_to("d", "dh").rename(None), ref_g1, rtol=1e-4, atol=1e-5)
+
+
+def test_resmlp3_szfp_factored_equals_lowered():
+    """Schwartz-Zippel pinning of the cross-block accumulation rewrites:
+    relu + mean-centering keeps every constant rational (see
+    test_factored_equals_lowered_szfp), so the factored DAG must equal the
+    lowered DAG exactly mod P."""
+    batch, d = symbols("batch d")
+    x = Variable("x", batch, d)
+    gy = Variable("gy", batch, d)
+    ws, h = [], x
+    for i in range(3):
+        wi = Variable(f"w{i}", d=d, d2=d)
+        ws.append(wi)
+        f = F.relu(h @ wi).rename(d2="d")
+        h = h + (f - F.mean(f, dim="d", keepdims=True))
+    loss = F.sum(h * gy)
+    prog = compile_to_callable(loss, loss.grad(ws[0]), loss.grad(ws[1]))
+    dims = {batch: 64, d: 96}
+    with forced_adjoint():
+        fouts = factor_outputs(prog.builder, prog.outputs, dims)
+    assert any(a is not b for (a, _), (b, _) in zip(fouts, prog.outputs))
+    for trial in range(3):
+        for salt in range(50):
+            try:
+                res = szfp._eval_trial(list(prog.outputs) + list(fouts), (0, trial, salt))
+                break
+            except szfp._Retry:
+                continue
+        else:
+            pytest.fail("szfp trial exceeded retry budget")
+        k = len(prog.outputs)
+        for i in range(k):
+            edges_a, dims_a, arr_a = res[i]
+            edges_b, dims_b, arr_b = res[k + i]
+            assert edges_a == edges_b and dims_a == dims_b
+            assert (arr_a == arr_b).all(), f"output {i} differs at trial {trial}"
+
+
+def test_embedding_grad_through_stack_matches_autograd():
+    """A gather-fed stack: the wte gradient's one-hot carrier must ride as a
+    passenger while the pushed cotangents themselves stay foldable — the
+    fragmentation mode measured on multi-layer gpt-nano (pass-created
+    cotangents deferred as passengers never merge)."""
+    batch, seq, vocab, d, dh = symbols("batch seq vocab d dh")
+    tokens = Variable("tokens", batch, seq)
+    gy = Variable("gy", batch, seq, d)
+    wte = Variable("wte", vocab=vocab, d=d)
+    h = F.gather(wte, tokens, dim="vocab")
+    ws = []
+    for i in range(2):
+        wi = Variable(f"w{i}", d=d, dh=dh)
+        vi = Variable(f"v{i}", dh=dh, d2=d)
+        ws.append((wi, vi))
+        h = h + (F.gelu(h @ wi, approximate="tanh") @ vi).rename(d2="d")
+    loss = F.sum(h * gy)
+
+    B, S, V, D, DH = 3, 5, 7, 4, 6
+    dims = {batch: B, seq: S, vocab: V, d: D, dh: DH}
+    torch.manual_seed(4)
+    toks = torch.randint(V, (B, S)).float()
+    vals = {
+        tokens: toks.rename("batch", "seq"),
+        gy: torch.randn(B, S, D).rename("batch", "seq", "d"),
+        wte: torch.randn(V, D).rename("vocab", "d"),
+    }
+    for wi, vi in ws:
+        vals[wi] = (0.5 * torch.randn(D, DH)).rename("d", "dh")
+        vals[vi] = (0.5 * torch.randn(DH, D)).rename("dh", "d2")
+    with forced_adjoint():
+        (lv, gv), _ = run_compiled([loss, loss.grad(wte)], vals, dims)
+
+    twte = vals[wte].rename(None).clone().requires_grad_(True)
+    ht = twte[toks.long()]
+    for wi, vi in ws:
+        ht = ht + torch.nn.functional.gelu(
+            ht @ vals[wi].rename(None), approximate="tanh"
+        ) @ vals[vi].rename(None)
+    ref_loss = (ht * vals[gy].rename(None)).sum()
+    (ref_g,) = torch.autograd.grad(ref_loss, twte)
+
+    torch.testing.assert_close(lv.rename(None), ref_loss, rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(
+        gv.align_to("vocab", "d").rename(None), ref_g, rtol=1e-4, atol=1e-5
+    )
+
+
+# ---------------------------------------------------------------------------
 # Liveness dels
 # ---------------------------------------------------------------------------
 

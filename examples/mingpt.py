@@ -27,10 +27,13 @@ is DERIVED symbolically instead of traced by autograd?
   directly (index_select forward; the derived gradient is a scatter-add).
   No one-hot matmuls.
 
-Running this file trains a small GPT on karpathy's sorting task ("given 6
-digits, emit them sorted") to >90% held-out sequence accuracy in about four
-minutes on CPU (nearly all of it torch.compile warmup on the ~600-op fused
-step program; training itself is under a minute).
+Running this file trains the full 3-block gpt-nano on karpathy's sorting
+task ("given 6 digits, emit them sorted") to >90% held-out sequence
+accuracy in under a minute on CPU: ~30s to derive, plan and code-generate
+the ~2900-op fused step program, ~15s of training (it converges in about
+50 steps at ~4-5 steps/s eager). PyTorch eager is the default backend here
+— torch_compile=True trains ~1.5x faster per step but pays ~4.5 minutes of
+torch.compile warmup on a program this size.
 """
 
 import math
@@ -54,24 +57,17 @@ torch.set_num_threads(2)
 set_lazy_rename(True)
 
 # ----------------------------------------------------------------- config
-# One transformer block at gpt-nano width (n_embd=48). Every parameter's
-# gradient here — including those under the softmax stack, the gelu and the
-# LayerNorms — compiles into reverse-mode (cotangent-first) contraction
-# order automatically: the adjoint pass (tensorgrad/compiler/adjoint.py)
-# collapses the forward-mode-shaped Jacobian chains that symbolic
-# differentiation produces. Before that pass, this exact width was
-# infeasible (the mlp.w1 gradient materialized a multi-GB rank-5 Jacobian;
-# n_embd=24 was the practical ceiling).
-#
-# KNOWN LIMITATION (why this is not 3-layer gpt-nano): a gradient that
-# crosses SEVERAL stacked blocks needs cotangent contributions accumulated
-# across different sums and different gradients. The adjoint pass currently
-# re-merges branches only within one Sum, so at multi-block depth the
-# branch count grows geometrically; it detects that and falls back to the
-# (huge) forward-mode form. The frontier — true per-node adjoint
-# accumulation — is documented in adjoint.py.
+# Full gpt-nano: THREE stacked transformer blocks at n_embd=48. Every
+# parameter's gradient here — including wte's, which crosses all three
+# blocks of softmax stacks, gelus and LayerNorms — compiles into
+# reverse-mode (cotangent-first) contraction order automatically: the
+# adjoint pass (tensorgrad/compiler/adjoint.py) runs per-node adjoint
+# accumulation on the forward-mode-shaped Jacobian chains that symbolic
+# differentiation produces. (This exact program planned 522 GB of
+# intermediates before that pass; it now plans ~0.4 GB with no node above
+# a megabyte.)
 
-N_LAYER, N_HEAD, N_EMBD = 1, 3, 48
+N_LAYER, N_HEAD, N_EMBD = 3, 3, 48
 VOCAB, LENGTH = 3, 6                     # sort 6 digits from {0,1,2}
 SEQ = 2 * LENGTH - 1                     # input digits + sorted digits, shifted
 BATCH, LR, MAX_STEPS = 64, 1e-3, 400
@@ -179,8 +175,10 @@ def main():
     names = list(params)
     t0 = time.perf_counter()
     # THE line: loss + one symbolic gradient per parameter, compiled together.
+    # (torch_compile=True is ~1.5x faster per step but pays ~4.5 min of
+    # torch.compile warmup; eager converges in ~10s of training anyway.)
     step = compile_to_callable(loss, *[loss.grad(params[n]) for n in names],
-                               torch_compile=True)
+                               torch_compile=False)
     predict = compile_to_callable(logits)  # forward-only program for evaluation
     from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
     n_ops = sum(not isinstance(n, (InputNode, ConstNode))
@@ -217,9 +215,9 @@ def main():
         grads = {n: g.align_to(*params[n].edges).rename(None)  # match param layout
                  for n, g in zip(names, grad_vals)}
         adamw_update(ws, opt_m, opt_v, grads, it)
-        if it == 1:  # first call pays codegen + torch.compile; time the rest
+        if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
-            print(f"first step (codegen + torch.compile warmup): {warmup:.1f}s")
+            print(f"first step (planning + codegen): {warmup:.1f}s")
         if it % 50 == 0:
             acc = held_out_accuracy()
             rate = (it - 1) / (time.perf_counter() - t_start)
