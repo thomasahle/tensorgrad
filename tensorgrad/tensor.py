@@ -333,8 +333,22 @@ class Tensor(metaclass=TensorMeta):
             return self.is_isomorphic(other)
         return False
 
+    @final
     def depends_on(self, x: "Variable") -> bool:
-        """Check if this tensor depends on the variable x."""
+        """Check if this tensor depends on the variable x.
+
+        Memoized per (self, x) object pair: the raw recursion visits every
+        root-to-leaf PATH, which is exponential on shared-subtree DAGs
+        (residual networks: x = x + f(x) doubles the path count per layer),
+        and Derivative._simplify queries it per Derivative node. Same disease
+        and cure as the memoized Tensor.substitute.
+        """
+        cache = self.__dict__.setdefault("_depends_on_cache", {})
+        if (hit := cache.get(id(x))) is None:
+            cache[id(x)] = hit = (self._depends_on(x), x)  # x ref pins the id
+        return hit[0]
+
+    def _depends_on(self, x: "Variable") -> bool:
         raise NotImplementedError
 
     def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
@@ -797,7 +811,7 @@ class Variable(Tensor):
             return y
         return self
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return x == self
 
 
@@ -831,7 +845,7 @@ class Rename(Tensor):
         argstring = ", ".join(f'{k}="{v}"' for k, v in self.mapping.items())
         return f"{self.tensor}.rename({argstring})"
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
 
     def _grad(self, x: "Variable", new_names: dict[str, str]) -> Tensor:
@@ -948,7 +962,7 @@ class Constant(Tensor, ABC):
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
         return Zero(**(self.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return False
 
 
@@ -1479,7 +1493,7 @@ class Function(Tensor):
         args.append(f"shape_out={self.shape_out}")
         return f"Function({', '.join(args)})"
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.inputs)
 
     def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
@@ -1554,7 +1568,7 @@ class Derivative(Tensor):
     def __repr__(self) -> str:
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return self.tensor.depends_on(x)
 
 
@@ -1780,7 +1794,7 @@ class Product(Tensor):
         assert edges.keys() == self.edges
         return G, edges
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.factors)
 
     def _to_einsum_eq(self) -> tuple[list[Tensor], str]:
@@ -1947,7 +1961,7 @@ class Sum(Tensor):
         assert edges.keys() == self.edges
         return G, edges
 
-    def depends_on(self, x: "Variable") -> bool:
+    def _depends_on(self, x: "Variable") -> bool:
         return any(t.depends_on(x) for t in self.terms)
 
 

@@ -177,3 +177,25 @@ def test_compile_to_callable_accepts_raw_derivatives():
         torch.testing.assert_close(
             a.rename(None), e.align_to(*a.names).rename(None), rtol=1e-4, atol=1e-6
         )
+
+
+def test_depends_on_memoized_on_shared_dags():
+    """depends_on is memoized per (self, x): the raw recursion enumerates
+    root-to-leaf paths, exponential on residual DAGs (x = x + f(x)), and
+    Derivative simplification queries it per node."""
+    b, i = symbols("b i")
+    x = Variable("x", b, i)
+    h = x
+    weights = []
+    for n in range(14):  # 2^14 paths without memoization
+        W = Variable(f"W{n}", i=i, o=i)
+        weights.append(W)
+        h = h + F.relu(h @ W).rename(o="i")
+    loss = F.sum(h * h)
+    unused = Variable("unused", b, i)
+    assert loss.depends_on(weights[13])
+    assert loss.depends_on(weights[0])
+    assert not loss.depends_on(unused)
+    # And the Derivative-simplify path that hammers depends_on completes:
+    g = loss.grad(weights[13]).simplify_for_compile()
+    assert g is not None
