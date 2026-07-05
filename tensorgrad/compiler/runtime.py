@@ -6,7 +6,7 @@ compile time. The returned callable specializes lazily per shape signature
 exec's straight-line torch code; subsequent calls hit a dict lookup and run
 the generated function directly.
 
-API-compatible with tensorgrad.extras.to_pytorch.compile_to_callable:
+Usage:
     f = compile_to_callable(loss, *grads, verbose=False)
     loss_val, *grad_vals = f({x: x_t, y: y_t, ...}, {batch: 64, ...})
 Input tensors are torch *named* tensors; outputs are named tensors too.
@@ -17,12 +17,30 @@ from collections import OrderedDict
 import sympy
 import torch
 
-from tensorgrad.tensor import Tensor, Variable, compile_simplify_args
+from tensorgrad.tensor import Tensor, Variable
 from tensorgrad.compiler.lower import lower_program
 from tensorgrad.compiler.codegen_torch import TorchCodegen
 
 # Max number of cached shape/dtype specializations per program (LRU-evicted).
 SPECIALIZATION_CACHE_SIZE = 32
+
+
+def normalize_args() -> dict:
+    """The simplify() argument preset for the compiler's normalize stage:
+    resolve Derivative nodes and derivative signatures, leave the algebra to
+    the IR passes, memoize across shared subtrees. simplify() keeps its memo
+    inside the args dict, so passing ONE dict instance to several simplify()
+    calls shares the memo — preserving subtree sharing between a loss and its
+    gradients (full_simplify would be exponential in depth on deep models;
+    this stays linear)."""
+    return {
+        "grad_steps": float("inf"),
+        "expand_functions": False,
+        "combine_products": False,
+        "sum_combine_terms": False,
+        "factor_components": False,
+        "memoize": True,
+    }
 
 
 class CompiledProgram:
@@ -35,14 +53,12 @@ class CompiledProgram:
     ):
         # Normalization is the compiler's first stage: resolve Derivative nodes
         # and derivative-signature Functions (which lowering cannot handle),
-        # with the algebra otherwise left to the IR passes. One shared args
-        # dict = one shared memo across ALL outputs, preserving cross-output
-        # subtree sharing between a loss and its gradients. Cheap and
+        # with the algebra otherwise left to the IR passes. Cheap and
         # idempotent on already-simplified input. simplify=False is a developer
         # escape hatch for compiling a raw structure verbatim (codegen tests).
         if simplify:
-            shared_args = compile_simplify_args()
-            tensors = tuple(t.simplify_for_compile(shared_args) for t in tensors)
+            shared_args = normalize_args()
+            tensors = tuple(t.simplify(shared_args) for t in tensors)
         self.tensors = tensors
         self.verbose = verbose
         self.torch_compile = torch_compile
@@ -190,7 +206,7 @@ def compile_to_callable(
     """Compile one or more tensorgrad tensors into a fast callable.
 
     Inputs are normalized automatically (Derivative nodes and derivative
-    signatures resolved; see simplify_for_compile), so gradients can be
+    signatures resolved; see normalize_args), so gradients can be
     passed raw:
 
         step = compile_to_callable(loss, *[loss.grad(p) for p in params])

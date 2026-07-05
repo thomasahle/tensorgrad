@@ -27,7 +27,7 @@ used purely as a tensor library.
 ```
 symbolic Tensor(s)
   │  normalize          resolve Derivative nodes & derivative signatures
-  │                     (simplify_for_compile preset, one shared memo)
+  │                     (normalize_args preset, one shared memo)
   ▼
   lower.py              one hash-consed einsum-DAG for ALL outputs;
   │                     Deltas become shared wires via union-find,

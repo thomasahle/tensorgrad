@@ -1,9 +1,9 @@
-"""Cross-subtree simplify memoization and the simplify_for_compile lite path.
+"""Cross-subtree simplify memoization and the compiler normalize preset.
 
 Without memoization, a node reachable by K distinct DAG paths is re-simplified
 K times; residual structure (x = x + f(x)) doubles the path count per layer, so
 deep-model simplify is exponential in depth. Memoization (opt-in, keyed by
-structural fingerprint + free edges) makes it linear, and simplify_for_compile
+structural fingerprint + free edges) makes it linear, and the normalize preset
 keeps the symbolic tree small by leaving the algebra to the compiler's IR
 passes.
 """
@@ -15,6 +15,7 @@ from tensorgrad import Variable
 from tensorgrad.tensor import Derivative
 import tensorgrad.functions as F
 from tensorgrad.compiler import compile_to_callable
+from tensorgrad.compiler.runtime import normalize_args
 
 
 def _has_derivative(t, seen=None):
@@ -88,7 +89,7 @@ def test_memoize_with_expand_matches():
     assert a == p
 
 
-def test_simplify_for_compile_is_derivative_free_and_correct():
+def test_normalize_preset_is_derivative_free_and_correct():
     """The lite path eliminates Derivatives and compiles to code matching the
     fully-simplified path."""
     b, i, j, k = symbols("b i j k")
@@ -99,7 +100,7 @@ def test_simplify_for_compile_is_derivative_free_and_correct():
     loss = F.sum((F.relu(x @ W1) @ W2 - y) ** 2)
     g = loss.grad(W1)
 
-    lite = g.simplify_for_compile()
+    lite = g.simplify(normalize_args())
     assert not _has_derivative(lite)
 
     full = g.full_simplify()
@@ -120,7 +121,7 @@ def test_simplify_for_compile_is_derivative_free_and_correct():
 
 def test_deep_chain_grad_is_bounded_and_correct():
     """A deep feed-forward chain's first-layer gradient has a linear (adjoint)
-    structure; simplify_for_compile keeps it small and compiles correctly.
+    structure; the normalize preset keeps it small and compiles correctly.
     (Real transformers are in this benign regime — minGPT's per-layer softmax/
     layernorm keep the back-propagated adjoint shared, measured linear through
     6 layers. A bare residual with a squared-error loss can instead expand into
@@ -137,7 +138,7 @@ def test_deep_chain_grad_is_bounded_and_correct():
             weights.append(W)
             h = F.relu(h @ W).rename(o="i")  # feed-forward (no residual)
         loss = F.sum(h * Variable("t", b, i))  # linear read-out -> single adjoint
-        g = loss.grad(weights[0]).simplify_for_compile()
+        g = loss.grad(weights[0]).simplify(normalize_args())
         assert not _has_derivative(g)
         return len(_dag_nodes(g))
 
@@ -160,8 +161,8 @@ def test_compile_to_callable_accepts_raw_derivatives():
     # The killer-demo one-liner: raw Derivative nodes straight in.
     f_raw = compile_to_callable(loss, *[loss.grad(p) for p in params])
     # Explicit route for comparison.
-    f_exp = compile_to_callable(loss.simplify_for_compile(),
-                                *[loss.grad(p).simplify_for_compile() for p in params])
+    f_exp = compile_to_callable(loss.simplify(normalize_args()),
+                                *[loss.grad(p).simplify(normalize_args()) for p in params])
 
     dims = {b: 4, i: 5, j: 6, k: 3}
     torch.manual_seed(0)
@@ -197,5 +198,5 @@ def test_depends_on_memoized_on_shared_dags():
     assert loss.depends_on(weights[0])
     assert not loss.depends_on(unused)
     # And the Derivative-simplify path that hammers depends_on completes:
-    g = loss.grad(weights[13]).simplify_for_compile()
+    g = loss.grad(weights[13]).simplify(normalize_args())
     assert g is not None
