@@ -28,15 +28,17 @@ def test_variable_rename():
 def test_variable_grad():
     i, j, k = symbols("i j k")
     v = Variable("x", i=i, j=j)
-    grad_v = v.grad(v, {"i": "di", "j": "dj"})
+    grad_v = v.grad(v, {"i": "di", "j": "dj"}).simplify()
     assert isinstance(grad_v, Product)
     assert len(grad_v.factors) == 2
     assert all(isinstance(t, Delta) for t in grad_v.factors)
-    assert grad_v.factors[0].edges == {"i", "di"}
-    assert grad_v.factors[1].edges == {"j", "dj"}
+    assert {frozenset(t.edges) for t in grad_v.factors} == {
+        frozenset({"i", "di"}),
+        frozenset({"j", "dj"}),
+    }
 
     w = Variable("y", k)
-    grad_w = v.grad(w, {"k": "dk"})
+    grad_w = v.grad(w, {"k": "dk"}).simplify()
     assert isinstance(grad_w, Zero)
     assert grad_w.edges == {"i", "j", "dk"}
 

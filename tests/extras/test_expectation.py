@@ -297,11 +297,13 @@ def test_expectation_gradient_preserves_mu():
     exp = Expectation(expr, x, mu=mu, covar=None)
     
     # Take gradient wrt y - this should preserve mu
-    grad = exp.grad(y)
-    
-    # Check that gradient is an Expectation that preserves mu
-    assert isinstance(grad, Expectation)
-    assert grad.mu == mu, "mu parameter should be preserved when taking gradient"
+    grad = exp.grad(y).full_simplify()
+
+    # d/dy E_x[x @ y] = E[x] = mu: the mu parameter must survive resolution.
+    # (grad is lazy now, so the intermediate Expectation wrapper the old
+    # eager one-step produced is gone; the preserved-mu contract is checked
+    # on the fully resolved gradient instead.)
+    assert grad == mu, "gradient should resolve to mu (E[x])"
 
 
 def test_github_issue_31():

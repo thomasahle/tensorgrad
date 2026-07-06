@@ -39,12 +39,12 @@ is DERIVED symbolically instead of traced by autograd?
 
 Running this file trains the full 3-block gpt-nano on karpathy's sorting
 task ("given 6 digits, emit them sorted") to >90% held-out sequence
-accuracy in under a minute on CPU: ~35s to derive, plan and code-generate
-the ~4100-op fused step program (160 outputs: loss, 53 weights, 106
-moments), then training at ~19 steps/s eager — each step one call, weights
-in, weights out. PyTorch eager is the default backend here —
-torch_compile=True trains faster per step but pays minutes of torch.compile
-warmup on a program this size.
+accuracy in ~15 seconds on CPU: ~5s to derive, plan and code-generate the
+~1450-op fused step program (160 outputs: loss, 53 weights, 106 moments),
+then training at ~28 steps/s eager — each step one call, weights in,
+weights out. The gradients of one loss resolve JOINTLY through a single
+symbolic cotangent sweep (tensorgrad/compiler/reverse.py), so all 53
+backward passes share one interned reverse-mode DAG.
 """
 
 import math
@@ -106,6 +106,7 @@ tokens = Variable("tokens", batch, seq)
 target_ids = Variable("target_ids", batch, seq)
 loss_mask = Variable("loss_mask", batch, seq)
 causal_mask = Variable("causal_mask", seq=seq, key=seq)
+decode_pos = Variable("decode_pos")  # scalar: which position to decode (eval)
 
 
 @typed
@@ -157,9 +158,9 @@ def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
 
 
 logits = gpt(tokens)
-targets = F.one_hot(target_ids, vocab) * loss_mask  # ignored rows -> all-zero
-ce = F.cross_entropy(logits, targets, dim="vocab")  # (batch, seq); 0 at masked positions
-loss = F.sum(ce) / (BATCH * LENGTH)
+targets: Tensor["batch", "seq", "vocab"] = F.one_hot(target_ids, vocab) * loss_mask
+ce: Tensor["batch", "seq"] = F.cross_entropy(logits, targets, dim="vocab")
+loss = F.sum(ce) / F.sum(loss_mask)  # mean over non-ignored positions
 
 # -------------------------------------------------------- adamw as algebra
 # The optimizer is also just algebra. AdamW is elementwise arithmetic on a
@@ -177,11 +178,12 @@ moments = {
 }
 
 
-def adamw(w, g, m, v) -> tuple[Variable, Variable, Variable]:
+@typed
+def adamw(w: Tensor, g: Tensor, m: Tensor, v: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """One AdamW step, written exactly as the update equations -> (w', m', v')."""
     m = B1 * m + (1 - B1) * g
     v = B2 * v + (1 - B2) * g * g
-    decay = 1 - LR * WD if len(w.edges) >= 2 else 1  # decoupled wd, matrices only
+    decay = 1 - LR * WD if w.order >= 2 else 1  # no decay on biases and gains
     return w * decay - LR * (c1 * m) / (F.sqrt(c2 * v) + EPS), m, v
 
 
@@ -220,7 +222,11 @@ def main():
     names = list(params)
     new_ws, new_ms, new_vs = zip(*(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
     step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False, print_info=True)
-    predict = compile_to_callable(logits)  # forward-only program for evaluation
+    # Evaluation is algebra too: greedy decode = argmax over vocab, then
+    # position-select as a one_hot contraction (same pattern as the embedding
+    # lookup) -- no positional indexing on the model's outputs anywhere.
+    next_id = F.argmax(logits, dim="vocab") @ F.one_hot(decode_pos, seq)
+    predict = compile_to_callable(next_id)  # (batch,) ids for one position
 
     gen = torch.Generator().manual_seed(0)
     state_vars: list[Variable] = (
@@ -239,8 +245,9 @@ def main():
         ctx = torch.zeros(n, SEQ, dtype=torch.long)
         ctx[:, :LENGTH] = inp
         for t in range(LENGTH - 1, SEQ):
-            out = predict({**state, **data, tokens: ctx.float()})
-            nxt = out.align_to("batch", "seq", "vocab").rename(None)[:, t].argmax(-1)
+            out = predict({**state, **data, tokens: ctx.float(),
+                           decode_pos: torch.tensor(float(t))})
+            nxt = out.rename(None).long()
             if t + 1 < SEQ:
                 ctx[:, t + 1] = nxt
         pred = torch.cat([ctx[:, LENGTH:], nxt.unsqueeze(1)], dim=1)

@@ -153,20 +153,16 @@ class Tensor(metaclass=TensorMeta):
                 If not provided, new names will be generated based on the edges of x.
 
         Note:
-            Pushes the derivative one step through the tensor.
-            If you want to push it all the way through, use .simplify().
+            The derivative is LAZY (like Rename): this returns a Derivative
+            node, and .simplify() resolves it via the chain rule. Laziness is
+            what lets the compiler resolve a whole family of gradients of one
+            loss jointly (a single shared cotangent sweep) instead of pushing
+            each through its own chain — see tensorgrad/compiler/reverse.py.
 
         Returns:
             The tensor representing the derivative.
         """
-
-        new_names = self._check_grad(x, new_names)
-        result = _get_grad().grad_step(self, x, new_names)
-
-        # Check that the shape is preserved
-        assert result.shape == self.shape | {n: x.shape[o] for o, n in new_names.items()}
-
-        return result
+        return Derivative(self, x, new_names)
 
     def _check_grad(self, x: "Variable", new_names: Optional[dict[str, str]]) -> dict[str, str]:
         # When taking a derivative with respect to a variable, we need some edge names for the derivative.

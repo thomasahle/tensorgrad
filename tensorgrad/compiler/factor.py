@@ -521,6 +521,9 @@ class _Rewriter:
                 continue
             if len(n.ops) - 1 + len(op.ops) > MAX_FLAT_OPS:
                 continue
+            if sum(1 for o in n.ops if o is op) > 1:
+                continue  # a power of op: flattening one occurrence splits
+                # the two spellings apart (see the square guard in _distribute)
             cnt = self.counts.get(id(op), 2)
             if cnt != 1 and not self._inflated(op.dims) and self.ein_counts.get(id(op), 0) != cnt:
                 # Some consumer keeps the child alive no matter what:
@@ -576,6 +579,14 @@ class _Rewriter:
         boundary) decides the intermediates."""
         for p, L in enumerate(n.ops):
             if not isinstance(L, LinearNode) or len(L.terms) > MAX_DIST_TERMS:
+                continue
+            if sum(1 for op in n.ops if op is L) > 1:
+                # L appears twice: the einsum is a POWER of L (elementwise
+                # squares in optimizer algebra: v += (1-B2)*g*g). Distributing
+                # one occurrence turns x^2 into cross terms — quadratic term
+                # blowup AND it breaks the IEEE x*x >= 0 guarantee (measured:
+                # AdamW second moments came out at -1e-12 for analytically
+                # zero gradients, and sqrt(-eps) = NaN on the next step).
                 continue
             cnt_L = max(1, self.counts.get(id(L), 1))
             # The Linear's materialization — and that of terms consumed only

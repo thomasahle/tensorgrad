@@ -132,13 +132,18 @@ def grad_derivative(t: Derivative, x: Variable, new_names: dict[str, str]) -> Te
     """d/dx D_y(inner) = D_y(d/dx inner): pass the new derivative through the
     existing one (rather than creating a doubly-nested Derivative, which would
     loop forever when simplify tries to resolve it)."""
-    return Derivative(t.tensor.grad(x, new_names), t.x, t.new_names)
+    return Derivative(grad_step(t.tensor, x, new_names), t.x, t.new_names)
 
 
 def grad_product(t: Product, x: Variable, new_names: dict[str, str]) -> Tensor:
     """The product rule: d/dx (f * g) = f' * g + f * g', one term per factor.
     Inner (contraction) edges are first renamed away from the new derivative
     edges so the fresh edges can be threaded through any factor."""
+    if not t.factors:
+        # d/dx 1 = 0, broadcast over the new derivative edges. (Reachable
+        # since grad became lazy: step_derivative simplifies the base first,
+        # and e.g. sum-over-softmax collapses to the empty product.)
+        return Zero(_symmetries=None, **(t.shape | {new_names[e]: s for e, s in x.shape.items()}))
     # Since we are adding new edges to an internal tensor in the product, we need to make sure
     # none of the other tensors in the product have edges that clash with these new edges.
     inner_names = {e for f in t.factors for e in f.edges if e not in t.edges}
@@ -158,6 +163,8 @@ def grad_product(t: Product, x: Variable, new_names: dict[str, str]) -> Tensor:
 
 def grad_sum(t: Sum, x: Variable, new_names: dict[str, str]) -> Tensor:
     """Linearity: d/dx sum_i w_i t_i = sum_i w_i (d/dx t_i)."""
+    if not t.terms:
+        return Zero(_symmetries=None, **(t.shape | {new_names[e]: s for e, s in x.shape.items()}))
     return Sum([Derivative(term, x, new_names) for term in t.terms], t.weights)
 
 
@@ -215,7 +222,9 @@ def step_derivative(t: Derivative, args: dict[str, Any]) -> Tensor:
     else:
         args["grad_steps"] -= 1
         # Have to call simplify twice to avoid an infinite loop when stacking multiple derivatives.
-        grad = inner.grad(t.x, t.new_names)
+        # grad_step, not .grad(): the public API is lazy (returns a Derivative
+        # node), and this is the place that performs the actual stepping.
+        grad = grad_step(inner, t.x, t.new_names)
         _get_simplify()._record_simplify_provenance(args, inner, grad)
         res = grad.simplify(args)
     return res

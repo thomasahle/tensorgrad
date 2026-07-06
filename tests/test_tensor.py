@@ -44,7 +44,7 @@ def test_identity():
     e = Delta(i, "a", "b")
     assert e.edges == {"a", "b"}
     x = Variable("x", j)
-    assert e.grad(x, {"j": "j_"}) == Zero(a=i, b=i, j_=j)
+    assert e.grad(x, {"j": "j_"}).simplify() == Zero(a=i, b=i, j_=j)
 
 
 def test_zero():
@@ -52,7 +52,7 @@ def test_zero():
     z = Zero(a, b)
     assert z.edges == {"a", "b"}
     x = Variable("x", i)
-    assert z.grad(x, {"i": "i_"}) == Zero(a, b, i_=i)
+    assert z.grad(x, {"i": "i_"}).simplify() == Zero(a, b, i_=i)
     assert z != Zero(a, b, symbols("c"))
 
 
@@ -153,7 +153,7 @@ def test_gradient_variable_self():
 
     y = symbols("y")
     y_var = Variable("y", y)
-    assert x_var.grad(y_var, {"y": "y_"}) == Zero(x, y_=y)
+    assert x_var.grad(y_var, {"y": "y_"}).simplify() == Zero(x, y_=y)
 
     z = x_var + y_var
     assert set(z.grad(x_var, {"x": "x_"}).edges) == {"x_", "x", "y"}
@@ -161,12 +161,12 @@ def test_gradient_variable_self():
     # Gradient through an identity tensor should return Zero when the variable does not match
     x_var = Variable("x", x)
     I = Delta(x, "x, x_")
-    result = I.grad(x_var)
+    result = I.grad(x_var).simplify()
     assert isinstance(result, Zero)
 
     # Gradient of a Zero tensor with respect to any variable should be Zero
     z = Zero(x)
-    assert isinstance(z.grad(x_var), Zero)
+    assert isinstance(z.grad(x_var).simplify(), Zero)
 
     # Complex operation gradient should correctly handle the combination of operations
     z = (x_var + y_var) @ x_var - y_var
@@ -178,7 +178,9 @@ def test_square_ip():
     x = Variable("x", i)
     x2 = x @ x
     assert x2.edges == set()
-    assert x2.grad(x).simplify() == Sum([x.rename(i="i_")], [2])
+    # one simplify() pass leaves a delta behind a Rename-in-Sum boundary
+    # (a local-confluence gap, task G); full_simplify reaches the fixpoint
+    assert x2.grad(x).full_simplify() == Sum([x.rename(i="i_")], [2])
 
 
 def test_square_xAAx():
@@ -255,7 +257,7 @@ def test_two_func_grad():
 def test_matrix_grad():
     i, j = symbols("i j")
     X = Variable("X", i, j)
-    assert X.grad(X) == Delta(i, "i, i_") @ Delta(j, "j, j_")
+    assert X.grad(X).simplify() == Delta(i, "i, i_") @ Delta(j, "j, j_")
 
 
 def test_broadcasting():

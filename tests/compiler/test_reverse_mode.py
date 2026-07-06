@@ -376,7 +376,14 @@ def test_resmlp3_deep_grads_match_autograd():
     torch.testing.assert_close(g1.align_to("d", "dh").rename(None), ref_g1, rtol=1e-4, atol=1e-5)
 
 
-def test_resmlp3_szfp_factored_equals_lowered():
+def test_resmlp3_szfp_factored_equals_lowered(monkeypatch):
+    # This test exercises the ADJOINT chain collapse on forward-mode-shaped
+    # gradient chains, so the joint reverse resolver (which would hand the
+    # lowering an already reverse-mode-shaped program with nothing left to
+    # collapse) is pinned off.
+    import tensorgrad.compiler.reverse as _reverse
+
+    monkeypatch.setattr(_reverse, "REVERSE_GRADS", False)
     """Schwartz-Zippel pinning of the cross-block accumulation rewrites:
     relu + mean-centering keeps every constant rational (see
     test_factored_equals_lowered_szfp), so the factored DAG must equal the

@@ -66,6 +66,14 @@ class CompiledProgram:
         # before simplifying.
         self._declared_edges = [tuple(t.edges) for t in tensors]
         if simplify:
+            # Joint reverse-mode resolution: a family of Derivative outputs
+            # sharing one scalar base resolves through ONE cotangent sweep,
+            # so all gradients reference the same interned subexpressions
+            # (see compiler/reverse.py). Unrecognized shapes pass through to
+            # the independent chain-rule path below.
+            from tensorgrad.compiler.reverse import resolve_shared_gradients
+
+            tensors = resolve_shared_gradients(tensors)
             shared_args = normalize_args()
             tensors = tuple(t.simplify(shared_args) for t in tensors)
         self.tensors = tensors
