@@ -1038,8 +1038,8 @@ class CrossEntropyHessian(Scene):
         # ===== stage 4: row A -- elementwise derivative, copy-dot =====
         circA = dcircle(A1['e'])
         cdA = cdot(np.array([-2.2, yA, 0]))
-        jA = wire(np.array([-2.2, yA + 0.055, 0]),
-                  np.array([-2.2, yA + 0.8, 0]), CD)
+        jA = wire(np.array([-2.24, yA + 0.04, 0]),
+                  np.array([-2.72, yA + 0.62, 0]), CD)
         self.play(FadeOut(loop, ldot),
                   Create(circA),
                   Transform(whis, jA), FadeIn(cdA),
@@ -1088,8 +1088,8 @@ class CrossEntropyHessian(Scene):
         # the inner derivative: copy-dot appears, sum-dot absorbs it
         circG = dcircle(G3['e'])
         cdG = cdot(G3z + np.array([0.4, 0, 0]))
-        jG0 = wire(G3z + np.array([0.4, 0.055, 0]),
-                   G3z + np.array([0.4, 0.68, 0]), CD)
+        jG0 = wire(G3z + np.array([0.44, 0.04, 0]),
+                   G3z + np.array([0.92, 0.62, 0]), CD)
         self.play(FadeOut(whisB), Create(circG), FadeIn(cdG),
                   FadeIn(jG0),
                   *caption(r"and again for the inner chain"),
@@ -1097,6 +1097,8 @@ class CrossEntropyHessian(Scene):
         self.wait(0.5)
         self.play(FadeOut(circG),
                   G3['s'].animate.move_to(cdG.get_center()),
+                  Transform(G3['w'], wire(G3z + np.array([0.16, 0, 0]),
+                                          G3z + np.array([0.37, 0, 0]))),
                   *caption(r"$\exp' = \exp$; the sum slides into "
                            r"the copy-dot"),
                   run_time=1.0, rate_func=EASE)
@@ -1120,8 +1122,8 @@ class CrossEntropyHessian(Scene):
         minus2 = MathTex("-", color=INK).scale(1.1).move_to([-0.85, yF, 0])
         pT2a = glyph("p", np.array([0.0, yF, 0]), CB)
         iw2 = wire(np.array([0.25, yF, 0]), np.array([1.0, yF, 0]))
-        jw2 = wire(np.array([1.85, yF, 0]), np.array([2.59, yF, 0]), CD)
-        pT2b = glyph("p", np.array([2.85, yF, 0]), CB)
+        pT2b = glyph("p", np.array([2.05, yF, 0]), CB)
+        jw2 = wire(np.array([2.3, yF, 0]), np.array([3.04, yF, 0]), CD)
         self.play(
             ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
                                         *[B1[k] for k in B1]),
