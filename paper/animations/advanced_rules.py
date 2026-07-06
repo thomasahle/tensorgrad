@@ -527,14 +527,26 @@ class TraceDelete(Scene):
                   Create(soA), Create(soB), run_time=1.1)
         self.wait(0.6)
 
-        dome0 = dome()
+        # close the trace: each stub sweeps up into its half of the dome
+        # (splitting the dome bezier at the apex avoids a ghost double)
+        p1 = ca + 0.30 * dirv(180)
+        p2 = cb + 0.30 * dirv(0)
+        lift = 1.61 * np.array([0, 1, 0])
+        c1 = p1 + 1.37 * dirv(180) + lift
+        c2 = p2 + 1.37 * dirv(0) + lift
+        apex = (p1 + 3 * c1 + 3 * c2 + p2) / 8
+        domeL = CubicBezier(p1, (p1 + c1) / 2, (p1 + 2 * c1 + c2) / 4, apex,
+                            color=INK, stroke_width=2.2)
+        domeR = CubicBezier(apex, (c1 + 2 * c2 + p2) / 4, (c2 + p2) / 2, p2,
+                            color=INK, stroke_width=2.2)
         self.play(ReplacementTransform(tAXB[0], tTr[1]),
                   ReplacementTransform(tAXB[1], tTr[2]),
                   ReplacementTransform(tAXB[2], tTr[3]),
                   FadeIn(tTr[0], tTr[4]),
-                  ReplacementTransform(VGroup(soA, soB), dome0),
+                  ReplacementTransform(soA, domeL),
+                  ReplacementTransform(soB, domeR),
                   run_time=1.2, rate_func=EASE)
-        self.remove(dome0)
+        self.remove(domeL, domeR)
         self.add(domeM)
         self.wait(0.6)
 
