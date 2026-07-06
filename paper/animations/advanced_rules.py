@@ -1223,6 +1223,12 @@ class CrossEntropyHessian(Scene):
         sm2a = smgroup(3.5, -1.45, yF, -1)       # z -> softmax --(i)
         iw2 = wire(np.array([4.2, yF, 0]), np.array([4.6, yF, 0]))
         mid2 = np.array([1.7, yF, 0])
+        # split term-1's wire at the dot: the z-side piece turns
+        # downward to become the output wire; the other side is i
+        wsl = wire(np.array([-2.3, -0.1, 0]), np.array([-2.6, -0.1, 0]))
+        wsr = wire(np.array([-2.3, -0.1, 0]), np.array([-2.02, -0.1, 0]))
+        self.remove(A1['w'])
+        self.add(wsl, wsr)
         self.play(
             # term 1: z stays z, the arrow stays, exp BECOMES softmax;
             # the normalizer and bar are absorbed into the new name
@@ -1231,10 +1237,10 @@ class CrossEntropyHessian(Scene):
             ReplacementTransform(A1['e'], sm1['sm']),
             FadeOut(gB1, target_position=sm1['sm'].get_center()),
             FadeOut(bar1, target_position=sm1['sm'].get_center()),
-            Create(pv1),
+            Transform(wsl, pv1),
+            ReplacementTransform(wsr, i1f),
             ReplacementTransform(cdA, d1),
             Transform(whis, j1f),
-            ReplacementTransform(A1['w'], i1f),
             Transform(plusA, minus2),
             # term 2, j-factor
             ReplacementTransform(G3['z'], sm2b['z']),
@@ -1256,7 +1262,7 @@ class CrossEntropyHessian(Scene):
         self.wait(0.9)
 
         # ============ stage 7: read off the identity ============
-        final_grp = VGroup(d1, i1f, pv1, plusA, iw2, jw2, whis,
+        final_grp = VGroup(d1, i1f, wsl, plusA, iw2, jw2, whis,
                            sm1['sm'], sm1['z'], sm1['a'],
                            sm2a['sm'], sm2a['z'], sm2a['a'],
                            sm2b['sm'], sm2b['z'], sm2b['a'])
