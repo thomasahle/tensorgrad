@@ -846,8 +846,8 @@ class TraceDelete(Scene):
         self.wait(1.8)
 
 
-class CrossEntropyHessian(Scene):
-    """The Hessian of cross-entropy = the softmax Jacobian, in the
+class SoftmaxJacobian(Scene):
+    """The Jacobian of softmax, in the
     book's function notation: function names are plain nodes, input
     edges carry arrows (dotted = elementwise, with the data wire
     staying on the argument), sums are copydot-terminated wires, and
@@ -1213,12 +1213,12 @@ class CrossEntropyHessian(Scene):
             return g
 
         d1 = Dot([-3.2, yF, 0], radius=0.06, color=INK)
-        j1f = wire(np.array([-4.0, yF, 0]), np.array([-3.26, yF, 0]), CD)
+        j1f = wire(np.array([-3.26, yF, 0]), np.array([-4.0, yF, 0]), CD)
         i1f = wire(np.array([-3.14, yF, 0]), np.array([-2.4, yF, 0]))
         pv1 = wire(np.array([-3.2, yF - 0.06, 0]), np.array([-3.2, yF - 0.6, 0]))
         sm1 = smgroup(-3.2, 1.45, yF - 0.92, 1)
         minus2 = MathTex("-", color=INK).scale(1.1).move_to([-1.8, yF, 0])
-        jw2 = wire(np.array([-1.4, yF, 0]), np.array([-0.8, yF, 0]), CD)
+        jw2 = wire(np.array([-0.8, yF, 0]), np.array([-1.4, yF, 0]), CD)
         sm2b = smgroup(-0.1, 1.45, yF, 1)        # (j)-- softmax <- z
         sm2a = smgroup(3.5, -1.45, yF, -1)       # z -> softmax --(i)
         iw2 = wire(np.array([4.2, yF, 0]), np.array([4.6, yF, 0]))
@@ -1270,7 +1270,7 @@ class CrossEntropyHessian(Scene):
                   final_grp.animate.shift(0.75 * UP),
                   run_time=0.8, rate_func=EASE)
         self.play(Write(m2[0]), FadeIn(*m2[1:]),
-                  *caption(r"the Hessian of cross-entropy"),
+                  *caption(r"the Jacobian of $\mathrm{softmax}$"),
                   run_time=0.9)
         self.play(Indicate(VGroup(*m2[1:]), color=CD, scale_factor=1.1),
                   run_time=0.7)
