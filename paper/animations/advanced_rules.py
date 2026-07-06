@@ -931,28 +931,36 @@ class CrossEntropyHessian(Scene):
         def fgroup(d):
             return VGroup(*[d[k] for k in d])
 
-        # ---- title ----
-        num_t = MathTex(r"\partial\,", "p", color=INK)
+        # ---- title: softmax(z) throughout, no abbreviation ----
+        num_t = MathTex(r"\partial\,", r"\mathrm{softmax}(", "z", ")",
+                        color=INK).scale(0.8)
         num_t[0].set_color(CD)
         num_t[1].set_color(CB)
-        den_t = MathTex(r"\partial", "z", color=INK)
+        num_t[2].set_color(CX)
+        num_t[3].set_color(CB)
+        den_t = MathTex(r"\partial", "z", color=INK).scale(0.8)
         den_t[0].set_color(CD)
         den_t[1].set_color(CX)
         tbar = Line(ORIGIN, RIGHT * (num_t.width + 0.2), color=INK,
                     stroke_width=1.6)
         tfrac = VGroup(num_t, tbar, den_t).arrange(DOWN, buff=0.13)
-        m2 = MathTex("=", r"\;\mathrm{diag}(", "p", ")", "-", "p", r"\,p^T",
-                     color=INK)
-        for i in (2, 5, 6):
+        m2 = MathTex("=", r"\;\mathrm{diag}(\mathrm{softmax}(", "z", "))",
+                     "-", r"\mathrm{softmax}(", "z", ")",
+                     r"\,\mathrm{softmax}(", "z", r")^T",
+                     color=INK).scale(0.66)
+        for i in (1, 3, 5, 7, 8, 10):
             m2[i].set_color(CB)
-        VGroup(tfrac, m2).arrange(RIGHT, buff=0.28).to_edge(UP, buff=0.4)
+        for i in (2, 6, 9):
+            m2[i].set_color(CX)
+        VGroup(tfrac, m2).arrange(RIGHT, buff=0.25).to_edge(UP, buff=0.4)
         v0 = -tfrac.get_center()[0]
         tfrac.shift(RIGHT * v0)
         tpos = tfrac.get_center()
-        t0 = MathTex("p", r"\;=\;", r"\mathrm{softmax}(", "z", ")", color=INK
+        t0 = MathTex(r"\mathrm{softmax}(", "z", ")", color=INK
                      ).move_to(tpos)
         t0[0].set_color(CB)
-        t0[3].set_color(CX)
+        t0[1].set_color(CX)
+        t0[2].set_color(CB)
 
         self.cap = None
 
@@ -969,16 +977,16 @@ class CrossEntropyHessian(Scene):
         A0 = F1(np.array([-2.9, yC, 0]))
         B0 = F2(np.array([-0.2, yC, 0]))
         self.play(Write(t0), FadeIn(fgroup(A0), fgroup(B0)),
-                  *caption(r"softmax, from elementary functions: "
+                  *caption(r"$\mathrm{softmax}$, from elementary functions: "
                            r"$\exp$, sum, $\mathrm{pow}_{-1}$"),
                   run_time=1.4)
         self.wait(1.0)
 
         # ============ stage 2: differentiate ============
         self.play(ReplacementTransform(t0[0], num_t[1]),
-                  FadeOut(t0[1], t0[2], t0[4]),
-                  ReplacementTransform(t0[3], den_t[1]),
-                  FadeIn(num_t[0], tbar, den_t[0]),
+                  ReplacementTransform(t0[1], num_t[2]),
+                  ReplacementTransform(t0[2], num_t[3]),
+                  FadeIn(num_t[0], tbar, den_t),
                   run_time=0.9)
         loop = Ellipse(width=8.2, height=1.9, color=CD, stroke_width=2.2
                        ).move_to([-0.2, yC, 0])
@@ -1012,9 +1020,9 @@ class CrossEntropyHessian(Scene):
                         ).move_to([0.1, yB, 0])
         ldotB = Dot([0.1, yB + 0.575, 0], radius=0.05, color=CD)
         wB0 = ldotB.get_center()
-        whisB = CubicBezier(wB0, wB0 + np.array([0.3, 0.18, 0]),
-                            wB0 + np.array([0.7, 0.24, 0]),
-                            wB0 + np.array([1.05, 0.22, 0]),
+        whisB = CubicBezier(wB0, wB0 + np.array([-0.3, 0.18, 0]),
+                            wB0 + np.array([-0.7, 0.24, 0]),
+                            wB0 + np.array([-1.05, 0.22, 0]),
                             color=CD, stroke_width=2.2)
         A0c = {k: A0[k].copy() for k in A0}
         B0c = {k: B0[k].copy() for k in B0}
@@ -1055,21 +1063,32 @@ class CrossEntropyHessian(Scene):
 
         # ===== stage 5: row B -- the chain rule is actually a chain =====
         circB = dcircle(B2['pw'])
-        G3z = np.array([3.95, yB, 0])
+        G3z = np.array([3.85, yB, 0])
         G3 = {}
         G3['z'] = glyph("z", G3z, CX, 0.85)
-        G3['e'] = glyph(r"\exp", G3z + np.array([-0.78, 0, 0]), CA, 0.65)
-        G3['a'] = farrow(G3z + np.array([-0.19, 0, 0]),
-                         G3z + np.array([-0.48, 0, 0]))
-        G3['w'] = wire(G3z + np.array([0.16, 0, 0]),
-                       G3z + np.array([0.62, 0, 0]))
-        G3['s'] = cdot(G3z + np.array([0.67, 0, 0]))
+        G3['e'] = glyph(r"\exp", G3z + np.array([0.78, 0, 0]), CA, 0.65)
+        G3['a'] = farrow(G3z + np.array([0.2, 0, 0]),
+                         G3z + np.array([0.49, 0, 0]))
+        G3['w'] = wire(G3z + np.array([-0.16, 0, 0]),
+                       G3z + np.array([-0.62, 0, 0]))
+        G3['s'] = cdot(G3z + np.array([-0.67, 0, 0]))
         loopG = Ellipse(width=2.15, height=1.0, color=CD, stroke_width=2.2
-                        ).move_to(G3z + np.array([-0.12, 0, 0]))
-        self.play(FadeOut(loopB, ldotB),
-                  Create(circB),
-                  Transform(whisB, loopG),
-                  FadeIn(*[G3[k] for k in G3]),
+                        ).move_to(G3z + np.array([0.12, 0, 0]))
+        ldotG = Dot(loopG.get_center() + np.array([-0.55, 0.42, 0]),
+                    radius=0.05, color=CD)
+        wG0 = ldotG.get_center()
+        whisG = CubicBezier(wG0, wG0 + np.array([-0.25, 0.16, 0]),
+                            wG0 + np.array([-0.55, 0.2, 0]),
+                            wG0 + np.array([-0.85, 0.19, 0]),
+                            color=CD, stroke_width=2.2)
+        G3src = {k: B2[k if k != 'a' else 'a1'].copy()
+                 for k in ('z', 'e', 'a', 'w', 's')}
+        self.add(*G3src.values())
+        self.play(Create(circB),
+                  Transform(loopB, loopG),
+                  Transform(ldotB, ldotG),
+                  Transform(whisB, whisG),
+                  *[ReplacementTransform(G3src[k], G3[k]) for k in G3src],
                   *caption(r"the chain rule is actually a chain"),
                   run_time=1.6, rate_func=EASE)
         self.wait(0.9)
@@ -1087,47 +1106,62 @@ class CrossEntropyHessian(Scene):
 
         # the inner derivative: copy-dot appears, sum-dot absorbs it
         circG = dcircle(G3['e'])
-        cdG = cdot(G3z + np.array([0.4, 0, 0]))
-        jG0 = wire(G3z + np.array([0.44, 0.04, 0]),
-                   G3z + np.array([0.92, 0.62, 0]), CD)
-        self.play(FadeOut(whisB), Create(circG), FadeIn(cdG),
-                  FadeIn(jG0),
+        cdG = cdot(G3z + np.array([-0.4, 0, 0]))
+        jG0 = wire(G3z + np.array([-0.44, 0.04, 0]),
+                   G3z + np.array([-0.92, 0.62, 0]), CD)
+        self.play(FadeOut(loopB, ldotB), Create(circG), FadeIn(cdG),
+                  Transform(whisB, jG0),
                   *caption(r"and again for the inner chain"),
                   run_time=1.1)
         self.wait(0.5)
         self.play(FadeOut(circG),
                   G3['s'].animate.move_to(cdG.get_center()),
-                  Transform(G3['w'], wire(G3z + np.array([0.16, 0, 0]),
-                                          G3z + np.array([0.37, 0, 0]))),
+                  Transform(G3['w'], wire(G3z + np.array([-0.16, 0, 0]),
+                                          G3z + np.array([-0.37, 0, 0]))),
                   *caption(r"$\exp' = \exp$; the sum slides into "
                            r"the copy-dot"),
                   run_time=1.0, rate_func=EASE)
         self.wait(0.4)
-        jG1 = wire(G3z + np.array([0.16, 0, 0]),
-                   G3z + np.array([0.8, 0, 0]), CD)
+        jG1 = wire(G3z + np.array([-0.16, 0, 0]),
+                   G3z + np.array([-0.8, 0, 0]), CD)
         self.play(FadeOut(G3['s'], scale=0.3), FadeOut(cdG, scale=0.3),
-                  ReplacementTransform(VGroup(G3['w'], jG0), jG1),
+                  ReplacementTransform(VGroup(G3['w'], whisB), jG1),
                   *caption(r"$\textstyle\sum_k \delta_{jk}\exp(z)_k"
                            r" = \exp(z)_j$"),
                   run_time=0.9, rate_func=EASE)
         self.wait(0.7)
 
-        # ============ stage 6: recognize p, three times ============
+        # ==== stage 6: recognize softmax(z), three times ====
         yF = -0.45
-        d1 = Dot([-2.6, yF, 0], radius=0.06, color=INK)
-        j1f = wire(np.array([-3.4, yF, 0]), np.array([-2.66, yF, 0]), CD)
-        i1f = wire(np.array([-2.54, yF, 0]), np.array([-1.8, yF, 0]))
-        pv1 = wire(np.array([-2.6, yF - 0.06, 0]), np.array([-2.6, yF - 0.62, 0]))
-        pT1 = glyph("p", np.array([-2.6, yF - 0.9, 0]), CB)
-        minus2 = MathTex("-", color=INK).scale(1.1).move_to([-0.85, yF, 0])
-        pT2a = glyph("p", np.array([0.0, yF, 0]), CB)
-        iw2 = wire(np.array([0.25, yF, 0]), np.array([1.0, yF, 0]))
-        pT2b = glyph("p", np.array([2.05, yF, 0]), CB)
-        jw2 = wire(np.array([2.3, yF, 0]), np.array([3.04, yF, 0]), CD)
+        SC = 0.8
+
+        def smgroup(sx, zx_off, y, adir):
+            g = {}
+            g['sm'] = glyph(r"\mathrm{softmax}", np.array([sx, y, 0]), CB, SC)
+            zx = sx + zx_off
+            g['z'] = glyph("z", np.array([zx, y, 0]), CX, SC)
+            if adir > 0:
+                g['a'] = farrow(np.array([zx - 0.22, y, 0]),
+                                np.array([sx + 0.62, y, 0]), dotted=False)
+            else:
+                g['a'] = farrow(np.array([zx + 0.22, y, 0]),
+                                np.array([sx - 0.62, y, 0]), dotted=False)
+            return g
+
+        d1 = Dot([-2.9, yF, 0], radius=0.06, color=INK)
+        j1f = wire(np.array([-3.7, yF, 0]), np.array([-2.96, yF, 0]), CD)
+        i1f = wire(np.array([-2.84, yF, 0]), np.array([-2.1, yF, 0]))
+        pv1 = wire(np.array([-2.9, yF - 0.06, 0]), np.array([-2.9, yF - 0.6, 0]))
+        sm1 = smgroup(-2.9, 1.15, yF - 0.92, 1)
+        minus2 = MathTex("-", color=INK).scale(1.1).move_to([-1.55, yF, 0])
+        sm2a = smgroup(0.45, -1.15, yF, -1)      # z -> softmax --(i)
+        iw2 = wire(np.array([1.07, yF, 0]), np.array([1.72, yF, 0]))
+        jw2 = wire(np.array([1.95, yF, 0]), np.array([2.6, yF, 0]), CD)
+        sm2b = smgroup(3.25, 1.15, yF, 1)        # (j)-- softmax <- z
         self.play(
             ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
                                         *[B1[k] for k in B1]),
-                                 VGroup(pv1, pT1)),
+                                 VGroup(pv1, sm1['sm'], sm1['z'], sm1['a'])),
             ReplacementTransform(cdA, d1),
             Transform(whis, j1f),
             ReplacementTransform(A1['w'], i1f),
@@ -1137,24 +1171,25 @@ class CrossEntropyHessian(Scene):
                                         pw2, B2['e'],
                                         B2['z'], B2['a1'], B2['w'], B2['s'],
                                         B2['a2']),
-                                 pT2a),
+                                 VGroup(sm2a['sm'], sm2a['z'], sm2a['a'])),
             ReplacementTransform(A2['w'], iw2),
             ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a']),
-                                 pT2b),
+                                 VGroup(sm2b['sm'], sm2b['z'], sm2b['a'])),
             ReplacementTransform(jG1, jw2),
-            *caption(r"recognize $p$ --- three times"),
+            *caption(r"recognize $\mathrm{softmax}(z)$ --- three times"),
             run_time=1.8, rate_func=EASE)
         self.wait(0.9)
 
         # ============ stage 7: read off the identity ============
-        final_grp = VGroup(d1, i1f, pv1, pT1, minusB, iw2, pT2a,
-                           jw2, pT2b, whis)
+        final_grp = VGroup(d1, i1f, pv1, minusB, iw2, jw2, whis,
+                           sm1['sm'], sm1['z'], sm1['a'],
+                           sm2a['sm'], sm2a['z'], sm2a['a'],
+                           sm2b['sm'], sm2b['z'], sm2b['a'])
         self.play(VGroup(num_t, tbar, den_t).animate.shift(RIGHT * (-v0)),
                   final_grp.animate.shift(0.75 * UP),
                   run_time=0.8, rate_func=EASE)
         self.play(Write(m2[0]), FadeIn(*m2[1:]),
-                  *caption(r"the Hessian of cross-entropy: "
-                           r"$\mathrm{diag}(p) - p\,p^T$"),
+                  *caption(r"the Hessian of cross-entropy"),
                   run_time=0.9)
         self.play(Indicate(VGroup(*m2[1:]), color=CD, scale_factor=1.1),
                   run_time=0.7)
