@@ -914,19 +914,17 @@ class CrossEntropyHessian(Scene):
             return d
 
         def F2(pp, sc=1.0):
-            """pow_{-1} <... ( exp <... z ---. )   (sum-dot on z's wire)"""
+            """pow_{-1} <... exp <... z ---.   (sum-dot on z's wire)"""
             d = {}
             d['pw'] = glyph(r"\mathrm{pow}_{-1}", pp, CA, 0.8 * sc)
-            d['b1'] = glyph("(", pp + np.array([1.15 * sc, 0, 0]), INK, 0.95 * sc)
-            d['e'] = glyph(r"\exp", pp + np.array([1.65 * sc, 0, 0]), CA, 0.8 * sc)
-            d['z'] = glyph("z", pp + np.array([2.5 * sc, 0, 0]), CX, 0.95 * sc)
-            d['a1'] = farrow(pp + np.array([2.28 * sc, 0, 0]),
-                             pp + np.array([2.02 * sc, 0, 0]))
-            d['w'] = wire(pp + np.array([2.7 * sc, 0, 0]),
-                          pp + np.array([3.25 * sc, 0, 0]))
-            d['s'] = cdot(pp + np.array([3.3 * sc, 0, 0]))
-            d['b2'] = glyph(")", pp + np.array([3.55 * sc, 0, 0]), INK, 0.95 * sc)
-            d['a2'] = farrow(pp + np.array([1.0 * sc, 0.0, 0]),
+            d['e'] = glyph(r"\exp", pp + np.array([1.5 * sc, 0, 0]), CA, 0.8 * sc)
+            d['z'] = glyph("z", pp + np.array([2.35 * sc, 0, 0]), CX, 0.95 * sc)
+            d['a1'] = farrow(pp + np.array([2.13 * sc, 0, 0]),
+                             pp + np.array([1.87 * sc, 0, 0]))
+            d['w'] = wire(pp + np.array([2.55 * sc, 0, 0]),
+                          pp + np.array([3.1 * sc, 0, 0]))
+            d['s'] = cdot(pp + np.array([3.15 * sc, 0, 0]))
+            d['a2'] = farrow(pp + np.array([1.17 * sc, 0.0, 0]),
                              pp + np.array([0.52 * sc, 0, 0]))
             return d
 
@@ -1007,24 +1005,32 @@ class CrossEntropyHessian(Scene):
                             wA0 + np.array([-0.7, 0.24, 0]),
                             wA0 + np.array([-1.05, 0.22, 0]),
                             color=CD, stroke_width=2.2)
-        plusA = MathTex("+", color=INK).move_to([3.85, yA, 0])
+        plusA = MathTex("+", color=INK).move_to([3.45, yA, 0])
         A2 = F1(np.array([-3.5, yB, 0]))
         B2 = F2(np.array([-1.1, yB, 0]))
-        loopB = Ellipse(width=4.4, height=1.15, color=CD, stroke_width=2.2
-                        ).move_to([0.6, yB, 0])
-        ldotB = Dot([0.6, yB + 0.575, 0], radius=0.05, color=CD)
+        loopB = Ellipse(width=4.3, height=1.15, color=CD, stroke_width=2.2
+                        ).move_to([0.25, yB, 0])
+        ldotB = Dot([0.25, yB + 0.575, 0], radius=0.05, color=CD)
         wB0 = ldotB.get_center()
         whisB = CubicBezier(wB0, wB0 + np.array([0.3, 0.18, 0]),
                             wB0 + np.array([0.7, 0.24, 0]),
                             wB0 + np.array([1.05, 0.22, 0]),
                             color=CD, stroke_width=2.2)
+        A0c = {k: A0[k].copy() for k in A0}
+        B0c = {k: B0[k].copy() for k in B0}
+        loopc, ldotc, whisc = loop.copy(), ldot.copy(), whis.copy()
+        self.add(*A0c.values(), *B0c.values(), loopc, ldotc, whisc)
         self.play(
             *[ReplacementTransform(A0[k], A1[k]) for k in A0],
             *[ReplacementTransform(B0[k], B1[k]) for k in B0],
             Transform(loop, loopA), Transform(ldot, ldotA),
             Transform(whis, whisA),
             Write(plusA),
-            FadeIn(fgroup(A2), fgroup(B2), loopB, ldotB, whisB),
+            *[ReplacementTransform(A0c[k], A2[k]) for k in A0c],
+            *[ReplacementTransform(B0c[k], B2[k]) for k in B0c],
+            ReplacementTransform(loopc, loopB),
+            ReplacementTransform(ldotc, ldotB),
+            ReplacementTransform(whisc, whisB),
             *caption(r"product rule: $z$ appears in both factors"),
             run_time=1.8, rate_func=EASE)
         self.wait(1.0)
@@ -1056,12 +1062,12 @@ class CrossEntropyHessian(Scene):
         loopG = Ellipse(width=2.15, height=1.0, color=CD, stroke_width=2.2
                         ).move_to(G3z + np.array([-0.12, 0, 0]))
         deP = np.array([-1.1, yB + 0.74, 0])
-        deQ = np.array([2.82, yB + 0.42, 0])
+        deQ = np.array([3.07, yB + 0.35, 0])   # on the loop's boundary
         de = VGroup(MCircle(radius=0.045, color=CD, stroke_width=2.0
                             ).move_to(deP),
                     CubicBezier(deP + np.array([0.04, 0.04, 0]),
-                                deP + np.array([0.75, 0.7, 0]),
-                                deQ + np.array([-0.95, 0.7, 0]),
+                                deP + np.array([0.9, 0.6, 0]),
+                                deQ + np.array([-1.1, 0.75, 0]),
                                 deQ, color=CD, stroke_width=2.0))
         self.play(FadeOut(loopB, ldotB),
                   Create(circB),
@@ -1096,7 +1102,13 @@ class CrossEntropyHessian(Scene):
         self.wait(0.5)
         jG1 = wire(G3z + np.array([0.16, 0, 0]),
                    G3z + np.array([0.8, 0, 0]), CD)
+        deQ2 = np.array([G3z[0] - 0.78 + 0.28, yB + 0.3, 0])
+        de2 = CubicBezier(deP + np.array([0.04, 0.04, 0]),
+                          deP + np.array([0.9, 0.6, 0]),
+                          deQ2 + np.array([-1.1, 0.75, 0]),
+                          deQ2, color=CD, stroke_width=2.0)
         self.play(FadeOut(G3['s'], scale=0.4), FadeOut(cdG, scale=0.4),
+                  Transform(de[1], de2),
                   ReplacementTransform(VGroup(G3['w'], jG0), jG1),
                   *caption(r"the sum-dot absorbs the copy-dot"),
                   run_time=1.0, rate_func=EASE)
@@ -1125,9 +1137,9 @@ class CrossEntropyHessian(Scene):
             FadeOut(plusA),
             Transform(minusB, minus2),
             ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
-                                        pw2, circB, B2['b1'], B2['e'],
+                                        pw2, circB, B2['e'],
                                         B2['z'], B2['a1'], B2['w'], B2['s'],
-                                        B2['b2'], B2['a2'], de[0], de[1]),
+                                        B2['a2'], de[0], de[1]),
                                  pT2a),
             ReplacementTransform(A2['w'], iw2),
             ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a'], circG),
