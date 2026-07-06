@@ -279,21 +279,15 @@ def init_weights(gen):
 
 def main():
     # One symbolic cotangent sweep for all 53 gradients, then the whole
-    # optimizer step as named pytrees: the compiled program's outputs come
-    # back shaped exactly like the dicts they were declared with, so the
-    # training loop is `state = step(...)` -- no order bookkeeping anywhere.
+    # optimizer step as ONE pytree keyed by variable name: the result's
+    # .state dict feeds straight back in, so the training loop is
+    # `state = step(state, ...).state` -- no order bookkeeping anywhere.
     grads = tg.grad(loss, params)
-    upd = {n: adamw(params[n], grads[n], *moments[n]) for n in params}
-    step = tg.compile(
-        inputs=dict(params=params,
-                    m={n: moments[n][0] for n in params},
-                    v={n: moments[n][1] for n in params}),
-        loss=loss,
-        params={n: u[0] for n, u in upd.items()},
-        m={n: u[1] for n, u in upd.items()},
-        v={n: u[2] for n, u in upd.items()},
-        print_info=True,
-    )
+    updates = {}
+    for n in params:
+        m, v = moments[n][0].name, moments[n][1].name
+        updates[n], updates[m], updates[v] = adamw(params[n], grads[n], *moments[n])
+    step = tg.compile(loss=loss, state=updates, print_info=True)
     # Evaluation is algebra too. One decode step: run the model on the
     # buffer's first `seq` slots, argmax over vocab, select the position
     # being decoded (a one_hot contraction), and write the prediction into
@@ -301,8 +295,7 @@ def main():
     # buffer in, buffer out; the decode loop is dict plumbing.
     eval_logits = gpt(ctx_var @ F.window(0, buf=buf, seq=seq))
     next_id = F.argmax(eval_logits, dim="vocab") @ F.one_hot(decode_pos, seq)
-    decode = tg.compile(inputs=dict(params=params),
-                        ctx=ctx_var + next_id * F.one_hot(decode_pos + 1, buf))
+    decode = tg.compile(ctx=ctx_var + next_id * F.one_hot(decode_pos + 1, buf))
     seed_ctx = tg.compile(ctx=F.concat(raw, Zero(batch, length), dim="length", size=buf).rename(length="buf"))
     # Exact-match accuracy: the decoded half of the buffer against the SAME
     # sort_digits program the training labels come from.
@@ -313,8 +306,7 @@ def main():
 
     gen = torch.Generator().manual_seed(0)
     weights = init_weights(gen)
-    zeros = lambda: {n: torch.zeros_like(w) for n, w in weights.items()}
-    state = tg.Output(params=weights, m=zeros(), v=zeros())
+    state = weights | {mv.name: torch.zeros_like(weights[n]) for n in params for mv in moments[n]}
 
     def held_out_accuracy(n=256, seed=1234):
         """Greedy autoregressive decode on fresh problems; exact-match rate."""
@@ -323,15 +315,15 @@ def main():
         dims = DIMS | {batch: n}
         ctx = seed_ctx(dims=dims, raw=inp).ctx
         for t in range(LENGTH - 1, SEQ):
-            ctx = decode(dims=dims, ctx=ctx, decode_pos=float(t), params=state.params).ctx
+            ctx = decode(weights, dims=dims, ctx=ctx, decode_pos=float(t)).ctx
         return score(dims=dims, ctx=ctx, raw=inp).hits.item() / n
 
     acc, t_start = 0.0, time.perf_counter()
     for it in range(1, MAX_STEPS + 1):
-        out = step(dims=DIMS, raw=random_digits(BATCH, gen),
-                   c1=1 / (1 - B1**it), c2=1 / (1 - B2**it),
-                   params=state.params, m=state.m, v=state.v)
-        state = out  # the whole optimizer step
+        out = step(state, dims=DIMS, raw=random_digits(BATCH, gen),
+                   c1=1 / (1 - B1**it), c2=1 / (1 - B2**it))
+        state = out.state  # the whole optimizer step
+        weights = {n: state[n] for n in params}
         if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
             print(f"first step (planning + codegen): {warmup:.1f}s")

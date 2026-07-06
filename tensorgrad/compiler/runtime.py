@@ -270,20 +270,16 @@ def compile_to_callable(
 # caller mirrors the order (the fragile part of every training loop). The
 # layer below is pure sugar over it — nothing new is compiled:
 #
-#     grads = tg.grad(loss, params)                  # dict in, dict out
-#     step = tg.compile(
-#         inputs=dict(params=params, m=m_vars, v=v_vars),  # optional groups
-#         loss=loss, params=new_w, m=new_m, v=new_v,       # Tensor or pytree
-#     )
-#     out = step(consts, dims=DIMS, raw=digits, params=state.params, ...)
-#     state, loss_val = out, out.loss              # out.params mirrors the dict
+#     grads = tg.grad(loss, params)                    # dict in, dict out
+#     step = tg.compile(loss=loss, state=updates)      # Tensor or pytree each
+#     out = step(out.state, dims=DIMS, raw=digits)     # dicts/keywords by name
+#     loss_val = out.loss                              # out.state mirrors its dict
 #
-# Binding rules for step(...): a keyword matching a declared input GROUP
-# takes a pytree of arrays shaped like the declared pytree of Variables;
-# any other keyword names a single input Variable; positional dicts are
-# feed dicts keyed by Variable or by name; dims= are the symbol sizes.
-# Python scalars are wrapped with torch.as_tensor, so schedules like
-# c1=1/(1-b**t) feed directly.
+# Binding rules for step(...): keywords name input Variables; positional
+# dicts are feed dicts keyed by Variable or by variable name (so a state
+# pytree keyed by variable names round-trips with no declarations); dims=
+# are the symbol sizes. Python scalars are wrapped with torch.as_tensor,
+# so schedules like c1=1/(1-b**t) feed directly.
 
 
 Pytree = Union[Tensor, dict, list, tuple]
@@ -342,10 +338,7 @@ class Output:
 
 
 class CompiledStep:
-    def __init__(
-        self, outputs: dict[str, Pytree], inputs: Optional[dict[str, Pytree]],
-        torch_compile: bool, print_info: bool = False,
-    ):
+    def __init__(self, outputs: dict[str, Pytree], torch_compile: bool, print_info: bool = False):
         self._out_trees = dict(outputs)
         flat: list[Tensor] = []
         self._out_slices: dict[str, tuple[int, int]] = {}
@@ -358,12 +351,6 @@ class CompiledStep:
             flat.extend(leaves)
         self._fn = compile_to_callable(*flat, torch_compile=torch_compile, print_info=print_info)
         self._by_name = {v.name: v for v in self._fn.vars}
-        self._in_groups: dict[str, Any] = {}
-        for gname, tree in (inputs or {}).items():
-            for path, p in _flatten(tree):
-                if not isinstance(p, Variable):
-                    raise TypeError(f"compile: inputs[{gname!r}]{path} is {type(p).__name__}, expected Variable")
-            self._in_groups[gname] = tree
 
     def _add(self, feed: dict, var, value) -> None:
         if not isinstance(value, torch.Tensor):
@@ -379,23 +366,10 @@ class CompiledStep:
                     raise KeyError(f"unknown input variable name {k!r}")
                 self._add(feed, var, v)
         for name, value in kw.items():
-            group = self._in_groups.get(name)
-            if group is not None:
-                gvars = _flatten(group)
-                gvals = _flatten(value)
-                paths_a = [p for p, _ in gvars]
-                paths_b = [p for p, _ in gvals]
-                if paths_a != paths_b:
-                    raise ValueError(
-                        f"input group {name!r}: value tree {paths_b} does not match declared tree {paths_a}"
-                    )
-                for (_, var), (_, v) in zip(gvars, gvals):
-                    self._add(feed, var, v)
-            elif name in self._by_name:
-                self._add(feed, self._by_name[name], value)
-            else:
-                known = sorted(set(self._in_groups) | set(self._by_name))
-                raise KeyError(f"{name!r} is neither an input group nor an input variable; known: {known}")
+            if name not in self._by_name:
+                known = sorted(self._by_name)
+                raise KeyError(f"{name!r} is not an input variable; known: {known}")
+            self._add(feed, self._by_name[name], value)
         outs = self._fn(feed, dims)
         if not isinstance(outs, tuple):
             outs = (outs,)
@@ -407,20 +381,20 @@ class CompiledStep:
 
 
 def compile(
-    inputs: Optional[dict[str, Pytree]] = None,
     torch_compile: bool = False,
     print_info: bool = False,
     **outputs: Pytree,
 ) -> CompiledStep:
     """Compile named outputs (Tensors or pytrees of Tensors) into one fused
     program. Returns a callable whose result carries one attribute per
-    output keyword, shaped like the declared pytree. `inputs` optionally
-    declares named GROUPS of input Variables so the same pytree shape can
-    be fed back by keyword — the round trip `state = step(...); ...
-    step(params=state.params)` needs no order bookkeeping anywhere.
+    output keyword, shaped like the declared pytree.
 
-    (`inputs` and `torch_compile` are reserved keywords; every other
+    Feeding binds by variable name (keywords or name-keyed dicts), so a
+    state pytree KEYED BY VARIABLE NAMES round-trips with no declarations:
+    `out = step(out.state, dims=DIMS, raw=batch)` — no order bookkeeping.
+
+    (`torch_compile` and `print_info` are reserved keywords; every other
     keyword names an output.)"""
     if not outputs:
         raise ValueError("compile needs at least one named output")
-    return CompiledStep(outputs, inputs, torch_compile, print_info)
+    return CompiledStep(outputs, torch_compile, print_info)

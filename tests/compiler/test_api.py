@@ -43,15 +43,16 @@ def test_compile_round_trip():
     x, params, loss = _setup()
     grads = tg.grad(loss, params)
     new_w = {n: params[n] - 0.1 * grads[n] for n in params}
-    step = tg.compile(inputs=dict(params=params), loss=loss, params=new_w)
+    step = tg.compile(loss=loss, params=new_w)
 
     weights = {"w1": torch.randn(3), "w2": torch.randn(3)}
     xv = torch.randn(2, 3).rename("b", "d")
-    out = step(dims={b: 2, d: 3}, x=xv, params=weights)
+    out = step(weights, dims={b: 2, d: 3}, x=xv)
     assert set(out.params) == {"w1", "w2"}
     assert out.loss.shape == ()
-    # feeding the result back: the round trip needs no order bookkeeping
-    out2 = step(dims={b: 2, d: 3}, x=xv, params=out.params)
+    # feeding the result back: keyed by variable name, so the round trip
+    # is a positional dict with no declarations or order bookkeeping
+    out2 = step(out.params, dims={b: 2, d: 3}, x=xv)
     assert torch.isfinite(out2.loss)
     # matches the flat positional path exactly
     from tensorgrad.compiler import compile_to_callable
@@ -65,11 +66,9 @@ def test_compile_round_trip():
 
 def test_compile_binding_errors_and_scalars():
     x, params, loss = _setup()
-    step = tg.compile(inputs=dict(params=params), loss=loss)
-    with pytest.raises(KeyError, match="neither an input group nor an input variable"):
+    step = tg.compile(loss=loss)
+    with pytest.raises(KeyError, match="is not an input variable"):
         step(dims={b: 2, d: 3}, nope=torch.randn(1))
-    with pytest.raises(ValueError, match="does not match declared tree"):
-        step(dims={b: 2, d: 3}, x=torch.randn(2, 3), params={"w1": torch.randn(3)})
     # positional dicts keyed by name or Variable; python scalars auto-wrap
     c = Variable("c")
     loss2 = loss * c
