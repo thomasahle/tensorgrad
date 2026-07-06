@@ -206,9 +206,9 @@ def sort_digits(x: Tensor["batch", "length"]) -> Tensor["batch", "length"]:
     return F.dot(below, val, dim="vocab")
 
 
-full = F.concat(raw, sort_digits(raw), dim="length", size=buf)  # digits ++ sorted
-tokens: Tensor["batch", "seq"] = full @ F.window(length=buf, seq=seq)
-target_ids: Tensor["batch", "seq"] = full @ F.window(length=buf, seq=seq, start=1)
+full = F.concat(raw, sort_digits(raw), dim="length", size=buf).rename(length="buf")  # digits ++ sorted
+tokens: Tensor["batch", "seq"] = full @ F.window(buf=buf, seq=seq)  # full[0 : SEQ]
+target_ids: Tensor["batch", "seq"] = full @ F.window(buf=buf, seq=seq, start=1)  # full[1 : SEQ+1]
 
 logits = gpt(tokens)
 targets: Tensor["batch", "seq", "vocab"] = F.one_hot(target_ids, vocab)
