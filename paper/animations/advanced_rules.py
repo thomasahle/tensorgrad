@@ -18,6 +18,7 @@ Book style: black ink on white, plain math labels, thin edges.
 import numpy as np
 from manim import (
     Scene, MathTex, VGroup, Dot, Circle, Ellipse, Line, ArcBetweenPoints,
+    CubicBezier,
     ValueTracker, always_redraw, BackgroundRectangle,
     FadeIn, FadeOut, Write, Create, Transform, ReplacementTransform,
     WHITE, BLACK, UP, DOWN, LEFT, RIGHT, ORIGIN, config, rate_functions,
@@ -34,18 +35,32 @@ def node(tex, pos, scale=1.1):
     return VGroup(mask, lbl)
 
 
-def dloop(center, width, height, dot_angle_deg=55):
+def dloop(center, width, height, dot_angle_deg=55, long_whiskers=False,
+          wscale=1.0):
     """Penrose derivative loop: ellipse + dot on it + two bent whiskers
-    (row whisker bending left, column whisker bending right)."""
+    (row whisker bending left, column whisker bending right).  With
+    long_whiskers the two whiskers extend out to point horizontally left
+    and right -- where the new edges will end up."""
     ell = Ellipse(width=width, height=height, color=INK, stroke_width=2.2)
     ell.move_to(center)
     a = np.deg2rad(dot_angle_deg)
     p = center + np.array([width / 2 * np.cos(a), height / 2 * np.sin(a), 0])
     dot = Dot(p, radius=0.05, color=INK)
-    wl = ArcBetweenPoints(p, p + np.array([-0.28, 0.38, 0]), angle=-0.5,
-                          color=INK, stroke_width=2.2)
-    wr = ArcBetweenPoints(p, p + np.array([0.40, 0.26, 0]), angle=0.5,
-                          color=INK, stroke_width=2.2)
+    if long_whiskers:
+        w = wscale
+        wl = CubicBezier(p, p + w * np.array([-0.05, 0.28, 0]),
+                         p + w * np.array([-0.60, 0.62, 0]),
+                         p + w * np.array([-1.40, 0.60, 0]),
+                         color=INK, stroke_width=2.2)
+        wr = CubicBezier(p, p + w * np.array([0.10, 0.24, 0]),
+                         p + w * np.array([0.60, 0.52, 0]),
+                         p + w * np.array([1.35, 0.49, 0]),
+                         color=INK, stroke_width=2.2)
+    else:
+        wl = ArcBetweenPoints(p, p + np.array([-0.28, 0.38, 0]), angle=-0.5,
+                              color=INK, stroke_width=2.2)
+        wr = ArcBetweenPoints(p, p + np.array([0.40, 0.26, 0]), angle=0.5,
+                              color=INK, stroke_width=2.2)
     return VGroup(ell, dot, wl, wr)
 
 
@@ -491,16 +506,47 @@ class TraceDelete(Scene):
         wAX = Line(ca + 0.30 * RIGHT, cX + 0.30 * LEFT, color=INK, stroke_width=2.2)
         wXB = Line(cX + 0.30 * RIGHT, cb + 0.30 * LEFT, color=INK, stroke_width=2.2)
 
-        # ---- panel 1: the trace, and the derivative loop around it all ----
-        self.play(Write(lhs), run_time=0.9)
-        self.add(domeM, nA, nB)
-        self.play(FadeIn(domeM, nA, nB, nX), Create(wAX), Create(wXB), run_time=1.1)
-        big = dloop(np.array([0, -0.25, 0]), 5.6, 2.9, dot_angle_deg=35)
-        self.play(Create(big[0]), FadeIn(big[1], big[2], big[3]), run_time=1.1)
+        # ---- build the formula and the diagram together:
+        #      X,  AXB,  Tr(AXB),  d Tr(AXB)/dX ----
+        tpos = lhs.get_center()
+        tX = MathTex("X", color=INK).move_to(tpos)
+        tAXB = MathTex("A", "X", "B", color=INK).move_to(tpos)
+        tTr = MathTex(r"\mathrm{Tr}(", "A", "X", "B", ")", color=INK).move_to(tpos)
+        stubL = Line(cX + 0.30 * LEFT, cX + 1.05 * LEFT, color=INK, stroke_width=2.2)
+        stubR = Line(cX + 0.30 * RIGHT, cX + 1.05 * RIGHT, color=INK, stroke_width=2.2)
+        self.play(Write(tX), FadeIn(nX), Create(stubL), Create(stubR), run_time=0.9)
+        self.wait(0.6)
+
+        soA = Line(ca + 0.30 * LEFT, ca + 1.0 * LEFT, color=INK, stroke_width=2.2)
+        soB = Line(cb + 0.30 * RIGHT, cb + 1.0 * RIGHT, color=INK, stroke_width=2.2)
+        self.add(nA, nB)
+        self.play(ReplacementTransform(tX, tAXB[1]), FadeIn(tAXB[0], tAXB[2]),
+                  FadeIn(nA, nB),
+                  ReplacementTransform(stubL, wAX),
+                  ReplacementTransform(stubR, wXB),
+                  Create(soA), Create(soB), run_time=1.1)
+        self.wait(0.6)
+
+        dome0 = dome()
+        self.play(ReplacementTransform(tAXB[0], tTr[1]),
+                  ReplacementTransform(tAXB[1], tTr[2]),
+                  ReplacementTransform(tAXB[2], tTr[3]),
+                  FadeIn(tTr[0], tTr[4]),
+                  ReplacementTransform(VGroup(soA, soB), dome0),
+                  run_time=1.2, rate_func=EASE)
+        self.remove(dome0)
+        self.add(domeM)
+        self.wait(0.6)
+
+        big = dloop(np.array([0, -0.25, 0]), 5.6, 2.9, dot_angle_deg=72,
+                    long_whiskers=True)
+        self.play(ReplacementTransform(tTr, lhs),
+                  Create(big[0]), FadeIn(big[1], big[2], big[3]), run_time=1.2)
         self.wait(0.7)
 
         # ---- panel 2: the loop localizes to the only X ----
-        small = dloop(cX + np.array([0, 0.05, 0]), 1.05, 1.0, dot_angle_deg=55)
+        small = dloop(cX + np.array([0, 0.05, 0]), 1.05, 1.0, dot_angle_deg=72,
+                      long_whiskers=True, wscale=0.6)
         self.play(Transform(big, small), run_time=1.5, rate_func=EASE)
         self.wait(0.6)
 
@@ -521,10 +567,21 @@ class TraceDelete(Scene):
                   run_time=3.2, rate_func=EASE)
         self.wait(0.5)
 
-        # ---- panel 6: relabel the turned nodes honestly ----
-        nA2 = node("A^T", ca)
-        nB2 = node("B^T", cb)
+        # ---- panel 6: the glyphs spin upright as the ^T appears ----
+        from manim import Rotate, PI
+        finA = MathTex("A", "^{T}", color=INK).scale(1.1)
+        finA.shift(ca - finA[0].get_center())
+        finB = MathTex("B", "^{T}", color=INK).scale(1.1)
+        finB.shift(cb - finB[0].get_center())
+        rotA = MathTex("A", color=INK).scale(1.1).move_to(ca).rotate(-PI)
+        rotB = MathTex("B", color=INK).scale(1.1).move_to(cb).rotate(PI)
         self.remove(nA, nB)
-        self.play(FadeIn(nA2, nB2), run_time=0.8)
+        self.add(rotA, rotB)
+        self.play(Rotate(rotA, angle=-PI, about_point=ca),
+                  Rotate(rotB, angle=PI, about_point=cb),
+                  FadeIn(finA[1], finB[1]),
+                  run_time=1.1, rate_func=EASE)
+        self.remove(rotA, rotB)
+        self.add(finA[0], finB[0])
         self.play(Write(eq), Write(rhs), run_time=1.0)
         self.wait(1.8)
