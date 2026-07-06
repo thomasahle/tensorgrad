@@ -924,6 +924,8 @@ class CrossEntropyHessian(Scene):
             d['w'] = wire(pp + np.array([2.25 * sc, 0, 0]),
                           pp + np.array([2.8 * sc, 0, 0]))
             d['s'] = cdot(pp + np.array([2.85 * sc, 0, 0]))
+            d['a2'] = farrow(pp + np.array([0.93 * sc, 0.0, 0]),
+                             pp + np.array([0.5 * sc, 0, 0]))
             return d
 
         def fgroup(d):
@@ -1064,17 +1066,8 @@ class CrossEntropyHessian(Scene):
         G3['s'] = cdot(G3z + np.array([0.67, 0, 0]))
         loopG = Ellipse(width=2.15, height=1.0, color=CD, stroke_width=2.2
                         ).move_to(G3z + np.array([-0.12, 0, 0]))
-        deP = np.array([-1.1, yB + 0.74, 0])
-        deQ = np.array([3.07, yB + 0.35, 0])   # on the loop's boundary
-        de = VGroup(MCircle(radius=0.045, color=CD, stroke_width=2.0
-                            ).move_to(deP),
-                    CubicBezier(deP + np.array([0.04, 0.04, 0]),
-                                deP + np.array([0.9, 0.6, 0]),
-                                deQ + np.array([-1.1, 0.75, 0]),
-                                deQ, color=CD, stroke_width=2.0))
         self.play(FadeOut(loopB, ldotB),
                   Create(circB),
-                  FadeIn(de),
                   Transform(whisB, loopG),
                   FadeIn(*[G3[k] for k in G3]),
                   *caption(r"the chain rule is actually a chain"),
@@ -1085,7 +1078,7 @@ class CrossEntropyHessian(Scene):
         pw2 = glyph(r"\mathrm{pow}_{-2}", B2['pw'].get_center(), CA, 0.8)
         minusB = MathTex("-", color=INK).scale(1.1).move_to([-4.78, yB, 0])
         self.play(ReplacementTransform(B2['pw'], pw2),
-                  FadeOut(circB), FadeOut(de),
+                  FadeOut(circB),
                   FadeIn(minusB, shift=0.2 * RIGHT),
                   *caption(r"evaluate: $\mathrm{pow}_{-1}' = "
                            r"-\,\mathrm{pow}_{-2}$ --- the minus is born"),
@@ -1140,7 +1133,8 @@ class CrossEntropyHessian(Scene):
             Transform(minusB, minus2),
             ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
                                         pw2, B2['e'],
-                                        B2['z'], B2['a1'], B2['w'], B2['s']),
+                                        B2['z'], B2['a1'], B2['w'], B2['s'],
+                                        B2['a2']),
                                  pT2a),
             ReplacementTransform(A2['w'], iw2),
             ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a']),
