@@ -602,7 +602,7 @@ class KroneckerTrace(Scene):
                   run_time=0.7)
         self.play(Circumscribe(VGroup(*m2[1:]), color=INK, buff=0.12),
                   FadeOut(self.cap), run_time=1.0)
-        self.wait(1.8)
+        self.wait(2.6)
 
 
 class TraceDelete(Scene):
