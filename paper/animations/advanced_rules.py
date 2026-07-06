@@ -559,6 +559,8 @@ class KroneckerTrace(Scene):
                   Transform(wBl, qBl), Transform(wBr, qBr),
                   Transform(sAl, tAl), Transform(sAr, tAr),
                   Transform(sBl, tBl), Transform(sBr, tBr),
+                  nA.animate.move_to(looppt(KA, 3 * np.pi / 2)),
+                  nB.animate.move_to(looppt(KB, 3 * np.pi / 2)),
                   *caption(r"the flatten triangles cancel"),
                   run_time=1.2, rate_func=EASE)
         loopA, loopB = mkloop(KA, CA), mkloop(KB, CB)
