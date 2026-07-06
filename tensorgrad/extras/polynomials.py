@@ -3,6 +3,7 @@ from fractions import Fraction
 from functools import singledispatch
 from typing import Any, Union, cast
 from tensorgrad import Ones, Tensor, Function, Product, Sum, Variable, Expectation, Zero, Delta
+from tensorgrad.tensor import Rename, peel_rename
 from tensorgrad import functions as F
 
 # A collected polynomial: exponent (may be fractional, e.g. from sqrt) ->
@@ -108,6 +109,20 @@ def _(expr: Function, x: Tensor) -> Poly:
     
     # Otherwise, we can't handle it as a polynomial
     raise NotImplementedError(f"Function {expr.signature} not implemented for polynomial collection")
+
+
+@collect.register
+def _(expr: Rename, x: Tensor) -> Poly:
+    """Rename is lazy on composites (see Tensor.rename): peel the wrapper one
+    level and re-dispatch on the real node type. An irreducible Rename (over
+    a Variable / renamed Function outputs, where edge names are identity) is
+    matched like the default case: as x itself, or as an opaque coefficient."""
+    peeled = peel_rename(expr)
+    if isinstance(peeled, Rename):
+        if peeled == x:
+            return {1: 1}
+        return {0: peeled}
+    return collect(peeled, x)
 
 
 @collect.register

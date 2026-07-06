@@ -21,6 +21,7 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
     _unused_edge_names,
+    peel_rename,
 )
 from tensorgrad.simplify import simplify_delta_products
 from tensorgrad.utils import DisjointSets, _MatchEdgesKey
@@ -480,6 +481,12 @@ class _PowerFunction(FunctionSignature):
         assert func.signature is self
         assert len(func.inputs) == 1, "pow should only have one input"
         (inner,) = func.inputs
+        # Renaming is lazy on composites, so the input may be Rename-wrapped;
+        # every rewrite below dispatches on the input's structure, so peel
+        # first (free edge names are preserved; pow has no output edges, so
+        # the peel is never irreducible). When no rewrite fires we return the
+        # original `func`, keeping the wrapped (shared) input intact.
+        inner = peel_rename(inner)
 
         if self.k == 0:
             return Ones(**func.shape)
@@ -607,9 +614,13 @@ class _PowerFunction(FunctionSignature):
     @staticmethod
     def _flatten(tensors: list[Tensor]) -> list[Tensor]:
         """Flatten nested Products into a single factor list. Product.merge only
-        flattens one level, so repeat until no factor is itself a Product."""
+        flattens one level, so repeat until no factor is itself a Product.
+        Merge freshens clashing inner edges via `rename`, which is lazy on
+        composites — peel the resulting wrappers so the combination passes
+        keep seeing pow-Functions (and copy tensors) rather than Rename nodes."""
         while any(isinstance(t, Product) for t in tensors):
             tensors = Product.merge([Product([t]) if not isinstance(t, Product) else t for t in tensors]).factors
+            tensors = [peel_rename(t) for t in tensors]
         return tensors
 
     @staticmethod
@@ -1085,6 +1096,20 @@ def cross_entropy(logits: Tensor, targets: Tensor, dim: DimType = None) -> Tenso
 
 
 class _RenameFunction(FunctionSignature):
+    """A FunctionSignature whose OUTPUT edges are a renaming of an inner
+    signature's outputs.
+
+    This is signature-level plumbing, NOT a duplicate of the (lazy) Rename
+    tensor node, and it cannot collapse into one: ``FunctionSignature.
+    derivative(i, new_edges)`` must return a FunctionSignature producing the
+    requested new edge names, but a signature like ``_MaxGradFunction``
+    has its output names structurally tied to its input dims — only a
+    signature-level rename can bridge the two inside ``grad_function``
+    (a Rename *tensor* is not a signature and can't sit inside a Function).
+    Its ``simplify`` immediately lowers it to the tensor-level
+    ``Rename(Function(inner, ...))`` form, so it never survives simplify.
+    """
+
     def __init__(self, inner: FunctionSignature, renames: dict[str, str]):
         # Note: The name is important for equality checking, since two functions
         # with the same name, inputs and edges are considered equal.

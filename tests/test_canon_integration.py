@@ -22,7 +22,7 @@ from sympy import symbols
 
 import tensorgrad.functions as F
 from tensorgrad import Delta, Product, Sum, Variable
-from tensorgrad.tensor import Derivative, Rename, Tensor, set_lazy_rename
+from tensorgrad.tensor import Derivative, Rename, Tensor
 
 i, j, k, n = symbols("i j k n")
 
@@ -149,23 +149,19 @@ def test_simplify_commutative_order_in_process():
 
 
 def test_expand_through_lazy_rename_wrapped_sum():
-    prev = set_lazy_rename(True)
-    try:
-        x = Variable("x", i=i)
-        y = Variable("y", i=i)
-        z = Variable("z", i=i)
-        s = (x + y).rename(i="j")  # Rename(Sum) under lazy renaming
-        assert isinstance(s, Rename) and isinstance(s.tensor, Sum)
-        p = Product([s, z.rename(i="j")])
-        res = p.simplify({"expand": True})
-        assert isinstance(res, Sum), f"expand failed to distribute: {res!r}"
-        assert len(res.terms) == 2
-        # And the result matches the eager-rename result.
-        set_lazy_rename(False)
-        expected = Product([(x + y).rename(i="j"), z.rename(i="j")]).simplify({"expand": True})
-        assert res == expected
-    finally:
-        set_lazy_rename(prev)
+    x = Variable("x", i=i)
+    y = Variable("y", i=i)
+    z = Variable("z", i=i)
+    s = (x + y).rename(i="j")  # renaming a composite is always lazy
+    assert isinstance(s, Rename) and isinstance(s.tensor, Sum)
+    p = Product([s, z.rename(i="j")])
+    res = p.simplify({"expand": True})
+    assert isinstance(res, Sum), f"expand failed to distribute: {res!r}"
+    assert len(res.terms) == 2
+    # And the result matches the manually distributed form.
+    xj, yj, zj = (Variable(n, i=i).rename(i="j") for n in "xyz")
+    expected = Sum([Product([xj, zj]), Product([yj, zj])]).simplify()
+    assert res == expected
 
 
 # ---------------------------------------------------------------------------

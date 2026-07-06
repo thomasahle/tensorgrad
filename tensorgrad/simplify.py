@@ -68,7 +68,6 @@ NotImplementedError.
 
 import math
 from collections import Counter
-from types import ModuleType
 from typing import Any, Callable, Optional, cast
 
 from tensorgrad.tensor import (
@@ -83,6 +82,7 @@ from tensorgrad.tensor import (
     Zero,
     _get_canon,
     _group_edges,
+    peel_rename,
 )
 from tensorgrad.utils import _MatchEdgesKey
 
@@ -164,19 +164,31 @@ def keep_atom(t: Tensor, args: dict[str, Any]) -> Tensor:
 
 
 def push_rename_down(t: Rename, args: dict[str, Any]) -> Tensor:
-    """Eliminate the (lazy) Rename wrapper: simplify the inner tensor, merge
-    chains of Renames into one mapping, and push the rename into the inner
-    tensor via its `rename` plumbing. Terminates because the result contains
-    no Rename node above the inner tensor (empty mappings are unwrapped)."""
+    """Normalize the (lazy) Rename wrapper: simplify the inner tensor, merge
+    chains of Renames into one mapping, drop trivial ones, and materialize
+    the mapping via `_rename` for non-composite inners (leaves rename
+    cheaply; Derivative/Expectation re-wrap in O(1)).
+
+    A wrapper over a composite (Sum/Product/Function) deliberately STAYS: the
+    inner tensor is typically a subexpression shared under several renamings
+    (residual networks), and pushing each renaming into a private copy of the
+    tree destroys that sharing — measured 4.6x more compiled ops on the
+    3-layer minGPT program. Rename is isomorphism-transparent and the
+    compiler lowers it as pure edge relabeling, so the wrapper costs nothing;
+    structural matchers peel it locally instead (see peel_rename).
+    Terminates because the result contains at most one Rename above the
+    simplified inner tensor (empty mappings are unwrapped)."""
     inner = t.tensor.simplify(args)
-    if isinstance(inner, Rename):
-        merged = Rename.merge_renames(inner.mapping, t.mapping)
-        res = inner.tensor.rename(**merged)
-    else:
-        res = inner.rename(**t.mapping)
-    while isinstance(res, Rename) and not res.mapping:
-        res = res.tensor
-    return res
+    mapping = t.mapping
+    while isinstance(inner, Rename):
+        mapping = Rename.merge_renames(inner.mapping, mapping)
+        inner = inner.tensor
+    mapping = {k: v for k, v in mapping.items() if k in inner.edges and k != v}
+    if not mapping:
+        return inner
+    if isinstance(inner, (Sum, Product, Function)):
+        return Rename(inner, mapping)
+    return inner._rename(**mapping)
 
 
 ################################################################################
@@ -417,6 +429,14 @@ def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
 
         verify_edges(tensors)
         before = tensors
+        # The renames above (Product.merge inner-edge freshening, identity-
+        # matrix removal) are lazy on composites, so factors can be Rename-
+        # wrapped; peel one level so the pow pass sees pow-Functions rather
+        # than Rename nodes. Deliberately NOT done outside this branch: the
+        # compiler preset turns combine_products off and relies on wrappers
+        # staying put — peeling rebuilds each factor's shell and measurably
+        # breaks subtree sharing on deep-model programs.
+        tensors = [peel_rename(f) for f in tensors]
         tensors = _PowerFunction.simplify_outer(tensors, args)
         verify_edges(tensors, f"{before} -> {tensors}")
 
@@ -436,7 +456,7 @@ def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
             # distribution below; push the rename through eagerly, but
             # only here where expand needs to look through it.
             while isinstance(f, Rename) and isinstance(f.tensor, Sum):
-                f = f.tensor._rename(**f.mapping)
+                f = peel_rename(f)
             if isinstance(f, Sum):
                 # Create cartesian product
                 terms = [term + [t0] for term in terms for t0 in f.terms]
@@ -486,9 +506,7 @@ def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
         # (o-i o-<jk) is isomorphic with (o-j o-<ik), but they shouldn't be combined. This example comes up in the
         # Hessian of softmax.
         ws_tensors = [
-            (w, key.value)
-            for key, w in term_counter.items()
-            if w != 0 and not isinstance(key.value, Zero)
+            (w, key.value) for key, w in term_counter.items() if w != 0 and not isinstance(key.value, Zero)
         ]
     else:
         ws_tensors = [(w, key.value) for key, w in term_counter.items()]

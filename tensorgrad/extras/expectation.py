@@ -121,8 +121,13 @@ class Expectation(Tensor):
             )
 
         if isinstance(inner, Rename):
+            # Renaming is lazy on composites, so a simplified inner tensor can
+            # be Rename-wrapped. Expectation commutes with renaming of the
+            # free edges; push E inside and SIMPLIFY it there — returning it
+            # unsimplified would deadlock with the Rename peeling in the
+            # product passes (each undoes the other's progress).
             return Rename(
-                Expectation(inner.tensor, self.wrt, self.mu, self.covar, self.covar_names),
+                Expectation(inner.tensor, self.wrt, self.mu, self.covar, self.covar_names).simplify(args),
                 inner.mapping,
             )
 

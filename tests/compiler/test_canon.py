@@ -1,4 +1,4 @@
-"""Validation of tensorgrad.compiler.canon (compositional structural hashing).
+"""Validation of tensorgrad.canon (compositional structural hashing).
 
 Contracts under test:
   SOUNDNESS   structural_fingerprint(a) == structural_fingerprint(b)
@@ -20,7 +20,7 @@ from sympy import symbols
 import tensorgrad.functions as F
 from tensorgrad import Delta, Product, Sum, Variable, Zero
 from tensorgrad.tensor import Derivative, Rename, Tensor, function
-from tensorgrad.compiler.canon import (
+from tensorgrad.canon import (
     canon_info,
     structural_fingerprint,
     structural_hash,

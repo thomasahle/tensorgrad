@@ -168,11 +168,7 @@ def save_steps(expr, slow_grad=False, output_path="steps.png"):
 
 
 def draw_structural_graph(tensor, iter=50):
-    G, edges = tensor.structural_graph()
-    for e, node in edges.items():
-        n = G.number_of_nodes()
-        G.add_node(n, name=f"{e}")
-        G.add_edge(n, node)
+    G, _edges = tensor.edge_structural_graph()
     labels = {i: data.get("name", "") for i, data in G.nodes(data=True)}
     pos = nx.spectral_layout(G)
     pos = nx.kamada_kawai_layout(G, pos=pos)

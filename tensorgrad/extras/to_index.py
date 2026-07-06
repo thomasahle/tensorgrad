@@ -10,7 +10,18 @@ from typing import Iterable, Optional, cast
 import networkx as nx
 
 from tensorgrad.extras.expectation import Expectation
-from tensorgrad.tensor import Tensor, Variable, Zero, Delta, Sum, Product, Derivative, Function, Rename
+from tensorgrad.tensor import (
+    Tensor,
+    Variable,
+    Zero,
+    Delta,
+    Sum,
+    Product,
+    Derivative,
+    Function,
+    Rename,
+    peel_rename,
+)
 from tensorgrad import functions as F  # if needed for function signatures
 
 
@@ -38,21 +49,33 @@ def _(expr: Variable):
 
 @to_index.register
 def _(expr: Rename):
-    inner = expr.tensor
+    # Rename is lazy on composites (see Tensor.rename): peel one level and
+    # re-dispatch on the real node type. The irreducible Rename(Variable)
+    # prints as the variable with its renamed indices.
+    peeled = peel_rename(expr)
+    if not isinstance(peeled, Rename):
+        return to_index(peeled)
+
+    inner, mapping = peeled.tensor, peeled.mapping
     if not isinstance(inner, Variable):
         raise NotImplementedError("Rename should not be present in the final expression.")
 
     if not inner.edges:
         return inner.name
 
-    names = [expr.mapping.get(e, e) for e in inner.edges]
+    names = [mapping.get(e, e) for e in inner.edges]
     return f"{inner.name}_{{{','.join(names)}}}"
 
 
 @to_index_free.register
 def _(expr: Rename):
-    return to_index_free(expr.tensor)
-    # raise NotImplementedError("Rename should not be present in the final expression.")
+    # Index-free notation drops the names anyway; peel so composites are
+    # rendered by their own handler (a renamed Variable stays irreducible
+    # and delegates to the bare variable).
+    peeled = peel_rename(expr)
+    if isinstance(peeled, Rename):
+        return to_index_free(peeled.tensor)
+    return to_index_free(peeled)
 
 
 @to_index.register

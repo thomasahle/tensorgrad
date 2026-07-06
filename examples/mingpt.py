@@ -54,16 +54,11 @@ from sympy import symbols
 import tensorgrad.functions as F
 from tensorgrad import Variable
 from tensorgrad.compiler import compile_to_callable
-from tensorgrad.tensor import set_lazy_rename
 
 # The punchline: no gradient tape, ever. All gradients in this file are
 # symbolic expressions, derived from the loss and compiled ahead of time.
 torch.set_grad_enabled(False)
 torch.set_num_threads(2)
-
-# One pragmatic wart: deep residual nets reuse subtrees so much that eager
-# edge-renaming would blow up exponentially; this makes renames O(1) nodes.
-set_lazy_rename(True)
 
 # ----------------------------------------------------------------- config
 # Full gpt-nano: THREE stacked transformer blocks at n_embd=48. Every
@@ -218,8 +213,9 @@ def main():
     new_ws, new_ms, new_vs = zip(*(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
     step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False)
     predict = compile_to_callable(logits)  # forward-only program for evaluation
-    from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
 
+    # Just some stats: how many tensor ops in the compiled program?
+    from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
     n_ops = sum(not isinstance(n, (InputNode, ConstNode)) for n in toposort([n for n, _ in step.outputs]))
     print(
         f"compiled loss + {len(names)} gradients + adamw ({len(step.outputs)} "

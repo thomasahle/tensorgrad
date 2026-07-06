@@ -39,8 +39,6 @@ Scalar = Union[int, float, Fraction, Number]
 # non-scalar branch down to Tensor.
 _SCALAR_TYPES = (int, float, Fraction, Number)
 
-_lazy_rename = False
-
 # Lazily imported tensorgrad.structure module (declarative structural
 # identity: the graph and fingerprint folds). Loaded on first use to keep
 # `import tensorgrad` light; always available (stdlib + networkx only).
@@ -81,17 +79,6 @@ def _get_grad() -> ModuleType:
 
         _grad_mod = grad
     return _grad_mod
-
-
-def set_lazy_rename(enable: bool = True) -> bool:
-    """Make Tensor.rename wrap composite tensors in a lazy Rename node
-    instead of rebuilding them recursively. Essential for constructing deep
-    models (residual reuse makes eager renaming exponential). Returns the
-    previous setting."""
-    global _lazy_rename
-    prev = _lazy_rename
-    _lazy_rename = enable
-    return prev
 
 
 class TensorMeta(ABCMeta):
@@ -204,6 +191,17 @@ class Tensor(metaclass=TensorMeta):
 
         Returns:
             A new tensor with the edges renamed according to kwargs.
+
+        Note:
+            Renaming a composite (Sum/Product/Function) is LAZY: it wraps the
+            tensor in a Rename node in O(1) instead of rebuilding the tree
+            (which is exponential when subexpressions are reused — residual
+            networks!). The wrapper is isomorphism-transparent; simplify
+            merges chains into one wrapper (push_rename_down in
+            tensorgrad/simplify.py) and the compiler lowers it as pure edge
+            relabeling. Code that pattern-matches tree structure must
+            therefore either simplify first or peel wrappers via
+            :func:`peel_rename`.
         """
 
         # Check that the renaming is valid, and return the renaming dictionary.
@@ -213,17 +211,13 @@ class Tensor(metaclass=TensorMeta):
         # Restrict renaming to free edges
         kwargs = {new: old for new, old in kwargs.items() if new in self.edges}
 
-        if _lazy_rename and all(k == v for k, v in kwargs.items()):
+        if all(k == v for k, v in kwargs.items()):
             return self
-        if _lazy_rename and isinstance(self, (Sum, Product, Function)):
-            # Lazy rename: rebuilding a composite tree is exponential when
-            # subexpressions are reused (residual networks!). The Rename
-            # wrapper is O(1), isomorphism-transparent, and gets merged /
-            # pushed down during simplify. Opt-in via set_lazy_rename(True)
-            # because code that pattern-matches tree structure (expectation,
-            # polynomials, diagrams) sees Rename nodes it may not expect.
+        if isinstance(self, (Sum, Product, Function)):
             result = Rename(self, kwargs)
         else:
+            # Leaves (Variable/Delta/Constant) rename cheaply and directly;
+            # Rename merges mappings; Derivative/Expectation re-wrap in O(1).
             result = self._rename(**kwargs)
 
         # Check that the shape is preserved
@@ -330,21 +324,6 @@ class Tensor(metaclass=TensorMeta):
         fingerprints are derived by generic folds."""
         raise NotImplementedError
 
-    @final
-    def structural_graph(self) -> tuple[nx.MultiDiGraph, dict[str, int]]:
-        """Graph representation of the tensor for isomorphism testing,
-        derived generically from :meth:`structure` (a single mutable graph
-        threaded through the fold).
-
-        Returns:
-            A tuple (G, edges): node 0 is the root; nodes carry a
-            ``name=hashable`` label; ``edges`` maps each free edge name to
-            the node id it attaches to.
-        """
-        from tensorgrad.structure import build_graph
-
-        return build_graph(self)
-
     def edge_structural_graph(
         self, match_edges: bool = True, edge_names: Optional[dict[str, Any]] = None
     ) -> tuple[nx.MultiDiGraph, list[str]]:
@@ -358,10 +337,12 @@ class Tensor(metaclass=TensorMeta):
         Returns:
             A tuple (G, edge_list) where G is the graph and edge_list is the list of edge names.
         """
+        from tensorgrad.structure import build_graph
+
         if edge_names is None:
             edge_names = {}
 
-        G, edges = self.structural_graph()
+        G, edges = build_graph(self)
 
         for e in edges.keys():
             if e not in edge_names:
@@ -492,6 +473,7 @@ class Tensor(metaclass=TensorMeta):
             if not match_edges and not edge_names:
                 # Sound accept: equal fingerprints imply isomorphic.
                 return True
+
             # Name-sensitive accept: by (I1) equal fingerprints yield a
             # color-preserving isomorphism, and by (I2) any
             # color-preserving edge permutation is an automorphism, so a
@@ -673,8 +655,10 @@ class Variable(Tensor):
     def _equation_key(lhs: "Tensor", rhs: "Tensor") -> tuple:
         canon = _get_canon()
         return (
-            canon.structural_hash(lhs), tuple(sorted(lhs.edges)),
-            canon.structural_hash(rhs), tuple(sorted(rhs.edges)),
+            canon.structural_hash(lhs),
+            tuple(sorted(lhs.edges)),
+            canon.structural_hash(rhs),
+            tuple(sorted(rhs.edges)),
         )
 
     def _check_constraints(
@@ -690,13 +674,8 @@ class Variable(Tensor):
             if not (isinstance(lhs, Tensor) and isinstance(rhs, Tensor)):
                 raise ValueError("Constraints must be (lhs, rhs) Tensor equation pairs")
             if lhs.shape != rhs.shape:
-                raise ValueError(
-                    f"Constraint sides must have equal shape: {lhs.shape} != {rhs.shape}"
-                )
-            if not any(
-                v.name == self.name and v.shape == self.shape
-                for v in self._find_variables(lhs)
-            ):
+                raise ValueError(f"Constraint sides must have equal shape: {lhs.shape} != {rhs.shape}")
+            if not any(v.name == self.name and v.shape == self.shape for v in self._find_variables(lhs)):
                 raise ValueError(f"Constraint lhs does not mention variable {self.name!r}")
         # The equation SET must be invariant under the variable's symmetry
         # orbits: an automorphism may permute an orbit's edges, so for every
@@ -769,8 +748,7 @@ class Variable(Tensor):
             old_bare = Variable(self.name, **self.shape, _symmetries=self._symmetries, _constraints=None)
             new_bare = Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=None)
             constraints = tuple(
-                (l.substitute(old_bare, new_bare), r.substitute(old_bare, new_bare))
-                for l, r in constraints
+                (l.substitute(old_bare, new_bare), r.substitute(old_bare, new_bare)) for l, r in constraints
             )
         return Variable(self.name, **self.shape, _symmetries=symmetries, _constraints=constraints)
 
@@ -845,12 +823,14 @@ class Variable(Tensor):
         return len(seen)
 
     def __repr__(self) -> str:
-        args = [f"\"{self.name}\", {', '.join(self.edges)}"]
+        args = [f'"{self.name}", {", ".join(self.edges)}']
         symmetries = ""
         if self._symmetries != {frozenset({e}) for e in self.edges}:
             groups = ", ".join(sorted(" ".join(sorted(group)) for group in self._symmetries))
             symmetries = f'.with_symmetries("{groups}")'
-        constraints = f".with_eq_constraint(<{len(self._constraints)} equations>)" if self._constraints else ""
+        constraints = (
+            f".with_eq_constraint(<{len(self._constraints)} equations>)" if self._constraints else ""
+        )
         return f"Variable({', '.join(args)}){symmetries}{constraints}"
 
     def structure(self) -> "Structure":
@@ -967,6 +947,7 @@ class Rename(Tensor):
         )
         return Structure(("Rename",), (self.tensor,), ("inner",), junctions, transparent=True)
 
+
 class Constant(Tensor, ABC):
     """
     An abstract tensor that represents a constant (non-variable) tensor.
@@ -1051,7 +1032,7 @@ class Delta(Constant):
     def __repr__(self) -> str:
         if not self.edges:
             return f"Delta({self.size})"
-        return f"Delta({self.size}, \"{', '.join(self.edges)}\")"
+        return f'Delta({self.size}, "{", ".join(self.edges)}")'
 
     def _rename(self, **kwargs: str) -> Tensor:
         return Delta(self.size, *[kwargs.get(e, e) for e in self.edges])
@@ -1692,6 +1673,39 @@ class Sum(Tensor):
 ################################################################################
 # Some useful functions
 ################################################################################
+
+
+def peel_rename(t: Tensor) -> Tensor:
+    """Peel a (lazy) top-level Rename off `t`: merge a chain of Rename
+    wrappers into one mapping and materialize it ONE level into the inner
+    tensor via its ``_rename``.
+
+    THE CONTRACT for structural pattern-matching: matching is defined on
+    SIMPLIFIED expressions, and because ``Tensor.rename`` is always lazy on
+    composites, even simplified trees carry Rename wrappers — simplify
+    merges chains into a single wrapper but deliberately KEEPS it above a
+    composite, since the inner tensor is typically shared under several
+    renamings and pushing each into a private copy of the tree would destroy
+    that sharing (see push_rename_down in tensorgrad/simplify.py). Matchers
+    that dispatch on node type must therefore either simplify first or call
+    this helper at every level they descend.
+
+    The result's root is the inner tensor's own node type — except the two
+    irreducible forms where edge names are part of the node's identity, which
+    eager renaming produced too and matchers already treat as opaque:
+    ``Rename(Variable)`` and ``Rename(Function)`` (renamed function OUTPUT
+    edges). If the result is still a Rename, it is one of those.
+    """
+    if not isinstance(t, Rename):
+        return t
+    inner, mapping = t.tensor, t.mapping
+    while isinstance(inner, Rename):
+        mapping = Rename.merge_renames(inner.mapping, mapping)
+        inner = inner.tensor
+    # _rename implementations assume the mapping is restricted to free edges
+    # (Tensor.rename guarantees this; merged/hand-built mappings may not be).
+    mapping = {k: v for k, v in mapping.items() if k in inner.edges and k != v}
+    return inner._rename(**mapping) if mapping else inner
 
 
 def _substitute_memo(t: Tensor, x: "Variable", y: Tensor, memo: dict) -> Tensor:

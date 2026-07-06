@@ -3,8 +3,9 @@
 The implementation lives in :mod:`tensorgrad.structure`: every node class
 declares its structural identity once (``Tensor.structure()``) and generic
 folds derive both the networkx structural graph and these fingerprints from
-it.  This module re-exports the fingerprint API under its historical import
-path (tensor.py, the compiler and tests import from here).
+it.  This module re-exports the fingerprint API under one stable name
+(canonicalization is a core-language service, not a compiler stage — it
+moved here from tensorgrad/compiler/canon.py).
 
 See tensorgrad/structure.py for the contracts (invariant coarse hash, sound
 refined fingerprint, (I1)/(I2) edge colors).

@@ -66,8 +66,6 @@ def test_hash_counterexample2():
 
     assert expr1 != expr2
 
-    expr1.structural_graph()
-
 
 def test_6cycle_vs_two_3cycles():
     i, j, k, i2, j2, k2 = symbols("i j k i2 j2 k2")
