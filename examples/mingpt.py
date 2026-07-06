@@ -202,7 +202,7 @@ targets: Tensor["batch", "seq", "vocab"] = F.one_hot(target_ids, vocab)
 ce: Tensor["batch", "seq"] = F.cross_entropy(logits, targets, dim="vocab")
 # minGPT's ignore_index=-1: the first LENGTH-1 targets don't count -- so the
 # loss just windows them away instead of masking.
-loss = F.sum(ce @ F.window(seq=seq, length=length, start=LENGTH - 1)) / (BATCH * LENGTH)
+loss = F.sum(ce @ F.window(seq=seq, length=length, start=length - 1)) / (BATCH * LENGTH)
 
 # -------------------------------------------------------- adamw as algebra
 # The optimizer is also just algebra. AdamW is elementwise arithmetic on a
@@ -279,7 +279,7 @@ def main():
     seed_ctx = tg.compile(ctx=raw @ F.window(length=length, buf=buf))  # zero-padded embed
     # Exact-match accuracy: the decoded half of the buffer against the SAME
     # sort_digits program the training labels come from.
-    decoded = ctx_var @ F.window(buf=buf, length=length, start=LENGTH)
+    decoded = ctx_var @ F.window(buf=buf, length=length, start=length)
     correct = F.equal(decoded, sort_digits(raw))  # (batch, length) of 0/1
     solved = F.gt0(F.sum(correct, ["length"]) - (LENGTH - 0.5))  # all six right
     score = tg.compile(hits=F.sum(solved))
