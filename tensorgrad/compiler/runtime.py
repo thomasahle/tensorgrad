@@ -13,6 +13,7 @@ Input tensors are torch *named* tensors; outputs are named tensors too.
 """
 
 from collections import OrderedDict
+import time
 
 import sympy
 from typing import Any, Optional
@@ -190,15 +191,15 @@ class CompiledProgram:
             named = out.refine_names(*edge_order)
             # API parity with the old backends: if an output has the same edge
             # set as an input variable but different order (common for
-            # gradients), align it to the variable's order. When several
-            # variables share the edge set (e.g. tied embeddings: wte (vocab,d)
-            # vs lm_head (d,vocab)), an ORDERED match wins — the output is
-            # already in that variable's order and must not adopt another's
-            # (grad(wte) once got silently permuted to lm_head's axis order
-            # because lm_head came first in the var scan). If no variable
-            # matches the order exactly, align only when every tied variable
-            # agrees on ONE order; otherwise provenance is ambiguous and the
-            # output stays in its own declared edge order rather than guessing.
+            # gradients, whose declared expression order is the derivative
+            # machinery's, not the variable's), align it to the variable's
+            # order. When several variables share the edge set (tied
+            # embeddings: wte (vocab,d) vs lm_head (d,vocab)), an ORDERED
+            # match wins — the output must not adopt another variable's order.
+            # When no variable claims the edge set (or several tie
+            # ambiguously), fall back to the edge order the caller's
+            # expression declared: normalization may have swapped to an
+            # interned isomorphic twin whose edges come out in another order.
             tie_orders = {tuple(var.edges) for var in self.vars if set(edge_order) == set(var.edges)}
             if tuple(edge_order) not in tie_orders and len(tie_orders) == 1:
                 named = named.align_to(*next(iter(tie_orders)))
@@ -207,9 +208,6 @@ class CompiledProgram:
                 and set(declared) == set(edge_order)
                 and tuple(edge_order) != declared
             ):
-                # No variable claims this output (or several tie ambiguously):
-                # honor the edge order the caller's expression declared —
-                # normalization may have swapped to an interned twin's order.
                 named = named.align_to(*declared)
             wrapped.append(named)
         if len(wrapped) == 1:
@@ -222,6 +220,7 @@ def compile_to_callable(
     verbose: bool = False,
     torch_compile: bool = False,
     simplify: bool = True,
+    print_info: bool = False,
 ) -> CompiledProgram:
     """Compile one or more tensorgrad tensors into a fast callable.
 
@@ -234,4 +233,18 @@ def compile_to_callable(
     Returns f(values: dict[Variable, torch.Tensor], shapes: dict[Symbol, int])
     -> named torch.Tensor or tuple of them (one per input tensor).
     """
-    return CompiledProgram(tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify)
+    t0 = time.perf_counter()
+    program = CompiledProgram(tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify)
+    if print_info:
+        # Just some stats: how many tensor ops in the compiled program?
+        from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
+
+        n_ops = sum(
+            not isinstance(n, (InputNode, ConstNode)) for n in toposort([n for n, _ in program.outputs])
+        )
+        print(
+            f"compiled loss + {len(tensors)} gradients + adamw ({len(program.outputs)} "
+            f"outputs) into one program of {n_ops} tensor ops "
+            f"({time.perf_counter() - t0:.1f}s)"
+        )
+    return program

@@ -52,8 +52,9 @@ import torch
 from sympy import symbols
 
 import tensorgrad.functions as F
-from tensorgrad import Variable
+from tensorgrad import Variable, typed
 from tensorgrad.compiler import compile_to_callable
+from tensorgrad.tensor import Tensor
 
 # The punchline: no gradient tape, ever. All gradients in this file are
 # symbolic expressions, derived from the loss and compiled ahead of time.
@@ -105,17 +106,25 @@ loss_mask = Variable("loss_mask", batch, seq)
 causal_mask = Variable("causal_mask", seq=seq, key=seq)
 
 
-def layer_norm(x, name):
-    """Written from primitives -- tensorgrad DERIVES its backward pass."""
+@typed
+def layer_norm(x: Tensor[..., "d"], name: str) -> Tensor[..., "d"]:
+    """Written from primitives -- tensorgrad DERIVES its backward pass.
+    The annotation is an edge-SET contract, checked at runtime: `...` means
+    the function is polymorphic over any other edges (batch, seq, ...) and
+    only the 'd' edge is required. Edges are names, not positions, so there
+    is no axis order to annotate or get wrong."""
     x = x - F.mean(x, dim="d", keepdims=True)
     var = F.mean(x * x, dim="d", keepdims=True)
     return x / F.sqrt(var + 1e-5) * param(name + ".g", d=d) + param(name + ".b", d=d)
 
 
-def attention(x, name):
+@typed
+def attention(x: Tensor[..., "seq", "d"], name: str) -> Tensor[..., "seq", "d"]:
     """Causal multi-head self-attention. 'head' is just an edge on the
     weights, and keys/values live on a renamed sequence edge -- that is the
-    entire content of karpathy's four view/transpose lines."""
+    entire content of karpathy's four view/transpose lines. 'seq' appears in
+    the contract because the causal mask is wired to it; batch only rides
+    along."""
     q = x @ param(name + ".wq", d=d, head=head, hs=hs) + param(name + ".bq", head=head, hs=hs)
     k = x @ param(name + ".wk", d=d, head=head, hs=hs) + param(name + ".bk", head=head, hs=hs)
     v = x @ param(name + ".wv", d=d, head=head, hs=hs) + param(name + ".bv", head=head, hs=hs)
@@ -126,14 +135,16 @@ def attention(x, name):
     return y @ param(name + ".wo", head=head, hs=hs, d=d) + param(name + ".bo", d=d)
 
 
-def mlp(x, name):
+@typed
+def mlp(x: Tensor[..., "d"], name: str) -> Tensor[..., "d"]:
     h = F.gelu(
         x @ param(name + ".w1", d=d, d_mlp=d_mlp) + param(name + ".b1", d_mlp=d_mlp), approximate="tanh"
     )  # minGPT's NewGELU, derivative derived
     return h @ param(name + ".w2", d_mlp=d_mlp, d=d) + param(name + ".b2", d=d)
 
 
-def gpt(idx):
+@typed
+def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
     """Token ids (batch, seq) -> logits (batch, seq, vocab)."""
     wte = param("wte", vocab=vocab, d=d)
     x = F.gather(wte, idx, dim="vocab") + param("wpe", seq=seq, d=d)  # real integer lookup
@@ -205,26 +216,12 @@ def init_weights(gen):
 
 def main():
     names = list(params)
-    t0 = time.perf_counter()
-    # THE lines: loss + one symbolic gradient per parameter + the AdamW
-    # update of every (weight, m, v) triple, compiled together into ONE
-    # program. (torch_compile=True is faster per step but pays minutes of
-    # torch.compile warmup; eager converges in seconds anyway.)
     new_ws, new_ms, new_vs = zip(*(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
-    step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False)
+    step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False, print_info=True)
     predict = compile_to_callable(logits)  # forward-only program for evaluation
 
-    # Just some stats: how many tensor ops in the compiled program?
-    from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
-    n_ops = sum(not isinstance(n, (InputNode, ConstNode)) for n in toposort([n for n, _ in step.outputs]))
-    print(
-        f"compiled loss + {len(names)} gradients + adamw ({len(step.outputs)} "
-        f"outputs) into one program of {n_ops} tensor ops "
-        f"({time.perf_counter() - t0:.1f}s)"
-    )
-
     gen = torch.Generator().manual_seed(0)
-    state_vars = (
+    state_vars: list[Variable] = (
         [params[n] for n in names]  # mirrors the output order
         + [moments[n][0] for n in names]
         + [moments[n][1] for n in names]

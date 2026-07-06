@@ -172,7 +172,11 @@ def test_codegen_full_expression():
     ref = evaluate(expr, vals, dims)
     grad_ref = evaluate(grad, vals, dims)
     out, grad_out = compiled_fn(vals, dims)
-    assert out.names == tuple(expr.edges)
+    # Edge SET is the contract; exact order is not asserted because expr's
+    # edge set coincides with variable b's, and the runtime's gradient parity
+    # rule (outputs matching a variable's edge set adopt that variable's
+    # order) takes precedence over expr's own declared order.
+    assert set(out.names) == set(expr.edges)
     assert_close(ref, out)
     assert_close(grad_ref, grad_out)
 

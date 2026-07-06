@@ -116,6 +116,16 @@ class Tensor(metaclass=TensorMeta):
     _shape: dict[str, Symbol]
     _symmetries: set[frozenset[str]]
 
+    def __class_getitem__(cls, edges) -> Any:
+        """Tensor["batch", "seq"] — an edge-set annotation (tensorgrad.typing).
+
+        Edges are names, not positions, so the annotation is a SET contract:
+        a conforming tensor has exactly these edges, in any order. Enforced
+        at call boundaries by the @tensorgrad.typed decorator."""
+        from tensorgrad.typing import EdgeSpec
+
+        return EdgeSpec.of(edges)
+
     @property
     def edges(self) -> KeysView[str]:
         """Returns an _ordered_ set of edge names"""
