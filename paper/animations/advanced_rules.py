@@ -484,7 +484,8 @@ class TraceDelete(Scene):
         frac.shift(RIGHT * v0)
         eq1.shift(RIGHT * v1)
         m1.shift(RIGHT * v1)
-        tpos = num0.get_center()
+        # early stages sit at the equation midline, not the numerator slot
+        tpos = frac.get_center()
 
         ca, cb, cX = np.array([-1.15, -1.3, 0]), np.array([1.15, -1.3, 0]), np.array([0, -1.3, 0])
         phi = ValueTracker(0.0)
