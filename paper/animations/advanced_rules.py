@@ -443,10 +443,24 @@ class KroneckerTrace(Scene):
                 lambda u: looppt(K, th0 + u * (th1 - th0)), t_range=[0, 1],
                 color=col, stroke_width=2.2)
 
+        def gapd(K):
+            # parameter half-gap so the wire clears its riding label
+            rbx = P(K)[4]
+            return np.clip(0.33 / max(rbx, 0.4), 0.18, 0.75)
+
         def mkloop(K, col):
-            return always_redraw(lambda: ParametricFunction(
-                lambda th: looppt(K, th), t_range=[0, 2 * np.pi + 1e-3],
-                color=col, stroke_width=2.2))
+            def build():
+                d = gapd(K)
+                return ParametricFunction(
+                    lambda th: looppt(K, th),
+                    t_range=[3 * np.pi / 2 + d, 3 * np.pi / 2 + 2 * np.pi - d],
+                    color=col, stroke_width=2.2)
+            return always_redraw(build)
+
+        def glyph(tex, pos, color):
+            m = MathTex(tex, color=color).scale(1.1).move_to(pos)
+            m.set_background_stroke(color=WHITE, width=6)
+            return m
 
         # ---- the closed-bundle ribbon: one center path, two offset
         #      strands (constant separation, so they stay parallel) ----
@@ -488,8 +502,8 @@ class KroneckerTrace(Scene):
         # ---- regime 1: the flat definition ----
         pA0 = np.array([0, y0 + 0.55, 0])
         pB0 = np.array([0, y0 - 0.55, 0])
-        nA = node("A", pA0, color=CA)
-        nB = node("B", pB0, color=CB)
+        nA = glyph("A", pA0, CA)
+        nB = glyph("B", pB0, CB)
         apxL, apxR = np.array([-1.85, y0, 0]), np.array([1.85, y0, 0])
         cUL, cLL = np.array([-1.35, y0 + 0.20, 0]), np.array([-1.35, y0 - 0.20, 0])
         cUR, cLR = np.array([1.35, y0 + 0.20, 0]), np.array([1.35, y0 - 0.20, 0])
@@ -503,10 +517,11 @@ class KroneckerTrace(Scene):
             v = v / np.linalg.norm(v)
             return p + d * v
 
-        wAl = Line(cleared(cUL, pA0), pA0, color=CA, stroke_width=2.2)
-        wAr = Line(pA0, cleared(cUR, pA0), color=CA, stroke_width=2.2)
-        wBl = Line(cleared(cLL, pB0), pB0, color=CB, stroke_width=2.2)
-        wBr = Line(pB0, cleared(cLR, pB0), color=CB, stroke_width=2.2)
+        bA = np.array([0.31, 0, 0])
+        wAl = Line(cleared(cUL, pA0), pA0 - bA, color=CA, stroke_width=2.2)
+        wAr = Line(pA0 + bA, cleared(cUR, pA0), color=CA, stroke_width=2.2)
+        wBl = Line(cleared(cLL, pB0), pB0 - bA, color=CB, stroke_width=2.2)
+        wBr = Line(pB0 + bA, cleared(cLR, pB0), color=CB, stroke_width=2.2)
         dy = 0.006   # zero-gap double wire: the strands touch until resolved
         sAl = Line(np.array([-ax_gap, y0 + dy, 0]),
                    np.array([-2.62, y0 + dy, 0]), color=CA, stroke_width=2.2)
@@ -546,10 +561,11 @@ class KroneckerTrace(Scene):
         self.wait(0.8)
 
         # ---- the flatten triangles cancel; wires relax into two loops ----
-        qAl = quad(KA, np.pi, 3 * np.pi / 2, CA)
-        qAr = quad(KA, 3 * np.pi / 2, 2 * np.pi, CA)
-        qBl = quad(KB, np.pi, 3 * np.pi / 2, CB)
-        qBr = quad(KB, 3 * np.pi / 2, 2 * np.pi, CB)
+        dA0, dB0 = gapd(KA), gapd(KB)
+        qAl = quad(KA, np.pi, 3 * np.pi / 2 - dA0, CA)
+        qAr = quad(KA, 3 * np.pi / 2 + dA0, 2 * np.pi, CA)
+        qBl = quad(KB, np.pi, 3 * np.pi / 2 - dB0, CB)
+        qBr = quad(KB, 3 * np.pi / 2 + dB0, 2 * np.pi, CB)
         tAl = quad(KA, np.pi, np.pi / 2, CA)
         tAr = quad(KA, 0, np.pi / 2, CA)
         tBl = quad(KB, np.pi, np.pi / 2, CB)
@@ -564,8 +580,8 @@ class KroneckerTrace(Scene):
                   *caption(r"the flatten triangles cancel"),
                   run_time=1.2, rate_func=EASE)
         loopA, loopB = mkloop(KA, CA), mkloop(KB, CB)
-        labA = always_redraw(lambda: node("A", looppt(KA, 3 * np.pi / 2), color=CA))
-        labB = always_redraw(lambda: node("B", looppt(KB, 3 * np.pi / 2), color=CB))
+        labA = always_redraw(lambda: glyph("A", looppt(KA, 3 * np.pi / 2), CA))
+        labB = always_redraw(lambda: glyph("B", looppt(KB, 3 * np.pi / 2), CB))
         self.remove(sAl, sAr, sBl, sBr, wAl, wAr, wBl, wBr, nA, nB)
         self.add(loopA, loopB, labA, labB)
         self.wait(0.5)
