@@ -1206,10 +1206,10 @@ class CrossEntropyHessian(Scene):
             g['z'] = glyph("z", np.array([zx, y, 0]), CX, 0.95)
             if adir > 0:
                 g['a'] = farrow(np.array([zx - 0.25, y, 0]),
-                                np.array([sx + 0.78, y, 0]))
+                                np.array([sx + 0.78, y, 0]), dotted=False)
             else:
                 g['a'] = farrow(np.array([zx + 0.25, y, 0]),
-                                np.array([sx - 0.78, y, 0]))
+                                np.array([sx - 0.78, y, 0]), dotted=False)
             return g
 
         d1 = Dot([-3.2, yF, 0], radius=0.06, color=INK)
