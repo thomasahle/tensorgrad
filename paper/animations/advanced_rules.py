@@ -454,6 +454,13 @@ class TraceDelete(Scene):
     localizes; (BA)^T appears when X is deleted; A^T B^T appears as the
     turned nodes spin upright."""
 
+    def __init__(self, **kwargs):
+        # tighter framing: same pixels, smaller world
+        from manim import config as _cfg
+        _cfg.frame_height = 5.6
+        _cfg.frame_width = 5.6 * 16 / 9
+        super().__init__(**kwargs)
+
     def construct(self):
         from manim import ArcBetweenPoints as ABP
         from manim import Rotate, PI
@@ -470,10 +477,10 @@ class TraceDelete(Scene):
         eq2 = MathTex("=", color=INK)
         m2 = MathTex(r"A^T\!", r"B^T", color=INK)
         title = VGroup(frac, eq1, m1, eq2, m2).arrange(RIGHT, buff=0.28)
-        title.to_edge(UP, buff=0.45)
+        title.to_edge(UP, buff=0.35)
         tpos = num0.get_center()
 
-        ca, cb, cX = np.array([-1.15, -0.6, 0]), np.array([1.15, -0.6, 0]), np.array([0, -0.6, 0])
+        ca, cb, cX = np.array([-1.15, -1.3, 0]), np.array([1.15, -1.3, 0]), np.array([0, -1.3, 0])
         phi = ValueTracker(0.0)
         kap = ValueTracker(1.0)
 
@@ -553,7 +560,7 @@ class TraceDelete(Scene):
 
         # d/dX appears around Tr(AXB), which glides into the numerator
         tr_target = VGroup(*num0[1:])
-        big = dloop(np.array([0, -0.25, 0]), 5.6, 2.9, dot_angle_deg=72,
+        big = dloop(np.array([0, -0.95, 0]), 5.6, 2.9, dot_angle_deg=72,
                     long_whiskers=True)
         self.play(tTr.animate.move_to(tr_target.get_center()
                   ).scale(tr_target.height / tTr.height),
@@ -614,5 +621,16 @@ class TraceDelete(Scene):
                   Write(eq2), FadeIn(m2),
                   run_time=1.1, rate_func=EASE)
         self.remove(rotA, rotB)
-        self.add(finA[0], finB[0])
+        maskA = BackgroundRectangle(finA, color=WHITE, fill_opacity=1.0, buff=0.04)
+        maskB = BackgroundRectangle(finB, color=WHITE, fill_opacity=1.0, buff=0.04)
+        self.add(maskA, maskB, finA, finB)
+        self.wait(0.4)
+
+        # settle: the finished diagram floats up under its equation
+        domeS, hA_s, hB_s = dome(), hook(ca, 0), hook(cb, 180)
+        self.remove(domeM, hookA, hookB)
+        self.add(domeS, hA_s, hB_s, maskA, maskB, finA, finB)
+        self.play(VGroup(domeS, hA_s, hB_s, maskA, maskB, finA, finB
+                         ).animate.shift(1.55 * UP),
+                  run_time=0.9, rate_func=EASE)
         self.wait(2.0)
