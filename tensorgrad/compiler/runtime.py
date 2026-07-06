@@ -332,6 +332,11 @@ class Output:
     def __init__(self, **groups):
         self.__dict__.update(groups)
 
+    def __getattr__(self, name: str) -> Any:
+        # Attributes are set dynamically from the compile-time output
+        # keywords; this stub tells static checkers any name is fair game.
+        raise AttributeError(f"no output named {name!r}; available: {sorted(self.__dict__)}")
+
     def __repr__(self) -> str:
         parts = ", ".join(f"{k}={type(v).__name__}" for k, v in self.__dict__.items())
         return f"Output({parts})"

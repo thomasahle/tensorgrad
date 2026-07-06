@@ -560,12 +560,17 @@ class Tensor(metaclass=TensorMeta):
         return edges
 
     @staticmethod
-    def _check_shape(shape0: Iterable[Symbol], shape1: dict[str, Symbol]) -> dict[str, Symbol]:
+    def _check_shape(
+        shape0: "Iterable[Union[Symbol, dict[str, Symbol]]]", shape1: dict[str, Symbol]
+    ) -> dict[str, Symbol]:
         """
         Check and merge a shape given as an iterable and a dict.
 
         Args:
-            shape0: An iterable of Sympy symbols.
+            shape0: An iterable of Sympy symbols. A single dict may also be
+                passed positionally — Variable("m", other.shape) — which
+                sidesteps the **spread-vs-keyword-only typing clash of
+                Variable("m", **other.shape).
             shape1: A dictionary mapping edge names to Sympy symbols.
 
         Returns:
@@ -575,16 +580,19 @@ class Tensor(metaclass=TensorMeta):
             ValueError: If inputs are not of the expected types.
         """
         shape0 = tuple(shape0)
-        if not isinstance(shape0, tuple) or not all(isinstance(s, Symbol) for s in shape0):
+        if len(shape0) == 1 and isinstance(shape0[0], dict):
+            shape0, shape1 = (), shape0[0] | shape1
+        syms = tuple(s for s in shape0 if isinstance(s, Symbol))
+        if len(syms) != len(shape0):
             raise ValueError("Shape0 must be a tuple of sympy symbols")
         if not isinstance(shape1, dict) or not all(isinstance(s, Symbol) for s in shape1.values()):
             raise ValueError("Shape1 must be a dict of sympy symbols")
         # Check for duplicate positional dimension names
-        names = [s.name for s in shape0]
+        names = [s.name for s in syms]
         duplicates = {n for n in names if names.count(n) > 1}
         if duplicates:
             raise ValueError(f"Duplicate positional dimension names: {duplicates}")
-        shape0_dict = {s.name: s for s in shape0}
+        shape0_dict = {s.name: s for s in syms}
         if double_keys := shape0_dict.keys() & shape1.keys():
             raise ValueError(f"Duplicate edge names: {double_keys}")
         return shape0_dict | shape1
@@ -632,7 +640,7 @@ class Variable(Tensor):
     def __init__(
         self,
         name: str,
-        *shape0: Symbol,
+        *shape0: Union[Symbol, dict[str, Symbol]],
         _symmetries: None | str | set[frozenset[str]] = None,
         _constraints: None | Iterable[tuple["Tensor", "Tensor"]] = None,
         **shape1: Symbol,

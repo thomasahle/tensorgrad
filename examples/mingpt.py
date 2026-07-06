@@ -236,7 +236,7 @@ loss = F.sum(ce @ F.window(LENGTH - 1, seq=seq, length=length)) / (BATCH * LENGT
 B1, B2, WD, EPS = 0.9, 0.95, 0.1, 1e-8
 c1, c2 = Variable("c1"), Variable("c2")  # 1/(1-B1^t), 1/(1-B2^t)
 moments = {
-    n: (Variable(f"m.{n}", **dict(p.shape)), Variable(f"v.{n}", **dict(p.shape))) for n, p in params.items()
+    n: (Variable(f"m.{n}", p.shape), Variable(f"v.{n}", p.shape)) for n, p in params.items()
 }
 
 
