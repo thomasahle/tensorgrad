@@ -784,7 +784,16 @@ def _layout_component(
             ri = real_ports.index(right_wid)
         except ValueError:
             continue
-        if li > ri:
+        # Rotation marks a transpose, which is a boundary/covariance concept:
+        # only meaningful when at least one port is a FREE edge whose side we
+        # are tracking (e.g. A^T in a gradient term). A matrix contracted on
+        # both sides has an arbitrary internal orientation -- rotating it just
+        # produces a confusing upside-down glyph (a chain's internal K read as
+        # a backwards R), so leave those upright.
+        has_free = any(
+            len(g.wires.get(p, [])) == 1 for p in real_ports
+        )
+        if li > ri and has_free:
             node = next(n for n in layout.nodes if n.id == v)
             node.rotated = True
     # free edges on pendants leave downward

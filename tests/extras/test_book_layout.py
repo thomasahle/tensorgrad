@@ -270,3 +270,33 @@ def test_multiple_up_stubs_fan_out():
     ups = [w for w in lay.wires if w.kind == "stub" and w.direction == "up"]
     assert len(ups) == 2
     assert len({w.x for w in ups}) == 2  # distinct horizontal offsets
+
+
+def test_rotation_only_on_free_edge_matrices():
+    # a matrix contracted on BOTH sides (internal chain node) must not be
+    # drawn rotated, even if its declared port order is reversed vs the chain
+    import tensorgrad.functions as F
+
+    Q = Variable("Q", s=n, d=n)
+    K = Variable("K", t=n, d=n)
+    V = Variable("V", t=n, e=n)
+    from tensorgrad.extras.book_layout import layout_any
+
+    lay = layout_any(F.softmax(Q @ K, dim="t") @ V)
+    assert all(not nd.rotated for nd in lay.nodes if nd.kind == "var")
+
+
+def test_rotation_still_marks_transpose_with_free_edge():
+    # the A^T term in a Hessian (A carries free derivative edges) DOES rotate
+    x = Variable("x", i=n)
+    A = _A()
+    from tensorgrad.extras.book_layout import layout_any
+
+    h = (
+        Product([x, A, x.rename(i="j")])
+        .grad(x, {"i": "p"})
+        .grad(x, {"i": "q"})
+        .simplify()
+    )
+    lay = layout_any(h)
+    assert any(nd.rotated for nd in lay.nodes if nd.kind == "var")
