@@ -67,13 +67,20 @@ FACTOR = True
 
 # Cost model: score = flops + MEM_WEIGHT * elements written to intermediates.
 MEM_WEIGHT = 4.0
+# Per-kernel dispatch cost in element-op units (~5us of eager launch overhead
+# at ~1e10 elem-ops/s). Used in the whole-program score that picks the best
+# sweep, and as the absolute hurdle a shared-child flatten must clear (see
+# _flatten). It must NOT be added to the local rewrite scores as a per-node
+# price: that *rewards* inlining shared children (fewer nodes), the exact
+# duplication the flatten hurdle exists to prevent.
+OP_OVERHEAD = 50_000.0
 # Distribution must strictly beat keeping the Sum operand dense; hoisting
 # accepts ties. This asymmetry (hysteresis) makes the rewrite pair acyclic.
 DIST_MARGIN = 0.98
-# A shared einsum operand is only flattened (= recomputed inside a consumer)
-# when the consumer gets strictly, clearly cheaper than reading it dense.
-SHARED_FLAT_MARGIN = 0.5
+# (No margin lets a shared operand be recomputed inside a consumer anymore:
+# shared children flatten only when inflated — see _flatten / _make_term.)
 MAX_SWEEPS = 20  # sweeps early-exit at the fixpoint; deep module graphs need ~10
+STALE_SWEEPS = 3  # stop after this many sweeps with no new best program score
 MAX_DIST_TERMS = 8  # never distribute an einsum over a huge sum
 MAX_FLAT_OPS = 10  # keep flattened einsums inside the DP planner's comfort zone
 
@@ -93,19 +100,24 @@ _LETTERS = string.ascii_letters
 _HUGE = 1e30
 
 
-def factor_outputs(builder: Builder, outputs, dims) -> list:
+def factor_outputs(builder: Builder, outputs, dims, collapse: bool = True) -> list:
     """Run the factoring passes over `outputs` = [(node, edge_order), ...].
 
     Returns a new outputs list with the same edge orders; `builder` is the
     hash-consing factory the nodes live in (new nodes are interned there).
     `dims` maps sympy symbols to concrete sizes (as in codegen.specialize).
+    `collapse=False` skips the adjoint chain collapse: it is a ONE-SHOT
+    pre-pass, and re-running it on an already-collapsed program re-splices
+    shared cotangent segments into their consumers (measured on 3-layer
+    gpt-nano: a second collapse minted ~900 new distinct values).
     """
     if not FACTOR:
         return list(outputs)
     # One-shot reverse-mode chain collapse FIRST (see adjoint.py): the cost
     # model below must never see forward-mode Jacobian nodes — scoring and
     # candidate-building around them is what made deep stacks intractable.
-    outputs = _adj.collapse_chains(builder, outputs, dims)
+    if collapse:
+        outputs = _adj.collapse_chains(builder, outputs, dims)
     rw = _Rewriter(builder, dims)
     nodes = [n for n, _ in outputs]
     # Baseline scale for the inflation test: the largest program input or
@@ -117,12 +129,40 @@ def factor_outputs(builder: Builder, outputs, dims) -> list:
     for nd in nodes:
         base = max(base, rw._numel(nd.dims))
     rw._base = base
+    # The local rules do not share one Lyapunov function: hoist/distribute
+    # judge different nodes against a context that the other rule changes, so
+    # sweeps can orbit instead of converging (measured on 3-layer GPT: the
+    # program bottoms out mid-run, then climbs for the remaining sweeps).
+    # Score every sweep's whole program and return the best one seen; stop
+    # once the orbit has clearly stopped finding improvements.
+    best_nodes, best_score = nodes, _program_score(rw, nodes)
+    stale = 0
     for _ in range(MAX_SWEEPS):
         new_nodes = rw.sweep(nodes)
         if all(a is b for a, b in zip(new_nodes, nodes)):
             break
         nodes = new_nodes
-    return [(n, order) for n, (_, order) in zip(nodes, outputs)]
+        score = _program_score(rw, nodes)
+        if score < best_score * (1.0 - 1e-9):
+            best_nodes, best_score, stale = nodes, score, 0
+        else:
+            stale += 1
+            if stale >= STALE_SWEEPS:
+                break
+    return [(n, order) for n, (_, order) in zip(best_nodes, outputs)]
+
+
+def _program_score(rw: "_Rewriter", roots: list[Node]) -> float:
+    """Total cost of the program under the sweeps' own model: einsum/linear
+    nodes score as flops + memory writes (_node_score); map/reduce/gather
+    nodes pay their output writes so rewrites cannot hide work in them."""
+    total = 0.0
+    for nd in toposort(list(roots)):
+        s = rw._node_score(nd)
+        if s == 0.0 and isinstance(nd, (MapNode, ReduceNode, GatherNode)):
+            s = MEM_WEIGHT * rw._numel(nd.dims) + OP_OVERHEAD
+        total += s
+    return total
 
 
 class _Rewriter:
@@ -481,7 +521,12 @@ class _Rewriter:
                 continue
             if len(n.ops) - 1 + len(op.ops) > MAX_FLAT_OPS:
                 continue
-            single = self.counts.get(id(op), 2) == 1
+            cnt = self.counts.get(id(op), 2)
+            if cnt != 1 and not self._inflated(op.dims) and self.ein_counts.get(id(op), 0) != cnt:
+                # Some consumer keeps the child alive no matter what:
+                # recomputing it here duplicates work the program still pays
+                # for elsewhere. Never worth it for a non-inflated child.
+                continue
             ops = [o for q, o in enumerate(n.ops) if q != p]
             in_subs = [tuple(s) for q, s in enumerate(n.in_subs) if q != p]
             wire_dims = dict(enumerate(n.wire_dims))
@@ -495,21 +540,29 @@ class _Rewriter:
                 cand = nxt
             parent = self._escore(n.in_subs, n.out_subs, n.wire_dims)
             opscore = self._node_score(op)
-            cnt = self.counts.get(id(op), 2)
-            if single:
+            if cnt == 1:
                 # The child dies with us: its cost is on the keep side, and a
                 # tie is a win (one node fewer, planner sees more).
                 ok = self._node_score(cand) <= parent + opscore
-            elif self.ein_counts.get(id(op), 0) == cnt:
-                # Every consumer is an einsum judging with these same scores:
-                # if they all flatten, the child dies — amortize its cost.
-                # (This is what dissolves a huge shared Jacobian intermediate
-                # that every consumer is better off recomputing around.)
+            elif self._inflated(op.dims):
+                # Inflated shared child (a transient Jacobian we must not
+                # materialize): every consumer judges with these same scores,
+                # so if all flatten it dies — amortize its cost.
                 ok = self._node_score(cand) <= parent + opscore / cnt
             else:
-                # Some consumer keeps the child alive no matter what: the
-                # flattened form must clearly beat reading it dense.
-                ok = self._node_score(cand) <= SHARED_FLAT_MARGIN * parent
+                # Shared child that dies if every einsum consumer flattens.
+                # Amortized-cost ties are NOT enough here: dissolving a
+                # shared value also destroys cross-chain sharing that the SZ
+                # consolidation pass would otherwise harvest, a cost this
+                # local model cannot see. Demand a clear absolute win (one
+                # dispatch worth of element-ops) so only genuinely expensive
+                # intermediates (the LayerNorm-style dense Jacobians) are
+                # recomputed around. (Measured both ways on gpt-nano vs the
+                # researcher gates: tie-flattening shredded the shared
+                # softmax forwards into 54 gradient chains — 26x step time —
+                # while forbidding shared flattening outright lost the
+                # hand-fused-parity gate on the LayerNorm gradient.)
+                ok = self._node_score(cand) <= parent + opscore / cnt - OP_OVERHEAD
             if ok:
                 return cand
         return n
@@ -597,8 +650,11 @@ class _Rewriter:
             # its amortized cost is the tie-breaking bonus.
             ok = s_flat <= s_leaf + self._node_score(t) / cnt_L
         else:
-            # t survives elsewhere: recomputing it here must clearly win.
-            ok = s_flat <= SHARED_FLAT_MARGIN * s_leaf
+            # t survives elsewhere: recomputing it here duplicates work that
+            # every other consumer still pays for and destroys value-sharing
+            # (see _flatten). Only an inflated transient — something we must
+            # not materialize anyway — may be spliced regardless.
+            ok = self._inflated(t.dims) and s_flat <= s_leaf + self._node_score(t)
         return (flat, True) if ok else (leaf, False)
 
     # ---- pass 1: un-distribution (hoisting) -------------------------------------

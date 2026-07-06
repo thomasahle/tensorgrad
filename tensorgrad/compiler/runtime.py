@@ -58,6 +58,12 @@ class CompiledProgram:
         # with the algebra otherwise left to the IR passes. Cheap and
         # idempotent on already-simplified input. simplify=False is a developer
         # escape hatch for compiling a raw structure verbatim (codegen tests).
+        # The caller's edge ORDER is part of the output contract. Normalizing
+        # may return an interned isomorphic twin whose edges come out in a
+        # different order (which twin depends on what was built first — the
+        # hash-cons table is process-global), so record the declared orders
+        # before simplifying.
+        self._declared_edges = [tuple(t.edges) for t in tensors]
         if simplify:
             shared_args = normalize_args()
             tensors = tuple(t.simplify(shared_args) for t in tensors)
@@ -141,7 +147,9 @@ class CompiledProgram:
             return t  # unnamed: trust the caller's order
         return t.align_to(*want)
 
-    def __call__(self, values: dict, shapes: "Optional[dict]" = None):
+    def __call__(
+        self, values: dict, shapes: "Optional[dict]" = None
+    ) -> "tuple[torch.Tensor, ...] | torch.Tensor":
         dims = self._resolve_dims(values, shapes)
 
         args = []
@@ -178,7 +186,7 @@ class CompiledProgram:
             outs = fn(*args)
 
         wrapped = []
-        for out, (node, edge_order), t in zip(outs, self.outputs, self.tensors):
+        for out, (node, edge_order), declared in zip(outs, self.outputs, self._declared_edges):
             named = out.refine_names(*edge_order)
             # API parity with the old backends: if an output has the same edge
             # set as an input variable but different order (common for
@@ -194,6 +202,15 @@ class CompiledProgram:
             tie_orders = {tuple(var.edges) for var in self.vars if set(edge_order) == set(var.edges)}
             if tuple(edge_order) not in tie_orders and len(tie_orders) == 1:
                 named = named.align_to(*next(iter(tie_orders)))
+            elif (
+                (not tie_orders or len(tie_orders) > 1)
+                and set(declared) == set(edge_order)
+                and tuple(edge_order) != declared
+            ):
+                # No variable claims this output (or several tie ambiguously):
+                # honor the edge order the caller's expression declared —
+                # normalization may have swapped to an interned twin's order.
+                named = named.align_to(*declared)
             wrapped.append(named)
         if len(wrapped) == 1:
             return wrapped[0]
@@ -205,7 +222,7 @@ def compile_to_callable(
     verbose: bool = False,
     torch_compile: bool = False,
     simplify: bool = True,
-):
+) -> CompiledProgram:
     """Compile one or more tensorgrad tensors into a fast callable.
 
     Inputs are normalized automatically (Derivative nodes and derivative
@@ -217,6 +234,4 @@ def compile_to_callable(
     Returns f(values: dict[Variable, torch.Tensor], shapes: dict[Symbol, int])
     -> named torch.Tensor or tuple of them (one per input tensor).
     """
-    return CompiledProgram(
-        tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify
-    )
+    return CompiledProgram(tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify)

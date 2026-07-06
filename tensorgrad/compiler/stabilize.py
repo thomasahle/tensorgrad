@@ -272,6 +272,34 @@ class _Stabilizer:
         consume ONE power against another operand (in place). Returns the
         scalar weight factor the rewrite contributes, or None."""
         R = ops[p]
+        # See through a broadcast/view single-operand einsum wrapper:
+        # lowering leaves 1/Z as einsum([pow(Z)]) broadcast over the softmax
+        # axis, which hides the pow from this rule until factoring happens
+        # to dissolve the wrapper — too late for the chain-collapse pass to
+        # see fused softmax anchors. Unwrapping is exact when the wrapper is
+        # weightless, relabels injectively, and every broadcast-only wire it
+        # held stays held by another operand or the output (a broadcast
+        # operand contributes a factor of 1 along such wires).
+        if (
+            isinstance(R, EinsumNode)
+            and len(R.ops) == 1
+            and not R.constraints
+            and R.weight == 1
+            and len(set(R.in_subs[0])) == len(R.in_subs[0])
+            and len(set(R.out_subs)) == len(R.out_subs)
+            and set(R.in_subs[0]) <= set(R.out_subs)
+            and isinstance(R.ops[0], MapNode)
+            and R.ops[0].op == "pow"
+        ):
+            sr0 = in_subs[p]
+            out_pos = {w: j for j, w in enumerate(R.out_subs)}
+            kept = {sr0[out_pos[w]] for w in R.in_subs[0]}
+            held_elsewhere = {w for q, s in enumerate(in_subs) if q != p for w in s}
+            held_elsewhere |= set(out_subs)
+            if all(w in held_elsewhere for w in sr0 if w not in kept):
+                ops[p] = R.ops[0]
+                in_subs[p] = tuple(sr0[out_pos[w]] for w in R.in_subs[0])
+                R = ops[p]
         if not (isinstance(R, MapNode) and R.op == "pow" and len(R.ops) == 1):
             return None
         k = R.params[0]

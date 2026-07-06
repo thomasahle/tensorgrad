@@ -190,7 +190,10 @@ class TorchCodegen:
         # ±tanh splits, softmax/sum-exp nodes) whose like terms only the
         # factoring pass can merge/cancel, and re-factoring in turn co-locates
         # numerator/denominator pairs for one more stabilization sweep.
-        outputs = factor_outputs(self.builder, outputs, dims)
+        # collapse=False: the adjoint chain collapse is one-shot — re-running
+        # it here re-splices shared cotangent segments into their consumers
+        # (measured: +850 distinct values / +25% final kernels on gpt-nano).
+        outputs = factor_outputs(self.builder, outputs, dims, collapse=False)
         # Consolidation: Schwartz-Zippel value numbering merges nodes that
         # compute the same tensor (up to an axis permutation) through
         # different groupings — chiefly the per-gradient-output cotangent
