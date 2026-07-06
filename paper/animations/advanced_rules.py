@@ -563,12 +563,16 @@ class TraceDelete(Scene):
         soA = Line(ca + 0.30 * LEFT, ca + 1.0 * LEFT, color=INK, stroke_width=2.2)
         soB = Line(cb + 0.30 * RIGHT, cb + 1.0 * RIGHT, color=INK, stroke_width=2.2)
         self.add(nA, nB)
+        wAXr = Line(cX + 0.30 * LEFT, ca + 0.30 * RIGHT, color=INK,
+                    stroke_width=2.2)
         self.play(ReplacementTransform(tX, tAXB[1]), FadeIn(tAXB[0], tAXB[2]),
                   FadeIn(nA, nB),
-                  ReplacementTransform(stubL, wAX),
+                  ReplacementTransform(stubL, wAXr),
                   ReplacementTransform(stubR, wXB),
                   Create(soA), Create(soB),
                   *caption(r"a shared edge is a matrix product"), run_time=1.1)
+        self.remove(wAXr)
+        self.add(wAX)
         self.wait(0.7)
 
         p1 = ca + 0.30 * dirv(180)
@@ -579,7 +583,7 @@ class TraceDelete(Scene):
         apex = (p1 + 3 * c1 + 3 * c2 + p2) / 8
         domeL = CubicBezier(p1, (p1 + c1) / 2, (p1 + 2 * c1 + c2) / 4, apex,
                             color=INK, stroke_width=2.2)
-        domeR = CubicBezier(apex, (c1 + 2 * c2 + p2) / 4, (c2 + p2) / 2, p2,
+        domeR = CubicBezier(p2, (c2 + p2) / 2, (c1 + 2 * c2 + p2) / 4, apex,
                             color=INK, stroke_width=2.2)
         self.play(ReplacementTransform(tAXB[0], tTr[1]),
                   ReplacementTransform(tAXB[1], tTr[2]),
