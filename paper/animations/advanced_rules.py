@@ -29,38 +29,38 @@ INK = BLACK
 EASE = rate_functions.ease_in_out_sine
 
 
-def node(tex, pos, scale=1.1):
-    lbl = MathTex(tex, color=INK).scale(scale).move_to(pos)
+def node(tex, pos, scale=1.1, color=INK):
+    lbl = MathTex(tex, color=color).scale(scale).move_to(pos)
     mask = BackgroundRectangle(lbl, color=WHITE, fill_opacity=1.0, buff=0.09)
     return VGroup(mask, lbl)
 
 
 def dloop(center, width, height, dot_angle_deg=55, long_whiskers=False,
-          wscale=1.0):
+          wscale=1.0, color=INK):
     """Penrose derivative loop: ellipse + dot on it + two bent whiskers
     (row whisker bending left, column whisker bending right).  With
     long_whiskers the two whiskers extend out to point horizontally left
     and right -- where the new edges will end up."""
-    ell = Ellipse(width=width, height=height, color=INK, stroke_width=2.2)
+    ell = Ellipse(width=width, height=height, color=color, stroke_width=2.2)
     ell.move_to(center)
     a = np.deg2rad(dot_angle_deg)
     p = center + np.array([width / 2 * np.cos(a), height / 2 * np.sin(a), 0])
-    dot = Dot(p, radius=0.05, color=INK)
+    dot = Dot(p, radius=0.05, color=color)
     if long_whiskers:
         w = wscale
         wl = CubicBezier(p, p + w * np.array([-0.05, 0.28, 0]),
                          p + w * np.array([-0.60, 0.62, 0]),
                          p + w * np.array([-1.40, 0.60, 0]),
-                         color=INK, stroke_width=2.2)
+                         color=color, stroke_width=2.2)
         wr = CubicBezier(p, p + w * np.array([0.10, 0.24, 0]),
                          p + w * np.array([0.60, 0.52, 0]),
                          p + w * np.array([1.35, 0.49, 0]),
-                         color=INK, stroke_width=2.2)
+                         color=color, stroke_width=2.2)
     else:
         wl = ArcBetweenPoints(p, p + np.array([-0.28, 0.38, 0]), angle=-0.5,
-                              color=INK, stroke_width=2.2)
+                              color=color, stroke_width=2.2)
         wr = ArcBetweenPoints(p, p + np.array([0.40, 0.26, 0]), angle=0.5,
-                              color=INK, stroke_width=2.2)
+                              color=color, stroke_width=2.2)
     return VGroup(ell, dot, wl, wr)
 
 
@@ -449,13 +449,12 @@ class KroneckerTrace(Scene):
 
 
 class TraceDelete(Scene):
-    """d Tr(AXB)/dX = A^T B^T.  The formula on top evolves in sync with
-    the diagram: the partial slides inside the trace as the loop
-    localizes; (BA)^T appears when X is deleted; A^T B^T appears as the
-    turned nodes spin upright."""
+    """d Tr(AXB)/dX = A^T B^T, 3b1b-style: semantic color (A blue, B
+    green, X red, derivative apparatus amber -- the whiskers' promise
+    becomes the answer's outer edges), a quiet caption line narrating
+    each phase, and emphasis beats on the results."""
 
     def __init__(self, **kwargs):
-        # tighter framing: same pixels, smaller world
         from manim import config as _cfg
         _cfg.frame_height = 5.6
         _cfg.frame_width = 5.6 * 16 / 9
@@ -463,29 +462,49 @@ class TraceDelete(Scene):
 
     def construct(self):
         from manim import ArcBetweenPoints as ABP
-        from manim import Rotate, PI
+        from manim import Rotate, PI, Tex, Indicate, Circumscribe
+
+        CA, CB, CX, CD = "#1F6FB2", "#188A54", "#C03B2B", "#B07300"
+        GREY = "#888888"
 
         # ---- hand-built title fraction so the partial can glide ----
         num0 = MathTex(r"\partial", r"\,\mathrm{Tr}(", "A", "X", "B", ")",
                        color=INK)
-        den = MathTex(r"\partial X", color=INK)
+        for i, c in [(0, CD), (2, CA), (3, CX), (4, CB)]:
+            num0[i].set_color(c)
+        den = MathTex(r"\partial", "X", color=INK)
+        den[0].set_color(CD)
+        den[1].set_color(CX)
         bar0 = Line(ORIGIN, RIGHT * (num0.width + 0.2), color=INK,
                     stroke_width=1.6)
         frac = VGroup(num0, bar0, den).arrange(DOWN, buff=0.14)
         eq1 = MathTex("=", color=INK)
-        m1 = MathTex(r"(BA)^T", color=INK)
+        m1 = MathTex("(", "B", "A", ")^T", color=INK)
+        m1[1].set_color(CB)
+        m1[2].set_color(CA)
         eq2 = MathTex("=", color=INK)
-        m2 = MathTex(r"A^T\!", r"B^T", color=INK)
+        m2 = MathTex(r"A^T\!", "B^T", color=INK)
+        m2[0].set_color(CA)
+        m2[1].set_color(CB)
         title = VGroup(frac, eq1, m1, eq2, m2).arrange(RIGHT, buff=0.28)
         title.to_edge(UP, buff=0.35)
-        # start centered; slide left as the equation grows to the right
-        v0 = -frac.get_center()[0]                       # fraction alone
-        v1 = -VGroup(frac, eq1, m1).get_center()[0]      # frac = (BA)^T
+        v0 = -frac.get_center()[0]
+        v1 = -VGroup(frac, eq1, m1).get_center()[0]
         frac.shift(RIGHT * v0)
         eq1.shift(RIGHT * v1)
         m1.shift(RIGHT * v1)
-        # early stages sit at the equation midline, not the numerator slot
         tpos = frac.get_center()
+
+        # ---- caption line ----
+        self.cap = None
+
+        def caption(text):
+            new = Tex(text, color=GREY).scale(0.62).to_edge(DOWN, buff=0.18)
+            anims = [FadeIn(new, run_time=0.6)]
+            if self.cap is not None:
+                anims.append(FadeOut(self.cap, run_time=0.4))
+            self.cap = new
+            return anims
 
         ca, cb, cX = np.array([-1.15, -1.3, 0]), np.array([1.15, -1.3, 0]), np.array([0, -1.3, 0])
         phi = ValueTracker(0.0)
@@ -510,29 +529,36 @@ class TraceDelete(Scene):
             p = c + 0.30 * dirv(th)
             k = kap.get_value()
             return ABP(p, p + (0.42 + 0.13 * (1 - k)) * dirv(th + 55 * k),
-                       angle=2.2 * k, color=INK, stroke_width=2.2)
+                       angle=2.2 * k, color=CD, stroke_width=2.2)
 
-        def lab(tex, c, sgn):
-            m = MathTex(tex, color=INK).scale(1.1)
+        def lab(tex, c, sgn, col):
+            m = MathTex(tex, color=col).scale(1.1)
             m.rotate(sgn * np.deg2rad(phi.get_value())).move_to(c)
             mask = BackgroundRectangle(m, color=WHITE, fill_opacity=1.0, buff=0.08)
             return VGroup(mask, m)
 
         domeM = always_redraw(dome)
-        nA = always_redraw(lambda: lab("A", ca, -1))
-        nB = always_redraw(lambda: lab("B", cb, +1))
-        nX = node("X", cX)
+        nA = always_redraw(lambda: lab("A", ca, -1, CA))
+        nB = always_redraw(lambda: lab("B", cb, +1, CB))
+        nX = node("X", cX, color=CX)
         wAX = Line(ca + 0.30 * RIGHT, cX + 0.30 * LEFT, color=INK, stroke_width=2.2)
         wXB = Line(cX + 0.30 * RIGHT, cb + 0.30 * LEFT, color=INK, stroke_width=2.2)
 
         # ---- build the formula and the diagram together ----
-        tX = MathTex("X", color=INK).move_to(tpos)
+        tX = MathTex("X", color=CX).move_to(tpos)
         tAXB = MathTex("A", "X", "B", color=INK).move_to(tpos)
+        tAXB[0].set_color(CA)
+        tAXB[1].set_color(CX)
+        tAXB[2].set_color(CB)
         tTr = MathTex(r"\mathrm{Tr}(", "A", "X", "B", ")", color=INK).move_to(tpos)
+        tTr[1].set_color(CA)
+        tTr[2].set_color(CX)
+        tTr[3].set_color(CB)
         stubL = Line(cX + 0.30 * LEFT, cX + 1.05 * LEFT, color=INK, stroke_width=2.2)
         stubR = Line(cX + 0.30 * RIGHT, cX + 1.05 * RIGHT, color=INK, stroke_width=2.2)
-        self.play(Write(tX), FadeIn(nX), Create(stubL), Create(stubR), run_time=0.9)
-        self.wait(0.6)
+        self.play(Write(tX), FadeIn(nX), Create(stubL), Create(stubR),
+                  *caption(r"a matrix is a node with two edges"), run_time=0.9)
+        self.wait(0.7)
 
         soA = Line(ca + 0.30 * LEFT, ca + 1.0 * LEFT, color=INK, stroke_width=2.2)
         soB = Line(cb + 0.30 * RIGHT, cb + 1.0 * RIGHT, color=INK, stroke_width=2.2)
@@ -541,8 +567,9 @@ class TraceDelete(Scene):
                   FadeIn(nA, nB),
                   ReplacementTransform(stubL, wAX),
                   ReplacementTransform(stubR, wXB),
-                  Create(soA), Create(soB), run_time=1.1)
-        self.wait(0.6)
+                  Create(soA), Create(soB),
+                  *caption(r"a shared edge is a matrix product"), run_time=1.1)
+        self.wait(0.7)
 
         p1 = ca + 0.30 * dirv(180)
         p2 = cb + 0.30 * dirv(0)
@@ -560,30 +587,36 @@ class TraceDelete(Scene):
                   FadeIn(tTr[0], tTr[4]),
                   ReplacementTransform(soA, domeL),
                   ReplacementTransform(soB, domeR),
+                  *caption(r"closing the loop takes the trace"),
                   run_time=1.2, rate_func=EASE)
         self.remove(domeL, domeR)
         self.add(domeM)
-        self.wait(0.6)
+        self.wait(0.7)
 
-        # d/dX appears around Tr(AXB), which glides into the numerator
         tr_target = VGroup(*num0[1:])
         big = dloop(np.array([0, -0.95, 0]), 5.6, 2.9, dot_angle_deg=72,
-                    long_whiskers=True)
+                    long_whiskers=True, color=CD)
         self.play(tTr.animate.move_to(tr_target.get_center()
                   ).scale(tr_target.height / tTr.height),
                   FadeIn(num0[0], bar0, den),
-                  Create(big[0]), FadeIn(big[1], big[2], big[3]), run_time=1.2)
+                  Create(big[0]), FadeIn(big[1], big[2], big[3]),
+                  *caption(r"the derivative promises two new edges"),
+                  run_time=1.2)
         self.remove(tTr)
         self.add(num0)
-        self.wait(0.7)
+        self.wait(0.8)
 
         # ---- the loop localizes to X; the partial slides inside too ----
         num1 = MathTex(r"\mathrm{Tr}(", "A", r"\,\partial", "X", r"\,B", ")",
                        color=INK).move_to(num0.get_center())
+        num1[1].set_color(CA)
+        num1[2].set_color(CD)
+        num1[3].set_color(CX)
+        num1[4].set_color(CB)
         bar1 = Line(ORIGIN, RIGHT * (num1.width + 0.2), color=INK,
                     stroke_width=1.6).move_to(bar0.get_center())
         small = dloop(cX + np.array([0, 0.05, 0]), 1.05, 1.0, dot_angle_deg=72,
-                      long_whiskers=True, wscale=0.6)
+                      long_whiskers=True, wscale=0.6, color=CD)
         self.play(Transform(big, small),
                   ReplacementTransform(num0[0], num1[2], path_arc=-1.4),
                   ReplacementTransform(num0[1], num1[0]),
@@ -592,35 +625,39 @@ class TraceDelete(Scene):
                   ReplacementTransform(num0[4], num1[4]),
                   ReplacementTransform(num0[5], num1[5]),
                   Transform(bar0, bar1),
+                  *caption(r"linearity: it tightens around the only $X$"),
                   run_time=1.6, rate_func=EASE)
-        self.wait(0.6)
+        self.wait(0.7)
 
         # ---- delete the node; the remaining diagram IS (BA)^T ----
         hookA = always_redraw(lambda: hook(ca, 0))
         hookB = always_redraw(lambda: hook(cb, 180))
         hA0, hB0 = hook(ca, 0), hook(cb, 180)
-        self.play(FadeOut(nX, big),
+        self.play(FadeOut(nX, scale=0.4), FadeOut(big),
                   ReplacementTransform(wAX, hA0),
                   ReplacementTransform(wXB, hB0),
                   VGroup(num1, bar0, den).animate.shift(RIGHT * (v1 - v0)),
                   Write(eq1), FadeIn(m1),
+                  *caption(r"delete the node; its edges dangle"),
                   run_time=1.2, rate_func=EASE)
         self.remove(hA0, hB0)
         self.add(hookA, hookB)
-        self.wait(0.7)
+        self.play(Indicate(m1, color=CD, scale_factor=1.12), run_time=0.7)
+        self.wait(0.5)
 
         # ---- the arc pulls straight; the nodes turn around ----
         self.play(phi.animate.set_value(180), kap.animate.set_value(0.02),
+                  *caption(r"straightening the loop turns $A$ and $B$ around"),
                   run_time=3.2, rate_func=EASE)
         self.wait(0.5)
 
         # ---- the glyphs spin upright as the ^T (and A^T B^T) appear ----
-        finA = MathTex("A", "^{T}", color=INK).scale(1.1)
+        finA = MathTex("A", "^{T}", color=CA).scale(1.1)
         finA.shift(ca - finA[0].get_center())
-        finB = MathTex("B", "^{T}", color=INK).scale(1.1)
+        finB = MathTex("B", "^{T}", color=CB).scale(1.1)
         finB.shift(cb - finB[0].get_center())
-        rotA = MathTex("A", color=INK).scale(1.1).move_to(ca).rotate(-PI)
-        rotB = MathTex("B", color=INK).scale(1.1).move_to(cb).rotate(PI)
+        rotA = MathTex("A", color=CA).scale(1.1).move_to(ca).rotate(-PI)
+        rotB = MathTex("B", color=CB).scale(1.1).move_to(cb).rotate(PI)
         self.remove(nA, nB)
         self.add(rotA, rotB)
         self.play(Rotate(rotA, angle=-PI, about_point=ca),
@@ -628,6 +665,7 @@ class TraceDelete(Scene):
                   FadeIn(finA[1], finB[1]),
                   VGroup(num1, bar0, den, eq1, m1).animate.shift(RIGHT * (-v1)),
                   Write(eq2), FadeIn(m2),
+                  *caption(r"a turned matrix is its transpose"),
                   run_time=1.1, rate_func=EASE)
         self.remove(rotA, rotB)
         maskA = BackgroundRectangle(finA, color=WHITE, fill_opacity=1.0, buff=0.04)
@@ -641,5 +679,7 @@ class TraceDelete(Scene):
         self.add(domeS, hA_s, hB_s, maskA, maskB, finA, finB)
         self.play(VGroup(domeS, hA_s, hB_s, maskA, maskB, finA, finB
                          ).animate.shift(1.55 * UP),
+                  FadeOut(self.cap),
                   run_time=0.9, rate_func=EASE)
-        self.wait(2.0)
+        self.play(Circumscribe(m2, color=CD, buff=0.12), run_time=1.0)
+        self.wait(1.8)
