@@ -463,20 +463,23 @@ class KroneckerTrace(Scene):
         wBl = Line(cLL, pB0, color=CB, stroke_width=2.2)
         wBr = Line(pB0, cLR, color=CB, stroke_width=2.2)
         dy = 0.055
-        sAl = Line(apxL + dy * UP, apxL + dy * UP + 0.75 * LEFT, color=CA,
+        inL, inR = np.array([-1.70, y0, 0]), np.array([1.70, y0, 0])
+        sAl = Line(inL + dy * UP, inL + dy * UP + 0.90 * LEFT, color=CA,
                    stroke_width=2.2)
-        sBl = Line(apxL - dy * UP, apxL - dy * UP + 0.75 * LEFT, color=CB,
+        sBl = Line(inL - dy * UP, inL - dy * UP + 0.90 * LEFT, color=CB,
                    stroke_width=2.2)
-        sAr = Line(apxR + dy * UP, apxR + dy * UP + 0.75 * RIGHT, color=CA,
+        sAr = Line(inR + dy * UP, inR + dy * UP + 0.90 * RIGHT, color=CA,
                    stroke_width=2.2)
-        sBr = Line(apxR - dy * UP, apxR - dy * UP + 0.75 * RIGHT, color=CB,
+        sBr = Line(inR - dy * UP, inR - dy * UP + 0.90 * RIGHT, color=CB,
                    stroke_width=2.2)
 
-        self.play(Write(tAoB),
-                  FadeIn(nA, nB),
-                  Create(VGroup(wAl, wAr, wBl, wBr)),
-                  FadeIn(triL, triR),
+        # z-order: wires, stubs, then triangles (fill hides the joins),
+        # then labels (masks hide the wire ends), then text
+        self.play(Create(VGroup(wAl, wAr, wBl, wBr)),
                   Create(VGroup(sAl, sBl, sAr, sBr)),
+                  FadeIn(triL, triR),
+                  FadeIn(nA, nB),
+                  Write(tAoB),
                   *caption(r"the Kronecker product bundles two matrices"),
                   run_time=1.3)
         self.wait(0.9)
@@ -490,10 +493,10 @@ class KroneckerTrace(Scene):
                   ReplacementTransform(tAoB[1], tTr[2]),
                   ReplacementTransform(tAoB[2], tTr[3]),
                   FadeIn(tTr[0], tTr[4]),
-                  ReplacementTransform(sAl, arcAl),
-                  ReplacementTransform(sAr, arcAr),
-                  ReplacementTransform(sBl, arcBl),
-                  ReplacementTransform(sBr, arcBr),
+                  Transform(sAl, arcAl),
+                  Transform(sAr, arcAr),
+                  Transform(sBl, arcBl),
+                  Transform(sBr, arcBr),
                   *caption(r"closing the bundle takes the trace"),
                   run_time=1.4, rate_func=EASE)
         self.wait(0.8)
@@ -504,16 +507,16 @@ class KroneckerTrace(Scene):
         qBl = quad(KB, np.pi, 3 * np.pi / 2, CB)
         qBr = quad(KB, 3 * np.pi / 2, 2 * np.pi, CB)
         self.play(FadeOut(triL, scale=0.4), FadeOut(triR, scale=0.4),
-                  ReplacementTransform(wAl, qAl),
-                  ReplacementTransform(wAr, qAr),
-                  ReplacementTransform(wBl, qBl),
-                  ReplacementTransform(wBr, qBr),
+                  Transform(wAl, qAl),
+                  Transform(wAr, qAr),
+                  Transform(wBl, qBl),
+                  Transform(wBr, qBr),
                   *caption(r"the flatten triangles cancel"),
                   run_time=1.2, rate_func=EASE)
         loopA, loopB = mkloop(KA, CA), mkloop(KB, CB)
         labA = always_redraw(lambda: node("A", looppt(KA, 3 * np.pi / 2), color=CA))
         labB = always_redraw(lambda: node("B", looppt(KB, 3 * np.pi / 2), color=CB))
-        self.remove(arcAl, arcAr, arcBl, arcBr, qAl, qAr, qBl, qBr, nA, nB)
+        self.remove(sAl, sAr, sBl, sBr, wAl, wAr, wBl, wBr, nA, nB)
         self.add(loopA, loopB, labA, labB)
         self.wait(0.5)
 
