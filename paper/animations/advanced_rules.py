@@ -478,6 +478,12 @@ class TraceDelete(Scene):
         m2 = MathTex(r"A^T\!", r"B^T", color=INK)
         title = VGroup(frac, eq1, m1, eq2, m2).arrange(RIGHT, buff=0.28)
         title.to_edge(UP, buff=0.35)
+        # start centered; slide left as the equation grows to the right
+        v0 = -frac.get_center()[0]                       # fraction alone
+        v1 = -VGroup(frac, eq1, m1).get_center()[0]      # frac = (BA)^T
+        frac.shift(RIGHT * v0)
+        eq1.shift(RIGHT * v1)
+        m1.shift(RIGHT * v1)
         tpos = num0.get_center()
 
         ca, cb, cX = np.array([-1.15, -1.3, 0]), np.array([1.15, -1.3, 0]), np.array([0, -1.3, 0])
@@ -595,6 +601,7 @@ class TraceDelete(Scene):
         self.play(FadeOut(nX, big),
                   ReplacementTransform(wAX, hA0),
                   ReplacementTransform(wXB, hB0),
+                  VGroup(num1, bar0, den).animate.shift(RIGHT * (v1 - v0)),
                   Write(eq1), FadeIn(m1),
                   run_time=1.2, rate_func=EASE)
         self.remove(hA0, hB0)
@@ -618,6 +625,7 @@ class TraceDelete(Scene):
         self.play(Rotate(rotA, angle=-PI, about_point=ca),
                   Rotate(rotB, angle=PI, about_point=cb),
                   FadeIn(finA[1], finB[1]),
+                  VGroup(num1, bar0, den, eq1, m1).animate.shift(RIGHT * (-v1)),
                   Write(eq2), FadeIn(m2),
                   run_time=1.1, rate_func=EASE)
         self.remove(rotA, rotB)
