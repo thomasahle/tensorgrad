@@ -265,6 +265,62 @@ def _row_const_floors(nodes) -> dict:
     return floors
 
 
+def _row_deficits(nodes, assign) -> dict:
+    """Symbols whose dims must rise for every affine row to have a solution
+    at `assign`. A row sum(c_w * i_w) == const with i_w in [0, size_w) is
+    satisfiable only if const lies in the reachable interval; rows whose
+    constant is SYMBOLIC (a concat part at offset `length`) cannot be
+    floored up front — the needed size depends on the draw. When a row's
+    constant falls outside the interval, lift the wires whose size symbols
+    do not feed the constant (lifting a constant's own symbol chases its
+    tail: [l == b - length] must widen buf, not length)."""
+    need: dict[str, int] = {}
+    for n in nodes:
+        for coeffs, const in getattr(n, "constraints", ()) or ():
+            cs = sympy.sympify(const)
+            cval = cs.subs(assign)
+            if not cval.is_number or not cval.is_integer:
+                continue
+            target = int(cval)
+            lo, hi, symbolic = 0, 0, False
+            for w, cf in coeffs:
+                cfv = sympy.sympify(cf).subs(assign)
+                if not cfv.is_number:
+                    symbolic = True
+                    break
+                span = int(cfv) * (int(sympy.sympify(n.wire_dims[w]).subs(assign)) - 1)
+                lo, hi = lo + min(0, span), hi + max(0, span)
+            if symbolic or lo <= target <= hi:
+                continue
+            const_syms = {s.name for s in cs.free_symbols}
+            for w, _ in coeffs:
+                for s in sympy.sympify(n.wire_dims[w]).free_symbols:
+                    if s.name not in const_syms:
+                        need[s.name] = max(need.get(s.name, 0), abs(target) + 2)
+    return need
+
+
+def _draw_assign(nodes, syms, ctx) -> dict:
+    """Random dims per symbol (keyed by NAME, independent of the program, so
+    separately lowered expressions over the same symbols agree), redrawn
+    with lifted floors until every affine row is interval-satisfiable. The
+    empty-indicator retry in _eval_einsum remains the exactness backstop."""
+    floors = _row_const_floors(nodes)
+    assign: dict = {}
+    for _ in range(4):
+        assign = {
+            s: (lo := max(_DIM_LO, floors.get(s.name, 0)))
+            + _h(ctx, "dim", s.name, floors.get(s.name, 0)) % (max(_DIM_HI, lo + 3) - lo + 1)
+            for s in syms
+        }
+        deficits = _row_deficits(nodes, assign)
+        if not deficits:
+            break
+        for name, val in deficits.items():
+            floors[name] = max(floors.get(name, 0), val)
+    return assign
+
+
 def _eval_einsum(node: EinsumNode, vals, assign, ctx) -> np.ndarray:
     wire_sz = {w: _dim(d, assign) for w, d in enumerate(node.wire_dims)}
     operands = [(vals[id(op)], list(subs)) for op, subs in zip(node.ops, node.in_subs)]
@@ -465,17 +521,7 @@ def _eval_trial(outs, ctx):
     syms = set()
     for n in nodes:
         syms |= _node_syms(n)
-    # Dims keyed per-symbol (by name), independent of the program, so
-    # separately lowered expressions over the same symbols agree. Symbols
-    # whose wires appear in affine rows with a concrete constant get their
-    # floor lifted above it, so the rows are satisfiable at SOME draw (the
-    # empty-indicator retry above then finds one).
-    floors = _row_const_floors(nodes)
-    assign = {
-        s: (lo := max(_DIM_LO, floors.get(s.name, 0)))
-        + _h(ctx, "dim", s.name, floors.get(s.name, 0)) % (max(_DIM_HI, lo + 3) - lo + 1)
-        for s in syms
-    }
+    assign = _draw_assign(nodes, syms, ctx)
     vals: dict[int, np.ndarray] = {}
     for n in nodes:
         vals[id(n)] = _eval_node(n, vals, assign, ctx)
