@@ -917,15 +917,13 @@ class CrossEntropyHessian(Scene):
             """pow_{-1} <... exp <... z ---.   (sum-dot on z's wire)"""
             d = {}
             d['pw'] = glyph(r"\mathrm{pow}_{-1}", pp, CA, 0.8 * sc)
-            d['e'] = glyph(r"\exp", pp + np.array([1.5 * sc, 0, 0]), CA, 0.8 * sc)
-            d['z'] = glyph("z", pp + np.array([2.35 * sc, 0, 0]), CX, 0.95 * sc)
-            d['a1'] = farrow(pp + np.array([2.13 * sc, 0, 0]),
-                             pp + np.array([1.87 * sc, 0, 0]))
-            d['w'] = wire(pp + np.array([2.55 * sc, 0, 0]),
-                          pp + np.array([3.1 * sc, 0, 0]))
-            d['s'] = cdot(pp + np.array([3.15 * sc, 0, 0]))
-            d['a2'] = farrow(pp + np.array([1.17 * sc, 0.0, 0]),
-                             pp + np.array([0.52 * sc, 0, 0]))
+            d['e'] = glyph(r"\exp", pp + np.array([1.2 * sc, 0, 0]), CA, 0.8 * sc)
+            d['z'] = glyph("z", pp + np.array([2.05 * sc, 0, 0]), CX, 0.95 * sc)
+            d['a1'] = farrow(pp + np.array([1.83 * sc, 0, 0]),
+                             pp + np.array([1.57 * sc, 0, 0]))
+            d['w'] = wire(pp + np.array([2.25 * sc, 0, 0]),
+                          pp + np.array([2.8 * sc, 0, 0]))
+            d['s'] = cdot(pp + np.array([2.85 * sc, 0, 0]))
             return d
 
         def fgroup(d):
@@ -1008,9 +1006,9 @@ class CrossEntropyHessian(Scene):
         plusA = MathTex("+", color=INK).move_to([3.45, yA, 0])
         A2 = F1(np.array([-3.5, yB, 0]))
         B2 = F2(np.array([-1.1, yB, 0]))
-        loopB = Ellipse(width=4.3, height=1.15, color=CD, stroke_width=2.2
-                        ).move_to([0.25, yB, 0])
-        ldotB = Dot([0.25, yB + 0.575, 0], radius=0.05, color=CD)
+        loopB = Ellipse(width=4.0, height=1.15, color=CD, stroke_width=2.2
+                        ).move_to([0.1, yB, 0])
+        ldotB = Dot([0.1, yB + 0.575, 0], radius=0.05, color=CD)
         wB0 = ldotB.get_center()
         whisB = CubicBezier(wB0, wB0 + np.array([0.3, 0.18, 0]),
                             wB0 + np.array([0.7, 0.24, 0]),
@@ -1043,10 +1041,15 @@ class CrossEntropyHessian(Scene):
         self.play(FadeOut(loop, ldot),
                   Create(circA),
                   Transform(whis, jA), FadeIn(cdA),
-                  *caption(r"elementwise: circle the function, "
-                           r"copy-dot on the wire \; ($\exp' = \exp$)"),
+                  *caption(r"elementwise derivative: circle the function, "
+                           r"copy-dot on the wire"),
                   run_time=1.5, rate_func=EASE)
-        self.wait(0.9)
+        self.wait(0.6)
+        self.play(FadeOut(circA),
+                  *caption(r"evaluate: $\exp' = \exp$ --- "
+                           r"the circle is spent"),
+                  run_time=0.8)
+        self.wait(0.5)
 
         # ===== stage 5: row B -- the chain rule is actually a chain =====
         circB = dcircle(B2['pw'])
@@ -1080,13 +1083,12 @@ class CrossEntropyHessian(Scene):
 
         # pow_{-1}' = -pow_{-2}: the minus is born
         pw2 = glyph(r"\mathrm{pow}_{-2}", B2['pw'].get_center(), CA, 0.8)
-        circB2 = dcircle(pw2)
         minusB = MathTex("-", color=INK).scale(1.1).move_to([-4.78, yB, 0])
         self.play(ReplacementTransform(B2['pw'], pw2),
-                  Transform(circB, circB2),
+                  FadeOut(circB), FadeOut(de),
                   FadeIn(minusB, shift=0.2 * RIGHT),
-                  *caption(r"$\mathrm{pow}_{-1}' = -\,\mathrm{pow}_{-2}$:"
-                           r" the minus is born"),
+                  *caption(r"evaluate: $\mathrm{pow}_{-1}' = "
+                           r"-\,\mathrm{pow}_{-2}$ --- the minus is born"),
                   run_time=1.1, rate_func=EASE)
         self.wait(0.8)
 
@@ -1100,18 +1102,19 @@ class CrossEntropyHessian(Scene):
                   *caption(r"and again for the inner chain"),
                   run_time=1.1)
         self.wait(0.5)
+        self.play(FadeOut(circG),
+                  G3['s'].animate.move_to(cdG.get_center()),
+                  *caption(r"$\exp' = \exp$; the sum slides into "
+                           r"the copy-dot"),
+                  run_time=1.0, rate_func=EASE)
+        self.wait(0.4)
         jG1 = wire(G3z + np.array([0.16, 0, 0]),
                    G3z + np.array([0.8, 0, 0]), CD)
-        deQ2 = np.array([G3z[0] - 0.78 + 0.28, yB + 0.3, 0])
-        de2 = CubicBezier(deP + np.array([0.04, 0.04, 0]),
-                          deP + np.array([0.9, 0.6, 0]),
-                          deQ2 + np.array([-1.1, 0.75, 0]),
-                          deQ2, color=CD, stroke_width=2.0)
-        self.play(FadeOut(G3['s'], scale=0.4), FadeOut(cdG, scale=0.4),
-                  Transform(de[1], de2),
+        self.play(FadeOut(G3['s'], scale=0.3), FadeOut(cdG, scale=0.3),
                   ReplacementTransform(VGroup(G3['w'], jG0), jG1),
-                  *caption(r"the sum-dot absorbs the copy-dot"),
-                  run_time=1.0, rate_func=EASE)
+                  *caption(r"$\textstyle\sum_k \delta_{jk}\exp(z)_k"
+                           r" = \exp(z)_j$"),
+                  run_time=0.9, rate_func=EASE)
         self.wait(0.7)
 
         # ============ stage 6: recognize p, three times ============
@@ -1128,7 +1131,6 @@ class CrossEntropyHessian(Scene):
         pT2b = glyph("p", np.array([2.85, yF, 0]), CB)
         self.play(
             ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
-                                        circA,
                                         *[B1[k] for k in B1]),
                                  VGroup(pv1, pT1)),
             ReplacementTransform(cdA, d1),
@@ -1137,12 +1139,11 @@ class CrossEntropyHessian(Scene):
             FadeOut(plusA),
             Transform(minusB, minus2),
             ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
-                                        pw2, circB, B2['e'],
-                                        B2['z'], B2['a1'], B2['w'], B2['s'],
-                                        B2['a2'], de[0], de[1]),
+                                        pw2, B2['e'],
+                                        B2['z'], B2['a1'], B2['w'], B2['s']),
                                  pT2a),
             ReplacementTransform(A2['w'], iw2),
-            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a'], circG),
+            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a']),
                                  pT2b),
             ReplacementTransform(jG1, jw2),
             *caption(r"recognize $p$ --- three times"),
