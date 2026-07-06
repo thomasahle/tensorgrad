@@ -507,7 +507,7 @@ class KroneckerTrace(Scene):
         wAr = Line(pA0, cleared(cUR, pA0), color=CA, stroke_width=2.2)
         wBl = Line(cleared(cLL, pB0), pB0, color=CB, stroke_width=2.2)
         wBr = Line(pB0, cleared(cLR, pB0), color=CB, stroke_width=2.2)
-        dy = 0.024   # tight double wire: the strands touch until resolved
+        dy = 0.006   # zero-gap double wire: the strands touch until resolved
         sAl = Line(np.array([-ax_gap, y0 + dy, 0]),
                    np.array([-2.62, y0 + dy, 0]), color=CA, stroke_width=2.2)
         sBl = Line(np.array([-ax_gap, y0 - dy, 0]),
