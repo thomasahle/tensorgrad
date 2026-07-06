@@ -66,7 +66,7 @@ from sympy import Symbol, symbols
 
 import tensorgrad.functions as F
 import tensorgrad as tg
-from tensorgrad import Ones, Sum, Variable, typed
+from tensorgrad import Sum, Variable, typed
 from tensorgrad.tensor import Tensor
 
 # The punchline: no gradient tape, ever. All gradients in this file are
@@ -114,9 +114,9 @@ def param(name: str, **edges) -> Variable:
 raw = Variable("raw", batch, length)
 
 # Structure tensors are tensorgrad expressions, not data: a triangle is a
-# sum of shifted diagonals (F.window), a ramp (0,1,...,n-1) is ones @ a
-# strict triangle, and the causal mask is -1e9 times an upper triangle.
-# Nothing here touches the host beyond the python ints that size the sums.
+# sum of shifted diagonals (F.window), and the causal mask is -1e9 times an
+# upper triangle. Nothing here touches the host beyond the python ints that
+# size the sums.
 
 
 def diagonals(lo, hi, **edges: Symbol) -> Tensor:
@@ -124,16 +124,6 @@ def diagonals(lo, hi, **edges: Symbol) -> Tensor:
     return Sum([F.window(start=k, **edges) for k in range(lo, hi)])
 
 
-def ramp(n, row: str, **edge: Symbol) -> Tensor:
-    """(0, 1, ..., n-1) along `edge`: ones contracted with a strict triangle."""
-    (name, size), = edge.items()
-    return Ones(**{row: size}) @ diagonals(-(n - 1), 0, **{row: size, name: size})
-
-
-tri = diagonals(-(VOCAB - 1), 1, vp=vocab, vocab=vocab)  # [v' <= v]
-tri_strict = diagonals(-(VOCAB - 1), 0, vp=vocab, vocab=vocab)  # [v' < v]
-pos = ramp(LENGTH, "lp", length=length)  # 0,1,...,LENGTH-1
-val = ramp(VOCAB, "vq", vocab=vocab)  # 0,1,...,VOCAB-1
 causal_mask = -1e9 * diagonals(-(SEQ - 1), 0, seq=seq, key=seq)  # [key > seq]
 
 # Evaluation inputs: the decode buffer (one slot longer than the model's
@@ -192,18 +182,15 @@ def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
 
 
 # ------------------------------------------------ the data pipeline (algebra)
-# Sorting is algebra too. Counting sort: count each digit's occurrences
-# (a one_hot contraction), take cumulative counts (a triangle contraction),
-# and place digit v at position p iff cum[v-1] <= p < cum[v] (step-function
-# indicators). The labels the model learns from are computed by the same
-# compiled program that trains on them.
+# The labels the model learns from are computed by the same compiled program
+# that trains on them: F.sort is one_hot(argsort(x)) contracted with x, so
+# even sorting is a contraction — and its gradient (unused here) would
+# derive as the transposed permutation gather.
 
 
 @typed
 def sort_digits(x: Tensor["batch", "length"]) -> Tensor["batch", "length"]:
-    counts = F.sum(F.one_hot(x, vocab), ["length"]).rename(vocab="vp")
-    below = F.gt0(counts @ tri - pos - 0.5) - F.gt0(counts @ tri_strict - pos - 0.5)
-    return F.dot(below, val, dim="vocab")
+    return F.sort(x, dim="length")
 
 
 full = F.concat(raw, sort_digits(raw), dim="length", size=buf).rename(length="buf")  # digits ++ sorted

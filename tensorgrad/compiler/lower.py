@@ -324,6 +324,11 @@ class Lowerer:
             out_order = tuple(e for e in order if e != sig.dim)
             return self.b.reduce("argmax", (axis,), node), out_order
 
+        if isinstance(sig, F._ArgSortFunction):
+            node, order = self.lower(t.inputs[0])
+            axis = order.index(sig.dim)
+            return self.b.reduce("argsort", (axis,), node), order
+
         if isinstance(sig, F._OneHotFunction):
             # inputs = (idx, size_carrier); the carrier only fixes the number
             # of classes, so it is not lowered at all.

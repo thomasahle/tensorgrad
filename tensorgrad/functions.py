@@ -1254,6 +1254,23 @@ def argmax(t: Tensor, dim: str) -> Tensor:
     return Function(_ArgMaxFunction(dim), (t,), {})
 
 
+def argsort(t: Tensor, dim: str) -> Tensor:
+    """Positions that sort `t` ascending along `dim` (integer values carried
+    as floats, like argmax). A true leaf: indices are piecewise constant, so
+    the derivative is Zero."""
+    return Function(_ArgSortFunction(dim), (t,), {dim: t.shape[dim]})
+
+
+def sort(t: Tensor, dim: str) -> Tensor:
+    """`t` sorted ascending along `dim`: the contraction of `t` with the
+    one_hot indicator of argsort — sorted[k] = sum_j [argsort[k] == j] t[j].
+    Being linear in `t` (argsort is piecewise constant), its gradient
+    DERIVES as the transposed permutation gather; no hand-written rule."""
+    src_edge = _unused_edge_names([dim], t.edges)[dim]
+    picks = one_hot(argsort(t, dim), t.shape[dim], src_edge)
+    return dot(picks, t.rename(**{dim: src_edge}), dim=src_edge)
+
+
 class _ArgMaxFunction(FunctionSignature):
     def __init__(self, dim: str) -> None:
         super().__init__("argmax", frozenset(), (frozenset([dim]),))
@@ -1261,6 +1278,19 @@ class _ArgMaxFunction(FunctionSignature):
 
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         raise NotImplementedError(f"Derivative not implemented for {self.name}")
+
+
+class _ArgSortFunction(FunctionSignature):
+    """argsort along `dim`; shape-preserving (unlike argmax, the sorted axis
+    survives). Zero derivative: indices are piecewise constant in t."""
+
+    def __init__(self, dim: str) -> None:
+        super().__init__("argsort", frozenset([dim]), (frozenset([dim]),))
+        self.dim = dim
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        new_edges = new_edges or {}
+        return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
 
 
 class _MaxGradFunction(FunctionSignature):

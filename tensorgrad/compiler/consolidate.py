@@ -173,7 +173,7 @@ def _eval_reduce_equivariant(node: ReduceNode, vals, assign, ctx) -> np.ndarray:
         key = ("atom-reduce-eq", node.op, axes_c, _sz._h(b))
         core = _sz._rand_tensor(tuple(arr.shape[a] for a in p), *key)
         return np.transpose(core, ip)
-    dims = arr.shape if node.op in ("softmax", "log_softmax") else tuple(
+    dims = arr.shape if node.op in ("softmax", "log_softmax", "argsort") else tuple(
         d for i, d in enumerate(arr.shape) if i not in node.axes
     )
     key = ("atom-reduce", node.op, node.axes, _sz._vhash(arr), dims)
@@ -338,7 +338,7 @@ def consolidate_outputs(builder: Builder, outputs) -> list:
             fop, rho = res(nd.ops[0])
             new_axes = tuple(sorted(rho[a] for a in nd.axes))
             new_node = builder.reduce(nd.op, new_axes, fop)
-            if nd.op in ("softmax", "log_softmax"):
+            if nd.op in ("softmax", "log_softmax", "argsort"):
                 return new_node, rho
             kept_old = [a for a in range(nd.ops[0].order) if a not in nd.axes]
             kept_new = [b for b in range(fop.order) if b not in new_axes]

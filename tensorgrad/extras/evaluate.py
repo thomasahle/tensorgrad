@@ -15,6 +15,7 @@ from tensorgrad.functions import (
     _MatrixInverseFunction,
     _SimpleFunction,
     _ArgMaxFunction,
+    _ArgSortFunction,
     _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
@@ -373,6 +374,13 @@ def _(func: _ArgMaxFunction, x: torch.Tensor) -> torch.Tensor:
     names = list(x.names)
     names.pop(i)
     return torch.argmax(x.rename(None), dim=i).rename(*names)
+
+
+@evaluate_function.register
+def _(func: _ArgSortFunction, x: torch.Tensor) -> torch.Tensor:
+    i = x.names.index(func.dim)
+    names = x.names
+    return torch.argsort(x.rename(None), dim=i).to(x.dtype).rename(*names)
 
 
 @evaluate_function.register

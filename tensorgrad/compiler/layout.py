@@ -189,7 +189,7 @@ def _decide(node: Node, votes: list) -> tuple:
             return tuple(out.index(w) for w in batch + m + n)
         return _majority(votes) if votes else ident
 
-    if isinstance(node, ReduceNode) and node.op in ("softmax", "log_softmax"):
+    if isinstance(node, ReduceNode) and node.op in ("softmax", "log_softmax", "argsort"):
         if votes:
             return _majority(votes)
         # unconstrained: reduced axes last (contiguous softmax)
@@ -215,7 +215,7 @@ def _vote_operands(node: Node, phys: tuple, votes: dict) -> None:
             vote(op, tuple(perm[j] for j in phys))
     elif isinstance(node, ReduceNode):
         (op,) = node.ops
-        if node.op in ("softmax", "log_softmax"):
+        if node.op in ("softmax", "log_softmax", "argsort"):
             vote(op, phys)
         else:  # max/argmax: operand = kept axes (in output order) + reduced last
             kept = [a for a in range(op.order) if a not in node.axes]
@@ -330,7 +330,7 @@ def _refine(node: Node, phys: dict):
     if isinstance(node, ReduceNode):
         (op,) = node.ops
         physO = phys_of(op)
-        if node.op in ("softmax", "log_softmax"):
+        if node.op in ("softmax", "log_softmax", "argsort"):
             return physO
         kept = [a for a in range(op.order) if a not in node.axes]
         renum = {a: j for j, a in enumerate(kept)}
@@ -386,7 +386,7 @@ def assign_layouts(
             # producers. Only real structural preferences still vote: matmul
             # cells (block layouts) and softmax (reduced-last).
             real_pref = (isinstance(node, EinsumNode) and matmul_groups(node) is not None) or (
-                isinstance(node, ReduceNode) and node.op in ("softmax", "log_softmax")
+                isinstance(node, ReduceNode) and node.op in ("softmax", "log_softmax", "argsort")
             )
             if not real_pref:
                 continue

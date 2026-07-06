@@ -512,9 +512,72 @@ class TorchCodegen:
         if len(in_eqs) != 2:
             return None
         fit = self._matmul_fit(tuple(in_eqs[0]), tuple(in_eqs[1]), tuple(out), size_of)
-        if fit is None:
-            return None
-        return self._matmul_render(fit, args)
+        if fit is not None:
+            return self._matmul_render(fit, args)
+        # The strict fit above maps only layouts whose blocks already lead in
+        # the right order (zero-copy views). Anything else used to fall back
+        # to torch.einsum — whose internal permute+bmm path costs 250-650us
+        # per call at gpt-nano shapes (measured: 61 fallbacks = ~60% of the
+        # whole training step). The general cell below accepts ANY
+        # 2-operand contraction without repeated labels by paying for
+        # explicit permutes/contiguous copies, which the measurements say
+        # beat the einsum path by 3-10x at small sizes.
+        return self._matmul_general(tuple(in_eqs[0]), tuple(in_eqs[1]), tuple(out), args, size_of)
+
+    @staticmethod
+    def _matmul_general(a, b, out, args, size_of):
+        """Any-order matmul mapping: classify axes set-wise, permute each
+        operand to (batch..., M..., K...) / (batch..., K..., N...), fold the
+        batch into rows when one operand carries no batch axes (a folded
+        torch.mm is ~10x a tiny-batch torch.bmm), and permute the result
+        view to the requested output order."""
+        A, B, O = set(a), set(b), set(out)
+        if len(A) != len(a) or len(B) != len(b) or len(O) != len(out):
+            return None  # repeated labels: diagonals, einsum territory
+        if not O <= (A | B) or (A - B - O) or (B - A - O):
+            return None  # broadcast-only outputs / single-operand sums
+        k = [c for c in a if c in B and c not in O]
+        if not k:
+            return None  # pure elementwise/broadcast: TensorIterator wins
+        batch = [c for c in out if c in A and c in B]
+        m = [c for c in out if c in A and c not in B]
+        n = [c for c in out if c in B and c not in A]
+        if not m and not n:
+            return None  # batched dot: (A*B).sum() beats a degenerate bmm
+
+        def prep(axes, name, want):
+            """Permute `name` (axis labels `axes`) into `want` order; returns
+            (expr, permuted) with expr contiguous if permuted."""
+            perm = [axes.index(c) for c in want]
+            if perm == list(range(len(axes))):
+                return name, False
+            return f"{name}.permute({_tup(map(str, perm))}).contiguous()", True
+
+        va, _ = prep(list(a), args[0], batch + m + k)
+        vb, _ = prep(list(b), args[1], batch + k + n)
+        bsz = [size_of(c) for c in batch]
+        msz = _prod([size_of(c) for c in m]) if m else 1
+        ksz = _prod([size_of(c) for c in k])
+        nsz = _prod([size_of(c) for c in n]) if n else 1
+        if batch:
+            expr = (
+                f"torch.bmm({va}.reshape({_tup(map(str, [_prod(bsz), msz, ksz]))}), "
+                f"{vb}.reshape({_tup(map(str, [_prod(bsz), ksz, nsz]))}))"
+            )
+            res_axes = batch + m + n
+            res_sizes = bsz + [size_of(c) for c in m] + [size_of(c) for c in n]
+        else:
+            expr = (
+                f"torch.mm({va}.reshape({_tup(map(str, [msz, ksz]))}), "
+                f"{vb}.reshape({_tup(map(str, [ksz, nsz]))}))"
+            )
+            res_axes = m + n
+            res_sizes = [size_of(c) for c in m] + [size_of(c) for c in n]
+        expr = f"{expr}.view({_tup(map(str, res_sizes))})"
+        if res_axes != list(out):
+            out_perm = [res_axes.index(c) for c in out]
+            expr = f"{expr}.permute({_tup(map(str, out_perm))})"
+        return expr
 
     # ---- addmm fusion -----------------------------------------------------
 
@@ -1521,6 +1584,12 @@ class TorchCodegen:
                 return f"{name} = {self._perm_str(f'{a}.argmax(dim={axis})', view)}.to({a}.dtype)"
             axes = ", ".join(map(str, dims_phys))
             return f"{name} = {self._perm_str(f'torch.amax({a}, dim=({axes},))', view)}"
+        if node.op == "argsort":
+            # Shape-preserving like softmax; single axis; integer positions
+            # carried as floats (matches argmax's dtype convention).
+            a = self._perm_str(a, tuple(physO.index(physN[p]) for p in range(node.order)))
+            (axis,) = node.axes
+            return f"{name} = {a}.argsort(dim={physN.index(axis)}).to({a}.dtype)"
         if node.op in ("softmax", "log_softmax"):
             # node axes == operand axes; align the operand to OUR layout with
             # a view, then reduce over the physical positions of node.axes.

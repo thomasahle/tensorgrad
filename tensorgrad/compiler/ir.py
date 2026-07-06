@@ -320,7 +320,7 @@ class Builder:
 
     def reduce(self, op: str, axes: tuple[int, ...], operand: Node) -> Node:
         axes = tuple(sorted(axes))
-        if op in ("softmax", "log_softmax"):
+        if op in ("softmax", "log_softmax", "argsort"):
             dims = operand.dims
         else:  # argmax, max: reduced axes are removed
             dims = tuple(d for i, d in enumerate(operand.dims) if i not in axes)
