@@ -61,10 +61,11 @@ import math
 import time
 
 import torch
-from sympy import symbols
+from sympy import Symbol, symbols
 
 import tensorgrad.functions as F
-from tensorgrad import Variable, Zero, typed
+import tensorgrad as tg
+from tensorgrad import Ones, Sum, Variable, Zero, typed
 from tensorgrad.compiler import compile_to_callable
 from tensorgrad.tensor import Tensor
 
@@ -119,31 +120,34 @@ def param(name: str, **edges) -> Variable:
 # even the SORTED labels -- is derived from it inside the compiled program.
 raw = Variable("raw", batch, length)
 
-# Structural constants enter as data (like minGPT's causal mask): triangles
-# for cumulative counts and the position/value ramps the counting sort uses.
-causal_mask = Variable("causal_mask", seq=seq, key=seq)
-tri = Variable("tri", vp=vocab, vocab=vocab)          # [v' <= v]
-tri_strict = Variable("tri_strict", vp=vocab, vocab=vocab)  # [v' < v]
-pos = Variable("pos", length=length)                  # 0,1,...,LENGTH-1
-val = Variable("val", vocab=vocab)                    # 0,1,...,VOCAB-1
+# Structure tensors are tensorgrad expressions, not data: a triangle is a
+# sum of shifted diagonals (F.window), a ramp (0,1,...,n-1) is ones @ a
+# strict triangle, and the causal mask is -1e9 times an upper triangle.
+# Nothing here touches the host beyond the python ints that size the sums.
+
+
+def diagonals(lo, hi, **edges: Symbol) -> Tensor:
+    """sum_{k=lo}^{hi-1} of the k-shifted diagonal [row == col + k]."""
+    return Sum([F.window(k, **edges) for k in range(lo, hi)])
+
+
+def ramp(n, row: str, **edge: Symbol) -> Tensor:
+    """(0, 1, ..., n-1) along `edge`: ones contracted with a strict triangle."""
+    (name, size), = edge.items()
+    return Ones(**{row: size}) @ diagonals(-(n - 1), 0, **{row: size, name: size})
+
+
+tri = diagonals(-(VOCAB - 1), 1, vp=vocab, vocab=vocab)  # [v' <= v]
+tri_strict = diagonals(-(VOCAB - 1), 0, vp=vocab, vocab=vocab)  # [v' < v]
+pos = ramp(LENGTH, "lp", length=length)  # 0,1,...,LENGTH-1
+val = ramp(VOCAB, "vq", vocab=vocab)  # 0,1,...,VOCAB-1
+causal_mask = -1e9 * diagonals(-(SEQ - 1), 0, seq=seq, key=seq)  # [key > seq]
 
 # Evaluation inputs: the decode buffer (one slot longer than the model's
 # window, so even the final prediction has somewhere to land) and the
 # position being decoded. The decode loop is dict plumbing.
 ctx_var = Variable("ctx", batch, buf)
 decode_pos = Variable("decode_pos")
-
-
-def structural_constants():
-    """The structure tensors above, built once on the host."""
-    ar = torch.arange
-    return {
-        causal_mask: torch.triu(torch.full((SEQ, SEQ), -1e9), diagonal=1),
-        tri: (ar(VOCAB)[:, None] <= ar(VOCAB)[None, :]).float(),
-        tri_strict: (ar(VOCAB)[:, None] < ar(VOCAB)[None, :]).float(),
-        pos: ar(LENGTH).float(),
-        val: ar(VOCAB).float(),
-    }
 
 
 @typed
@@ -210,15 +214,15 @@ def sort_digits(x: Tensor["batch", "length"]) -> Tensor["batch", "length"]:
 
 
 full = F.concat(raw, sort_digits(raw), dim="length", size=buf)  # digits ++ sorted
-tokens: Tensor["batch", "seq"] = F.window(full, "length", 0, seq).rename(length="seq")
-target_ids: Tensor["batch", "seq"] = F.window(full, "length", 1, seq).rename(length="seq")
+tokens: Tensor["batch", "seq"] = full @ F.window(0, length=buf, seq=seq)
+target_ids: Tensor["batch", "seq"] = full @ F.window(1, length=buf, seq=seq)
 
 logits = gpt(tokens)
 targets: Tensor["batch", "seq", "vocab"] = F.one_hot(target_ids, vocab)
 ce: Tensor["batch", "seq"] = F.cross_entropy(logits, targets, dim="vocab")
 # minGPT's ignore_index=-1: the first LENGTH-1 targets don't count -- so the
 # loss just windows them away instead of masking.
-loss = F.sum(F.window(ce, "seq", LENGTH - 1, length)) / (BATCH * LENGTH)
+loss = F.sum(ce @ F.window(LENGTH - 1, seq=seq, length=length)) / (BATCH * LENGTH)
 
 # -------------------------------------------------------- adamw as algebra
 # The optimizer is also just algebra. AdamW is elementwise arithmetic on a
@@ -274,57 +278,67 @@ def init_weights(gen):
 
 
 def main():
-    names = list(params)
-    new_ws, new_ms, new_vs = zip(*(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
-    step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False, print_info=True)
+    # One symbolic cotangent sweep for all 53 gradients, then the whole
+    # optimizer step as named pytrees: the compiled program's outputs come
+    # back shaped exactly like the dicts they were declared with, so the
+    # training loop is `state = step(...)` -- no order bookkeeping anywhere.
+    grads = tg.grad(loss, params)
+    upd = {n: adamw(params[n], grads[n], *moments[n]) for n in params}
+    step = tg.compile(
+        inputs=dict(params=params,
+                    m={n: moments[n][0] for n in params},
+                    v={n: moments[n][1] for n in params}),
+        loss=loss,
+        params={n: u[0] for n, u in upd.items()},
+        m={n: u[1] for n, u in upd.items()},
+        v={n: u[2] for n, u in upd.items()},
+        print_info=True,
+    )
     # Evaluation is algebra too. One decode step: run the model on the
     # buffer's first `seq` slots, argmax over vocab, select the position
     # being decoded (a one_hot contraction), and write the prediction into
     # the NEXT slot (adding a one_hot outer product). One compiled program,
     # buffer in, buffer out; the decode loop is dict plumbing.
-    eval_logits = gpt(F.window(ctx_var, "buf", 0, seq).rename(buf="seq"))
+    eval_logits = gpt(ctx_var @ F.window(0, buf=buf, seq=seq))
     next_id = F.argmax(eval_logits, dim="vocab") @ F.one_hot(decode_pos, seq)
-    decode = compile_to_callable(ctx_var + next_id * F.one_hot(decode_pos + 1, buf))
-    seed_ctx = compile_to_callable(F.concat(raw, Zero(batch, length), dim="length", size=buf).rename(length="buf"))
+    decode = tg.compile(inputs=dict(params=params),
+                        ctx=ctx_var + next_id * F.one_hot(decode_pos + 1, buf))
+    seed_ctx = tg.compile(ctx=F.concat(raw, Zero(batch, length), dim="length", size=buf).rename(length="buf"))
     # Exact-match accuracy: the decoded half of the buffer against the SAME
     # sort_digits program the training labels come from.
-    decoded = F.window(ctx_var, "buf", LENGTH, length).rename(buf="length")
+    decoded = ctx_var @ F.window(LENGTH, buf=buf, length=length)
     correct = F.equal(decoded, sort_digits(raw))  # (batch, length) of 0/1
     solved = F.gt0(F.sum(correct, ["length"]) - (LENGTH - 0.5))  # all six right
-    n_correct = compile_to_callable(F.sum(solved))
+    score = tg.compile(hits=F.sum(solved))
 
     gen = torch.Generator().manual_seed(0)
-    state_vars: list[Variable] = (
-        [params[n] for n in names]  # mirrors the output order
-        + [moments[n][0] for n in names]
-        + [moments[n][1] for n in names]
-    )
-    state = {params[n]: w for n, w in init_weights(gen).items()}
-    state |= {mv: torch.zeros_like(state[params[n]]) for n in names for mv in moments[n]}
-    data = structural_constants()
+    weights = init_weights(gen)
+    zeros = lambda: {n: torch.zeros_like(w) for n, w in weights.items()}
+    state = tg.Output(params=weights, m=zeros(), v=zeros())
 
     def held_out_accuracy(n=256, seed=1234):
         """Greedy autoregressive decode on fresh problems; exact-match rate."""
         g = torch.Generator().manual_seed(seed)
         inp = random_digits(n, g)
         dims = DIMS | {batch: n}
-        ctx = seed_ctx({raw: inp, **data}, dims)
+        ctx = seed_ctx(dims=dims, raw=inp).ctx
         for t in range(LENGTH - 1, SEQ):
-            ctx = decode({**state, **data, ctx_var: ctx, decode_pos: torch.tensor(float(t))}, dims)
-        return n_correct({ctx_var: ctx, raw: inp, **data}, dims).item() / n
+            ctx = decode(dims=dims, ctx=ctx, decode_pos=float(t), params=state.params).ctx
+        return score(dims=dims, ctx=ctx, raw=inp).hits.item() / n
 
     acc, t_start = 0.0, time.perf_counter()
     for it in range(1, MAX_STEPS + 1):
-        bias = {c1: torch.tensor(1 / (1 - B1**it)), c2: torch.tensor(1 / (1 - B2**it))}
-        loss_val, *new_state = step({**state, **data, **bias, raw: random_digits(BATCH, gen)}, DIMS)
-        state = dict(zip(state_vars, new_state))  # the whole optimizer step
+        out = step(dims=DIMS, raw=random_digits(BATCH, gen),
+                   c1=1 / (1 - B1**it), c2=1 / (1 - B2**it),
+                   params=state.params, m=state.m, v=state.v)
+        state = out  # the whole optimizer step
         if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
             print(f"first step (planning + codegen): {warmup:.1f}s")
         if it % 50 == 0:
             acc = held_out_accuracy()
             rate = (it - 1) / (time.perf_counter() - t_start)
-            print(f"step {it:4d}  loss {loss_val.item():.4f}  held-out acc {acc:.3f}  ({rate:.1f} steps/s)")
+            print(f"step {it:4d}  loss {out.loss.item():.4f}  held-out acc {acc:.3f}  ({rate:.1f} steps/s)")
             if acc >= 0.99:
                 break
     print(f"final held-out accuracy: {acc:.3f} ({'PASS' if acc > 0.9 else 'FAIL'}, target 0.9)")

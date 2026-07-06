@@ -1441,19 +1441,26 @@ def concat(*ts: Tensor, dim: str, size: Symbol) -> Tensor:
     return Sum(parts) if len(parts) > 1 else parts[0]
 
 
-def window(t: Tensor, dim: str, offset, size: Symbol) -> Tensor:
-    """The slice t[dim = offset : offset + size]: out[o] = t[o + offset].
+def window(offset, **shape1: Symbol) -> Tensor:
+    """The shifted rectangular diagonal W[i, o] = [i == o + offset], as a
+    first-class structural tensor: contract it to slice.
 
-    `size` is the output edge's size symbol; `offset` may be an int or a
-    sympy expression in size symbols. Like concat, a contraction with a
-    one-row shift indicator that the compiler turns into a strided view."""
+        tokens = full @ F.window(0, length=buf, seq=seq)   # full[0 : seq]
+        shifted = full @ F.window(1, length=buf, seq=seq)  # full[1 : seq+1]
+
+    The FIRST edge is the input axis (matched by name against the tensor
+    you contract with), the second the output axis — so the result comes
+    out already carrying the name you chose. `offset` may be an int or a
+    sympy expression in size symbols. One Affine equality row: the compiler
+    eliminates it into a strided view, and with a larger output size the
+    same tensor zero-pads instead of slicing (windowing and embedding are
+    transposes of one another — see concat)."""
     from tensorgrad.compiler.affine import Affine
 
-    if dim not in t.edges:
-        raise ValueError(f"{dim=} is not an edge of {t.edges=}")
-    tmp = _unused_edge_names([dim], t.edges)[dim]
-    shift = Affine([({tmp: 1, dim: -1}, sympy.sympify(offset))], **{tmp: t.shape[dim], dim: size})
-    return t.rename(**{dim: tmp}) @ shift
+    if len(shape1) != 2:
+        raise ValueError(f"window needs exactly two edges (input, output), got {set(shape1)}")
+    (i, si), (o, so) = shape1.items()
+    return Affine([({i: 1, o: -1}, sympy.sympify(offset))], **{i: si, o: so})
 
 
 def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:

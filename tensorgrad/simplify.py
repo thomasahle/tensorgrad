@@ -21,7 +21,7 @@ this module, tensorgrad/grad.py, or the FunctionSignature.simplify overrides
 in tensorgrad/functions.py):
 
 - ``grad_steps`` (inf): how many Derivative nodes to resolve; decremented IN
-  PLACE by :func:`tensorgrad.grad.step_derivative`, so a finite budget is
+  PLACE by :func:`tensorgrad.autodiff.step_derivative`, so a finite budget is
   shared across the tree (and across repeated ``simplify`` calls reusing the
   same dict). Used by imgtools/to_diagram for step-by-step derivations.
 - ``sum_combine_terms`` (True): gates a filter in :func:`simplify_sum`. The
@@ -87,7 +87,7 @@ from tensorgrad.tensor import (
 from tensorgrad.utils import _MatchEdgesKey
 
 # The Derivative-resolution rule lives with the other differentiation logic.
-from tensorgrad.grad import step_derivative
+from tensorgrad.autodiff import step_derivative
 
 
 ################################################################################
@@ -542,7 +542,7 @@ _SIMPLIFY_RULES: dict[type, Callable[[Any, dict[str, Any]], Tensor]] = {
     Zero: keep_atom,
     Rename: push_rename_down,
     Function: simplify_function,
-    Derivative: step_derivative,  # chain-rule stepping lives in tensorgrad.grad
+    Derivative: step_derivative,  # chain-rule stepping lives in tensorgrad.autodiff
     Product: simplify_product,
     Sum: simplify_sum,
 }

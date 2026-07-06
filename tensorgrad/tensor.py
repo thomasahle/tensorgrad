@@ -57,7 +57,7 @@ def _get_canon() -> ModuleType:
 # Lazily imported operation modules (tensor.py defines the data types; the
 # operations over the closed node-type set live in their own modules).
 # tensorgrad.simplify holds the simplification rule catalog + engine and
-# tensorgrad.grad the differentiation rules; both import this module, so the
+# tensorgrad.autodiff the differentiation rules; both import this module, so the
 # back edges here must be lazy.
 _simplify_mod: Optional[ModuleType] = None
 _grad_mod: Optional[ModuleType] = None
@@ -75,7 +75,7 @@ def _get_simplify() -> ModuleType:
 def _get_grad() -> ModuleType:
     global _grad_mod
     if _grad_mod is None:
-        import tensorgrad.grad as grad
+        import tensorgrad.autodiff as grad
 
         _grad_mod = grad
     return _grad_mod
@@ -999,7 +999,7 @@ class Constant(Tensor, ABC):
         return type(self)(_symmetries=None, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        # Thin delegate to the zero-gradient rule (tensorgrad.grad
+        # Thin delegate to the zero-gradient rule (tensorgrad.autodiff
         # dispatches Delta/Zero there directly; this protocol fallback covers
         # the Constant subclasses outside the core table: Convolution,
         # Reshape, Affine).
