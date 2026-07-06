@@ -1381,8 +1381,11 @@ class _OneHotFunction(FunctionSignature):
         return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
 
 
-def one_hot(idx: Tensor, size: Symbol, dim: str) -> Tensor:
+def one_hot(idx: Tensor, size: Symbol, dim: Optional[str] = None) -> Tensor:
     """Indicator tensor one_hot(idx)[dim, *idx.edges] = [idx[...] == dim-index].
+
+    `dim` defaults to the size symbol's name, the same idiom as
+    Variable("x", batch, seq): F.one_hot(idx, vocab) has edge "vocab".
 
     `idx` holds integral values carried as floats (like argmax output). The
     indicator has no differentiable inputs, so anything contracted with it
@@ -1395,6 +1398,8 @@ def one_hot(idx: Tensor, size: Symbol, dim: str) -> Tensor:
     contraction. The compiler maps the contractions to torch.index_select
     (class axis summed against a table) and zeros().index_add_ (class axis
     free — the scatter); the dense indicator is never materialized."""
+    if dim is None:
+        dim = size.name
     if dim in idx.edges:
         raise ValueError(f"{dim=} must not be an edge of idx: {idx.edges=}")
     # Delta(size, dim) is a ones-vector that only carries the number of

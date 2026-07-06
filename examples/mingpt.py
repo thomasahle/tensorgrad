@@ -149,7 +149,7 @@ def mlp(x: Tensor[..., "d"], name: str) -> Tensor[..., "d"]:
 def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
     """Token ids (batch, seq) -> logits (batch, seq, vocab)."""
     wte = param("wte", vocab=vocab, d=d)
-    x = F.one_hot(idx, vocab, dim="vocab") @ wte + param("wpe", seq=seq, d=d)  # sparse lookup
+    x = F.one_hot(idx, vocab) @ wte + param("wpe", seq=seq, d=d)  # sparse integer lookup
     for i in range(N_LAYER):
         x = x + attention(layer_norm(x, f"h{i}.ln1"), f"h{i}.attn")
         x = x + mlp(layer_norm(x, f"h{i}.ln2"), f"h{i}.mlp")
@@ -157,7 +157,7 @@ def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
 
 
 logits = gpt(tokens)
-targets = F.one_hot(target_ids, vocab, dim="vocab") * loss_mask  # ignored rows -> all-zero
+targets = F.one_hot(target_ids, vocab) * loss_mask  # ignored rows -> all-zero
 ce = F.cross_entropy(logits, targets, dim="vocab")  # (batch, seq); 0 at masked positions
 loss = F.sum(ce) / (BATCH * LENGTH)
 
