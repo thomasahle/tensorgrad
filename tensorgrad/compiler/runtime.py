@@ -103,6 +103,31 @@ class CompiledProgram:
             for s in t.shape.values():
                 if isinstance(s, sympy.Symbol):
                     self.symbols.add(s)
+        # Per-output wrap plans, hoisted out of __call__ (they are static,
+        # and the tie-break scan over all variables cost ~8ms/call on a
+        # 160-output program). API parity with the old backends: an output
+        # whose edge SET matches an input variable adopts that variable's
+        # edge order (gradients declare the derivative machinery's order) —
+        # an ORDERED match wins over adopting another variable's order (tied
+        # embeddings: wte (vocab,d) vs lm_head (d,vocab)). With no unique
+        # variable claim, fall back to the caller's declared expression
+        # order: normalization may have swapped in an interned isomorphic
+        # twin whose edges come out in another order.
+        self._wrap_plans: list[tuple[Optional[tuple[int, ...]], tuple[str, ...]]] = []
+        for (node, edge_order), declared in zip(self.outputs, self._declared_edges):
+            tie_orders = {tuple(v.edges) for v in self.vars if set(edge_order) == set(v.edges)}
+            if tuple(edge_order) not in tie_orders and len(tie_orders) == 1:
+                target = next(iter(tie_orders))
+            elif (
+                (not tie_orders or len(tie_orders) > 1)
+                and set(declared) == set(edge_order)
+                and tuple(edge_order) != declared
+            ):
+                target = tuple(declared)
+            else:
+                target = tuple(edge_order)
+            perm = None if target == tuple(edge_order) else tuple(edge_order.index(e) for e in target)
+            self._wrap_plans.append((perm, target))
         # LRU cache of shape/dtype specializations (bounded: a training loop
         # sweeping many batch sizes must not accumulate compiled code forever).
         # key -> generated specialization function (Any: exec-produced callables)
@@ -201,29 +226,10 @@ class CompiledProgram:
             outs = fn(*args)
 
         wrapped = []
-        for out, (node, edge_order), declared in zip(outs, self.outputs, self._declared_edges):
-            named = out.refine_names(*edge_order)
-            # API parity with the old backends: if an output has the same edge
-            # set as an input variable but different order (common for
-            # gradients, whose declared expression order is the derivative
-            # machinery's, not the variable's), align it to the variable's
-            # order. When several variables share the edge set (tied
-            # embeddings: wte (vocab,d) vs lm_head (d,vocab)), an ORDERED
-            # match wins — the output must not adopt another variable's order.
-            # When no variable claims the edge set (or several tie
-            # ambiguously), fall back to the edge order the caller's
-            # expression declared: normalization may have swapped to an
-            # interned isomorphic twin whose edges come out in another order.
-            tie_orders = {tuple(var.edges) for var in self.vars if set(edge_order) == set(var.edges)}
-            if tuple(edge_order) not in tie_orders and len(tie_orders) == 1:
-                named = named.align_to(*next(iter(tie_orders)))
-            elif (
-                (not tie_orders or len(tie_orders) > 1)
-                and set(declared) == set(edge_order)
-                and tuple(edge_order) != declared
-            ):
-                named = named.align_to(*declared)
-            wrapped.append(named)
+        for out, (perm, names_t) in zip(outs, self._wrap_plans):
+            if perm is not None:
+                out = out.permute(perm)
+            wrapped.append(out.refine_names(*names_t))
         if len(wrapped) == 1:
             return wrapped[0]
         return tuple(wrapped)
