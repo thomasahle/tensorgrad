@@ -847,11 +847,12 @@ class TraceDelete(Scene):
 
 
 class CrossEntropyHessian(Scene):
-    """The Hessian of cross-entropy = the softmax Jacobian:
-    d softmax(z)/dz = diag(p) - p p^T, derived diagrammatically.
-    New vocabulary: elementwise function circles (the wire passes
-    through), the copy-dot for diag, the ones-vector for summation,
-    and a quotient rule driven by z appearing twice."""
+    """The Hessian of cross-entropy = the softmax Jacobian, in the
+    book's function notation: function names are plain nodes, input
+    edges carry arrows (dotted = elementwise, with the data wire
+    staying on the argument), sums are copydot-terminated wires, and
+    the chain rule circles the differentiated node and chains d-edges
+    through copies -- 'the chain rule is actually a chain'."""
 
     def __init__(self, **kwargs):
         from manim import config as _cfg
@@ -861,9 +862,9 @@ class CrossEntropyHessian(Scene):
 
     def construct(self):
         from manim import Circle as MCircle
-        from manim import Tex, Indicate, Circumscribe
+        from manim import DashedLine, Tex, Indicate, Circumscribe
 
-        CA, CB, CX, CD = "#1F6FB2", "#188A54", "#C03B2B", "#B07300"
+        CA, CB, CX, CD = "#1F6FB2", "#188A54", "#C03B2B", "#B07000"
         GREY = "#888888"
 
         def glyph(tex, pos, color, sc=1.0):
@@ -874,14 +875,65 @@ class CrossEntropyHessian(Scene):
         def wire(p, q, col=INK):
             return Line(p, q, color=col, stroke_width=2.2)
 
-        def ewf(pos, sc=1.0):
-            """Elementwise function circle: exp."""
-            c = MCircle(radius=0.30 * sc, color=CA, stroke_width=2.2
-                        ).move_to(pos)
-            t = MathTex(r"\exp", color=CA).scale(0.55 * sc).move_to(pos)
-            return VGroup(c, t)
+        def farrow(p, q, dotted=True):
+            """Book-style function-application edge: arrow INTO the
+            function; densely dotted when elementwise."""
+            if dotted:
+                ln = DashedLine(p, q, dash_length=0.055, color=INK,
+                                stroke_width=1.9)
+            else:
+                ln = Line(p, q, color=INK, stroke_width=1.9)
+            ln.add_tip(tip_length=0.13, tip_width=0.10)
+            ln.get_tip().set_fill(INK, 1).set_stroke(INK, 0)
+            return ln
 
-        # ---- title templates ----
+        def cdot(pos):
+            return Dot(pos, radius=0.055, color=INK)
+
+        def dcircle(mob, extra=0.10):
+            return MCircle(radius=max(mob.width, mob.height) / 2 + extra,
+                           color=CD, stroke_width=2.2).move_to(mob)
+
+        def dedge(p, q):
+            """Derivative chain edge, book d0 style: open circle tip
+            at the departure end."""
+            tip = MCircle(radius=0.045, color=CD, stroke_width=2.0).move_to(p)
+            ln = Line(p + 0.045 * RIGHT, q, color=CD, stroke_width=2.0)
+            return VGroup(tip, ln)
+
+        # factor builders (origin = position of z)
+        def F1(zp, sc=1.0):
+            """exp <... z --- (free data wire on z)"""
+            d = {}
+            d['z'] = glyph("z", zp, CX, 0.95 * sc)
+            d['e'] = glyph(r"\exp", zp + np.array([-1.0 * sc, 0, 0]), CA, 0.8 * sc)
+            d['a'] = farrow(zp + np.array([-0.22 * sc, 0, 0]),
+                            zp + np.array([-0.62 * sc, 0, 0]))
+            d['w'] = wire(zp + np.array([0.20 * sc, 0, 0]),
+                          zp + np.array([0.78 * sc, 0, 0]))
+            return d
+
+        def F2(pp, sc=1.0):
+            """pow_{-1} <... ( exp <... z ---. )   (sum-dot on z's wire)"""
+            d = {}
+            d['pw'] = glyph(r"\mathrm{pow}_{-1}", pp, CA, 0.8 * sc)
+            d['b1'] = glyph("(", pp + np.array([1.15 * sc, 0, 0]), INK, 0.95 * sc)
+            d['e'] = glyph(r"\exp", pp + np.array([1.65 * sc, 0, 0]), CA, 0.8 * sc)
+            d['z'] = glyph("z", pp + np.array([2.5 * sc, 0, 0]), CX, 0.95 * sc)
+            d['a1'] = farrow(pp + np.array([2.28 * sc, 0, 0]),
+                             pp + np.array([2.02 * sc, 0, 0]))
+            d['w'] = wire(pp + np.array([2.7 * sc, 0, 0]),
+                          pp + np.array([3.25 * sc, 0, 0]))
+            d['s'] = cdot(pp + np.array([3.3 * sc, 0, 0]))
+            d['b2'] = glyph(")", pp + np.array([3.55 * sc, 0, 0]), INK, 0.95 * sc)
+            d['a2'] = farrow(pp + np.array([1.0 * sc, 0.0, 0]),
+                             pp + np.array([0.52 * sc, 0, 0]))
+            return d
+
+        def fgroup(d):
+            return VGroup(*[d[k] for k in d])
+
+        # ---- title ----
         num_t = MathTex(r"\partial\,", "p", color=INK)
         num_t[0].set_color(CD)
         num_t[1].set_color(CB)
@@ -895,11 +947,10 @@ class CrossEntropyHessian(Scene):
                      color=INK)
         for i in (2, 5, 6):
             m2[i].set_color(CB)
-        toprow = VGroup(tfrac, m2).arrange(RIGHT, buff=0.28).to_edge(UP, buff=0.4)
+        VGroup(tfrac, m2).arrange(RIGHT, buff=0.28).to_edge(UP, buff=0.4)
         v0 = -tfrac.get_center()[0]
         tfrac.shift(RIGHT * v0)
         tpos = tfrac.get_center()
-
         t0 = MathTex("p", r"\;=\;", r"\mathrm{softmax}(", "z", ")", color=INK
                      ).move_to(tpos)
         t0[0].set_color(CB)
@@ -915,176 +966,182 @@ class CrossEntropyHessian(Scene):
             self.cap = new
             return anims
 
-        # ================= stage A: the definition =================
-        yN, yD, yBar = 0.15, -1.25, -0.55
-        zN = glyph("z", np.array([-0.85, yN, 0]), CX)
-        eN = ewf(np.array([0.05, yN, 0]))
-        wN1 = wire(np.array([-0.62, yN, 0]), np.array([-0.25, yN, 0]))
-        wN2 = wire(np.array([0.35, yN, 0]), np.array([1.05, yN, 0]))
-        zD = glyph("z", np.array([-0.85, yD, 0]), CX)
-        eD = ewf(np.array([0.05, yD, 0]))
-        oD = glyph(r"\mathbf{1}", np.array([1.05, yD, 0]), INK, 0.9)
-        wD1 = wire(np.array([-0.62, yD, 0]), np.array([-0.25, yD, 0]))
-        wD2 = wire(np.array([0.35, yD, 0]), np.array([0.82, yD, 0]))
-        dbar = Line(np.array([-1.35, yBar, 0]), np.array([1.35, yBar, 0]),
-                    color=INK, stroke_width=1.9)
-        defn = VGroup(wN1, wN2, wD1, wD2, zN, eN, zD, eD, oD, dbar)
+        # ============ stage 1: softmax from elementary functions ============
+        yC = -0.55
+        A0 = F1(np.array([-2.9, yC, 0]))
+        B0 = F2(np.array([-0.2, yC, 0]))
+        self.play(Write(t0), FadeIn(fgroup(A0), fgroup(B0)),
+                  *caption(r"softmax, from elementary functions: "
+                           r"$\exp$, sum, $\mathrm{pow}_{-1}$"),
+                  run_time=1.4)
+        self.wait(1.0)
 
-        self.play(Write(t0), FadeIn(defn),
-                  *caption(r"softmax: exponentiate, then normalize"),
-                  run_time=1.3)
-        self.wait(0.9)
-
-        # ============ stage B: differentiate (loop + whisker) ============
+        # ============ stage 2: differentiate ============
         self.play(ReplacementTransform(t0[0], num_t[1]),
                   FadeOut(t0[1], t0[2], t0[4]),
                   ReplacementTransform(t0[3], den_t[1]),
                   FadeIn(num_t[0], tbar, den_t[0]),
-                  run_time=1.0)
-        loop = Ellipse(width=3.6, height=2.9, color=CD, stroke_width=2.2
-                       ).move_to([0, yBar, 0])
-        ldot = Dot([0, yBar + 1.45, 0], radius=0.05, color=CD)
-        whis = CubicBezier(ldot.get_center(),
-                           ldot.get_center() + np.array([-0.4, 0.25, 0]),
-                           ldot.get_center() + np.array([-1.0, 0.32, 0]),
-                           ldot.get_center() + np.array([-1.6, 0.30, 0]),
+                  run_time=0.9)
+        loop = Ellipse(width=8.2, height=1.9, color=CD, stroke_width=2.2
+                       ).move_to([-0.2, yC, 0])
+        ldot = Dot([-0.2, yC + 0.95, 0], radius=0.05, color=CD)
+        w0 = ldot.get_center()
+        whis = CubicBezier(w0, w0 + np.array([-0.4, 0.22, 0]),
+                           w0 + np.array([-1.0, 0.3, 0]),
+                           w0 + np.array([-1.6, 0.28, 0]),
                            color=CD, stroke_width=2.2)
         self.play(Create(loop), FadeIn(ldot), Create(whis),
-                  *caption(r"differentiate: $z$ appears twice"),
+                  *caption(r"differentiate: one new edge $j$"),
                   run_time=1.1)
         self.wait(0.8)
 
-        # ====== stage C: the loop distributes -- quotient rule ======
-        x1, x2a, x2b = -2.5, 0.85, 3.0
-        y2D = yD - 0.1
-        T1 = {}
-        T1['z'] = glyph("z", np.array([x1 - 0.85, yN, 0]), CX)
-        T1['e'] = ewf(np.array([x1 + 0.05, yN, 0]))
-        T1['w1'] = wire(np.array([x1 - 0.62, yN, 0]), np.array([x1 - 0.25, yN, 0]))
-        T1['w2'] = wire(np.array([x1 + 0.35, yN, 0]), np.array([x1 + 1.05, yN, 0]))
-        T1['loop'] = Ellipse(width=1.0, height=0.95, color=CD,
-                             stroke_width=2.2).move_to([x1 - 0.85, yN, 0])
-        T1['dot'] = Dot([x1 - 0.85, yN + 0.475, 0], radius=0.05, color=CD)
-        p0 = np.array([x1 - 0.85, yN + 0.475, 0])
-        T1['wh'] = CubicBezier(p0, p0 + np.array([-0.25, 0.2, 0]),
-                               p0 + np.array([-0.6, 0.26, 0]),
-                               p0 + np.array([-0.95, 0.24, 0]),
-                               color=CD, stroke_width=2.2)
-        sc = 0.72
-        T1['sz'] = glyph("z", np.array([x1 - 0.62, y2D, 0]), CX, sc)
-        T1['se'] = ewf(np.array([x1 + 0.02, y2D, 0]), sc)
-        T1['so'] = glyph(r"\mathbf{1}", np.array([x1 + 0.72, y2D, 0]), INK, 0.75)
-        T1['sw1'] = wire(np.array([x1 - 0.45, y2D, 0]), np.array([x1 - 0.20, y2D, 0]))
-        T1['sw2'] = wire(np.array([x1 + 0.24, y2D, 0]), np.array([x1 + 0.55, y2D, 0]))
-        T1['bar'] = Line(np.array([x1 - 1.35, yBar, 0]),
-                         np.array([x1 + 1.35, yBar, 0]),
-                         color=INK, stroke_width=1.9)
-        minus = MathTex("-", color=INK).scale(1.1).move_to([-0.75, yBar, 0])
-        T2 = {}
-        T2['z1'] = glyph("z", np.array([x2a - 0.75, yN, 0]), CX)
-        T2['e1'] = ewf(np.array([x2a + 0.05, yN, 0]))
-        T2['u1'] = wire(np.array([x2a - 0.55, yN, 0]), np.array([x2a - 0.25, yN, 0]))
-        T2['u2'] = wire(np.array([x2a + 0.35, yN, 0]), np.array([x2a + 0.95, yN, 0]))
-        T2['z2'] = glyph("z", np.array([x2b - 0.75, yN, 0]), CX)
-        T2['e2'] = ewf(np.array([x2b + 0.05, yN, 0]))
-        T2['o2'] = glyph(r"\mathbf{1}", np.array([x2b + 0.95, yN, 0]), INK, 0.9)
-        T2['v1'] = wire(np.array([x2b - 0.55, yN, 0]), np.array([x2b - 0.25, yN, 0]))
-        T2['v2'] = wire(np.array([x2b + 0.35, yN, 0]), np.array([x2b + 0.72, yN, 0]))
-        T2['loop'] = Ellipse(width=1.0, height=0.95, color=CD,
-                             stroke_width=2.2).move_to([x2b - 0.75, yN, 0])
-        T2['dot'] = Dot([x2b - 0.75, yN + 0.475, 0], radius=0.05, color=CD)
-        q0 = np.array([x2b - 0.75, yN + 0.475, 0])
-        T2['wh'] = CubicBezier(q0, q0 + np.array([0.25, 0.2, 0]),
-                               q0 + np.array([0.6, 0.26, 0]),
-                               q0 + np.array([0.95, 0.24, 0]),
-                               color=CD, stroke_width=2.2)
-        T2['sz'] = glyph("z", np.array([x2a + 0.75, y2D, 0]), CX, sc)
-        T2['se'] = ewf(np.array([x2a + 1.39, y2D, 0]), sc)
-        T2['so'] = glyph(r"\mathbf{1}", np.array([x2a + 2.09, y2D, 0]), INK, 0.75)
-        T2['sw1'] = wire(np.array([x2a + 0.92, y2D, 0]), np.array([x2a + 1.17, y2D, 0]))
-        T2['sw2'] = wire(np.array([x2a + 1.61, y2D, 0]), np.array([x2a + 1.92, y2D, 0]))
-        T2['sq'] = MathTex("2", color=INK).scale(0.6).move_to(
-            [x2a + 2.45, y2D + 0.35, 0])
-        T2['bar'] = Line(np.array([x2a - 0.95, yBar, 0]),
-                         np.array([x2b + 1.35, yBar, 0]),
-                         color=INK, stroke_width=1.9)
-
+        # ============ stage 3: product rule -- two rows ============
+        yA, yB = 0.62, -1.55
+        A1 = F1(np.array([-2.7, yA, 0]))
+        B1 = F2(np.array([-0.3, yA, 0]))
+        loopA = Ellipse(width=2.5, height=1.15, color=CD, stroke_width=2.2
+                        ).move_to([-3.05, yA, 0])
+        ldotA = Dot([-3.05, yA + 0.575, 0], radius=0.05, color=CD)
+        wA0 = ldotA.get_center()
+        whisA = CubicBezier(wA0, wA0 + np.array([-0.3, 0.18, 0]),
+                            wA0 + np.array([-0.7, 0.24, 0]),
+                            wA0 + np.array([-1.05, 0.22, 0]),
+                            color=CD, stroke_width=2.2)
+        plusA = MathTex("+", color=INK).move_to([3.85, yA, 0])
+        A2 = F1(np.array([-3.5, yB, 0]))
+        B2 = F2(np.array([-1.1, yB, 0]))
+        loopB = Ellipse(width=4.4, height=1.15, color=CD, stroke_width=2.2
+                        ).move_to([0.6, yB, 0])
+        ldotB = Dot([0.6, yB + 0.575, 0], radius=0.05, color=CD)
+        wB0 = ldotB.get_center()
+        whisB = CubicBezier(wB0, wB0 + np.array([0.3, 0.18, 0]),
+                            wB0 + np.array([0.7, 0.24, 0]),
+                            wB0 + np.array([1.05, 0.22, 0]),
+                            color=CD, stroke_width=2.2)
         self.play(
-            ReplacementTransform(zN, T1['z']), ReplacementTransform(eN, T1['e']),
-            ReplacementTransform(wN1, T1['w1']), ReplacementTransform(wN2, T1['w2']),
-            ReplacementTransform(zD, T1['sz']), ReplacementTransform(eD, T1['se']),
-            ReplacementTransform(oD, T1['so']),
-            ReplacementTransform(wD1, T1['sw1']), ReplacementTransform(wD2, T1['sw2']),
-            ReplacementTransform(dbar, T1['bar']),
-            Transform(loop, T1['loop']), Transform(ldot, T1['dot']),
-            Transform(whis, T1['wh']),
-            Write(minus),
-            FadeIn(*[T2[k] for k in T2]),
-            *caption(r"the loop distributes: the quotient rule"),
-            run_time=1.9, rate_func=EASE)
+            *[ReplacementTransform(A0[k], A1[k]) for k in A0],
+            *[ReplacementTransform(B0[k], B1[k]) for k in B0],
+            Transform(loop, loopA), Transform(ldot, ldotA),
+            Transform(whis, whisA),
+            Write(plusA),
+            FadeIn(fgroup(A2), fgroup(B2), loopB, ldotB, whisB),
+            *caption(r"product rule: $z$ appears in both factors"),
+            run_time=1.8, rate_func=EASE)
         self.wait(1.0)
 
-        # ====== stage D: resolve -- elementwise rule gives copy-dots ======
-        cd1 = Dot([x1 + 0.62, yN, 0], radius=0.06, color=INK)
-        j1 = wire(np.array([x1 + 0.62, yN + 0.06, 0]),
-                  np.array([x1 + 0.62, yN + 0.8, 0]), CD)
-        cd2 = Dot([x2b + 0.52, yN, 0], radius=0.06, color=INK)
-        j2 = wire(np.array([x2b + 0.52, yN + 0.06, 0]),
-                  np.array([x2b + 0.52, yN + 0.8, 0]), CD)
-        self.play(FadeOut(loop, ldot), Transform(whis, j1), FadeIn(cd1),
-                  FadeOut(T2['loop'], T2['dot']),
-                  Transform(T2['wh'], j2), FadeIn(cd2),
-                  *caption(r"elementwise: $\partial\exp(z) = "
-                           r"\mathrm{diag}(\exp z)\,\partial z$"),
-                  run_time=1.4, rate_func=EASE)
+        # ===== stage 4: row A -- elementwise derivative, copy-dot =====
+        circA = dcircle(A1['e'])
+        cdA = cdot(np.array([-2.2, yA, 0]))
+        jA = wire(np.array([-2.2, yA + 0.055, 0]),
+                  np.array([-2.2, yA + 0.8, 0]), CD)
+        self.play(FadeOut(loop, ldot),
+                  Create(circA),
+                  Transform(whis, jA), FadeIn(cdA),
+                  *caption(r"elementwise: circle the function, "
+                           r"copy-dot on the wire \; ($\exp' = \exp$)"),
+                  run_time=1.5, rate_func=EASE)
         self.wait(0.9)
 
-        # the ones-vector eats term 2's copy-dot:  1 . diag(v) = v
-        j2b = wire(np.array([x2b + 0.35, yN, 0]),
-                   np.array([x2b + 1.05, yN, 0]), CD)
-        self.play(FadeOut(T2['o2'], scale=0.4), FadeOut(cd2, scale=0.4),
-                  ReplacementTransform(VGroup(T2['v2'], T2['wh']), j2b),
-                  *caption(r"summing against $\mathbf{1}$ removes the dot"),
+        # ===== stage 5: row B -- the chain rule is actually a chain =====
+        circB = dcircle(B2['pw'])
+        G3z = np.array([3.95, yB, 0])
+        G3 = {}
+        G3['z'] = glyph("z", G3z, CX, 0.85)
+        G3['e'] = glyph(r"\exp", G3z + np.array([-0.78, 0, 0]), CA, 0.65)
+        G3['a'] = farrow(G3z + np.array([-0.19, 0, 0]),
+                         G3z + np.array([-0.48, 0, 0]))
+        G3['w'] = wire(G3z + np.array([0.16, 0, 0]),
+                       G3z + np.array([0.62, 0, 0]))
+        G3['s'] = cdot(G3z + np.array([0.67, 0, 0]))
+        loopG = Ellipse(width=2.15, height=1.0, color=CD, stroke_width=2.2
+                        ).move_to(G3z + np.array([-0.12, 0, 0]))
+        deP = np.array([-1.1, yB + 0.74, 0])
+        deQ = np.array([2.82, yB + 0.42, 0])
+        de = VGroup(MCircle(radius=0.045, color=CD, stroke_width=2.0
+                            ).move_to(deP),
+                    CubicBezier(deP + np.array([0.04, 0.04, 0]),
+                                deP + np.array([0.75, 0.7, 0]),
+                                deQ + np.array([-0.95, 0.7, 0]),
+                                deQ, color=CD, stroke_width=2.0))
+        self.play(FadeOut(loopB, ldotB),
+                  Create(circB),
+                  FadeIn(de),
+                  Transform(whisB, loopG),
+                  FadeIn(*[G3[k] for k in G3]),
+                  *caption(r"the chain rule is actually a chain"),
+                  run_time=1.6, rate_func=EASE)
+        self.wait(0.9)
+
+        # pow_{-1}' = -pow_{-2}: the minus is born
+        pw2 = glyph(r"\mathrm{pow}_{-2}", B2['pw'].get_center(), CA, 0.8)
+        circB2 = dcircle(pw2)
+        minusB = MathTex("-", color=INK).scale(1.1).move_to([-4.78, yB, 0])
+        self.play(ReplacementTransform(B2['pw'], pw2),
+                  Transform(circB, circB2),
+                  FadeIn(minusB, shift=0.2 * RIGHT),
+                  *caption(r"$\mathrm{pow}_{-1}' = -\,\mathrm{pow}_{-2}$:"
+                           r" the minus is born"),
+                  run_time=1.1, rate_func=EASE)
+        self.wait(0.8)
+
+        # the inner derivative: copy-dot appears, sum-dot absorbs it
+        circG = dcircle(G3['e'])
+        cdG = cdot(G3z + np.array([0.4, 0, 0]))
+        jG0 = wire(G3z + np.array([0.4, 0.055, 0]),
+                   G3z + np.array([0.4, 0.68, 0]), CD)
+        self.play(FadeOut(whisB), Create(circG), FadeIn(cdG),
+                  FadeIn(jG0),
+                  *caption(r"and again for the inner chain"),
+                  run_time=1.1)
+        self.wait(0.5)
+        jG1 = wire(G3z + np.array([0.16, 0, 0]),
+                   G3z + np.array([0.8, 0, 0]), CD)
+        self.play(FadeOut(G3['s'], scale=0.4), FadeOut(cdG, scale=0.4),
+                  ReplacementTransform(VGroup(G3['w'], jG0), jG1),
+                  *caption(r"the sum-dot absorbs the copy-dot"),
                   run_time=1.0, rate_func=EASE)
         self.wait(0.7)
 
-        # ====== stage E: recognize p = exp(z)/S, twice ======
-        yF = -0.35
-        d1 = Dot([-2.5, yF, 0], radius=0.06, color=INK)
-        j1f = wire(np.array([-3.3, yF, 0]), np.array([-2.56, yF, 0]), CD)
-        i1f = wire(np.array([-2.44, yF, 0]), np.array([-1.7, yF, 0]))
-        pv1 = wire(np.array([-2.5, yF - 0.06, 0]), np.array([-2.5, yF - 0.62, 0]))
-        pT1 = glyph("p", np.array([-2.5, yF - 0.9, 0]), CB)
-        iw2 = wire(np.array([0.35, yF, 0]), np.array([1.1, yF, 0]))
-        pT2a = glyph("p", np.array([0.1, yF, 0]), CB)
-        jw2 = wire(np.array([1.95, yF, 0]), np.array([2.69, yF, 0]), CD)
-        pT2b = glyph("p", np.array([2.95, yF, 0]), CB)
-        minus2 = MathTex("-", color=INK).scale(1.1).move_to([-0.75, yF, 0])
+        # ============ stage 6: recognize p, three times ============
+        yF = -0.45
+        d1 = Dot([-2.6, yF, 0], radius=0.06, color=INK)
+        j1f = wire(np.array([-3.4, yF, 0]), np.array([-2.66, yF, 0]), CD)
+        i1f = wire(np.array([-2.54, yF, 0]), np.array([-1.8, yF, 0]))
+        pv1 = wire(np.array([-2.6, yF - 0.06, 0]), np.array([-2.6, yF - 0.62, 0]))
+        pT1 = glyph("p", np.array([-2.6, yF - 0.9, 0]), CB)
+        minus2 = MathTex("-", color=INK).scale(1.1).move_to([-0.85, yF, 0])
+        pT2a = glyph("p", np.array([0.0, yF, 0]), CB)
+        iw2 = wire(np.array([0.25, yF, 0]), np.array([1.0, yF, 0]))
+        jw2 = wire(np.array([1.85, yF, 0]), np.array([2.59, yF, 0]), CD)
+        pT2b = glyph("p", np.array([2.85, yF, 0]), CB)
         self.play(
-            ReplacementTransform(VGroup(T1['z'], T1['w1'], T1['e'],
-                                        T1['sz'], T1['se'], T1['so'],
-                                        T1['sw1'], T1['sw2'], T1['bar']),
+            ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
+                                        circA,
+                                        *[B1[k] for k in B1]),
                                  VGroup(pv1, pT1)),
-            ReplacementTransform(cd1, d1),
+            ReplacementTransform(cdA, d1),
             Transform(whis, j1f),
-            ReplacementTransform(T1['w2'], i1f),
-            Transform(minus, minus2),
-            ReplacementTransform(VGroup(T2['z1'], T2['u1'], T2['e1'],
-                                        T2['sz'], T2['se'], T2['so'],
-                                        T2['sw1'], T2['sw2'], T2['sq'],
-                                        T2['bar']), pT2a),
-            ReplacementTransform(T2['u2'], iw2),
-            ReplacementTransform(VGroup(T2['z2'], T2['v1'], T2['e2']), pT2b),
-            ReplacementTransform(j2b, jw2),
-            *caption(r"recognize $p = \exp(z)\,/\,\mathbf{1}^{T}\exp(z)$"
-                     r" --- twice"),
-            run_time=1.7, rate_func=EASE)
+            ReplacementTransform(A1['w'], i1f),
+            FadeOut(plusA),
+            Transform(minusB, minus2),
+            ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
+                                        pw2, circB, B2['b1'], B2['e'],
+                                        B2['z'], B2['a1'], B2['w'], B2['s'],
+                                        B2['b2'], B2['a2'], de[0], de[1]),
+                                 pT2a),
+            ReplacementTransform(A2['w'], iw2),
+            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a'], circG),
+                                 pT2b),
+            ReplacementTransform(jG1, jw2),
+            *caption(r"recognize $p$ --- three times"),
+            run_time=1.8, rate_func=EASE)
         self.wait(0.9)
 
-        # ====== stage F: read off the identity ======
-        final_grp = VGroup(d1, j1f, i1f, pv1, pT1, minus, iw2, pT2a, jw2, pT2b, whis)
+        # ============ stage 7: read off the identity ============
+        final_grp = VGroup(d1, i1f, pv1, pT1, minusB, iw2, pT2a,
+                           jw2, pT2b, whis)
         self.play(VGroup(num_t, tbar, den_t).animate.shift(RIGHT * (-v0)),
-                  final_grp.animate.shift(0.7 * UP),
+                  final_grp.animate.shift(0.75 * UP),
                   run_time=0.8, rate_func=EASE)
         self.play(Write(m2[0]), FadeIn(*m2[1:]),
                   *caption(r"the Hessian of cross-entropy: "
