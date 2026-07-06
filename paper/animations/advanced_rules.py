@@ -978,8 +978,8 @@ class CrossEntropyHessian(Scene):
         B0 = F2(np.array([-0.2, yC, 0]))
         # -- the definition as a fraction, first --
         FN = F1(np.array([0.0, 0.35, 0]))
-        FD = F1(np.array([0.0, -1.4, 0]), 0.85)
-        FDs = cdot(np.array([0.71, -1.4, 0]))
+        FD = F1(np.array([0.0, -1.4, 0]))
+        FDs = cdot(np.array([0.83, -1.4, 0]))
         bar0 = Line([-1.6, yC, 0], [1.6, yC, 0], color=INK, stroke_width=1.9)
         self.play(Write(t0), FadeIn(fgroup(FN), fgroup(FD), FDs),
                   Create(bar0),
@@ -1084,16 +1084,16 @@ class CrossEntropyHessian(Scene):
 
         # ===== stage 5: row B -- the chain rule is actually a chain =====
         circB = dcircle(B2['pw'])
-        G3z = np.array([3.85, yB, 0])
+        G3z = np.array([3.6, yB, 0])
         G3 = {}
-        G3['z'] = glyph("z", G3z, CX, 0.85)
-        G3['e'] = glyph(r"\exp", G3z + np.array([0.78, 0, 0]), CA, 0.65)
-        G3['a'] = farrow(G3z + np.array([0.2, 0, 0]),
-                         G3z + np.array([0.49, 0, 0]))
+        G3['z'] = glyph("z", G3z, CX, 0.95)
+        G3['e'] = glyph(r"\exp", G3z + np.array([0.88, 0, 0]), CA, 0.8)
+        G3['a'] = farrow(G3z + np.array([0.22, 0, 0]),
+                         G3z + np.array([0.52, 0, 0]))
         G3['w'] = wire(G3z + np.array([-0.16, 0, 0]),
                        G3z + np.array([-0.62, 0, 0]))
         G3['s'] = cdot(G3z + np.array([-0.67, 0, 0]))
-        loopG = Ellipse(width=2.15, height=1.0, color=CD, stroke_width=2.2
+        loopG = Ellipse(width=2.35, height=1.05, color=CD, stroke_width=2.2
                         ).move_to(G3z + np.array([0.12, 0, 0]))
         ldotG = Dot(loopG.get_center() + np.array([-0.55, 0.42, 0]),
                     radius=0.05, color=CD)
@@ -1157,23 +1157,23 @@ class CrossEntropyHessian(Scene):
         bar1 = Line([-4.0, yA - 0.5, 0], [-1.4, yA - 0.5, 0],
                     color=INK, stroke_width=1.9)
         gB2 = VGroup(B2['e'], B2['a1'], B2['z'], B2['w'], B2['s'])
-        bar2 = Line([-2.1, yB - 0.3, 0], [2.4, yB - 0.3, 0],
+        bar2 = Line([-2.45, yB - 0.3, 0], [2.45, yB - 0.3, 0],
                     color=INK, stroke_width=1.9)
-        pow2g = glyph(r"\mathrm{pow}_{2}", np.array([-1.05, yB - 0.62, 0]),
-                      CA, 0.55)
-        a2new = farrow(np.array([-0.47, yB - 0.62, 0]),
-                       np.array([-0.72, yB - 0.62, 0]))
+        pow2g = glyph(r"\mathrm{pow}_{2}", np.array([-1.0, yB - 0.62, 0]),
+                      CA, 0.8)
+        a2new = farrow(np.array([-0.08, yB - 0.62, 0]),
+                       np.array([-0.58, yB - 0.62, 0]))
         numL = VGroup(*[A2[k] for k in A2])
         numR = VGroup(G3['z'], G3['e'], G3['a'], jG1)
         self.play(FadeOut(B1['pw'], target_position=[-3.6, yA - 0.88, 0]),
                   FadeOut(B1['a2'], target_position=[-3.0, yA - 0.88, 0]),
                   Create(bar1), Create(bar2),
-                  gB1.animate.scale(0.7).move_to([-2.7, yA - 0.88, 0]),
+                  gB1.animate.move_to([-2.7, yA - 0.95, 0]),
                   ReplacementTransform(pw2, pow2g),
                   Transform(B2['a2'], a2new),
-                  gB2.animate.scale(0.6).move_to([0.6, yB - 0.62, 0]),
-                  numL.animate.shift(2.7 * RIGHT),
-                  numR.animate.shift(2.7 * LEFT),
+                  gB2.animate.move_to([1.0, yB - 0.62, 0]),
+                  numL.animate.shift(2.5 * RIGHT),
+                  numR.animate.shift(2.5 * LEFT),
                   *caption(r"the $\mathrm{pow}$'s are fractions"),
                   run_time=1.5, rate_func=EASE)
         self.wait(0.9)
@@ -1181,15 +1181,15 @@ class CrossEntropyHessian(Scene):
         # ==== stage 6a2: both fractions onto one line; factors swap so
         #      the amber j-edge ends up leftmost (covariance) ====
         fr1 = VGroup(A1['z'], A1['e'], A1['a'], A1['w'], cdA, whis, gB1, bar1)
-        bar2t = Line([0.2, -0.55, 0], [4.9, -0.55, 0],
+        bar2t = Line([0.3, -0.55, 0], [4.85, -0.55, 0],
                      color=INK, stroke_width=1.9)
         self.play(fr1.animate.shift(np.array([-0.1, -0.72, 0])),
                   plusA.animate.shift(np.array([-0.55, 0, 0])),
-                  numR.animate(path_arc=0.45).shift(np.array([0.0, 1.45, 0])),
-                  numL.animate(path_arc=-0.85).shift(np.array([4.85, 1.45, 0])),
+                  numR.animate(path_arc=0.45).shift(np.array([0.15, 1.45, 0])),
+                  numL.animate(path_arc=-0.85).shift(np.array([5.0, 1.45, 0])),
                   Transform(bar2, bar2t),
                   VGroup(pow2g, B2['a2'], gB2
-                         ).animate.shift(np.array([2.7, 1.12, 0])),
+                         ).animate.shift(np.array([2.3, 1.14, 0])),
                   *caption(r"one line --- and the factors swap, so the"
                            r" new edge $j$ stays left"),
                   run_time=1.5, rate_func=EASE)
@@ -1203,25 +1203,25 @@ class CrossEntropyHessian(Scene):
             g = {}
             g['sm'] = glyph(r"\mathrm{softmax}", np.array([sx, y, 0]), CB, SC)
             zx = sx + zx_off
-            g['z'] = glyph("z", np.array([zx, y, 0]), CX, SC)
+            g['z'] = glyph("z", np.array([zx, y, 0]), CX, 0.95)
             if adir > 0:
-                g['a'] = farrow(np.array([zx - 0.22, y, 0]),
-                                np.array([sx + 0.62, y, 0]), dotted=False)
+                g['a'] = farrow(np.array([zx - 0.25, y, 0]),
+                                np.array([sx + 0.78, y, 0]))
             else:
-                g['a'] = farrow(np.array([zx + 0.22, y, 0]),
-                                np.array([sx - 0.62, y, 0]), dotted=False)
+                g['a'] = farrow(np.array([zx + 0.25, y, 0]),
+                                np.array([sx - 0.78, y, 0]))
             return g
 
-        d1 = Dot([-2.9, yF, 0], radius=0.06, color=INK)
-        j1f = wire(np.array([-3.7, yF, 0]), np.array([-2.96, yF, 0]), CD)
-        i1f = wire(np.array([-2.84, yF, 0]), np.array([-2.1, yF, 0]))
-        pv1 = wire(np.array([-2.9, yF - 0.06, 0]), np.array([-2.9, yF - 0.6, 0]))
-        sm1 = smgroup(-2.9, 1.15, yF - 0.92, 1)
-        minus2 = MathTex("-", color=INK).scale(1.1).move_to([-1.55, yF, 0])
-        jw2 = wire(np.array([-1.05, yF, 0]), np.array([-0.4, yF, 0]), CD)
-        sm2b = smgroup(0.3, 1.15, yF, 1)         # (j)-- softmax <- z
-        sm2a = smgroup(3.4, -1.15, yF, -1)       # z -> softmax --(i)
-        iw2 = wire(np.array([4.02, yF, 0]), np.array([4.67, yF, 0]))
+        d1 = Dot([-3.2, yF, 0], radius=0.06, color=INK)
+        j1f = wire(np.array([-4.0, yF, 0]), np.array([-3.26, yF, 0]), CD)
+        i1f = wire(np.array([-3.14, yF, 0]), np.array([-2.4, yF, 0]))
+        pv1 = wire(np.array([-3.2, yF - 0.06, 0]), np.array([-3.2, yF - 0.6, 0]))
+        sm1 = smgroup(-3.2, 1.45, yF - 0.92, 1)
+        minus2 = MathTex("-", color=INK).scale(1.1).move_to([-1.8, yF, 0])
+        jw2 = wire(np.array([-1.4, yF, 0]), np.array([-0.8, yF, 0]), CD)
+        sm2b = smgroup(-0.1, 1.45, yF, 1)        # (j)-- softmax <- z
+        sm2a = smgroup(3.5, -1.45, yF, -1)       # z -> softmax --(i)
+        iw2 = wire(np.array([4.2, yF, 0]), np.array([4.6, yF, 0]))
         self.play(
             ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
                                         gB1, bar1),
