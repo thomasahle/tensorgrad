@@ -211,9 +211,11 @@ def test_sdpa_no_batch_2d():
     )
 
 
-def test_sdpa_fallback_when_softmax_shared():
+def test_sdpa_fuses_when_softmax_shared():
     # The attention weights are also a program output: the softmax has a
-    # second consumer, so the pattern must NOT fuse (and stays correct).
+    # second consumer, so it cannot be SUPPRESSED — but the AV einsum still
+    # fuses (the SDPA call recomputes the softmax internally) while the
+    # shared softmax keeps being emitted for its other consumer.
     q, k, v, m = _sdpa_vars()
     vals = _sdpa_vals(q, k, v, m)
     att = F.softmax(F.graph("q -d- k", q=q, k=k) * 0.125, dim="s2")
@@ -221,12 +223,33 @@ def test_sdpa_fallback_when_softmax_shared():
     att_s = att.simplify({"expand_functions": False})
     f = compile_to_callable(expr, att_s)
     out, att_out = f(dict(vals), dict(SDPA_DIMS))
-    assert "scaled_dot_product_attention" not in _source(f, SDPA_DIMS)
+    src = _source(f, SDPA_DIMS)
+    assert "scaled_dot_product_attention" in src
+    assert "softmax" in src  # the shared softmax is still emitted
     for t, o in [(expr, out), (att_s, att_out)]:
         ref = evaluate(t, dict(vals), dict(SDPA_DIMS))
         torch.testing.assert_close(
             o.rename(None), ref.align_to(*o.names).rename(None), rtol=RTOL, atol=1e-5
         )
+
+
+def test_sdpa_folded_output_projection():
+    # The output projection contracted straight onto the AV product (one
+    # 3-operand einsum, the shape every transformer forward pass lowers to):
+    # SDPA fires, followed by the leftover contraction with W_O.
+    q, k, v, m = _sdpa_vars()
+    wo = Variable("wo", h_s, dv_s, d_s)
+    vals = _sdpa_vals(q, k, v, m)
+    torch.manual_seed(7)
+    vals[wo] = torch.randn(3, 7, 6, names=("h", "dv", "d"))
+    expr = (_attention(q, k, v, m) @ wo).simplify({"expand_functions": False})
+    f = compile_to_callable(expr)
+    out = f(dict(vals), dict(SDPA_DIMS))
+    assert "scaled_dot_product_attention" in _source(f, SDPA_DIMS)
+    ref = evaluate(expr, dict(vals), dict(SDPA_DIMS))
+    torch.testing.assert_close(
+        out.rename(None), ref.align_to(*out.names).rename(None), rtol=RTOL, atol=1e-5
+    )
 
 
 def test_sdpa_fallback_v_missing_batch():

@@ -234,7 +234,7 @@ class TorchCodegen:
         # produce their own node in its assigned order.
         var_orders = [tuple(self.builder.input_vars[n].edges) for n in self.input_names]
         self._phys = assign_layouts(order, outputs, var_orders) if LAYOUT_ASSIGN else {}
-        sdpa_plans, sdpa_suppressed = self._plan_sdpa(order, output_ids, dims)
+        sdpa_plans, sdpa_suppressed = self._plan_sdpa(order, output_ids, dims, dim_of)
         addmm_plans, addmm_suppressed = self._plan_addmm(
             order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed
         )
@@ -646,13 +646,19 @@ class TorchCodegen:
             for op in nd.operands():
                 consumers[id(op)] = consumers.get(id(op), 0) + 1
         plans, suppressed = {}, set()
+        # An SDPA plan reads its Q/K/V/mask/W names at runtime even when the
+        # pattern's chain nodes stay emitted (demoted exclusivity), so addmm
+        # must never fold one of those into a consuming Linear.
+        sdpa_refs = {
+            id(p[t]) for p in sdpa_plans.values() for t in ("q", "k", "v", "mask", "w") if t in p
+        }
         for node in order:
             if not isinstance(node, LinearNode) or id(node) in sdpa_suppressed:
                 continue
             if len(node.terms) < 2:
                 continue
             plan = self._addmm_fit(node, consumers, output_ids, dims, dim_of,
-                                   sdpa_plans, sdpa_suppressed, suppressed)
+                                   sdpa_plans, sdpa_suppressed | sdpa_refs, suppressed)
             if plan is not None:
                 plans[id(node)] = plan
                 suppressed.add(plan["t_id"])
@@ -1656,7 +1662,7 @@ class TorchCodegen:
 
     # ---- SDPA peephole ---------------------------------------------------
 
-    def _plan_sdpa(self, order, output_ids, dims):
+    def _plan_sdpa(self, order, output_ids, dims, dim_of):
         """Find fusable attention patterns. Returns (plans, suppressed):
         plans maps id(final einsum) -> plan dict for _emit_sdpa; suppressed is
         the set of node ids consumed exclusively by a fused SDPA call."""
@@ -1667,39 +1673,84 @@ class TorchCodegen:
             for op in n.operands():
                 consumers[id(op)] = consumers.get(id(op), 0) + 1
         plans, suppressed = {}, set()
+        referenced: set[int] = set()  # nodes an accepted plan reads at runtime
         for node in order:
-            plan = self._match_sdpa(node, consumers, output_ids, dims)
+            plan = self._match_sdpa(node, consumers, output_ids, dims, dim_of)
             if plan is None:
                 continue
             # Patterns must not overlap: an already-fused node cannot be an
-            # intermediate of a second pattern, and a plan must not reference
-            # (as Q/K/V/mask) a node another plan suppressed.
-            refs = [plan["q"], plan["k"], plan["v"]] + ([plan["mask"]] if "mask" in plan else [])
-            if plan["suppress"] & (plans.keys() | suppressed):
+            # intermediate of a second pattern, a plan must not suppress a
+            # node another plan reads (as Q/K/V/mask/W), and a plan must not
+            # reference a node another plan suppressed.
+            refs = [plan[t] for t in ("q", "k", "v", "mask", "w") if t in plan]
+            if plan["suppress"] & (plans.keys() | suppressed | referenced):
                 continue
             if any(id(r) in suppressed for r in refs):
                 continue
             plans[id(node)] = plan
             suppressed |= plan["suppress"]
+            referenced |= {id(r) for r in refs}
         return plans, suppressed
 
-    def _match_sdpa(self, e2, consumers, output_ids, dims):
-        """Match e2 = einsum(softmax(scale * einsum(Q,K) [+ mask]), V) with all
-        intermediates single-consumer, one contracted feature wire, one query
-        wire, one key wire, one value-feature wire and shared batch wires.
-        Returns a plan dict, or None (silent fallback to the generic path)."""
-        if not isinstance(e2, EinsumNode) or e2.constraints or len(e2.ops) != 2:
+    def _match_sdpa(self, e2, consumers, output_ids, dims, dim_of):
+        """Match e2 = einsum(softmax(scale * einsum(Q,K) [+ mask]), V[, W])
+        with one contracted feature wire, one query wire, one key wire, one
+        value-feature wire and shared batch wires. The softmax may be reached
+        through a 1-op permutation-alias einsum (consolidation's axis-permuted
+        twin wrapper), and an optional third operand W (a folded-in output
+        projection) is peeled off as a post-SDPA contraction. Multi-consumer /
+        output intermediates do not abandon the match: they are merely kept
+        out of plan['suppress'] (still emitted for their other consumers; the
+        fused call recomputes those stages internally). Returns a plan dict,
+        or None (silent fallback to the generic path)."""
+        if not isinstance(e2, EinsumNode) or e2.constraints or len(e2.ops) not in (2, 3):
             return None
         if len(set(e2.out_subs)) != len(e2.out_subs):
             return None
-        for i, S in enumerate(e2.ops):
+        for i, op in enumerate(e2.ops):
+            S, alias = op, None
+            att_subs = list(e2.in_subs[i])
+            if (
+                isinstance(S, EinsumNode)
+                and len(S.ops) == 1
+                and not S.constraints
+                and S.weight == 1
+                and len(S.out_subs) == len(S.in_subs[0])
+                and len(set(S.in_subs[0])) == len(S.in_subs[0])
+                and set(S.out_subs) == set(S.in_subs[0])
+                and isinstance(S.ops[0], ReduceNode)
+            ):
+                # Pure permutation alias between the softmax and e2: hop
+                # through it, composing its permutation into the att-axis
+                # bookkeeping (softmax axis j sits on alias wire
+                # in_subs[0][j], i.e. alias output axis out_subs.index(...),
+                # i.e. that axis's e2 wire).
+                alias, S = S, S.ops[0]
+                att_subs = [
+                    e2.in_subs[i][alias.out_subs.index(w)] for w in alias.in_subs[0]
+                ]
             if not (isinstance(S, ReduceNode) and S.op == "softmax" and len(S.axes) == 1):
                 continue
-            V, v_subs = e2.ops[1 - i], list(e2.in_subs[1 - i])
-            att_subs = list(e2.in_subs[i])
-            if V is S or len(set(att_subs)) != len(att_subs) or len(set(v_subs)) != len(v_subs):
+            if len(set(att_subs)) != len(att_subs):
                 continue
-            if consumers.get(id(S)) != 1 or id(S) in output_ids:
+            ax = S.axes[0]  # softmax axis == key axis of the scores
+            sk2 = att_subs[ax]
+            # V = the unique non-softmax operand carrying the softmax key
+            # wire. With 3 operands the remaining one, W, is a folded
+            # post-SDPA contraction; uniqueness of the V candidate already
+            # guarantees W does not carry the key wire.
+            v_cands = [j for j in range(len(e2.ops)) if j != i and sk2 in e2.in_subs[j]]
+            if len(v_cands) != 1:
+                continue
+            (jv,) = v_cands
+            V, v_subs = e2.ops[jv], list(e2.in_subs[jv])
+            W, w_subs = None, []
+            if len(e2.ops) == 3:
+                (jw,) = [j for j in range(len(e2.ops)) if j not in (i, jv)]
+                W, w_subs = e2.ops[jw], list(e2.in_subs[jw])
+                if len(set(w_subs)) != len(w_subs):
+                    continue
+            if V is S or V is op or len(set(v_subs)) != len(v_subs):
                 continue
 
             # Walk down the scale/mask chain between softmax and the QK einsum.
@@ -1712,9 +1763,6 @@ class TorchCodegen:
             ok = True
             for _ in range(4):
                 if not isinstance(cur, LinearNode):
-                    break
-                if consumers.get(id(cur)) != 1 or id(cur) in output_ids:
-                    ok = False
                     break
                 if len(cur.terms) == 1:
                     chain_ids.append(id(cur))
@@ -1757,8 +1805,6 @@ class TorchCodegen:
                 or not isinstance(e1, EinsumNode)
                 or e1.constraints
                 or len(e1.ops) != 2
-                or consumers.get(id(e1)) != 1
-                or id(e1) in output_ids
                 or len(set(e1.out_subs)) != len(e1.out_subs)
             ):
                 continue
@@ -1777,7 +1823,6 @@ class TorchCodegen:
             (cw,) = contracted
             if cw not in s1a or cw not in s1b:
                 continue
-            ax = S.axes[0]  # softmax axis == key axis of the scores
             skw = e1.out_subs[amap[ax]]
             if skw in s1a and skw in s1b:
                 continue
@@ -1794,25 +1839,52 @@ class TorchCodegen:
             # ---- validate the AV einsum (E2 wire space) ----
             # att axis j carries E2 wire att_subs[j] and E1 wire e1.out_subs[amap[j]].
             e1w_of_att = [e1.out_subs[amap[j]] for j in range(len(att_subs))]
-            sk2 = att_subs[ax]
             j_sq = e1w_of_att.index(sqw)
             sq2 = att_subs[j_sq]
             batch2 = {att_subs[j] for j in range(len(att_subs)) if j not in (ax, j_sq)}
             dv = [w for w in v_subs if w not in att_subs]
             if len(dv) != 1:
                 continue  # SDPA needs exactly one value-feature axis
-            if sk2 not in v_subs or sk2 in e2.out_subs or sq2 in v_subs:
+            if sk2 in e2.out_subs or sq2 in v_subs:
                 continue
             if set(v_subs) != batch2 | {sk2, dv[0]}:
                 continue  # V must carry exactly the batch wires + key + feature
-            if set(e2.out_subs) != batch2 | {sq2, dv[0]}:
-                continue
+            core = batch2 | {sq2, dv[0]}  # wires of the SDPA result (att @ V)
+            if W is None:
+                if set(e2.out_subs) != core:
+                    continue
+            else:
+                # Restated against the intermediate product: every SDPA-result
+                # wire must be consumed by the output or by the leftover W
+                # contraction, and the output must be buildable from exactly
+                # those two tensors (no broadcast-only output wires).
+                if not core <= set(e2.out_subs) | set(w_subs):
+                    continue
+                if not set(e2.out_subs) <= core | set(w_subs):
+                    continue
+                if len(core | set(w_subs) | set(e2.out_subs)) > len(_LETTERS):
+                    continue
 
             # ---- permutations to (B..., S, E) layouts ----
-            b2_order = [w for w in e2.out_subs if w in batch2]
+            # (3-op case: batch wires contracted away by W never reach
+            # e2.out_subs; order them after the surviving ones, by att axis.)
+            b2_order = [w for w in e2.out_subs if w in batch2] + [
+                w for w in att_subs if w in batch2 and w not in e2.out_subs
+            ]
             att_axis_of_e2w = {w: j for j, w in enumerate(att_subs)}
             b1_order = [e1w_of_att[att_axis_of_e2w[w]] for w in b2_order]
-            plan = {
+            # Exclusivity is per-node, not a match condition: a chain node is
+            # suppressed only while it and everything between it and e2 is
+            # single-consumer and not a program output (its unique consumer
+            # then IS the next suppressed node up / the fused e2 itself); the
+            # first shared node keeps being emitted for its other consumers
+            # and the SDPA call recomputes that stage internally.
+            suppress: set[int] = set()
+            for nid in ([id(alias)] if alias is not None else []) + [id(S)] + chain_ids + [id(e1)]:
+                if consumers.get(nid) != 1 or nid in output_ids:
+                    break
+                suppress.add(nid)
+            plan: dict[str, Any] = {
                 "q": e1.ops[qi],
                 "k": e1.ops[1 - qi],
                 "v": V,
@@ -1820,12 +1892,21 @@ class TorchCodegen:
                 "k_perm": tuple(k_subs.index(w) for w in b1_order + [skw, cw]),
                 "v_perm": tuple(v_subs.index(w) for w in b2_order + [sk2, dv[0]]),
                 "scale": to_float(scale.subs(dims)),
-                "out_perm": tuple(
-                    (b2_order + [sq2, dv[0]]).index(w) for w in e2.out_subs
-                ),
                 "weight": to_float(e2.weight.subs(dims)),
-                "suppress": {id(S), id(e1)} | set(chain_ids),
+                "suppress": suppress,
             }
+            if W is None:
+                plan["out_perm"] = tuple(
+                    (b2_order + [sq2, dv[0]]).index(w) for w in e2.out_subs
+                )
+            else:
+                plan["w"] = W
+                plan["w_subs"] = tuple(w_subs)
+                plan["core_wires"] = tuple(b2_order + [sq2, dv[0]])
+                plan["wire_size"] = {
+                    w: dim_of(e2.wire_dims[w])
+                    for w in core | set(w_subs) | set(e2.out_subs)
+                }
             if mask is not None:
                 m_node, m_axis, m_w = mask
                 if m_node.order != len(att_subs):
@@ -1853,6 +1934,32 @@ class TorchCodegen:
             args.append(f"attn_mask={m}")
         args.append(f"scale={_fmt_weight(plan['scale'])}")
         expr = f"torch.nn.functional.scaled_dot_product_attention({', '.join(args)})"
+        if "w" in plan:
+            # Folded output projection: contract the SDPA result (whose axis
+            # j carries wire core_wires[j]) with W, landing directly in OUR
+            # assigned layout (the einsum output is the node's physical
+            # order, so no trailing permute is ever needed).
+            w_op = plan["w"]
+            w_wires = self._entry_subs(w_op, list(plan["w_subs"]))
+            out_wires = [node.out_subs[j] for j in self._phys_of(node)]
+            letter: dict[int, str] = {}
+            for w in list(plan["core_wires"]) + w_wires + out_wires:
+                letter.setdefault(w, _LETTERS[len(letter)])
+            eq = (
+                "".join(letter[w] for w in plan["core_wires"])
+                + ","
+                + "".join(letter[w] for w in w_wires)
+                + "->"
+                + "".join(letter[w] for w in out_wires)
+            )
+            sizes = {letter[w]: s for w, s in plan["wire_size"].items()}
+            margs = [expr, names[id(w_op)]]
+            expr = self._matmul_expr(eq, margs, sizes.__getitem__) or (
+                f"torch.einsum('{eq}', {margs[0]}, {margs[1]})"
+            )
+            if plan["weight"] != 1.0:
+                expr = f"{_fmt_weight(plan['weight'])} * {expr}"
+            return f"{name} = {expr}"
         if plan["weight"] != 1.0:
             expr = f"{_fmt_weight(plan['weight'])} * {expr}"
         # SDPA produces (batch..., seq_q, dv); out_perm[i] = produced position
