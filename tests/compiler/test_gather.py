@@ -1,9 +1,10 @@
 """Tests for the gather/scatter tier (integer embedding lookup).
 
-F.gather(table, idx, dim) indexes `table` along `dim` with the integer-valued
-(float-carried) tensor `idx`. The compiler emits torch.index_select for the
-forward and a zeros().index_add_ scatter for the table-gradient, instead of
-the dense one-hot matmul both are mathematically equal to.
+The language has no gather primitive: indexing `table` along `dim` with the
+integer-valued (float-carried) tensor `idx` is the contraction with the
+F.one_hot indicator (the local `gather` helper below). The compiler emits
+torch.index_select for the forward and a zeros().index_add_ scatter for the
+table-gradient, instead of the dense one-hot matmul both are equal to.
 
 Correctness is checked against the evaluate() oracle, torch.autograd, and the
 explicit one-hot matmul formulation; a microbench asserts the compiled paths
@@ -28,6 +29,12 @@ torch.set_num_threads(2)
 RTOL, ATOL = 1e-4, 1e-6
 
 
+def gather(table: Variable, idx, dim: str):
+    """Embedding lookup spelled as the indicator contraction (the deleted
+    F.gather sugar): sum_v table[v, ...] * [idx == v]."""
+    return table @ F.one_hot(idx, table.shape[dim], dim)
+
+
 def rand_idx(var: Variable, dims: dict, num_classes: int) -> torch.Tensor:
     """Random integral-valued float tensor for an index Variable."""
     sizes = [dims[s] for s in var.shape.values()]
@@ -45,7 +52,7 @@ def test_gather_forward_matches_evaluate():
     table = Variable("table", V=V, D=D)
     idx = Variable("idx", B=B, S=S)
     dims = {V: 7, D: 3, B: 2, S: 5}
-    g = F.gather(table, idx, "V").full_simplify()
+    g = gather(table, idx, "V").full_simplify()
     values = {table: rand_named(table, dims), idx: rand_idx(idx, dims, 7)}
     assert_compiles_like_evaluate(g, values, dims)
 
@@ -56,7 +63,7 @@ def test_gather_forward_matches_onehot_matmul():
     idx = Variable("idx", B=B)
     dims = {V: 7, D: 3, B: 11}
     tval, ival = rand_named(table, dims), rand_idx(idx, dims, 7)
-    g = F.gather(table, idx, "V").full_simplify()
+    g = gather(table, idx, "V").full_simplify()
     out = compile_to_callable(g)({table: tval, idx: ival}, dims)
     onehot = (ival.rename(None).long().unsqueeze(1) == torch.arange(7)).float()
     ref = onehot @ tval.rename(None)  # (B, D)
@@ -70,7 +77,7 @@ def test_gather_middle_axis_and_multi_table_edges():
     table = Variable("table", D1=D1, V=V, D2=D2)
     idx = Variable("idx", B=B, S=S)
     dims = {V: 6, D1: 3, D2: 4, B: 2, S: 3}
-    g = F.gather(table, idx, "V").full_simplify()
+    g = gather(table, idx, "V").full_simplify()
     values = {table: rand_named(table, dims), idx: rand_idx(idx, dims, 6)}
     f = assert_compiles_like_evaluate(g, values, dims)
     # Direct torch cross-check
@@ -87,7 +94,7 @@ def test_gather_scalar_idx():
     table = Variable("table", V=V, D=D)
     idx = Variable("idx")  # order-0 index
     dims = {V: 5, D: 4}
-    g = F.gather(table, idx, "V").full_simplify()
+    g = gather(table, idx, "V").full_simplify()
     values = {table: rand_named(table, dims), idx: torch.tensor(3.0)}
     assert_compiles_like_evaluate(g, values, dims)
 
@@ -97,7 +104,7 @@ def test_gather_rename():
     table = Variable("table", V=V, D=D)
     idx = Variable("idx", B=B)
     dims = {V: 5, D: 4, B: 3}
-    g = F.gather(table, idx, "V").rename(D="feat", B="pos").full_simplify()
+    g = gather(table, idx, "V").rename(D="feat", B="pos").full_simplify()
     assert g.edges == {"feat", "pos"}
     values = {table: rand_named(table, dims), idx: rand_idx(idx, dims, 5)}
     assert_compiles_like_evaluate(g, values, dims)
@@ -116,7 +123,7 @@ def test_gather_grad_matches_evaluate_and_autograd():
     tval, ival = rand_named(table, dims), rand_idx(idx, dims, 7)
     values = {table: tval, idx: ival}
 
-    g = F.gather(table, idx, "V")
+    g = gather(table, idx, "V")
     loss = F.sum(F.pow(g, 2)) / 2
     grad = loss.grad(table).full_simplify()
     f = assert_compiles_like_evaluate([loss.full_simplify(), grad], values, dims)
@@ -137,7 +144,7 @@ def test_gather_grad_matches_onehot_matmul_formulation():
     dims = {V: 8, D: 3, B: 6}
     tval, ival = rand_named(table, dims), rand_idx(idx, dims, 8)
 
-    g = F.gather(table, idx, "V")
+    g = gather(table, idx, "V")
     grad = (F.sum(F.pow(g, 2)) / 2).grad(table).full_simplify()
     gout = compile_to_callable(grad)({table: tval, idx: ival}, dims)
 
@@ -151,7 +158,7 @@ def test_gather_grad_wrt_idx_is_zero():
     V, D, B = sympy.symbols("V D B")
     table = Variable("table", V=V, D=D)
     idx = Variable("idx", B=B)
-    g = F.gather(table, idx, "V")
+    g = gather(table, idx, "V")
     grad = F.sum(F.pow(g, 2)).grad(idx).full_simplify()
     assert isinstance(grad, Zero), f"Expected Zero, got {grad}"
 
@@ -164,7 +171,7 @@ def test_gather_full_jacobian_dense_onehot_fallback():
     table = Variable("table", V=V, D=D)
     idx = Variable("idx", B=B)
     dims = {V: 5, D: 3, B: 4}
-    jac = F.gather(table, idx, "V").grad(table).full_simplify()
+    jac = gather(table, idx, "V").grad(table).full_simplify()
     values = {table: rand_named(table, dims), idx: rand_idx(idx, dims, 5)}
     f = assert_compiles_like_evaluate(jac, values, dims)
     assert "arange" in f.codegen.specialize({s: dims[s] for s in dims})._source
@@ -174,7 +181,7 @@ def test_gather_second_grad_is_zero():
     V, D, B = sympy.symbols("V D B")
     table = Variable("table", V=V, D=D)
     idx = Variable("idx", B=B)
-    g = F.gather(table, idx, "V")
+    g = gather(table, idx, "V")
     hess = F.sum(g).grad(table).grad(table).full_simplify()
     assert isinstance(hess, Zero), f"Expected Zero, got {hess}"
 
@@ -192,7 +199,7 @@ def test_gather_in_mlp_loss_and_grads():
     dims = {V: 7, D: 4, C: 3, B: 5}
     values = {emb: rand_named(emb, dims), w: rand_named(w, dims), idx: rand_idx(idx, dims, 7)}
 
-    h = F.gather(emb, idx, "V")  # (B, D)
+    h = gather(emb, idx, "V")  # (B, D)
     y = F.relu(h @ w)  # (B, C)
     loss = F.sum(F.pow(y, 2)) / 2
 
@@ -224,7 +231,7 @@ def test_gather_cross_entropy_grads():
         idx: rand_idx(idx, dims, 6),
         tgt: tgt_val,
     }
-    logits = F.gather(emb, idx, "V") @ w  # (B, C)
+    logits = gather(emb, idx, "V") @ w  # (B, C)
     loss = F.sum(F.cross_entropy(logits, tgt, dim="C")) / dims[B]
     outputs = [loss.full_simplify(), loss.grad(emb).full_simplify(), loss.grad(w).full_simplify()]
     assert_compiles_like_evaluate(outputs, values, dims)
@@ -255,7 +262,7 @@ def test_gather_microbench_beats_onehot():
     ival = torch.randint(0, NV, (NB,)).float().rename("B")
     values = {table: tval, idx: ival}
 
-    g = F.gather(table, idx, "V")
+    g = gather(table, idx, "V")
     f_fwd = compile_to_callable(g.full_simplify())
     f_bwd = compile_to_callable((F.sum(F.pow(g, 2)) / 2).grad(table).full_simplify())
 
@@ -290,3 +297,31 @@ def test_gather_microbench_beats_onehot():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
+
+
+def test_grad_scatter_never_materializes_delta_jacobian():
+    """The table-gradient must compile to zeros().index_add_, NOT an
+    index_select into the dense Delta(v,v')xDelta(d,d') jacobian (vocab^2*d^2
+    elements — regression: lowering's index_select peephole once fused into
+    the purely structural delta einsum before factoring could dissolve it)."""
+    V, D, B = sympy.symbols("V D B")
+    table = Variable("table", V=V, D=D)
+    idx = Variable("idx", B=B)
+    tgt = Variable("tgt", B=B, D=D)
+    loss = F.sum(gather(table, idx, "V") * tgt)
+    f = compile_to_callable(loss, loss.grad(table))
+    NV, ND, NB = 64, 8, 4
+    values = {
+        table: torch.randn(NV, ND).rename("V", "D"),
+        idx: rand_idx(idx, {B: NB}, NV),
+        tgt: torch.randn(NB, ND).rename("B", "D"),
+    }
+    outs = f(values, {V: NV, D: ND, B: NB})
+    src = next(iter(f._specializations.values()))._source
+    assert "index_add_" in src, f"scatter peephole did not fire:\n{src}"
+    assert f"({NV}, {NV}" not in src, f"dense vocab^2 intermediate:\n{src}"
+    w = values[table].rename(None).clone().requires_grad_(True)
+    ref = (w[values[idx].rename(None).long()] * values[tgt].rename(None)).sum()
+    ref.backward()
+    torch.testing.assert_close(outs[0].rename(None), ref.detach(), rtol=RTOL, atol=ATOL)
+    torch.testing.assert_close(outs[1].rename(None), w.grad, rtol=RTOL, atol=ATOL)

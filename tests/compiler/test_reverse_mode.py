@@ -422,7 +422,7 @@ def test_embedding_grad_through_stack_matches_autograd():
     tokens = Variable("tokens", batch, seq)
     gy = Variable("gy", batch, seq, d)
     wte = Variable("wte", vocab=vocab, d=d)
-    h = F.gather(wte, tokens, dim="vocab")
+    h = F.one_hot(tokens, wte.shape["vocab"], dim="vocab") @ wte
     ws = []
     for i in range(2):
         wi = Variable(f"w{i}", d=d, dh=dh)

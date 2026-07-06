@@ -23,9 +23,11 @@ is DERIVED symbolically instead of traced by autograd?
   log_softmax inside the loss) is fused and numerically stabilized by the
   compiler; gelu's tanh chain is differentiated symbolically too.
 
-* Integer tokens stay integers: F.gather indexes the embedding table
-  directly (index_select forward; the derived gradient is a scatter-add).
-  Integer TARGETS stay integers too: F.one_hot builds the target
+* Integer tokens stay integers: F.one_hot(tokens) is a sparse indicator
+  tensor, and the embedding lookup is literally the contraction
+  one_hot @ wte -- the compiler maps it to index_select and the DERIVED
+  gradient to a scatter-add; the dense indicator never exists. Integer
+  TARGETS stay integers the same way: one_hot builds the target
   distribution inside the program, and minGPT's ignore_index=-1 becomes a
   0/1 mask that is just another input tensor. No host-side encoding.
 
@@ -147,7 +149,7 @@ def mlp(x: Tensor[..., "d"], name: str) -> Tensor[..., "d"]:
 def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
     """Token ids (batch, seq) -> logits (batch, seq, vocab)."""
     wte = param("wte", vocab=vocab, d=d)
-    x = F.gather(wte, idx, dim="vocab") + param("wpe", seq=seq, d=d)  # real integer lookup
+    x = F.one_hot(idx, vocab, dim="vocab") @ wte + param("wpe", seq=seq, d=d)  # sparse lookup
     for i in range(N_LAYER):
         x = x + attention(layer_norm(x, f"h{i}.ln1"), f"h{i}.attn")
         x = x + mlp(layer_norm(x, f"h{i}.ln2"), f"h{i}.mlp")

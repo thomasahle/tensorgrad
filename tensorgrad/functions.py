@@ -1386,36 +1386,20 @@ def one_hot(idx: Tensor, size: Symbol, dim: str) -> Tensor:
 
     `idx` holds integral values carried as floats (like argmax output). The
     indicator has no differentiable inputs, so anything contracted with it
-    differentiates by the ordinary product rule."""
+    differentiates by the ordinary product rule. It is the whole gather /
+    scatter / embedding-lookup family: indexing a table is the contraction
+
+        F.one_hot(idx, vocab, dim="vocab") @ wte        # (*idx.edges, d)
+
+    which is linear in the table, so its gradient derives as the transposed
+    contraction. The compiler maps the contractions to torch.index_select
+    (class axis summed against a table) and zeros().index_add_ (class axis
+    free — the scatter); the dense indicator is never materialized."""
     if dim in idx.edges:
         raise ValueError(f"{dim=} must not be an edge of idx: {idx.edges=}")
     # Delta(size, dim) is a ones-vector that only carries the number of
     # classes, so the one-hot does not depend on (or broadcast over) a table.
     return Function(_OneHotFunction(dim, dim), [idx, Delta(size, dim)], {dim: size})
-
-
-def gather(table: Tensor, idx: Tensor, dim: str) -> Tensor:
-    """Integer embedding lookup: index `table` along edge `dim` with `idx`.
-
-    `idx` is an integer-valued tensor carried as floats (like the output of
-    F.argmax). The result has edges (table.edges - {dim}) | idx.edges, with
-    gather(table, idx, dim)[d..., b...] = table[idx[b...], d...].
-
-    gather is just the contraction of the table with the one_hot indicator of
-    idx: sum_v table[v, d...] * [idx[b...] == v]. It is LINEAR in the table,
-    so its gradient DERIVES automatically as the transposed contraction (the
-    scatter pattern) — no hand-written Jacobian anywhere. The derivative wrt
-    `idx` is zero (indices are discrete). The compiler recognizes the
-    indicator contractions and emits torch.index_select for the forward and
-    zeros().index_add_ for the gradient instead of dense one-hot matmuls.
-    """
-    if dim not in table.edges:
-        raise ValueError(f"{dim=} is not an edge of the table: {table.edges=}")
-    if dim in idx.edges:
-        raise ValueError(f"{dim=} must not be an edge of idx: {idx.edges=}")
-    if (table.edges - {dim}) & idx.edges:
-        raise ValueError(f"table and idx must not share edges: {table.edges=} {idx.edges=}")
-    return table @ one_hot(idx, table.shape[dim], dim)
 
 
 def concat(*ts: Tensor, dim: str):

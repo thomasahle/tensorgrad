@@ -286,7 +286,7 @@ def test_gather_and_scatter_layout(flags):
     b, s, vv, d = symbols("b s v d")
     idx = Variable("idx", batch=b, seq=s)
     table = Variable("table", v=vv, d=d)
-    emb = F.gather(table, idx, dim="v")
+    emb = F.one_hot(idx, table.shape["v"], dim="v") @ table
     loss = F.sum(emb * emb)
     g = loss.grad(table)
     dims = {b: 2, s: 3, vv: 5, d: 4}

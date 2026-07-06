@@ -27,7 +27,7 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
 )
-from tensorgrad.compiler.ir import Builder, Dim, GatherNode, Node
+from tensorgrad.compiler.ir import Builder, ConstNode, Dim, EinsumNode, GatherNode, Node
 from tensorgrad.compiler.affine import Affine
 
 # Elementwise function signatures with "scalar" shape (edges pass through).
@@ -255,7 +255,23 @@ class Lowerer:
 
         The mirrored gradient pattern (class wire free, idx wires contracted)
         is deliberately left as an einsum: codegen's scatter peephole
-        (_try_scatter) turns it into zeros().index_add_."""
+        (_try_scatter) turns it into zeros().index_add_.
+
+        A carrier that is purely STRUCTURAL — an einsum of delta/ones
+        constants, e.g. the gradient's Delta(v,v')xDelta(d,d') jacobian —
+        is never fused into: gathering would materialize the dense structure
+        (vocab^2 * d^2 for an embedding-table gradient) that the factoring
+        pass exists to dissolve. Left as an einsum, factoring aliases the
+        delta wires, the class wire comes out free, and the scatter peephole
+        gets its pattern."""
+
+        def structural(op: Node) -> bool:
+            if isinstance(op, ConstNode):
+                return True
+            if isinstance(op, EinsumNode):
+                return all(structural(o) for o in op.ops)
+            return False
+
         constrained = {w for row, _ in constraints for w, _ in row}
         changed = True
         while changed:
@@ -271,6 +287,8 @@ class Lowerer:
                 carriers = [j for j in range(len(ops)) if j != i and wc in in_subs[j]]
                 if len(carriers) != 1 or in_subs[carriers[0]].count(wc) != 1:
                     continue  # not a plain table contraction over the class wire
+                if structural(ops[carriers[0]]):
+                    continue  # delta-built jacobian: factoring dissolves it
                 j = carriers[0]
                 axis = in_subs[j].index(wc)
                 ops[j] = self.b.gather(ops[j], op.ops[0], axis)
