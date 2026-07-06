@@ -121,7 +121,7 @@ raw = Variable("raw", batch, length)
 
 def diagonals(lo, hi, **edges: Symbol) -> Tensor:
     """sum_{k=lo}^{hi-1} of the k-shifted diagonal [row == col + k]."""
-    return Sum([F.window(k, **edges) for k in range(lo, hi)])
+    return Sum([F.window(start=k, **edges) for k in range(lo, hi)])
 
 
 def ramp(n, row: str, **edge: Symbol) -> Tensor:
@@ -207,15 +207,15 @@ def sort_digits(x: Tensor["batch", "length"]) -> Tensor["batch", "length"]:
 
 
 full = F.concat(raw, sort_digits(raw), dim="length", size=buf)  # digits ++ sorted
-tokens: Tensor["batch", "seq"] = full @ F.window(0, length=buf, seq=seq)
-target_ids: Tensor["batch", "seq"] = full @ F.window(1, length=buf, seq=seq)
+tokens: Tensor["batch", "seq"] = full @ F.window(length=buf, seq=seq)
+target_ids: Tensor["batch", "seq"] = full @ F.window(length=buf, seq=seq, start=1)
 
 logits = gpt(tokens)
 targets: Tensor["batch", "seq", "vocab"] = F.one_hot(target_ids, vocab)
 ce: Tensor["batch", "seq"] = F.cross_entropy(logits, targets, dim="vocab")
 # minGPT's ignore_index=-1: the first LENGTH-1 targets don't count -- so the
 # loss just windows them away instead of masking.
-loss = F.sum(ce @ F.window(LENGTH - 1, seq=seq, length=length)) / (BATCH * LENGTH)
+loss = F.sum(ce @ F.window(seq=seq, length=length, start=LENGTH - 1)) / (BATCH * LENGTH)
 
 # -------------------------------------------------------- adamw as algebra
 # The optimizer is also just algebra. AdamW is elementwise arithmetic on a
@@ -286,13 +286,13 @@ def main():
     # being decoded (a one_hot contraction), and write the prediction into
     # the NEXT slot (adding a one_hot outer product). One compiled program,
     # buffer in, buffer out; the decode loop is dict plumbing.
-    eval_logits = gpt(ctx_var @ F.window(0, buf=buf, seq=seq))
+    eval_logits = gpt(ctx_var @ F.window(buf=buf, seq=seq))
     next_id = F.argmax(eval_logits, dim="vocab") @ F.one_hot(decode_pos, seq)
     decode = tg.compile(ctx=ctx_var + next_id * F.one_hot(decode_pos + 1, buf))
-    seed_ctx = tg.compile(ctx=raw @ F.window(0, length=length, buf=buf))  # zero-padded embed
+    seed_ctx = tg.compile(ctx=raw @ F.window(length=length, buf=buf))  # zero-padded embed
     # Exact-match accuracy: the decoded half of the buffer against the SAME
     # sort_digits program the training labels come from.
-    decoded = ctx_var @ F.window(LENGTH, buf=buf, length=length)
+    decoded = ctx_var @ F.window(buf=buf, length=length, start=LENGTH)
     correct = F.equal(decoded, sort_digits(raw))  # (batch, length) of 0/1
     solved = F.gt0(F.sum(correct, ["length"]) - (LENGTH - 0.5))  # all six right
     score = tg.compile(hits=F.sum(solved))

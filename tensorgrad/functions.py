@@ -1441,26 +1441,27 @@ def concat(*ts: Tensor, dim: str, size: Symbol) -> Tensor:
     return Sum(parts) if len(parts) > 1 else parts[0]
 
 
-def window(offset, **shape1: Symbol) -> Tensor:
-    """The shifted rectangular diagonal W[i, o] = [i == o + offset], as a
-    first-class structural tensor: contract it to slice.
+def window(*, start=0, **shape1: Symbol) -> Tensor:
+    """The rectangular diagonal W[i, o] = [i == o + start], as a first-class
+    structural tensor: contract it to slice.
 
-        tokens = full @ F.window(0, length=buf, seq=seq)   # full[0 : seq]
-        shifted = full @ F.window(1, length=buf, seq=seq)  # full[1 : seq+1]
+        tokens  = full @ F.window(length=buf, seq=seq)           # length[0 : seq]
+        targets = full @ F.window(length=buf, seq=seq, start=1)  # length[1 : seq+1]
 
-    The FIRST edge is the input axis (matched by name against the tensor
-    you contract with), the second the output axis — so the result comes
-    out already carrying the name you chose. `offset` may be an int or a
-    sympy expression in size symbols. One Affine equality row: the compiler
-    eliminates it into a strided view, and with a larger output size the
-    same tensor zero-pads instead of slicing (windowing and embedding are
-    transposes of one another — see concat)."""
+    Reads as: a window into the FIRST edge (matched by name against the
+    tensor you contract with), producing the SECOND edge — which the result
+    then carries, so no rename is needed. `start` is where the window
+    begins, in input coordinates; it may be an int or a sympy expression.
+    One Affine equality row: the compiler eliminates it into a strided
+    view, and with a larger output size the same tensor zero-pads instead
+    of slicing (windowing and embedding are transposes of one another —
+    see concat)."""
     from tensorgrad.compiler.affine import Affine
 
     if len(shape1) != 2:
         raise ValueError(f"window needs exactly two edges (input, output), got {set(shape1)}")
     (i, si), (o, so) = shape1.items()
-    return Affine([({i: 1, o: -1}, sympy.sympify(offset))], **{i: si, o: so})
+    return Affine([({i: 1, o: -1}, sympy.sympify(start))], **{i: si, o: so})
 
 
 def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:
