@@ -917,14 +917,14 @@ class CrossEntropyHessian(Scene):
             """pow_{-1} <... exp <... z ---.   (sum-dot on z's wire)"""
             d = {}
             d['pw'] = glyph(r"\mathrm{pow}_{-1}", pp, CA, 0.8 * sc)
-            d['e'] = glyph(r"\exp", pp + np.array([1.2 * sc, 0, 0]), CA, 0.8 * sc)
-            d['z'] = glyph("z", pp + np.array([2.05 * sc, 0, 0]), CX, 0.95 * sc)
-            d['a1'] = farrow(pp + np.array([1.83 * sc, 0, 0]),
-                             pp + np.array([1.57 * sc, 0, 0]))
-            d['w'] = wire(pp + np.array([2.25 * sc, 0, 0]),
-                          pp + np.array([2.8 * sc, 0, 0]))
-            d['s'] = cdot(pp + np.array([2.85 * sc, 0, 0]))
-            d['a2'] = farrow(pp + np.array([0.97 * sc, 0.0, 0]),
+            d['e'] = glyph(r"\exp", pp + np.array([1.4 * sc, 0, 0]), CA, 0.8 * sc)
+            d['z'] = glyph("z", pp + np.array([2.25 * sc, 0, 0]), CX, 0.95 * sc)
+            d['a1'] = farrow(pp + np.array([2.03 * sc, 0, 0]),
+                             pp + np.array([1.77 * sc, 0, 0]))
+            d['w'] = wire(pp + np.array([2.45 * sc, 0, 0]),
+                          pp + np.array([3.0 * sc, 0, 0]))
+            d['s'] = cdot(pp + np.array([3.05 * sc, 0, 0]))
+            d['a2'] = farrow(pp + np.array([1.02 * sc, 0.0, 0]),
                              pp + np.array([0.68 * sc, 0, 0]))
             return d
 
@@ -1157,7 +1157,7 @@ class CrossEntropyHessian(Scene):
         bar1 = Line([-4.0, yA - 0.5, 0], [-1.4, yA - 0.5, 0],
                     color=INK, stroke_width=1.9)
         gB2 = VGroup(B2['e'], B2['a1'], B2['z'], B2['w'], B2['s'])
-        bar2 = Line([-2.55, yB - 0.3, 0], [2.85, yB - 0.3, 0],
+        bar2 = Line([-2.1, yB - 0.3, 0], [2.4, yB - 0.3, 0],
                     color=INK, stroke_width=1.9)
         pow2g = glyph(r"\mathrm{pow}_{2}", np.array([-1.05, yB - 0.62, 0]),
                       CA, 0.55)
@@ -1172,11 +1172,28 @@ class CrossEntropyHessian(Scene):
                   ReplacementTransform(pw2, pow2g),
                   Transform(B2['a2'], a2new),
                   gB2.animate.scale(0.6).move_to([0.6, yB - 0.62, 0]),
-                  numL.animate.shift(2.2 * RIGHT),
-                  numR.animate.shift(2.2 * LEFT),
+                  numL.animate.shift(2.7 * RIGHT),
+                  numR.animate.shift(2.7 * LEFT),
                   *caption(r"the $\mathrm{pow}$'s are fractions"),
                   run_time=1.5, rate_func=EASE)
         self.wait(0.9)
+
+        # ==== stage 6a2: both fractions onto one line; factors swap so
+        #      the amber j-edge ends up leftmost (covariance) ====
+        fr1 = VGroup(A1['z'], A1['e'], A1['a'], A1['w'], cdA, whis, gB1, bar1)
+        bar2t = Line([0.2, -0.55, 0], [4.9, -0.55, 0],
+                     color=INK, stroke_width=1.9)
+        self.play(fr1.animate.shift(np.array([-0.1, -0.72, 0])),
+                  plusA.animate.shift(np.array([-0.55, 0, 0])),
+                  numR.animate(path_arc=0.45).shift(np.array([0.0, 1.45, 0])),
+                  numL.animate(path_arc=-0.85).shift(np.array([4.85, 1.45, 0])),
+                  Transform(bar2, bar2t),
+                  VGroup(pow2g, B2['a2'], gB2
+                         ).animate.shift(np.array([2.7, 1.12, 0])),
+                  *caption(r"one line --- and the factors swap, so the"
+                           r" new edge $j$ stays left"),
+                  run_time=1.5, rate_func=EASE)
+        self.wait(0.8)
 
         # ==== stage 6b: each fraction is a softmax ====
         yF = -0.45
@@ -1201,10 +1218,10 @@ class CrossEntropyHessian(Scene):
         pv1 = wire(np.array([-2.9, yF - 0.06, 0]), np.array([-2.9, yF - 0.6, 0]))
         sm1 = smgroup(-2.9, 1.15, yF - 0.92, 1)
         minus2 = MathTex("-", color=INK).scale(1.1).move_to([-1.55, yF, 0])
-        sm2a = smgroup(0.45, -1.15, yF, -1)      # z -> softmax --(i)
-        iw2 = wire(np.array([1.07, yF, 0]), np.array([1.72, yF, 0]))
-        jw2 = wire(np.array([1.95, yF, 0]), np.array([2.6, yF, 0]), CD)
-        sm2b = smgroup(3.25, 1.15, yF, 1)        # (j)-- softmax <- z
+        jw2 = wire(np.array([-1.05, yF, 0]), np.array([-0.4, yF, 0]), CD)
+        sm2b = smgroup(0.3, 1.15, yF, 1)         # (j)-- softmax <- z
+        sm2a = smgroup(3.4, -1.15, yF, -1)       # z -> softmax --(i)
+        iw2 = wire(np.array([4.02, yF, 0]), np.array([4.67, yF, 0]))
         self.play(
             ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
                                         gB1, bar1),
