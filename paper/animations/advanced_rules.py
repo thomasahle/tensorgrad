@@ -550,10 +550,22 @@ class TraceDelete(Scene):
         self.add(domeM)
         self.wait(0.6)
 
+        # d/dX just appears around the existing Tr(AXB), which glides
+        # into its numerator slot -- no glyph morphing.
+        g = lhs[0]
+        ymid = lhs.get_center()[1]
+        num = [m for m in g if m.get_center()[1] > ymid + 0.05]
+        num.sort(key=lambda m: m.get_center()[0])
+        tr_target = VGroup(*num[1:])          # numerator minus the partial
+        rest = VGroup(*[m for m in g if m not in num[1:]])
         big = dloop(np.array([0, -0.25, 0]), 5.6, 2.9, dot_angle_deg=72,
                     long_whiskers=True)
-        self.play(ReplacementTransform(tTr, lhs),
+        self.play(tTr.animate.move_to(tr_target.get_center()
+                  ).scale(tr_target.height / tTr.height),
+                  FadeIn(rest),
                   Create(big[0]), FadeIn(big[1], big[2], big[3]), run_time=1.2)
+        self.remove(tTr)
+        self.add(lhs)
         self.wait(0.7)
 
         # ---- panel 2: the loop localizes to the only X ----
