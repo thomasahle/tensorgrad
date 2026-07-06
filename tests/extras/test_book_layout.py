@@ -64,10 +64,23 @@ def test_rename_swap():
     assert internal == [[0, 1]]
 
 
-def test_unsupported_raises():
+def test_derivative_draws_penrose_loop():
+    x = Variable("x", i=n)
     A = _A()
+    expr = Derivative(Product([x, A]), x, {"i": "i_"})
+    tex = to_book_tikz(expr)
+    assert "ellipse" in tex and "fit=" in tex  # the loop
+    assert tex.count("circle (1.4pt)") == 1  # the boundary dot
+    assert "i'" in tex  # labeled whisker (i_ renders as i-prime)
+
+
+def test_contracted_derivative_edge_raises():
+    x = Variable("x", i=n)
+    A = _A()
+    d = Derivative(Product([x, A]), x, {"i": "i_"})
+    closed = Product([d, Variable("w", j=n, i_=n)])
     with pytest.raises(NotImplementedError):
-        to_book_tikz(Derivative(A, A))
+        to_book_tikz(closed)
 
 
 # -------------------------------------------------------------------- layout

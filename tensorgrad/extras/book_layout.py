@@ -35,8 +35,13 @@ level AND as parenthesized product factors), and Function (application
 arrows: solid for consumed edges, densely dotted for elementwise; broadcast
 edges stay on the argument, as the book draws them).  Transposed 2-port
 variables (spine forces reversed port order) are drawn rotated 180 degrees,
-the book's transpose convention.  Derivative raises NotImplementedError:
-call .simplify()/.grad() first so derivatives are resolved away.
+the book's transpose convention.  Unevaluated Derivative nodes render as
+Penrose derivative loops: a fit-ellipse around the differentiated
+subexpression with a dot on the boundary and labeled whiskers for the new
+edges (one whisker bends left; a pair bends left/right, like the book's
+\dloop/\dwhiskers).  Nested derivatives nest their ellipses.  A derivative
+whose new edge is contracted onward still raises NotImplementedError --
+simplify() first.
 """
 
 from __future__ import annotations
@@ -46,7 +51,7 @@ from dataclasses import dataclass, field
 from numbers import Number
 from typing import Optional
 
-from tensorgrad.tensor import Delta, Function, Product, Rename, Sum, Tensor, Variable
+from tensorgrad.tensor import Delta, Derivative, Function, Product, Rename, Sum, Tensor, Variable
 
 # ---------------------------------------------------------------------------
 # Metric constants (calibrated against the book's hand figures)
@@ -91,6 +96,22 @@ class OpenGraph:
     # function atom (application arrows; dotted = elementwise)
     arrows: dict[str, str] = field(default_factory=dict)
     arrow_heads: dict[str, int] = field(default_factory=dict)  # wire -> fn atom
+    # Penrose derivative loops: (atom ids enclosed, new edge names)
+    derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
+    deriv_tokens: set = field(default_factory=set)  # wires owned by loops
+
+
+def _tex_edge(name: str) -> str:
+    """Edge names to math: i_ -> i'; i_0_0 -> i_{0,0}; plain stays plain."""
+    if "_" not in name:
+        return name
+    base, *subs = name.split("_")
+    primes = "'" * sum(1 for p in subs if p == "")
+    subs = [p for p in subs if p]
+    out = base + primes
+    if subs:
+        out += "_{" + ",".join(subs) + "}"
+    return out
 
 
 def _pretty_fn(name: str) -> str:
@@ -201,6 +222,20 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
                 fn.ports.append(port)
                 out[e] = port
             return out
+        if isinstance(t, Derivative):
+            first_atom = len(g.atoms)
+            sub = walk(t.tensor)
+            enclosed = list(range(first_atom, len(g.atoms)))
+            new_edges = [e for e in t.edges if e not in t.tensor.edges]
+            out = dict(sub)
+            names = []
+            for e in new_edges:
+                tok = fresh("w")
+                g.deriv_tokens.add(tok)
+                out[e] = tok
+                names.append(e)
+            g.derivs.append((enclosed, names))
+            return out
         if isinstance(t, Sum):
             # a Sum factor becomes a parenthesized group atom; its inner
             # terms are laid out recursively at layout time
@@ -237,15 +272,23 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
             g.free_wires.setdefault(wid, []).append(name)
         # a wire with no atoms at all: bare identity between two free ends
     # bare identity wires: group free names by wire id with no endpoints
+    deriv_reps = {uf.find(tok) for tok in g.deriv_tokens}
     bare: dict[str, list[str]] = {}
     for name, wid in free_names.items():
-        if wid not in endpoints:
+        if wid not in endpoints and wid not in deriv_reps:
             bare.setdefault(wid, []).append(name)
     for wid, names in bare.items():
         if len(names) == 2:
             g.bare_wires.append((names[0], names[1]))
         else:  # a dangling free edge with no atom: nothing to draw it from
             raise ValueError(f"free edge {names} attached to nothing")
+    for tok in g.deriv_tokens:
+        if uf.find(tok) in endpoints:
+            raise NotImplementedError(
+                "a derivative's new edge is contracted onward; simplify() "
+                "first (drawing wires from the loop boundary is not "
+                "supported yet)"
+            )
     # closed rings of pure order-2 identities: no atoms, no free names --
     # invisible to the loops above, but each class is a scalar circle
     ring_classes = set()
@@ -296,6 +339,7 @@ class BookLayout:
     xmax: float = 0.0
     left_edge: Optional[str] = None  # free edge that exits leftmost
     right_edge: Optional[str] = None
+    derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
 
 
 def _label_halfwidth(label: str) -> float:
@@ -708,7 +752,8 @@ def _layout_component(
                 name_to_wid[nm] = wid
     for k, v in enumerate(spine):
         atom = g.atoms[v]
-        if atom.kind != "var" or len(atom.ports) != 2:
+        real_ports = [p for p in atom.ports if p not in g.arrows]
+        if atom.kind != "var" or len(real_ports) != 2:
             continue
         left_wid = right_wid = None
         if k > 0:
@@ -724,8 +769,8 @@ def _layout_component(
         if left_wid is None or right_wid is None or left_wid == right_wid:
             continue
         try:
-            li = atom.ports.index(left_wid)
-            ri = atom.ports.index(right_wid)
+            li = real_ports.index(left_wid)
+            ri = real_ports.index(right_wid)
         except ValueError:
             continue
         if li > ri:
@@ -786,6 +831,7 @@ def layout_tensor(
         x_end = _layout_component(g, comp, layout, x, l, r, solo_side=solo)
         x = x_end + COMPONENT_GAP
     layout.xmax = x - COMPONENT_GAP
+    layout.derivs = list(g.derivs)
     return layout
 
 
@@ -828,6 +874,8 @@ def layout_any(
                       w.direction, w.label, w.arrow, w.span, w.lane,
                       wx, w.y)
             )
+        for enclosed, names in sub.derivs:
+            out.derivs.append(([a + idx * 1000 for a in enclosed], names))
         x += sub.xmax + TERM_GAP
     out.xmax = x - TERM_GAP
     return out
@@ -978,6 +1026,65 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             lines.append(
                 rf"\draw ({w.x + dx:.2f},{w.y:.2f}) -- ++({1.0:.2f},0);"
             )
+    _emit_derivs(layout, lines, prefix, name, group_side)
+
+
+def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
+                 name: dict, group_side: dict) -> None:
+    """Penrose derivative loops: fit-ellipse + boundary dot + whiskers."""
+    nodes = {n.id: n for n in layout.nodes}
+    for di, (enclosed, new_names) in enumerate(layout.derivs):
+        eset = set(enclosed)
+        parts = []
+        for aid in enclosed:
+            if aid in group_side:
+                parts.extend(f"({p})" for p in group_side[aid])
+            elif aid in name:
+                parts.append(f"({name[aid]})")
+        if not parts:
+            continue
+        # arcs/loops enclosed by the region must fit inside the ellipse:
+        # include their topmost point in the fit spec
+        for w in layout.wires:
+            if w.kind == "arc" and w.a in eset and w.b in eset:
+                h = (0.32 + 0.16 * w.span + 0.24 * (w.lane - 1)
+                     if w.span <= 3 else 0.35 + 0.08 * w.span)
+                mx = (nodes[w.a].x + nodes[w.b].x) / 2
+                parts.append(f"({mx:.2f},{h + 0.12:.2f})")
+            elif w.kind == "loop" and w.a in eset:
+                parts.append(f"({nodes[w.a].x:.2f},{0.42 + 0.2 * w.lane:.2f})")
+        # nesting: an ellipse enclosing another loop's region (equal
+        # regions nest by creation order: inner derivatives walk first)
+        inside = sum(
+            1 for dj, (e2, _) in enumerate(layout.derivs)
+            if dj != di and set(e2) <= eset and (set(e2) < eset or dj < di)
+        )
+        sep = 2.5 + 4.0 * inside
+        en = f"{prefix}dE{di}"
+        lines.append(
+            rf"\node[ellipse, draw, inner sep={sep:.1f}pt, "
+            rf"fit={{{''.join(parts)}}}] ({en}) {{}};"
+        )
+        if len(new_names) == 1:
+            ang = 125 + 14 * inside  # fan nested whiskers apart
+            lines.append(rf"\fill ({en}.{ang}) circle (1.4pt);")
+            lines.append(
+                rf"\draw ({en}.{ang}) .. controls +({ang - 25}:.12) .."
+                rf" ++(-.24,.26)"
+                rf" node[anchor=south east, font=\scriptsize, inner sep=1pt]"
+                rf" {{${_tex_edge(new_names[0])}$}};"
+            )
+        else:
+            ang = 55
+            lines.append(rf"\fill ({en}.{ang}) circle (1.4pt);")
+            whisk = [("80:.12", "++(-.2,.28)", "south east"),
+                     ("45:.12", "++(.28,.18)", "south west")]
+            for nm, (ctrl, end, anch) in zip(new_names, whisk):
+                lines.append(
+                    rf"\draw ({en}.{ang}) .. controls +({ctrl}) .. {end}"
+                    rf" node[anchor={anch}, font=\scriptsize, inner sep=1pt]"
+                    rf" {{${_tex_edge(nm)}$}};"
+                )
 
 
 def to_book_tikz(
