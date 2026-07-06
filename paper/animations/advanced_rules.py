@@ -1136,19 +1136,24 @@ class CrossEntropyHessian(Scene):
         bar1 = Line([-4.0, yA - 0.5, 0], [-1.4, yA - 0.5, 0],
                     color=INK, stroke_width=1.9)
         gB2 = VGroup(B2['e'], B2['a1'], B2['z'], B2['w'], B2['s'])
-        gB2c = gB2.copy()
-        self.add(gB2c)
-        bar2a = Line([-4.45, yB - 0.34, 0], [-2.55, yB - 0.34, 0],
-                     color=INK, stroke_width=1.9)
-        bar2b = Line([2.85, yB - 0.34, 0], [4.75, yB - 0.34, 0],
-                     color=INK, stroke_width=1.9)
-        self.play(FadeOut(B1['pw'], B1['a2'], pw2, B2['a2']),
-                  Create(bar1), Create(bar2a), Create(bar2b),
+        bar2 = Line([-3.5, yB - 0.3, 0], [3.7, yB - 0.3, 0],
+                    color=INK, stroke_width=1.9)
+        pow2g = glyph(r"\mathrm{pow}_{2}", np.array([-0.95, yB - 0.62, 0]),
+                      CA, 0.55)
+        a2new = farrow(np.array([-0.42, yB - 0.62, 0]),
+                       np.array([-0.62, yB - 0.62, 0]))
+        numL = VGroup(*[A2[k] for k in A2])
+        numR = VGroup(G3['z'], G3['e'], G3['a'], jG1)
+        self.play(FadeOut(B1['pw'], target_position=[-3.6, yA - 0.88, 0]),
+                  FadeOut(B1['a2'], target_position=[-3.0, yA - 0.88, 0]),
+                  Create(bar1), Create(bar2),
                   gB1.animate.scale(0.7).move_to([-2.7, yA - 0.88, 0]),
-                  gB2.animate.scale(0.55).move_to([-3.5, yB - 0.66, 0]),
-                  gB2c.animate.scale(0.55).move_to([3.8, yB - 0.66, 0]),
-                  *caption(r"$\mathrm{pow}_{-1}$, $\mathrm{pow}_{-2}$: "
-                           r"divide by the sum --- once, twice"),
+                  ReplacementTransform(pw2, pow2g),
+                  Transform(B2['a2'], a2new),
+                  gB2.animate.scale(0.6).move_to([0.6, yB - 0.62, 0]),
+                  numL.animate.shift(1.3 * RIGHT),
+                  numR.animate.shift(1.3 * LEFT),
+                  *caption(r"the $\mathrm{pow}$'s are fractions"),
                   run_time=1.5, rate_func=EASE)
         self.wait(0.9)
 
@@ -1188,11 +1193,10 @@ class CrossEntropyHessian(Scene):
             ReplacementTransform(A1['w'], i1f),
             Transform(plusA, minus2),
             ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
-                                        gB2, bar2a),
+                                        gB2, pow2g, B2['a2'], bar2),
                                  VGroup(sm2a['sm'], sm2a['z'], sm2a['a'])),
             ReplacementTransform(A2['w'], iw2),
-            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a'],
-                                        gB2c, bar2b),
+            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a']),
                                  VGroup(sm2b['sm'], sm2b['z'], sm2b['a'])),
             ReplacementTransform(jG1, jw2),
             *caption(r"each fraction is a $\mathrm{softmax}$"),
