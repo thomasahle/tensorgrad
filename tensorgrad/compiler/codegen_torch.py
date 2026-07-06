@@ -12,6 +12,7 @@ The hot path is then nothing but tensor-op calls on positional tensors:
 no eval(), no named tensors, no dict lookups, no path planning.
 """
 
+import heapq
 import re
 import string
 import textwrap
@@ -239,7 +240,13 @@ class TorchCodegen:
             order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed
         )
         self._addmm_plans = addmm_plans
-        foreach_plans, foreach_deferred = self._plan_foreach(
+        # Foreach planning REORDERS the emission sequence (each family's
+        # members become consecutive; see _plan_foreach). Everything below —
+        # the pre-assigned t-names, emission, DLE, liveness — derives from
+        # the returned order. The sdpa/addmm plans and the layout assignment
+        # above are per-node (ids, node refs, axis fits — nothing positional)
+        # and remain valid under any toposort of the same DAG.
+        order, foreach_plans, foreach_deferred = self._plan_foreach(
             order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed, addmm_plans, addmm_suppressed
         )
         self._foreach_tmp = 0  # counter for _f{k} foreach list temporaries
@@ -270,17 +277,22 @@ class TorchCodegen:
         # Deferred code lines (dense one-hot materializations): only kept if
         # some consumer did not turn them into an index_add_ scatter.
         deferred_lines: list[tuple[int, str, str]] = []
+        # Names are deterministic (t{index}) and assigned UP FRONT: a foreach
+        # family is emitted whole at its FIRST member, tuple-unpacking onto
+        # the later members' names before the loop reaches them.
+        for i, node in enumerate(order):
+            names[id(node)] = f"t{i}"
         for i, node in enumerate(order):
             name = f"t{i}"
-            names[id(node)] = name
             if id(node) in sdpa_suppressed:
                 continue  # consumed only by a fused SDPA call; never emitted
             if id(node) in addmm_suppressed:
                 continue  # computed inside its consuming Linear's addmm call
             if id(node) in foreach_deferred:
-                continue  # emitted at its foreach family's anchor position
+                continue  # emitted at its foreach family's first member
             if id(node) in foreach_plans:
-                # Anchor of a foreach family: emit the whole family here as
+                # First member of a foreach family (members are consecutive
+                # in the reordered `order`): emit the whole family here as
                 # torch._foreach_* calls, tuple-unpacked onto the members'
                 # pre-assigned t-names.
                 lines.extend(self._emit_foreach(foreach_plans[id(node)], names))
@@ -887,6 +899,58 @@ class TorchCodegen:
             return ("lin", const_acc, tuple(sig))
         return None
 
+    @staticmethod
+    def _cyclic_families(snodes, adj, nfam) -> set:
+        """Family supernodes (ids < nfam) inside a non-trivial SCC of the
+        condensation (iterative Tarjan). Singleton supernodes can never form
+        a cycle among themselves (the IR is a DAG), so every non-trivial SCC
+        contains at least one family."""
+        index: dict[int, int] = {}
+        low: dict[int, int] = {}
+        on: set[int] = set()
+        stack: list[int] = []
+        out: set = set()
+        counter = 0
+        for root in snodes:
+            if root in index:
+                continue
+            index[root] = low[root] = counter
+            counter += 1
+            stack.append(root)
+            on.add(root)
+            work: list[tuple[int, Any]] = [(root, iter(adj.get(root, ())))]
+            while work:
+                v, it = work[-1]
+                advanced = False
+                for w in it:
+                    if w not in index:
+                        index[w] = low[w] = counter
+                        counter += 1
+                        stack.append(w)
+                        on.add(w)
+                        work.append((w, iter(adj.get(w, ()))))
+                        advanced = True
+                        break
+                    if w in on:
+                        low[v] = min(low[v], index[w])
+                if advanced:
+                    continue
+                work.pop()
+                if work:
+                    pv = work[-1][0]
+                    low[pv] = min(low[pv], low[v])
+                if low[v] == index[v]:
+                    scc = []
+                    while True:
+                        w = stack.pop()
+                        on.discard(w)
+                        scc.append(w)
+                        if w == v:
+                            break
+                    if len(scc) > 1:
+                        out |= {s for s in scc if s < nfam}
+        return out
+
     def _plan_foreach(self, order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed,
                       addmm_plans, addmm_suppressed):
         """Group families of shape-isomorphic elementwise chains (MapNode,
@@ -894,22 +958,36 @@ class TorchCodegen:
         torch._foreach_* calls (the 53 per-parameter AdamW update chains are
         the motivating case: identical elementwise programs over different
         shapes). Hadamard einsums must be groupable too, or the per-chain
-        multiply between two grouped levels would sit before the levels'
-        anchors and the demote fixpoint below would dissolve every family
-        upstream of it.
+        multiply between two grouped levels would fragment every chain into
+        per-level pieces.
 
-        Returns (plans, deferred): plans maps id(anchor) -> {"members", "key"}
-        where the anchor is the family's max-position member (all members'
-        lines are emitted at the anchor's loop position); deferred is the set
-        of non-anchor member ids, skipped by the emission loop. A
-        verify-and-demote fixpoint guarantees the deferral never moves a
-        producer past a consumer, so the emitted text stays valid SSA."""
+        Condensation reordering: instead of scheduling each family into the
+        FIXED input toposort (the old window scheme, which dissolved most
+        families over interleaved chains and cross-family precedence — 12 of
+        38 eligible families survived on the gpt-nano AdamW program), the
+        emission order itself is rebuilt. Every family contracts to one
+        supernode over the IR operand edges (every other node is a singleton
+        supernode); the condensation is toposorted stably (Kahn with a
+        min-heap on each supernode's first original position — with no
+        families this reproduces `order` exactly) and families flatten back
+        as consecutive runs in original relative order. A family whose key
+        spans chain levels can close a condensation cycle through external
+        nodes (member -> outside consumer -> member); Tarjan SCCs detect
+        those, and each offending family splits in half by original member
+        position until the condensation is acyclic (families only shrink;
+        halves below FOREACH_MIN dissolve into singletons, and singletons
+        cannot cycle because the IR is a DAG).
+
+        Returns (new_order, plans, deferred): new_order is a valid toposort
+        of the same nodes; plans maps id(first member) -> {"members", "key",
+        "recipes"} (the whole family is emitted at its first member's loop
+        position); deferred is the set of remaining member ids, skipped by
+        the emission loop."""
         if not FOREACH_GROUPING:
-            return {}, set()
+            return order, {}, set()
         excluded = (
             sdpa_plans.keys() | sdpa_suppressed | addmm_plans.keys() | addmm_suppressed
         )
-        pos = {id(n): i for i, n in enumerate(order)}
         keys: dict[int, tuple] = {}
         recipes: dict[int, tuple] = {}
         for node in order:  # toposorted: operand keys exist before consumers'
@@ -918,60 +996,96 @@ class TorchCodegen:
             key = self._foreach_key(node, keys, dims, dim_of, recipes)
             if key is not None:
                 keys[id(node)] = key
-        families: dict[tuple, list[Node]] = {}
+        grouped: dict[tuple, list[Node]] = {}
         for node in order:  # second order pass keeps members position-sorted
             if (key := keys.get(id(node))) is not None:
-                families.setdefault(key, []).append(node)
-        families = {k: ms for k, ms in families.items() if len(ms) >= FOREACH_MIN}
+                grouped.setdefault(key, []).append(node)
+        # Families as parallel lists: cycle-splitting below can leave two
+        # families sharing one key, so the key cannot remain the dict key.
+        fams = [ms for ms in grouped.values() if len(ms) >= FOREACH_MIN]
+        fam_keys = [k for k, ms in grouped.items() if len(ms) >= FOREACH_MIN]
+        eligible = (len(fams), sum(len(ms) for ms in fams))  # census: pre-split
 
-        # Verify-and-demote fixpoint. Emission position ep(n) = the family
-        # anchor's position for grouped nodes, own position otherwise. Every
-        # IR edge consumer->producer must satisfy ep(producer) < ep(consumer):
-        # deferral moves producers FORWARD only, so a consumer sitting between
-        # a member and its anchor would reference an unassigned name. Only a
-        # grouped producer can violate (an ungrouped producer keeps its
-        # toposort position); demote it and iterate — terminates because
-        # members only ever leave families. Recursive keys make intra-family
-        # edges impossible (a key cannot contain itself), but cross-family
-        # anchor inversions and grouped-past-ungrouped-consumer cases are
-        # real and handled here.
-        fam_of = {id(n): k for k, ms in families.items() for n in ms}
+        # Build the condensation; split families caught in cycles until it
+        # is acyclic. Supernode ids: family index fi (< nfam) for members,
+        # nfam + original position for singletons (both sort-stable).
         while True:
-            anchor_pos = {k: max(pos[id(n)] for n in ms) for k, ms in families.items()}
-
-            def ep(n: Node) -> int:
-                k = fam_of.get(id(n))
-                return anchor_pos[k] if k is not None else pos[id(n)]
-
-            demoted = {
-                id(op)
-                for node in order
-                for op in node.operands()
-                if id(op) in fam_of and ep(op) >= ep(node)
-            }
-            if not demoted:
+            nfam = len(fams)
+            fam_of = {id(n): fi for fi, ms in enumerate(fams) for n in ms}
+            sid: dict[int, int] = {}
+            minpos: dict[int, int] = {}
+            members_of: dict[int, list[Node]] = {}
+            for i, n in enumerate(order):
+                s = fam_of.get(id(n), nfam + i)
+                sid[id(n)] = s
+                if s not in minpos:
+                    minpos[s] = i
+                    members_of[s] = []
+                members_of[s].append(n)
+            adj: dict[int, list[int]] = {}
+            indeg: dict[int, int] = {s: 0 for s in minpos}
+            edge_seen: set[tuple[int, int]] = set()
+            to_split: set[int] = set()
+            for n in order:
+                v = sid[id(n)]
+                for op in n.operands():
+                    u = sid[id(op)]
+                    if u == v:
+                        # A member consuming a same-family member is
+                        # impossible (its key would have to contain itself),
+                        # but treat it as a cycle defensively: the grouped
+                        # call would read a name it only just binds.
+                        to_split.add(u)
+                    elif (u, v) not in edge_seen:
+                        edge_seen.add((u, v))
+                        adj.setdefault(u, []).append(v)
+                        indeg[v] += 1
+            to_split |= self._cyclic_families(minpos.keys(), adj, nfam)
+            if not to_split:
                 break
-            for k in list(families):
-                kept = [n for n in families[k] if id(n) not in demoted]
-                if len(kept) < FOREACH_MIN:
-                    del families[k]
-                else:
-                    families[k] = kept
-            fam_of = {id(n): k for k, ms in families.items() for n in ms}
+            new_fams, new_keys = [], []
+            for fi, (ms, k) in enumerate(zip(fams, fam_keys)):
+                halves = (ms[: len(ms) // 2], ms[len(ms) // 2:]) if fi in to_split else (ms,)
+                for half in halves:
+                    if len(half) >= FOREACH_MIN:
+                        new_fams.append(half)
+                        new_keys.append(k)
+            fams, fam_keys = new_fams, new_keys
+
+        # Stable Kahn over the acyclic condensation. minpos is unique per
+        # supernode (each original position belongs to exactly one), so the
+        # heap of bare positions never ties and pops deterministically.
+        by_minpos = {minpos[s]: s for s in minpos}
+        heap = [minpos[s] for s, d in indeg.items() if d == 0]
+        heapq.heapify(heap)
+        new_order: list[Node] = []
+        while heap:
+            s = by_minpos[heapq.heappop(heap)]
+            new_order.extend(members_of[s])
+            for t in adj.get(s, ()):
+                indeg[t] -= 1
+                if indeg[t] == 0:
+                    heapq.heappush(heap, minpos[t])
+        assert len(new_order) == len(order)  # acyclic: the split loop above
+        if __debug__:  # the reorder is a valid toposort of the IR
+            posn = {id(n): i for i, n in enumerate(new_order)}
+            assert all(posn[id(op)] < posn[id(n)] for n in new_order for op in n.operands())
 
         plans: dict[int, dict] = {}
         deferred: set[int] = set()
-        for key, members in families.items():
-            plans[id(members[-1])] = {
+        for key, members in zip(fam_keys, fams):
+            plans[id(members[0])] = {
                 "members": members,
                 "key": key,
                 "recipes": [recipes.get(id(n)) for n in members],
             }
-            deferred |= {id(n) for n in members[:-1]}
-        return plans, deferred
+            deferred |= {id(n) for n in members[1:]}
+        # Census (eligible pre-split vs planned post-split), for diagnostics.
+        self._foreach_census = (eligible, (len(fams), sum(len(ms) for ms in fams)))
+        return new_order, plans, deferred
 
     def _emit_foreach(self, plan, names) -> list[str]:
-        """Emit one foreach family at its anchor position: one OUT-OF-PLACE
+        """Emit one foreach family at its first member's position: one OUT-OF-PLACE
         torch._foreach_* call per chain step over all members' (per-member
         aligned) operands, with the final call tuple-unpacked onto the
         members' pre-assigned t-names — so output collection, the regex DLE

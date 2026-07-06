@@ -114,12 +114,13 @@ def test_foreach_mixes_tensor_orders(monkeypatch):
         assert torch.equal(a, b)
 
 
-def test_foreach_demotes_member_with_early_consumer(monkeypatch):
-    """A family member whose consumer sits before the family anchor must be
-    demoted to individual emission (verify-and-demote fixpoint): here
-    sum(sqrt(v0)) is toposorted between sqrt(v0) and the later sqrt members,
-    so sqrt(v0) cannot wait for the anchor. The rest still group, and the
-    program stays valid and bit-identical."""
+def test_foreach_reorders_around_early_consumer(monkeypatch):
+    """A member with an interleaved consumer no longer breaks the family:
+    here sum(sqrt(v0)) is toposorted between sqrt(v0) and the later sqrt
+    members, which under the old fixed-order window scheduler demoted
+    sqrt(v0) to individual emission. Condensation reordering instead moves
+    the consumer AFTER the contracted family, so all five members group and
+    the program stays a valid toposort and bit-identical."""
     outs, vals, dims = [], {}, {}
     sqrts = []
     for i in range(5):
@@ -133,7 +134,8 @@ def test_foreach_demotes_member_with_early_consumer(monkeypatch):
     outs = [sqrts[0], F.sum(sqrts[0])] + sqrts[1:]
     on, src_on = _run(outs, vals, dims, True, monkeypatch)
     off, _ = _run(outs, vals, dims, False, monkeypatch)
-    assert "torch._foreach_sqrt" in src_on  # the surviving 4-member family
-    assert "torch.sqrt(" in src_on  # the demoted member emits individually
+    m = re.search(r"(?m)^\s*((?:t\d+, ){4}t\d+) = torch\._foreach_sqrt\(", src_on)
+    assert m, f"expected a 5-member _foreach_sqrt in:\n{src_on}"
+    assert "torch.sqrt(" not in src_on  # no member emits individually
     for a, b in zip(on, off):
         assert torch.equal(a, b)
