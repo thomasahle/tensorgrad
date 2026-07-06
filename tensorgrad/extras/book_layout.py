@@ -343,8 +343,15 @@ class BookLayout:
 
 
 def _label_halfwidth(label: str) -> float:
-    core = label.split("_")[0]
-    return 0.12 + CHAR_W * max(0, len(core) - 1) / 2
+    # A label may carry a TeX subscript (pow_{-1}): the base word sets most
+    # of the width, and the subscript adds a bit more (rendered smaller).
+    # Dropping the subscript entirely made pow_{-k} nodes far too narrow, so
+    # their application arrows had no room and jammed against the glyph.
+    base, sep, sub = label.partition("_{")
+    sub = sub.rstrip("}") if sep else ""
+    width = CHAR_W * max(0, len(base) - 1)
+    width += 0.6 * CHAR_W * len(sub.replace("{", "").replace("}", ""))
+    return 0.12 + width / 2
 
 
 def _adjacency(g: OpenGraph) -> dict[int, dict[int, list[str]]]:
@@ -583,7 +590,11 @@ def _layout_component(
     for k, v in enumerate(spine):
         half = halfwidth(v)
         if k > 0:
-            x += max(PITCH, prev_half + half + 0.38)
+            # an application arrow between two glyphs needs a wider clear
+            # zone than a plain wire: room for the arrowhead AND its dots
+            wids = adj[spine[k - 1]].get(v, [])
+            clearance = 0.58 if any(g.arrows.get(w) for w in wids) else 0.38
+            x += max(PITCH, prev_half + half + clearance)
         xs.append(x)
         prev_half = half
     for v, xv in zip(spine, xs):
@@ -944,7 +955,15 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             return pl if nodes[other].x < nodes[nid].x else pr
         return name[nid]
 
-    style = {"": "", "solid": "[->] ", "dotted": "[densely dotted, ->] "}
+    # application arrows keep clearance at both ends: the head stops short of
+    # the function glyph (>= side; extra room so it clears a subscript like
+    # pow_{-2}), the tail leaves the argument glyph (<= side).
+    _clear = "shorten >=2pt, shorten <=1pt"
+    style = {
+        "": "",
+        "solid": f"[->, {_clear}]",
+        "dotted": f"[densely dotted, ->, {_clear}]",
+    }
     for w in layout.wires:
         if w.kind == "segment" or w.kind == "pendant":
             lines.append(
