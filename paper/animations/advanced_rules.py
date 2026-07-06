@@ -1131,7 +1131,28 @@ class CrossEntropyHessian(Scene):
                   run_time=0.9, rate_func=EASE)
         self.wait(0.7)
 
-        # ==== stage 6: recognize softmax(z), three times ====
+        # ==== stage 6a: the pow's are fractions ====
+        gB1 = VGroup(B1['e'], B1['a1'], B1['z'], B1['w'], B1['s'])
+        bar1 = Line([-4.0, yA - 0.5, 0], [-1.4, yA - 0.5, 0],
+                    color=INK, stroke_width=1.9)
+        gB2 = VGroup(B2['e'], B2['a1'], B2['z'], B2['w'], B2['s'])
+        gB2c = gB2.copy()
+        self.add(gB2c)
+        bar2a = Line([-4.45, yB - 0.34, 0], [-2.55, yB - 0.34, 0],
+                     color=INK, stroke_width=1.9)
+        bar2b = Line([2.85, yB - 0.34, 0], [4.75, yB - 0.34, 0],
+                     color=INK, stroke_width=1.9)
+        self.play(FadeOut(B1['pw'], B1['a2'], pw2, B2['a2']),
+                  Create(bar1), Create(bar2a), Create(bar2b),
+                  gB1.animate.scale(0.7).move_to([-2.7, yA - 0.88, 0]),
+                  gB2.animate.scale(0.55).move_to([-3.5, yB - 0.66, 0]),
+                  gB2c.animate.scale(0.55).move_to([3.8, yB - 0.66, 0]),
+                  *caption(r"$\mathrm{pow}_{-1}$, $\mathrm{pow}_{-2}$: "
+                           r"divide by the sum --- once, twice"),
+                  run_time=1.5, rate_func=EASE)
+        self.wait(0.9)
+
+        # ==== stage 6b: each fraction is a softmax ====
         yF = -0.45
         SC = 0.8
 
@@ -1160,22 +1181,21 @@ class CrossEntropyHessian(Scene):
         sm2b = smgroup(3.25, 1.15, yF, 1)        # (j)-- softmax <- z
         self.play(
             ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
-                                        *[B1[k] for k in B1]),
+                                        gB1, bar1),
                                  VGroup(pv1, sm1['sm'], sm1['z'], sm1['a'])),
             ReplacementTransform(cdA, d1),
             Transform(whis, j1f),
             ReplacementTransform(A1['w'], i1f),
             Transform(plusA, minus2),
             ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
-                                        pw2, B2['e'],
-                                        B2['z'], B2['a1'], B2['w'], B2['s'],
-                                        B2['a2']),
+                                        gB2, bar2a),
                                  VGroup(sm2a['sm'], sm2a['z'], sm2a['a'])),
             ReplacementTransform(A2['w'], iw2),
-            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a']),
+            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a'],
+                                        gB2c, bar2b),
                                  VGroup(sm2b['sm'], sm2b['z'], sm2b['a'])),
             ReplacementTransform(jG1, jw2),
-            *caption(r"recognize $\mathrm{softmax}(z)$ --- three times"),
+            *caption(r"each fraction is a $\mathrm{softmax}$"),
             run_time=1.8, rate_func=EASE)
         self.wait(0.9)
 
