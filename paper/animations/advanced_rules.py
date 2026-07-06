@@ -1013,7 +1013,7 @@ class CrossEntropyHessian(Scene):
                             wA0 + np.array([-0.7, 0.24, 0]),
                             wA0 + np.array([-1.05, 0.22, 0]),
                             color=CD, stroke_width=2.2)
-        plusA = MathTex("+", color=INK).move_to([3.45, yA, 0])
+        plusA = MathTex("+", color=INK).scale(1.15).move_to([0, (yA + yB) / 2, 0])
         A2 = F1(np.array([-3.5, yB, 0]))
         B2 = F2(np.array([-1.1, yB, 0]))
         loopB = Ellipse(width=4.0, height=1.15, color=CD, stroke_width=2.2
@@ -1095,10 +1095,10 @@ class CrossEntropyHessian(Scene):
 
         # pow_{-1}' = -pow_{-2}: the minus is born
         pw2 = glyph(r"\mathrm{pow}_{-2}", B2['pw'].get_center(), CA, 0.8)
-        minusB = MathTex("-", color=INK).scale(1.1).move_to([-4.78, yB, 0])
+        minusT = MathTex("-", color=INK).scale(1.15).move_to(plusA.get_center())
         self.play(ReplacementTransform(B2['pw'], pw2),
                   FadeOut(circB),
-                  FadeIn(minusB, shift=0.2 * RIGHT),
+                  Transform(plusA, minusT),
                   *caption(r"evaluate: $\mathrm{pow}_{-1}' = "
                            r"-\,\mathrm{pow}_{-2}$ --- the minus is born"),
                   run_time=1.1, rate_func=EASE)
@@ -1165,8 +1165,7 @@ class CrossEntropyHessian(Scene):
             ReplacementTransform(cdA, d1),
             Transform(whis, j1f),
             ReplacementTransform(A1['w'], i1f),
-            FadeOut(plusA),
-            Transform(minusB, minus2),
+            Transform(plusA, minus2),
             ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
                                         pw2, B2['e'],
                                         B2['z'], B2['a1'], B2['w'], B2['s'],
@@ -1181,7 +1180,7 @@ class CrossEntropyHessian(Scene):
         self.wait(0.9)
 
         # ============ stage 7: read off the identity ============
-        final_grp = VGroup(d1, i1f, pv1, minusB, iw2, jw2, whis,
+        final_grp = VGroup(d1, i1f, pv1, plusA, iw2, jw2, whis,
                            sm1['sm'], sm1['z'], sm1['a'],
                            sm2a['sm'], sm2a['z'], sm2a['a'],
                            sm2b['sm'], sm2b['z'], sm2b['a'])
