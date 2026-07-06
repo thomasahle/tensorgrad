@@ -87,7 +87,33 @@ class DeleteTheNode(Scene):
         self.play(FadeOut(nX, big),
                   Transform(eaX, da), Transform(eXb, db),
                   run_time=1.4, rate_func=EASE)
-        self.wait(0.4)
+        self.wait(0.5)
+
+        # the dangling edges bend around to face outwards (row edge left,
+        # column edge right) while the two vectors close ranks:  -a b-
+        phiA = ValueTracker(-16.2)
+        phiB = ValueTracker(196.2)
+
+        def dirv(deg):
+            r = np.deg2rad(deg)
+            return np.array([np.cos(r), np.sin(r), 0])
+
+        stubA = always_redraw(lambda: Line(
+            na.get_center() + 0.25 * dirv(phiA.get_value()),
+            na.get_center() + 0.82 * dirv(phiA.get_value()),
+            color=INK, stroke_width=2.2))
+        stubB = always_redraw(lambda: Line(
+            nb.get_center() + 0.25 * dirv(phiB.get_value()),
+            nb.get_center() + 0.82 * dirv(phiB.get_value()),
+            color=INK, stroke_width=2.2))
+        self.remove(eaX, eXb)
+        self.add(stubA, stubB)
+        self.play(phiA.animate.set_value(180),
+                  phiB.animate.set_value(0),
+                  na.animate.shift(1.15 * RIGHT),
+                  nb.animate.shift(1.15 * LEFT),
+                  run_time=2.2, rate_func=EASE)
+        self.wait(0.3)
         self.play(Write(eq), Write(rhs), run_time=0.9)
         self.wait(1.4)
 
@@ -118,114 +144,202 @@ def dangles(cx, y=0.0, gap=0.5):
 
 
 
-class InverseSplit(Scene):
-    """d(X^-1) = -X^-1 dX X^-1, derived Penrose-style from X X^-1 = I."""
+from manim import CubicBezier
 
-    def T(self, x, y, filled):
-        return tri(np.array([x, y, 0]), filled)
+
+def pendant(pos, s=0.55, gap=True):
+    """Penrose's inverse, chain-embeddable: two vertical antisymmetrizer
+    bars holding n-1 = 2 copies of X and one empty slot at the bottom,
+    whose two legs exit downward and CROSS (the crossing is the transpose
+    that turns the adjugate into the inverse) before landing on the chain
+    wire at pos+-(.95s, 0).  With gap=False the slot is filled by a third
+    X and there are no legs: the closed pendant is det(X)."""
+    P = lambda x, y: pos + np.array([x * s, y * s, 0])
+    lsc = max(0.8 * s, 0.45)
+    g = VGroup()
+    g.add(Line(P(-.52, .25), P(-.52, 1.75), color=INK, stroke_width=3.4))
+    g.add(Line(P(.52, .25), P(.52, 1.75), color=INK, stroke_width=3.4))
+    ys = [1.45, 1.0] + ([] if gap else [.55])
+    for yy in ys:
+        lbl = MathTex("X", color=INK).scale(lsc).move_to(P(0, yy))
+        g.add(Line(P(-.52, yy), P(-.18, yy), color=INK, stroke_width=2.2))
+        g.add(Line(P(.18, yy), P(.52, yy), color=INK, stroke_width=2.2))
+        g.add(lbl)
+    if gap:
+        g.add(Line(P(-.52, .55), P(-.24, .55), color=INK, stroke_width=2.2))
+        g.add(Line(P(.52, .55), P(.24, .55), color=INK, stroke_width=2.2))
+        g.add(CubicBezier(P(-.24, .55), P(-.06, .32), P(.5, .08),
+                          P(.95, 0), color=INK, stroke_width=2.2))
+        g.add(CubicBezier(P(.24, .55), P(.06, .32), P(-.5, .08),
+                          P(-.95, 0), color=INK, stroke_width=2.2))
+    return g
+
+
+def prefactor(pos, s=0.62):
+    """The n/det(X) normalization: 3 over a closed det pendant."""
+    det = pendant(pos + np.array([0, -1.05, 0]), s=s, gap=False)
+    bar = Line(pos + np.array([-0.55, 0.28, 0]), pos + np.array([0.55, 0.28, 0]),
+               color=INK, stroke_width=1.6)
+    three = MathTex("3", color=INK).move_to(pos + np.array([0, 0.72, 0]))
+    return VGroup(three, bar, det)
+
+
+class InverseSplit(Scene):
+    """d(X^-1) = -X^-1 dX X^-1, in Penrose's representation of the
+    inverse: the adjugate gap-stack over the determinant."""
+
+    def eqrow(self, y, lpend, loopon, minus=True, rpend=True):
+        """Build one equation state:  [lpend?] X|- (loop inv) = - [rpend?] dX inv.
+        Returns dict of mobject groups, all positioned in fixed slots."""
+        S = 0.55
+        out = {}
+        # LHS: wire, optional composed pendant, X (or nothing), looped pendant
+        xslots = {'pend1': -5.1, 'X': -3.85, 'pend2': -2.35}
+        segs = [Line([-6.1, y, 0], [-1.35, y, 0], color=INK, stroke_width=2.2)]
+        out['lwire'] = VGroup(*segs)
+        if lpend:
+            out['pend1'] = pendant(np.array([xslots['pend1'], y, 0]), s=S)
+        out['Xn'] = node("X", np.array([xslots['X'], y, 0]))
+        out['pend2'] = pendant(np.array([xslots['pend2'], y, 0]), s=S)
+        if loopon:
+            out['loop'] = dloop(np.array([xslots['pend2'], y + 0.5, 0]),
+                                2.0, 2.15, dot_angle_deg=38)
+        out['eq'] = MathTex(r"=", color=INK).move_to([-0.72, y, 0])
+        if minus:
+            out['minus'] = MathTex(r"-", color=INK
+                                   ).scale(1.1).move_to([-0.28, y, 0])
+        # RHS: wire with a GAP at the dangles, optional pendant, pendant
+        xr = {'pend3': 1.15, 'dang': 2.9, 'pend4': 4.55}
+        gap = 0.38
+        out['rwire'] = VGroup(
+            Line([0.15, y, 0], [xr['dang'] - gap, y, 0], color=INK, stroke_width=2.2),
+            Line([xr['dang'] + gap, y, 0], [5.9, y, 0], color=INK, stroke_width=2.2))
+        if rpend:
+            out['pend3'] = pendant(np.array([xr['pend3'], y, 0]), s=S)
+        out['dang'] = dangles(xr['dang'], y, gap=gap)
+        out['pend4'] = pendant(np.array([xr['pend4'], y, 0]), s=S)
+        return out
 
     def construct(self):
         lhs = MathTex(r"\mathrm{d}(X^{-1})", color=INK)
         eq0 = MathTex(r"=", color=INK)
         rhs = MathTex(r"-\,X^{-1}\,\mathrm{d}X\,X^{-1}", color=INK)
-        title = VGroup(lhs, eq0, rhs).arrange(RIGHT, buff=0.22).to_edge(UP, buff=0.6)
-        legend = VGroup(
-            tri(np.array([0, 0, 0]), False), MathTex(r"= X", color=INK).scale(0.8),
-            tri(np.array([0, 0, 0]), True), MathTex(r"= X^{-1}", color=INK).scale(0.8),
-        ).arrange(RIGHT, buff=0.3).to_edge(DOWN, buff=0.6)
-        self.play(Write(lhs), FadeIn(legend), run_time=1.0)
+        title = VGroup(lhs, eq0, rhs).arrange(RIGHT, buff=0.22).to_edge(UP, buff=0.55)
 
-        # ---- S1: the identity  -X-X^{-1}-  =  --- ----
-        y = 0.3
-        ident = VGroup(wire(-2.1, -1.08, y), self.T(-0.85, y, False),
-                       wire(-0.60, 0.12, y), self.T(0.35, y, True),
-                       wire(0.62, 1.85, y))
-        eqI = MathTex(r"=", color=INK).move_to([2.5, y, 0])
-        plain = wire(3.0, 4.3, y)
-        self.play(FadeIn(ident), run_time=0.8)
-        self.play(Write(eqI), Create(plain), run_time=0.8)
+        # ---- Act 1: Penrose's inverse ----
+        c1 = np.array([-1.6, -1.35, 0])
+        inv_lhs = MathTex(r"X^{-1}", color=INK).move_to(c1 + np.array([-1.7, 0.75, 0]))
+        inv_eq = MathTex(r"=", color=INK).move_to(c1 + np.array([-0.95, 0.75, 0]))
+        pre = prefactor(c1 + np.array([0, 0.75, 0]))
+        cdot = MathTex(r"\cdot", color=INK).move_to(c1 + np.array([0.9, 0.75, 0]))
+        p1 = c1 + np.array([2.6, -0.1, 0])
+        big = pendant(p1, s=0.9)
+        wdef = Line(p1 + np.array([-1.5, 0, 0]), p1 + np.array([1.5, 0, 0]),
+                    color=INK, stroke_width=2.2)
+        self.play(Write(lhs), run_time=0.8)
+        self.play(Write(inv_lhs), Write(inv_eq), FadeIn(pre), Write(cdot),
+                  Create(wdef), FadeIn(big), run_time=1.4)
+        self.wait(1.4)
+
+        # ---- Act 2: the key fact  X X^{-1} = I : X docks into the slot ----
+        sub = MathTex(r"X\,X^{-1} \;=\; I:", color=INK
+                      ).scale(0.8).move_to([-4.9, 1.7, 0])
+        p0 = np.array([0.6, -0.6, 0])
+        wire = Line(p0 + np.array([-4.0, 0, 0]), p0 + np.array([2.6, 0, 0]),
+                    color=INK, stroke_width=2.2)
+        big2 = pendant(p0, s=0.9)
+        pre2 = prefactor(p0 + np.array([-2.9, 0.9, 0]))
+        Xn = node("X", p0 + np.array([1.8, 0, 0]))
+        self.play(FadeOut(inv_lhs, inv_eq, cdot),
+                  ReplacementTransform(big, big2),
+                  ReplacementTransform(wdef, wire),
+                  ReplacementTransform(pre, pre2),
+                  FadeIn(sub, Xn), run_time=1.2)
         self.wait(0.6)
-
-        # ---- S2: differentiate both sides ----
-        loop = dloop(np.array([-0.25, y, 0]), 2.6, 1.05)
-        zero = MathTex(r"0", color=INK).move_to(plain.get_center())
-        self.play(Create(loop[0]), FadeIn(loop[1], loop[2], loop[3]),
-                  ReplacementTransform(plain, zero), run_time=1.1)
-        self.wait(0.7)
-
-        # ---- S3: product rule -- the loop distributes over the two nodes ----
-        yA, yB = 0.55, -0.75
-        rowA = VGroup(wire(-2.6, -1.58, yA), self.T(-1.35, yA, False),
-                      wire(-1.10, 0.12, yA), self.T(0.35, yA, True),
-                      wire(0.62, 1.6, yA))
-        loopA = dloop(np.array([-1.35, yA, 0]), 1.15, 0.95)
-        plusA = MathTex(r"+", color=INK).move_to([2.1, yA, 0])
-        rowB = VGroup(wire(-2.6, -1.58, yB), self.T(-1.35, yB, False),
-                      wire(-1.10, 0.12, yB), self.T(0.35, yB, True),
-                      wire(0.62, 1.6, yB))
-        loopB = dloop(np.array([0.35, yB, 0]), 1.15, 0.95)
-        eqB = MathTex(r"=\,0", color=INK).move_to([2.35, yB, 0])
-        self.play(ReplacementTransform(ident, rowA),
-                  ReplacementTransform(loop, loopA),
-                  FadeOut(eqI, zero),
-                  FadeIn(rowB, loopB), Write(plusA), Write(eqB),
+        # X slides along the wire to sit under the empty slot...
+        self.play(Xn.animate.move_to(p0 + np.array([0, 0.05, 0])),
                   run_time=1.5, rate_func=EASE)
+        self.wait(0.3)
+        # ...and docks: the slot closes into det(X)
+        closed = pendant(p0, s=0.9, gap=False)
+        self.play(ReplacementTransform(VGroup(big2, Xn), closed), run_time=1.0)
+        self.wait(0.4)
+        # det/det = 1: the normalization cancels, a plain wire remains
+        self.play(FadeOut(closed, pre2), run_time=1.0)
+        self.wait(0.9)
+
+        # ---- Act 3: differentiate the identity ----
+        self.play(FadeOut(sub, wire), run_time=0.7)
+        yA, yB = 1.0, -1.7
+        S = 0.55
+
+        def chain(P, looped):
+            Xn = node("X", P + np.array([-1.55, 0, 0]))
+            g = VGroup(Line(P + np.array([-2.75, 0, 0]), P + np.array([-1.8, 0, 0]),
+                            color=INK, stroke_width=2.2),
+                       Xn,
+                       Line(P + np.array([-1.3, 0, 0]), P + np.array([1.45, 0, 0]),
+                            color=INK, stroke_width=2.2),
+                       pendant(P, s=S))
+            if looped == "X":
+                lp = dloop(P + np.array([-1.55, 0.05, 0]), 1.0, 0.9)
+            else:
+                lp = dloop(P + np.array([0, 0.5, 0]), 2.0, 2.15, dot_angle_deg=38)
+            return g, lp
+
+        PA, PB = np.array([0.5, yA, 0]), np.array([0.5, yB, 0])
+        gA, loopA = chain(PA, "X")
+        gB, loopB = chain(PB, "inv")
+        plusA = MathTex(r"+", color=INK).move_to(PA + np.array([2.1, 0, 0]))
+        eqB = MathTex(r"=\,0", color=INK).move_to(PB + np.array([2.25, 0, 0]))
+        self.play(FadeIn(gA, gB), Create(loopA[0]), Create(loopB[0]),
+                  FadeIn(loopA[1], loopA[2], loopA[3],
+                         loopB[1], loopB[2], loopB[3]),
+                  Write(plusA), Write(eqB), run_time=1.4)
+        self.wait(1.0)
+
+        # delete the node in the first term: X -> dangling dX edges
+        dA = dangles(PA[0] - 1.55, yA, gap=0.38)
+        brA = VGroup(Line(PA + np.array([-2.75, 0, 0]), PA + np.array([-1.93, 0, 0]),
+                          color=INK, stroke_width=2.2),
+                     Line(PA + np.array([-1.17, 0, 0]), PA + np.array([-1.3, 0, 0]),
+                          color=INK, stroke_width=2.2))
+        self.play(FadeOut(gA[1], loopA), FadeIn(dA), run_time=1.0)
         self.wait(0.8)
 
-        # ---- S4: delete the node in the first term:  loop X -> dangling dX ----
-        dA = dangles(-1.35, yA, gap=0.42)
-        self.play(FadeOut(rowA[1], loopA), FadeIn(dA), run_time=1.0)
+        # solve: move the dX term across the equals sign
+        ym = -0.6
+        st = self.eqrow(ym, lpend=False, loopon=True)
+        self.play(
+            ReplacementTransform(VGroup(gB[0], gB[2]), st['lwire']),
+            ReplacementTransform(gB[1], st['Xn']),
+            ReplacementTransform(gB[3], st['pend2']),
+            ReplacementTransform(loopB, st['loop']),
+            ReplacementTransform(VGroup(gA[0], gA[2]), st['rwire']),
+            ReplacementTransform(dA, st['dang']),
+            ReplacementTransform(gA[3], st['pend4']),
+            FadeOut(plusA, eqB), Write(st['eq']), Write(st['minus']),
+            run_time=1.7, rate_func=EASE)
+        self.wait(1.0)
+
+        # compose both sides with X^{-1} on the left
+        pend1 = pendant(np.array([-5.1, ym, 0]), s=S)
+        pend3 = pendant(np.array([1.15, ym, 0]), s=S)
+        self.play(FadeIn(pend1, pend3), run_time=0.9)
         self.wait(0.7)
 
-        # ---- S5: solve for the looped term (move the dX term across) ----
-        ym = -0.1
-        L = VGroup(wire(-4.3, -3.60, ym), self.T(-3.35, ym, False),
-                   wire(-3.10, -2.40, ym), self.T(-2.15, ym, True),
-                   wire(-1.90, -1.20, ym))
-        loopL = dloop(np.array([-2.15, ym, 0]), 1.15, 0.95)
-        eqM = MathTex(r"=", color=INK).move_to([-0.72, ym, 0])
-        minus = MathTex(r"-", color=INK).scale(1.1).move_to([-0.30, ym, 0])
-        R = VGroup(wire(0.05, 0.75, ym),
-                   VGroup(Line([0.75, ym, 0], [1.05, ym + 0.26, 0],
-                               color=INK, stroke_width=2.2),
-                          Line([1.65, ym, 0], [1.35, ym + 0.26, 0],
-                               color=INK, stroke_width=2.2)),
-                   wire(1.65, 2.35, ym), self.T(2.60, ym, True),
-                   wire(2.85, 3.55, ym))
-        self.play(ReplacementTransform(VGroup(rowB), L),
-                  ReplacementTransform(loopB, loopL),
-                  ReplacementTransform(VGroup(rowA[0], rowA[2], rowA[3],
-                                              rowA[4], dA), R),
-                  FadeOut(plusA, eqB),
-                  Write(eqM), Write(minus),
-                  run_time=1.6, rate_func=EASE)
+        # the new X^{-1} swallows X: dock, close into det, cancel
+        self.play(st['Xn'].animate.move_to([-5.1, ym + 0.03, 0]),
+                  run_time=1.3, rate_func=EASE)
+        closedL = pendant(np.array([-5.1, ym, 0]), s=S, gap=False)
+        self.play(ReplacementTransform(VGroup(pend1, st['Xn']), closedL),
+                  run_time=0.9)
+        self.play(FadeOut(closedL), run_time=0.8)
         self.wait(0.8)
 
-        # ---- S6: compose with X^{-1} on the left of both sides ----
-        newL = VGroup(wire(-5.35, -4.85, ym), self.T(-4.60, ym, True))
-        newR = self.T(-0.05 + 0.45, ym, True)   # placed just after the minus
-        newRw = wire(0.70, 1.05, ym)
-        # shift the old right side to make room
-        self.play(FadeIn(newL),
-                  R.animate.shift(np.array([1.0, 0, 0])),
-                  FadeIn(newR.shift(np.array([-0.25, 0, 0])), newRw),
-                  run_time=1.2, rate_func=EASE)
-        self.wait(0.6)
-
-        # ---- S7: X^{-1} X annihilates into a plain wire ----
-        pair = VGroup(newL[1], L[1])   # black then white triangle
-        mid = np.array([-3.95, ym, 0])
-        self.play(pair[0].animate.move_to(mid + np.array([-0.18, 0, 0])),
-                  pair[1].animate.move_to(mid + np.array([0.18, 0, 0])),
-                  run_time=0.9, rate_func=EASE)
-        bridge = wire(-5.35, -2.40, ym)
-        self.play(FadeOut(pair, L[0], L[2], newL[0]), FadeIn(bridge),
-                  run_time=0.8)
-        self.wait(0.6)
-
-        # ---- S8: read off the identity ----
+        # ---- read off the identity ----
         self.play(Write(eq0), Write(rhs), run_time=1.0)
-        self.wait(1.6)
+        self.wait(1.8)
 
 
 class KroneckerTrace(Scene):
@@ -303,5 +417,21 @@ class KroneckerTrace(Scene):
         self.play(outer.animate.shift(np.array([-1.45, 0, 0])),
                   inner.animate.shift(np.array([1.45, 0, 0])),
                   run_time=2.4, rate_func=EASE)
+        self.wait(0.3)
+
+        # relax each closed curve into a clean circle
+        cL = np.array([-1.45, y0 + 0.25, 0])
+        cR = np.array([1.45, y0 + 0.25, 0])
+        circL = Circle(radius=1.05, color=INK, stroke_width=2.2).move_to(cL)
+        circR = Circle(radius=1.05, color=INK, stroke_width=2.2).move_to(cR)
+        nA3 = node("A", cL + np.array([0, 1.05, 0]))
+        nB3 = node("B", cR + np.array([0, 1.05, 0]))
+        self.play(ReplacementTransform(VGroup(arcO_l, arcO_r, brO_l, brO_r,
+                                              wAl, wAr), circL),
+                  ReplacementTransform(VGroup(arcI_l, arcI_r, brI_l, brI_r,
+                                              wBl, wBr), circR),
+                  ReplacementTransform(nA, nA3),
+                  ReplacementTransform(nB, nB3),
+                  run_time=1.3, rate_func=EASE)
         self.play(ReplacementTransform(t2, t3), run_time=0.9)
         self.wait(1.6)
