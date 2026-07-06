@@ -103,7 +103,7 @@ in tensorgrad/functions.py):</p>
 
 <ul>
 <li><code>grad_steps</code> (inf): how many Derivative nodes to resolve; decremented IN
-PLACE by <code><a href="grad.html#step_derivative">tensorgrad.grad.step_derivative()</a></code>, so a finite budget is
+PLACE by <code><a href="autodiff.html#step_derivative">tensorgrad.autodiff.step_derivative()</a></code>, so a finite budget is
 shared across the tree (and across repeated <code><a href="#simplify">simplify</a></code> calls reusing the
 same dict). Used by imgtools/to_diagram for step-by-step derivations.</li>
 <li><code>sum_combine_terms</code> (True): gates a filter in <code><a href="#simplify_sum">simplify_sum()</a></code>. The
@@ -176,7 +176,7 @@ NotImplementedError.</p>
 </span><span id="L-21"><a href="#L-21"><span class="linenos"> 21</span></a><span class="sd">in tensorgrad/functions.py):</span>
 </span><span id="L-22"><a href="#L-22"><span class="linenos"> 22</span></a>
 </span><span id="L-23"><a href="#L-23"><span class="linenos"> 23</span></a><span class="sd">- ``grad_steps`` (inf): how many Derivative nodes to resolve; decremented IN</span>
-</span><span id="L-24"><a href="#L-24"><span class="linenos"> 24</span></a><span class="sd">  PLACE by :func:`tensorgrad.grad.step_derivative`, so a finite budget is</span>
+</span><span id="L-24"><a href="#L-24"><span class="linenos"> 24</span></a><span class="sd">  PLACE by :func:`tensorgrad.autodiff.step_derivative`, so a finite budget is</span>
 </span><span id="L-25"><a href="#L-25"><span class="linenos"> 25</span></a><span class="sd">  shared across the tree (and across repeated ``simplify`` calls reusing the</span>
 </span><span id="L-26"><a href="#L-26"><span class="linenos"> 26</span></a><span class="sd">  same dict). Used by imgtools/to_diagram for step-by-step derivations.</span>
 </span><span id="L-27"><a href="#L-27"><span class="linenos"> 27</span></a><span class="sd">- ``sum_combine_terms`` (True): gates a filter in :func:`simplify_sum`. The</span>
@@ -242,7 +242,7 @@ NotImplementedError.</p>
 </span><span id="L-87"><a href="#L-87"><span class="linenos"> 87</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">_MatchEdgesKey</span>
 </span><span id="L-88"><a href="#L-88"><span class="linenos"> 88</span></a>
 </span><span id="L-89"><a href="#L-89"><span class="linenos"> 89</span></a><span class="c1"># The Derivative-resolution rule lives with the other differentiation logic.</span>
-</span><span id="L-90"><a href="#L-90"><span class="linenos"> 90</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.grad</span><span class="w"> </span><span class="kn">import</span> <span class="n">step_derivative</span>
+</span><span id="L-90"><a href="#L-90"><span class="linenos"> 90</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.autodiff</span><span class="w"> </span><span class="kn">import</span> <span class="n">step_derivative</span>
 </span><span id="L-91"><a href="#L-91"><span class="linenos"> 91</span></a>
 </span><span id="L-92"><a href="#L-92"><span class="linenos"> 92</span></a>
 </span><span id="L-93"><a href="#L-93"><span class="linenos"> 93</span></a><span class="c1">################################################################################</span>
@@ -697,7 +697,7 @@ NotImplementedError.</p>
 </span><span id="L-542"><a href="#L-542"><span class="linenos">542</span></a>    <span class="n">Zero</span><span class="p">:</span> <span class="n">keep_atom</span><span class="p">,</span>
 </span><span id="L-543"><a href="#L-543"><span class="linenos">543</span></a>    <span class="n">Rename</span><span class="p">:</span> <span class="n">push_rename_down</span><span class="p">,</span>
 </span><span id="L-544"><a href="#L-544"><span class="linenos">544</span></a>    <span class="n">Function</span><span class="p">:</span> <span class="n">simplify_function</span><span class="p">,</span>
-</span><span id="L-545"><a href="#L-545"><span class="linenos">545</span></a>    <span class="n">Derivative</span><span class="p">:</span> <span class="n">step_derivative</span><span class="p">,</span>  <span class="c1"># chain-rule stepping lives in tensorgrad.grad</span>
+</span><span id="L-545"><a href="#L-545"><span class="linenos">545</span></a>    <span class="n">Derivative</span><span class="p">:</span> <span class="n">step_derivative</span><span class="p">,</span>  <span class="c1"># chain-rule stepping lives in tensorgrad.autodiff</span>
 </span><span id="L-546"><a href="#L-546"><span class="linenos">546</span></a>    <span class="n">Product</span><span class="p">:</span> <span class="n">simplify_product</span><span class="p">,</span>
 </span><span id="L-547"><a href="#L-547"><span class="linenos">547</span></a>    <span class="n">Sum</span><span class="p">:</span> <span class="n">simplify_sum</span><span class="p">,</span>
 </span><span id="L-548"><a href="#L-548"><span class="linenos">548</span></a><span class="p">}</span>
