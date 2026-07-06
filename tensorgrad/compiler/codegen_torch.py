@@ -88,6 +88,26 @@ ADDMM_FUSION = True
 # the memory effect can be measured and tested against the plain emission.
 EMIT_DEL = True
 
+# Collapse families of shape-isomorphic elementwise chains (MapNode /
+# LinearNode — e.g. the 53 per-parameter AdamW update chains, which differ
+# only in tensor shapes) into multi-tensor torch._foreach_* calls: one call
+# per chain step instead of one kernel launch per parameter. Only
+# OUT-OF-PLACE _foreach variants are emitted (every line stays a pure
+# `name = ...` assignment, so the textual DLE/liveness passes keep working),
+# and each _foreach op is bit-identical to its singleton twin — so the flag
+# A/B compares torch.equal.
+FOREACH_GROUPING = True
+
+# Minimum foreach family size: below this, per-node emission is fine (the
+# saved dispatch cannot pay for the list packing).
+FOREACH_MIN = 4
+
+# MapNode ops with (verified bit-identical) torch._foreach_* twins. `pow` is
+# handled separately: its param specializes to sqrt/rsqrt/reciprocal/pow,
+# mirroring _emit_map (ATen's square IS pow(x, 2), so k=2 maps to
+# _foreach_pow(xs, 2.0)). relu/gt0/equal have no exact foreach twin.
+_FOREACH_MAP_OPS = frozenset({"exp", "log", "tanh", "abs", "sign", "erf"})
+
 
 def _fmt_weight(w: float) -> str:
     return repr(w)
@@ -219,6 +239,10 @@ class TorchCodegen:
             order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed
         )
         self._addmm_plans = addmm_plans
+        foreach_plans, foreach_deferred = self._plan_foreach(
+            order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed, addmm_plans, addmm_suppressed
+        )
+        self._foreach_tmp = 0  # counter for _f{k} foreach list temporaries
         # Spec-time layout knowledge: emitted name -> (sizes, strides, offset).
         # offset None = "unknown but inherited correctly" (see _try_eliminate_row).
         # Only names whose layout we construct ourselves are entered; everything
@@ -253,6 +277,14 @@ class TorchCodegen:
                 continue  # consumed only by a fused SDPA call; never emitted
             if id(node) in addmm_suppressed:
                 continue  # computed inside its consuming Linear's addmm call
+            if id(node) in foreach_deferred:
+                continue  # emitted at its foreach family's anchor position
+            if id(node) in foreach_plans:
+                # Anchor of a foreach family: emit the whole family here as
+                # torch._foreach_* calls, tuple-unpacked onto the members'
+                # pre-assigned t-names.
+                lines.extend(self._emit_foreach(foreach_plans[id(node)], names))
+                continue
             if isinstance(node, InputNode):
                 # Inputs arrive as positional args in self.input_names order.
                 emitted_inputs[node.var_name] = name
@@ -347,8 +379,13 @@ class TorchCodegen:
         # parameters — neither is ever in assigned_names).
         if EMIT_DEL:
             ret_names = set(re.findall(r"\w+", " ".join(rets)))
+            # Tuple-unpack LHS (foreach grouping) counts too: every unpacked
+            # member name is an assignment and must be freed at its last use.
             assigned_names = {
-                m.group(1) for line in lines if (m := re.match(r"([A-Za-z_]\w*) = ", line))
+                nm
+                for line in lines
+                if (m := re.match(r"([A-Za-z_]\w*(?:, [A-Za-z_]\w*)*) = ", line))
+                for nm in m.group(1).split(", ")
             }
             last_use: dict[str, int] = {}
             for i, line in enumerate(lines):
@@ -403,6 +440,22 @@ class TorchCodegen:
         axis q of the emitted tensor carries wire subs[phys[q]])."""
         phys = self._phys_of(op)
         return [subs[q] for q in phys]
+
+    def _align_perm(self, node: Node, op: Node, perm) -> tuple[int, ...]:
+        """Permutation aligning operand `op` to `node`'s physical layout:
+        physical position p of `node` holds node-logical axis physN[p], i.e.
+        operand-logical axis perm[physN[p]], stored at the operand's physical
+        position physT.index(...). Identity == no permute view needed."""
+        physN = self._phys_of(node)
+        want = tuple(perm[j] for j in physN)
+        physT = self._phys_of(op)
+        return tuple(physT.index(a) for a in want)
+
+    def _aligned_ref(self, node: Node, op: Node, perm, names) -> str:
+        """Operand reference aligned to `node`'s physical layout (shared by
+        map/linear emission and their foreach grouping, so grouped and
+        ungrouped emissions stay byte-identical per operand)."""
+        return self._perm_str(names[id(op)], self._align_perm(node, op, perm))
 
     # ---- matmul cell selection --------------------------------------------
 
@@ -666,6 +719,368 @@ class TorchCodegen:
                         "alpha_extra": to_float(term.weight.subs(dims)),
                         "beta_extra": to_float(bt.weight.subs(dims))}
         return None
+
+    # ---- foreach grouping --------------------------------------------------
+
+    def _foreach_slot(self, node: Node, op: Node, perm, keys) -> tuple:
+        """Family-local role of one operand slot: its alignment permute
+        (shape-erased — identity of ANY order normalizes to (), so families
+        mix tensor orders; non-identity permutes must match exactly) plus the
+        operand's own foreach key when it is groupable (so parallel chains
+        match level-by-level while sequential same-op links stay distinct) or
+        an opaque external marker otherwise."""
+        align = self._align_perm(node, op, perm)
+        if align == tuple(range(len(align))):
+            align = ()
+        return (align, keys.get(id(op), "ext"))
+
+    @staticmethod
+    def _emits_tensor(op: Node) -> bool:
+        """True when `op`'s emitted name is guaranteed to be a torch.Tensor.
+        Order-0 scalar consts and empty einsums emit python FLOATS, which a
+        TensorList cannot hold; anything of order >= 1 is always a tensor."""
+        if op.order:
+            return True
+        if isinstance(op, (InputNode, MapNode, GatherNode, ReduceNode)):
+            return True
+        if isinstance(op, EinsumNode):
+            # With real operands and no constraint rows nothing can be
+            # eliminated down to a bare float literal.
+            return bool(op.ops) and not op.constraints
+        return False  # ConstNode 'scalar', order-0 LinearNode over floats
+
+    def _foreach_ein_key(self, node: EinsumNode, keys, dims, dim_of):
+        """Foreach key + per-node recipe of a pure-Hadamard einsum (no
+        contraction, no broadcast-only wires, no diagonals, no constraints).
+
+        The key encodes the exact pairwise broadcast-multiply tree
+        _emit_einsum/_contract would emit — per-step output labels and, per
+        argument, its (index pattern, role) spec — plus the node weight.
+        Encoding the concrete step tree keeps multi-operand members whose
+        opt_einsum paths differ (paths are planned on concrete shapes) in
+        different families, so the grouped dataflow matches the ungrouped
+        one bit for bit. Within a step the two arguments are sorted into a
+        canonical order (IEEE multiplication is bitwise-commutative), so
+        chains whose lowering flipped a product's operand order still share
+        a family; the returned recipe maps each canonical argument back to
+        THIS node's operand slot (negative = result of an earlier step).
+
+        Returns (key, recipe) or None."""
+        if node.constraints or not 2 <= len(node.ops) <= 8:
+            return None
+        if len(set(node.out_subs)) != len(node.out_subs):
+            return None  # diagonal output: einsum territory
+        op_wires = set()
+        for subs in node.in_subs:
+            if len(set(subs)) != len(subs):
+                return None  # diagonal operand
+            op_wires |= set(subs)
+        if op_wires != set(node.out_subs):
+            return None  # contracted or broadcast-only wires: not a Hadamard
+        if not all(map(self._emits_tensor, node.ops)):
+            return None  # python-float operand cannot enter a TensorList
+        pout = tuple(node.out_subs[j] for j in self._phys_of(node))
+        entries = [tuple(self._entry_subs(op, subs)) for op, subs in zip(node.ops, node.in_subs)]
+        if len(pout) > len(_LETTERS):
+            return None
+        # Canonical letters BY PHYSICAL OUTPUT ORDER (pout covers every wire
+        # here), so members whose layout assignment transposed the whole
+        # chain still key identically — the views are label-invariant.
+        letters = {w: _LETTERS[i] for i, w in enumerate(pout)}
+        in_eqs = ["".join(letters[w] for w in e) for e in entries]
+        out_eq = "".join(letters[w] for w in pout)
+        if len(entries) <= 2:
+            steps = ((f"{','.join(in_eqs)}->{out_eq}", tuple(range(len(entries)))),)
+        else:
+            shapes = [tuple(dim_of(node.wire_dims[w]) for w in e) for e in entries]
+            out_size = _prod([dim_of(node.wire_dims[w]) for w in pout])
+            path_info = self._oe_path(f"{','.join(in_eqs)}->{out_eq}", shapes, out_size)
+            stack: list[int] = list(range(len(entries)))  # slot ids, <0 = step results
+            steps_list = []
+            for si, (pos, _, step_eq, _, _) in enumerate(path_info.contraction_list):
+                steps_list.append((step_eq, tuple(stack.pop(p) for p in pos)))
+                stack.append(-(si + 1))
+            steps = tuple(steps_list)
+        # Every step must itself be a 2-operand broadcast multiply, and an
+        # intermediate argument must enter unviewed: a _foreach list result
+        # cannot be permuted/unsqueezed per member.
+        key_steps, recipe = [], []
+        for step_eq, slots in steps:
+            ins, out = step_eq.split("->")
+            step_ins = ins.split(",")
+            if len(slots) != 2:
+                return None
+            if any(len(set(e)) != len(e) for e in step_ins):
+                return None
+            if set().union(*map(set, step_ins)) != set(out) or len(set(out)) != len(out):
+                return None  # a contracted/diagonal step: real einsum work
+            args = []
+            for e, slot in zip(step_ins, slots):
+                if slot < 0:
+                    if e != out:
+                        return None
+                    role: Any = ("tmp", -slot)
+                else:
+                    role = keys.get(id(node.ops[slot]), "ext")
+                args.append((e, role, slot))
+            args.sort(key=lambda a: (a[0], repr(a[1])))  # canonical arg order
+            # Shape erasure includes the tensor ORDER: identity ("=") and
+            # 0-dim ("") argument patterns key the same for any rank (the
+            # einsum analogue of the ()-normalized alignment permutes), so
+            # the 2-D weight chains and the 1-D bias/gain chains share one
+            # family. Any real permute/unsqueeze pattern stays exact.
+            if all(a[0] in ("", out) for a in args):
+                key_steps.append(("=", tuple(("=" if e else "", role) for e, role, _ in args)))
+            else:
+                key_steps.append((out, tuple((e, role) for e, role, _ in args)))
+            recipe.append((out, tuple((e, slot) for e, _, slot in args)))
+        has_wmul = node.weight != 1
+        wf = to_float(node.weight.subs(dims)) if has_wmul else 1.0
+        return ("ein", tuple(key_steps), has_wmul, wf), tuple(recipe)
+
+    def _foreach_key(self, node: Node, keys, dims, dim_of, recipes):
+        """Shape-erased structural key for foreach grouping, or None when the
+        node has no exact torch._foreach_* emission. Nodes with equal keys
+        compute the same elementwise program on different tensors: same op
+        and scalar params (MapNode) / same ordered weights and scalar offset
+        (LinearNode) / same broadcast-multiply steps (Hadamard EinsumNode),
+        and the same role per operand slot. Einsum nodes additionally record
+        a per-node recipe in `recipes` (canonical arg -> operand slot)."""
+        if node.order == 0:
+            return None  # 0-dim operands can be emitted as python floats
+        if isinstance(node, EinsumNode):
+            kr = self._foreach_ein_key(node, keys, dims, dim_of)
+            if kr is None:
+                return None
+            key, recipes[id(node)] = kr
+            return key
+        if isinstance(node, MapNode):
+            if len(node.ops) != 1:
+                return None
+            if node.op == "pow":
+                fn: tuple = ("pow", to_float(node.params[0]))
+            elif node.op in _FOREACH_MAP_OPS:
+                fn = (node.op,)
+            else:
+                return None  # relu/gt0/equal: no exact foreach twin
+            return ("map", fn, self._foreach_slot(node, node.ops[0], node.perms[0], keys))
+        if isinstance(node, LinearNode):
+            const_acc = 0.0
+            sig = []
+            for term, perm, w in zip(node.terms, node.perms, node.weights):
+                wf = to_float(sympy.sympify(w).subs(dims) if getattr(w, "free_symbols", None) else w)
+                if isinstance(term, EinsumNode) and not term.ops and not term.constraints:
+                    # Pure-ones term: a scalar offset, exactly as _emit_linear.
+                    const_acc += wf * to_float(term.weight.subs(dims))
+                    continue
+                sig.append((wf, self._foreach_slot(node, term, perm, keys)))
+            if not sig:
+                return None  # pure torch.full
+            if len(sig) == 1 and sig[0][0] == 1.0 and const_acc == 0.0:
+                return None  # alias/permute: no arithmetic to batch
+            return ("lin", const_acc, tuple(sig))
+        return None
+
+    def _plan_foreach(self, order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed,
+                      addmm_plans, addmm_suppressed):
+        """Group families of shape-isomorphic elementwise chains (MapNode,
+        LinearNode, pure-Hadamard EinsumNode) into multi-tensor
+        torch._foreach_* calls (the 53 per-parameter AdamW update chains are
+        the motivating case: identical elementwise programs over different
+        shapes). Hadamard einsums must be groupable too, or the per-chain
+        multiply between two grouped levels would sit before the levels'
+        anchors and the demote fixpoint below would dissolve every family
+        upstream of it.
+
+        Returns (plans, deferred): plans maps id(anchor) -> {"members", "key"}
+        where the anchor is the family's max-position member (all members'
+        lines are emitted at the anchor's loop position); deferred is the set
+        of non-anchor member ids, skipped by the emission loop. A
+        verify-and-demote fixpoint guarantees the deferral never moves a
+        producer past a consumer, so the emitted text stays valid SSA."""
+        if not FOREACH_GROUPING:
+            return {}, set()
+        excluded = (
+            sdpa_plans.keys() | sdpa_suppressed | addmm_plans.keys() | addmm_suppressed
+        )
+        pos = {id(n): i for i, n in enumerate(order)}
+        keys: dict[int, tuple] = {}
+        recipes: dict[int, tuple] = {}
+        for node in order:  # toposorted: operand keys exist before consumers'
+            if id(node) in excluded:
+                continue
+            key = self._foreach_key(node, keys, dims, dim_of, recipes)
+            if key is not None:
+                keys[id(node)] = key
+        families: dict[tuple, list[Node]] = {}
+        for node in order:  # second order pass keeps members position-sorted
+            if (key := keys.get(id(node))) is not None:
+                families.setdefault(key, []).append(node)
+        families = {k: ms for k, ms in families.items() if len(ms) >= FOREACH_MIN}
+
+        # Verify-and-demote fixpoint. Emission position ep(n) = the family
+        # anchor's position for grouped nodes, own position otherwise. Every
+        # IR edge consumer->producer must satisfy ep(producer) < ep(consumer):
+        # deferral moves producers FORWARD only, so a consumer sitting between
+        # a member and its anchor would reference an unassigned name. Only a
+        # grouped producer can violate (an ungrouped producer keeps its
+        # toposort position); demote it and iterate — terminates because
+        # members only ever leave families. Recursive keys make intra-family
+        # edges impossible (a key cannot contain itself), but cross-family
+        # anchor inversions and grouped-past-ungrouped-consumer cases are
+        # real and handled here.
+        fam_of = {id(n): k for k, ms in families.items() for n in ms}
+        while True:
+            anchor_pos = {k: max(pos[id(n)] for n in ms) for k, ms in families.items()}
+
+            def ep(n: Node) -> int:
+                k = fam_of.get(id(n))
+                return anchor_pos[k] if k is not None else pos[id(n)]
+
+            demoted = {
+                id(op)
+                for node in order
+                for op in node.operands()
+                if id(op) in fam_of and ep(op) >= ep(node)
+            }
+            if not demoted:
+                break
+            for k in list(families):
+                kept = [n for n in families[k] if id(n) not in demoted]
+                if len(kept) < FOREACH_MIN:
+                    del families[k]
+                else:
+                    families[k] = kept
+            fam_of = {id(n): k for k, ms in families.items() for n in ms}
+
+        plans: dict[int, dict] = {}
+        deferred: set[int] = set()
+        for key, members in families.items():
+            plans[id(members[-1])] = {
+                "members": members,
+                "key": key,
+                "recipes": [recipes.get(id(n)) for n in members],
+            }
+            deferred |= {id(n) for n in members[:-1]}
+        return plans, deferred
+
+    def _emit_foreach(self, plan, names) -> list[str]:
+        """Emit one foreach family at its anchor position: one OUT-OF-PLACE
+        torch._foreach_* call per chain step over all members' (per-member
+        aligned) operands, with the final call tuple-unpacked onto the
+        members' pre-assigned t-names — so output collection, the regex DLE
+        and EMIT_DEL liveness keep working textually. Intermediate lists
+        bind to _f{k} temps (collision-free vs _e/_a*/_s/_c names). Each
+        call mirrors the singleton emission's exact ATen ops in the exact
+        dataflow (mul.Scalar then add — never add(alpha=), which fuses the
+        rounding), keeping the FOREACH_GROUPING A/B bit-identical."""
+        members = plan["members"]
+        key = plan["key"]
+        lhs = ", ".join(names[id(n)] for n in members)
+        lines: list[str] = []
+
+        if key[0] == "map":
+            fn = key[1]
+            args = _tup(self._aligned_ref(n, n.ops[0], n.perms[0], names) for n in members)
+            if fn[0] == "pow":
+                kf = fn[1]
+                if kf == -1.0:
+                    call = f"torch._foreach_reciprocal({args})"
+                elif kf == 0.5:
+                    call = f"torch._foreach_sqrt({args})"
+                elif kf == -0.5:
+                    call = f"torch._foreach_rsqrt({args})"
+                else:  # includes k=2: ATen square IS pow(x, 2)
+                    call = f"torch._foreach_pow({args}, {kf})"
+            else:
+                call = f"torch._foreach_{fn[0]}({args})"
+            return [f"{lhs} = {call}"]
+
+        # ein/lin: a short call sequence; the LAST call binds the t-names.
+        n_ops = 0  # set per branch below, before the first step() call
+        done = 0
+
+        def step(rhs: str) -> str:
+            nonlocal done
+            done += 1
+            if done == n_ops:  # final step binds the members' t-names
+                lines.append(f"{lhs} = {rhs}")
+                return lhs
+            tmp = f"_f{self._foreach_tmp}"
+            self._foreach_tmp += 1
+            lines.append(f"{tmp} = {rhs}")
+            return tmp
+
+        if key[0] == "ein":
+            # Pairwise broadcast multiplies in _contract's planned order,
+            # then the scalar weight — exactly the singleton's `_e = a * b`
+            # steps and `(w * _e)` wrap (modulo the bitwise-commutative
+            # canonical arg order). Per-member permute/unsqueeze views go
+            # inside the list literals (verified: _foreach binary ops accept
+            # per-pair broadcast shapes, incl. 0-dim scalars). Recipes map
+            # each canonical argument to the member's own operand slot.
+            _, key_steps, has_wmul, wf = key
+            recs = plan["recipes"]  # per member: ((out, ((e, slot), (e, slot))), ...)
+            n_ops = len(key_steps) + (1 if has_wmul else 0)
+            temps: list[str] = []
+            for si, (_out, specs) in enumerate(key_steps):
+                args = []
+                for ai, (_e, role) in enumerate(specs):
+                    if isinstance(role, tuple) and role[:1] == ("tmp",):
+                        args.append(temps[role[1] - 1])
+                    else:
+                        views = []
+                        for n, rec in zip(members, recs):
+                            rout, rargs = rec[si]
+                            e, slot = rargs[ai]
+                            views.append(self._broadcast_view(e, rout, names[id(n.ops[slot])]))
+                        args.append(_tup(views))
+                temps.append(step(f"torch._foreach_mul({args[0]}, {args[1]})"))
+            if has_wmul:
+                step(f"torch._foreach_mul({temps[-1]}, {_fmt_weight(wf)})")
+            return lines
+
+        _, const_acc, sig = key
+        # Per-slot member lists: the j-th non-offset term of every member
+        # (keys are equal across members, so term j matches sig[j] for all).
+        slots = [
+            [
+                self._aligned_ref(n, term, perm, names)
+                for term, perm in zip(n.terms, n.perms)
+                if not (isinstance(term, EinsumNode) and not term.ops and not term.constraints)
+            ]
+            for n in members
+        ]
+        lists = [_tup(refs[j] for refs in slots) for j in range(len(sig))]
+
+        # Left-fold of the terms exactly as _emit_linear's expression
+        # evaluates: term_1 [neg/scaled], then per term add/sub [of the
+        # scaled term], then the scalar offset.
+        n_ops = (
+            (0 if sig[0][0] == 1.0 else 1)
+            + sum(1 if w in (1.0, -1.0) else 2 for w, _ in sig[1:])
+            + (1 if const_acc != 0.0 else 0)
+        )
+        w0 = sig[0][0]
+        if w0 == 1.0:
+            acc = lists[0]
+        elif w0 == -1.0:
+            acc = step(f"torch._foreach_neg({lists[0]})")
+        else:
+            acc = step(f"torch._foreach_mul({lists[0]}, {_fmt_weight(w0)})")
+        for (w, _), lst in zip(sig[1:], lists[1:]):
+            if w == 1.0:
+                acc = step(f"torch._foreach_add({acc}, {lst})")
+            elif w == -1.0:
+                acc = step(f"torch._foreach_sub({acc}, {lst})")
+            else:
+                t = step(f"torch._foreach_mul({lst}, {_fmt_weight(w)})")
+                acc = step(f"torch._foreach_add({acc}, {t})")
+        if const_acc > 0:
+            step(f"torch._foreach_add({acc}, {_fmt_weight(const_acc)})")
+        elif const_acc < 0:
+            step(f"torch._foreach_sub({acc}, {_fmt_weight(-const_acc)})")
+        return lines
 
     # ---- affine constraint elimination -----------------------------------
 
@@ -1105,18 +1520,54 @@ class TorchCodegen:
                         expr = f"({expr}).permute({', '.join(map(str, perm))})"
                     return expr
             return None  # a contracted index: real einsum work
-        views = []
-        for e, a in zip(in_eqs, args):
-            order = sorted(range(len(e)), key=lambda i: out.index(e[i]))
-            v = a
-            if order != list(range(len(e))):
-                v = f"{a}.permute({', '.join(map(str, order))})"
-            if e:  # 0-dim (possibly python-float) operands broadcast as-is
-                for j, ch in enumerate(out):
-                    if ch not in e:
-                        v = f"{v}.unsqueeze({j})"
-            views.append(v)
-        return " * ".join(views)
+        return " * ".join(TorchCodegen._broadcast_view(e, out, a) for e, a in zip(in_eqs, args))
+
+    @staticmethod
+    def _broadcast_view(e, out, a: str) -> str:
+        """View expression aligning operand `a` (axis labels `e`) to the
+        broadcast output labels `out`: permute into out order, unsqueeze the
+        missing axes (both views). Shared by _step_expr's Hadamard chain and
+        the foreach grouping (whose per-member list entries must be
+        byte-identical to the ungrouped emission)."""
+        order = sorted(range(len(e)), key=lambda i: out.index(e[i]))
+        v = a
+        if order != list(range(len(e))):
+            v = f"{a}.permute({', '.join(map(str, order))})"
+        if e:  # 0-dim (possibly python-float) operands broadcast as-is
+            for j, ch in enumerate(out):
+                if ch not in e:
+                    v = f"{v}.unsqueeze({j})"
+        return v
+
+    @staticmethod
+    def _oe_path(eq, shapes, out_size):
+        """Plan a contraction path for `eq` on concrete shapes (shared by
+        _contract and the foreach planner, which must predict _contract's
+        exact pairwise steps). Memory-bounded; see _contract's docstring."""
+        sizes = [1] + [_prod(shape) for shape in shapes]
+        limit = 4 * max(sizes + [out_size])
+        path_info = None
+        if len(shapes) <= 16:
+            # DP with combined flops+memory objective finds equal-FLOP
+            # orders with orders-of-magnitude smaller intermediates
+            # (e.g. 268MB -> 4MB on the MLP softmax gradient). The cap is 16
+            # (not 12) because factor.py's adjoint chain collapse emits
+            # 11-16 operand einsums for deep-parameter gradients, and only
+            # the DP objective reliably finds their cotangent-first path.
+            try:
+                _, path_info = oe.contract_path(
+                    eq, *shapes, shapes=True, optimize=oe.DynamicProgramming(minimize="combo")
+                )
+            except Exception:
+                path_info = None
+        if path_info is None:
+            try:
+                _, path_info = oe.contract_path(
+                    eq, *shapes, shapes=True, optimize="auto", memory_limit=limit
+                )
+            except Exception:
+                _, path_info = oe.contract_path(eq, *shapes, shapes=True, optimize="auto")
+        return path_info
 
     def _contract(self, entries, out_ws, wire_dims, dim_of, do_step) -> str:
         """Contract (name, subs) operand pairs down to the wires `out_ws`
@@ -1141,30 +1592,8 @@ class TorchCodegen:
 
         shapes = [tuple(dim_of(wire_dims[w]) for w in subs) for _, subs in entries]
         eq = f"{','.join(in_eqs)}->{out_eq}"
-        sizes = [1] + [s for shape in shapes for s in [_prod(shape)]]
         out_size = _prod([dim_of(wire_dims[w]) for w in out_ws])
-        limit = 4 * max(sizes + [out_size])
-        path_info = None
-        if len(shapes) <= 16:
-            # DP with combined flops+memory objective finds equal-FLOP
-            # orders with orders-of-magnitude smaller intermediates
-            # (e.g. 268MB -> 4MB on the MLP softmax gradient). The cap is 16
-            # (not 12) because factor.py's adjoint chain collapse emits
-            # 11-16 operand einsums for deep-parameter gradients, and only
-            # the DP objective reliably finds their cotangent-first path.
-            try:
-                _, path_info = oe.contract_path(
-                    eq, *shapes, shapes=True, optimize=oe.DynamicProgramming(minimize="combo")
-                )
-            except Exception:
-                path_info = None
-        if path_info is None:
-            try:
-                _, path_info = oe.contract_path(
-                    eq, *shapes, shapes=True, optimize="auto", memory_limit=limit
-                )
-            except Exception:
-                _, path_info = oe.contract_path(eq, *shapes, shapes=True, optimize="auto")
+        path_info = self._oe_path(eq, shapes, out_size)
         # opt_einsum's contraction_list positions come reverse-sorted, and
         # its step equations expect operands in exactly that popped order.
         stack = list(op_names)
@@ -1504,9 +1933,7 @@ class TorchCodegen:
                 continue
             # Align the term to the node's physical layout: physical position
             # p holds node-logical axis physN[p] = term-logical perm[physN[p]].
-            want = tuple(perm[j] for j in physN)
-            physT = self._phys_of(term)
-            tname = self._perm_str(names[id(term)], tuple(physT.index(a) for a in want))
+            tname = self._aligned_ref(node, term, perm, names)
             if wf == 1.0:
                 parts.append(f"+ {tname}" if parts else tname)
             elif wf == -1.0:
@@ -1523,12 +1950,7 @@ class TorchCodegen:
         return f"{name} = {' '.join(parts)}"
 
     def _emit_map(self, node: MapNode, name, names) -> str:
-        physN = self._phys_of(node)
-        args = []
-        for opnd, perm in zip(node.ops, node.perms):
-            want = tuple(perm[j] for j in physN)
-            physT = self._phys_of(opnd)
-            args.append(self._perm_str(names[id(opnd)], tuple(physT.index(a) for a in want)))
+        args = [self._aligned_ref(node, opnd, perm, names) for opnd, perm in zip(node.ops, node.perms)]
         op = node.op
         if op == "exp":
             expr = f"torch.exp({args[0]})"
