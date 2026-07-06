@@ -658,9 +658,9 @@ class TorchCodegen:
                 # 2. free-wire summation: sum_x [x == e] -> [0 <= e < X],
                 #    Gaussian-eliminating x from every other row first.
                 for ri in range(len(rows)):
+                    if rows[ri][0] != "eq":
+                        continue  # range rows are 4-tuples: check kind first
                     kind, coeffs, const = rows[ri]
-                    if kind != "eq":
-                        continue
                     x = next(
                         (
                             w

@@ -87,12 +87,18 @@ class CompiledProgram:
         self.codegen = TorchCodegen(self.builder, self.outputs)
         self.input_names = self.codegen.input_names  # sorted variable names
         self.vars = [self.builder.input_vars[n] for n in self.input_names]
-        # All symbols we need concrete values for
+        # All symbols we need concrete values for. Collected from EVERY IR
+        # node, not just inputs and outputs: a size can be internal-only
+        # (e.g. a window into a larger buffer runs the model on `seq` slots
+        # while the program's inputs and outputs are all `buf`-sized).
+        from tensorgrad.compiler.ir import toposort as _toposort
+
         self.symbols: set[sympy.Symbol] = set()
-        for var in self.vars:
-            for s in var.shape.values():
-                if isinstance(s, sympy.Symbol):
-                    self.symbols.add(s)
+        for node in _toposort([n for n, _ in self.outputs]):
+            for dim in node.dims:
+                for s in sympy.sympify(dim).free_symbols:
+                    if isinstance(s, sympy.Symbol):
+                        self.symbols.add(s)
         for t in tensors:
             for s in t.shape.values():
                 if isinstance(s, sympy.Symbol):

@@ -193,8 +193,10 @@ def _eval_all(nodes: list, ctx) -> dict:
     syms = set()
     for n in nodes:
         syms |= _sz._node_syms(n)
+    floors = _sz._row_const_floors(nodes)
     assign = {
-        s: _sz._DIM_LO + _sz._h(ctx, "dim", s.name) % (_sz._DIM_HI - _sz._DIM_LO + 1)
+        s: (lo := max(_sz._DIM_LO, floors.get(s.name, 0)))
+        + _sz._h(ctx, "dim", s.name, floors.get(s.name, 0)) % (max(_sz._DIM_HI, lo + 3) - lo + 1)
         for s in syms
     }
     vals: dict[int, np.ndarray] = {}

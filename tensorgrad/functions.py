@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from fractions import Fraction
 from typing import AbstractSet, Any, Collection, Iterable, Iterator, Optional, Sequence, Union, cast
 
+import sympy
 from sympy import Symbol
 
 from tensorgrad.tensor import (
@@ -1407,11 +1408,52 @@ def one_hot(idx: Tensor, size: Symbol, dim: Optional[str] = None) -> Tensor:
     return Function(_OneHotFunction(dim, dim), [idx, Delta(size, dim)], {dim: size})
 
 
-def concat(*ts: Tensor, dim: str):
+def concat(*ts: Tensor, dim: str, size: Symbol) -> Tensor:
+    """Concatenate tensors along the edge `dim`.
+
+    `size` is the output edge's size symbol (edge sizes are opaque symbols
+    in tensorgrad; that it equals the sum of the parts' sizes is bound with
+    the other dimension values at evaluation time).
+
+    Concatenation is algebra: each part embeds through the structural shift
+    indicator E[i, o] = [i == o - offset] (one Affine row), so the result is
+    a Sum of contractions, the compiler eliminates the shifts into strided
+    views, and — being linear in every part — its derivative derives.
     """
-    Concatenate tensors along the given dimension.
-    """
-    raise NotImplementedError("Not implemented yet")
+    from tensorgrad.compiler.affine import Affine  # a symbolic Constant; lazy: the compiler imports this module
+
+    if not ts:
+        raise ValueError("concat needs at least one tensor")
+    rest = ts[0].edges - {dim}
+    for t in ts:
+        if dim not in t.edges:
+            raise ValueError(f"{dim=} is not an edge of {t.edges=}")
+        if t.edges - {dim} != rest:
+            raise ValueError(f"concat parts must share the other edges: {t.edges=} vs {rest | {dim}}")
+    parts, offset = [], sympy.Integer(0)
+    for t in ts:
+        s = t.shape[dim]
+        tmp = _unused_edge_names([dim], t.edges)[dim]
+        # row: tmp - dim = -offset, i.e. out[dim=k] reads this part at k - offset
+        shift = Affine([({tmp: 1, dim: -1}, -offset)], **{tmp: s, dim: size})
+        parts.append(t.rename(**{dim: tmp}) @ shift)
+        offset = offset + s
+    return Sum(parts) if len(parts) > 1 else parts[0]
+
+
+def window(t: Tensor, dim: str, offset, size: Symbol) -> Tensor:
+    """The slice t[dim = offset : offset + size]: out[o] = t[o + offset].
+
+    `size` is the output edge's size symbol; `offset` may be an int or a
+    sympy expression in size symbols. Like concat, a contraction with a
+    one-row shift indicator that the compiler turns into a strided view."""
+    from tensorgrad.compiler.affine import Affine
+
+    if dim not in t.edges:
+        raise ValueError(f"{dim=} is not an edge of {t.edges=}")
+    tmp = _unused_edge_names([dim], t.edges)[dim]
+    shift = Affine([({tmp: 1, dim: -1}, sympy.sympify(offset))], **{tmp: t.shape[dim], dim: size})
+    return t.rename(**{dim: tmp}) @ shift
 
 
 def repeat(t: Tensor, *shape0: Symbol, **shape1: Symbol) -> Tensor:

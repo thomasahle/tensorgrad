@@ -248,6 +248,23 @@ def _contract(arrA, subsA, arrB, subsB, keep, wire_sz):
     return res % P, out
 
 
+def _row_const_floors(nodes) -> dict:
+    """Per-symbol-name dim floor: |concrete row constant| + 2 for every
+    symbol sizing a wire of that row (offset rows like [i = o + 5] need the
+    participating dims to exceed the offset to have any solution)."""
+    floors: dict[str, int] = {}
+    for n in nodes:
+        for coeffs, const in getattr(n, "constraints", ()) or ():
+            c = sympy.sympify(const)
+            if not c.free_symbols and abs(int(c)) > 0:
+                need = abs(int(c)) + 2
+                for w, _ in coeffs:
+                    d = sympy.sympify(n.wire_dims[w])
+                    for s in d.free_symbols:
+                        floors[s.name] = max(floors.get(s.name, 0), need)
+    return floors
+
+
 def _eval_einsum(node: EinsumNode, vals, assign, ctx) -> np.ndarray:
     wire_sz = {w: _dim(d, assign) for w, d in enumerate(node.wire_dims)}
     operands = [(vals[id(op)], list(subs)) for op, subs in zip(node.ops, node.in_subs)]
@@ -262,6 +279,14 @@ def _eval_einsum(node: EinsumNode, vals, assign, ctx) -> np.ndarray:
         grids = np.indices([wire_sz[w] for w in wires])
         s = sum((c * g for c, g in zip(cs, grids)), start=np.zeros((), dtype=object))
         ind = (s == cval).astype(np.int64)
+        if not ind.any():
+            # An affine row with NO solution at these random dims (e.g. a
+            # window offset larger than the randomly-drawn buffer) zeroes
+            # this node and everything downstream — a degenerate value that
+            # collides unequal programs (measured: consolidate merged a loss
+            # with its unnormalized sibling and silently dropped a 1/384).
+            # Real dims satisfy the row; redraw the trial.
+            raise _Retry("empty affine indicator (unsatisfiable at random dims)")
         operands.append((ind, wires))
 
     # Make out_subs distinct: a repeated output wire is a diagonal embedding;
@@ -441,8 +466,16 @@ def _eval_trial(outs, ctx):
     for n in nodes:
         syms |= _node_syms(n)
     # Dims keyed per-symbol (by name), independent of the program, so
-    # separately lowered expressions over the same symbols agree.
-    assign = {s: _DIM_LO + _h(ctx, "dim", s.name) % (_DIM_HI - _DIM_LO + 1) for s in syms}
+    # separately lowered expressions over the same symbols agree. Symbols
+    # whose wires appear in affine rows with a concrete constant get their
+    # floor lifted above it, so the rows are satisfiable at SOME draw (the
+    # empty-indicator retry above then finds one).
+    floors = _row_const_floors(nodes)
+    assign = {
+        s: (lo := max(_DIM_LO, floors.get(s.name, 0)))
+        + _h(ctx, "dim", s.name, floors.get(s.name, 0)) % (max(_DIM_HI, lo + 3) - lo + 1)
+        for s in syms
+    }
     vals: dict[int, np.ndarray] = {}
     for n in nodes:
         vals[id(n)] = _eval_node(n, vals, assign, ctx)
