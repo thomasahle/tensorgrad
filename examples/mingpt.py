@@ -29,7 +29,17 @@ is DERIVED symbolically instead of traced by autograd?
   gradient to a scatter-add; the dense indicator never exists. Integer
   TARGETS stay integers the same way: one_hot builds the target
   distribution inside the program, and minGPT's ignore_index=-1 becomes a
-  0/1 mask that is just another input tensor. No host-side encoding.
+  0/1 mask that is just another structural constant. No host-side encoding.
+
+* The data pipeline and the metric are algebra too. The model's only
+  per-example input is `raw`: LENGTH random digits. The training sequence,
+  the shifted targets, and even the SORTED LABELS derive from it inside the
+  compiled program -- counting sort is a one_hot contraction, a triangle
+  contraction (cumulative counts) and step-function indicators. Greedy
+  decode is argmax + a one_hot position-select, writing a prediction into
+  the context is adding a one_hot outer product, and held-out exact-match
+  is one more compiled expression. PyTorch's only remaining jobs: random
+  number generation, building 0/1 structure constants, and 0-dim scalars.
 
 * No optimizer library. AdamW is elementwise algebra on a weight, its
   gradient and two moment estimates, so it compiles INTO the step program:
@@ -79,10 +89,11 @@ VOCAB, LENGTH = 3, 6  # sort 6 digits from {0,1,2}
 SEQ = 2 * LENGTH - 1  # input digits + sorted digits, shifted
 BATCH, LR, MAX_STEPS = 64, 1e-3, 400
 
-batch, seq, vocab, d, head, hs, d_mlp = symbols("batch seq vocab d head hs d_mlp")
+batch, seq, length, vocab, d, head, hs, d_mlp = symbols("batch seq length vocab d head hs d_mlp")
 DIMS = {
     batch: BATCH,
     seq: SEQ,
+    length: LENGTH,
     vocab: VOCAB,
     d: N_EMBD,
     head: N_HEAD,
@@ -102,11 +113,54 @@ def param(name: str, **edges) -> Variable:
 # loss_mask is 0 at the positions minGPT would mark ignore_index=-1. The
 # causal mask enters as data: 0 on/below the diagonal, -1e9 above.
 
-tokens = Variable("tokens", batch, seq)
-target_ids = Variable("target_ids", batch, seq)
-loss_mask = Variable("loss_mask", batch, seq)
+# The ONLY per-example input is `raw`: LENGTH random digits. Everything
+# else the model consumes -- the training sequence, the shifted targets,
+# even the SORTED labels -- is derived from it inside the compiled program.
+raw = Variable("raw", batch, length)
+
+# Structural constants enter as data (like minGPT's causal mask): triangles
+# for cumulative counts, position/value ramps, and 0/1 selector matrices
+# that splice (digits, sorted digits) into the training sequence.
 causal_mask = Variable("causal_mask", seq=seq, key=seq)
-decode_pos = Variable("decode_pos")  # scalar: which position to decode (eval)
+tri = Variable("tri", vp=vocab, vocab=vocab)          # [v' <= v]
+tri_strict = Variable("tri_strict", vp=vocab, vocab=vocab)  # [v' < v]
+pos = Variable("pos", length=length)                  # 0,1,...,LENGTH-1
+val = Variable("val", vocab=vocab)                    # 0,1,...,VOCAB-1
+sel_tok_raw = Variable("sel_tok_raw", length=length, seq=seq)    # tokens[s] = raw[s]
+sel_tok_sort = Variable("sel_tok_sort", length=length, seq=seq)  # tokens[L+p] = sorted[p]
+sel_tgt_raw = Variable("sel_tgt_raw", length=length, seq=seq)    # target[s] = raw[s+1]
+sel_tgt_sort = Variable("sel_tgt_sort", length=length, seq=seq)  # target[s] = sorted[s+1-L]
+sel_tail = Variable("sel_tail", seq=seq, length=length)          # decoded tail from ctx
+sel_last = Variable("sel_last", length=length)                   # ... and its final slot
+loss_mask = Variable("loss_mask", seq=seq)            # [s >= LENGTH-1]
+
+# Evaluation inputs: the decode context, position scalars, and the model's
+# own last prediction (fed back in -- the decode loop is dict plumbing).
+ctx_var = Variable("ctx", batch, seq)
+decode_pos = Variable("decode_pos")
+write_pos = Variable("write_pos")
+last_id = Variable("last_id", batch)
+
+
+def structural_constants():
+    """The 0/1 structure tensors above, built once on the host."""
+    L, V, S = LENGTH, VOCAB, SEQ
+    ar = torch.arange
+    sel = lambda rows, cols, cond: (cond(ar(rows)[:, None], ar(cols)[None, :])).float()
+    return {
+        causal_mask: torch.triu(torch.full((S, S), -1e9), diagonal=1),
+        tri: sel(V, V, lambda a, b: a <= b),
+        tri_strict: sel(V, V, lambda a, b: a < b),
+        pos: ar(L).float(),
+        val: ar(V).float(),
+        sel_tok_raw: sel(L, S, lambda l, s: l == s),
+        sel_tok_sort: sel(L, S, lambda p, s: s == L + p),
+        sel_tgt_raw: sel(L, S, lambda l, s: l == s + 1),
+        sel_tgt_sort: sel(L, S, lambda p, s: p == s - (L - 1)),
+        sel_tail: sel(S, L, lambda s, q: s == L + q),
+        sel_last: sel(L, 1, lambda q, _: q == L - 1)[:, 0],
+        loss_mask: (ar(S) >= L - 1).float(),
+    }
 
 
 @typed
@@ -157,10 +211,29 @@ def gpt(idx: Tensor["batch", "seq"]) -> Tensor["batch", "seq", "vocab"]:
     return layer_norm(x, "ln_f") @ param("lm_head", d=d, vocab=vocab)
 
 
+# ------------------------------------------------ the data pipeline (algebra)
+# Sorting is algebra too. Counting sort: count each digit's occurrences
+# (a one_hot contraction), take cumulative counts (a triangle contraction),
+# and place digit v at position p iff cum[v-1] <= p < cum[v] (step-function
+# indicators). The labels the model learns from are computed by the same
+# compiled program that trains on them.
+
+
+@typed
+def sort_digits(x: Tensor["batch", "length"]) -> Tensor["batch", "length"]:
+    counts = F.sum(F.one_hot(x, vocab), ["length"]).rename(vocab="vp")
+    below = F.gt0(counts @ tri - pos - 0.5) - F.gt0(counts @ tri_strict - pos - 0.5)
+    return F.dot(below, val, dim="vocab")
+
+
+sorted_digits = sort_digits(raw)
+tokens: Tensor["batch", "seq"] = raw @ sel_tok_raw + sorted_digits @ sel_tok_sort
+target_ids: Tensor["batch", "seq"] = raw @ sel_tgt_raw + sorted_digits @ sel_tgt_sort
+
 logits = gpt(tokens)
 targets: Tensor["batch", "seq", "vocab"] = F.one_hot(target_ids, vocab) * loss_mask
 ce: Tensor["batch", "seq"] = F.cross_entropy(logits, targets, dim="vocab")
-loss = F.sum(ce) / F.sum(loss_mask)  # mean over non-ignored positions
+loss = F.sum(ce) / (BATCH * F.sum(loss_mask))  # mean over non-ignored positions
 
 # -------------------------------------------------------- adamw as algebra
 # The optimizer is also just algebra. AdamW is elementwise arithmetic on a
@@ -190,14 +263,11 @@ def adamw(w: Tensor, g: Tensor, m: Tensor, v: Tensor) -> tuple[Tensor, Tensor, T
 # ----------------------------------------------------------------- data
 
 
-def sort_batch(n, gen):
-    """x = "digits then their sorted order", y = x shifted left -- both plain
-    integer ids; the mask zeroes the first LENGTH-1 targets (= minGPT's
-    ignore_index=-1). One-hot encoding happens inside the compiled program."""
-    inp = torch.randint(VOCAB, (n, LENGTH), generator=gen)
-    cat = torch.cat([inp, inp.sort(dim=1).values], dim=1)
-    mask = (torch.arange(SEQ) >= LENGTH - 1).float().expand(n, SEQ)
-    return cat[:, :-1].float(), cat[:, 1:].float(), mask
+def random_digits(n, gen):
+    """The task's only host-side job: LENGTH random digits per example.
+    Sequence assembly, target shifting, masking and the sorted labels are
+    all computed inside the compiled programs."""
+    return torch.randint(VOCAB, (n, LENGTH), generator=gen).float()
 
 
 def init_weights(gen):
@@ -222,11 +292,19 @@ def main():
     names = list(params)
     new_ws, new_ms, new_vs = zip(*(adamw(params[n], loss.grad(params[n]), *moments[n]) for n in names))
     step = compile_to_callable(loss, *new_ws, *new_ms, *new_vs, torch_compile=False, print_info=True)
-    # Evaluation is algebra too: greedy decode = argmax over vocab, then
-    # position-select as a one_hot contraction (same pattern as the embedding
-    # lookup) -- no positional indexing on the model's outputs anywhere.
-    next_id = F.argmax(logits, dim="vocab") @ F.one_hot(decode_pos, seq)
+    # Evaluation is algebra too. Greedy decode = argmax over vocab +
+    # position-select as a one_hot contraction; writing the prediction into
+    # the context is adding a one_hot outer product; the exact-match metric
+    # compares the decoded tail against the SAME sort_digits program the
+    # training labels come from. The decode loop is dict plumbing.
+    eval_logits = gpt(ctx_var)
+    next_id = F.argmax(eval_logits, dim="vocab") @ F.one_hot(decode_pos, seq)
     predict = compile_to_callable(next_id)  # (batch,) ids for one position
+    write = compile_to_callable(ctx_var + last_id * F.one_hot(write_pos, seq))
+    seed_ctx = compile_to_callable(raw @ sel_tok_raw)  # digits into an empty ctx
+    decoded = ctx_var @ sel_tail + last_id * sel_last  # (batch, length)
+    mism = F.sum(1 - F.equal(decoded, sort_digits(raw)), ["length"])
+    n_correct = compile_to_callable(F.sum(F.gt0(0.5 - mism)))  # exact matches
 
     gen = torch.Generator().manual_seed(0)
     state_vars: list[Variable] = (
@@ -236,28 +314,24 @@ def main():
     )
     state = {params[n]: w for n, w in init_weights(gen).items()}
     state |= {mv: torch.zeros_like(state[params[n]]) for n in names for mv in moments[n]}
-    data = {causal_mask: torch.triu(torch.full((SEQ, SEQ), -1e9), diagonal=1)}
+    data = structural_constants()
 
     def held_out_accuracy(n=256, seed=1234):
         """Greedy autoregressive decode on fresh problems; exact-match rate."""
         g = torch.Generator().manual_seed(seed)
-        inp = torch.randint(VOCAB, (n, LENGTH), generator=g)
-        ctx = torch.zeros(n, SEQ, dtype=torch.long)
-        ctx[:, :LENGTH] = inp
+        inp = random_digits(n, g)
+        ctx = seed_ctx({raw: inp, **data})
         for t in range(LENGTH - 1, SEQ):
-            out = predict({**state, **data, tokens: ctx.float(),
-                           decode_pos: torch.tensor(float(t))})
-            nxt = out.rename(None).long()
+            nxt = predict({**state, **data, ctx_var: ctx, decode_pos: torch.tensor(float(t))})
             if t + 1 < SEQ:
-                ctx[:, t + 1] = nxt
-        pred = torch.cat([ctx[:, LENGTH:], nxt.unsqueeze(1)], dim=1)
-        return (pred == inp.sort(dim=1).values).all(dim=1).float().mean().item()
+                ctx = write({ctx_var: ctx, last_id: nxt, write_pos: torch.tensor(float(t + 1)), **data})
+        hits = n_correct({ctx_var: ctx, last_id: nxt, raw: inp, **data, **state})
+        return hits.item() / n
 
     acc, t_start = 0.0, time.perf_counter()
     for it in range(1, MAX_STEPS + 1):
-        xs, ys, mk = sort_batch(BATCH, gen)
         bias = {c1: torch.tensor(1 / (1 - B1**it)), c2: torch.tensor(1 / (1 - B2**it))}
-        loss_val, *new_state = step({**state, **data, **bias, tokens: xs, target_ids: ys, loss_mask: mk})
+        loss_val, *new_state = step({**state, **data, **bias, raw: random_digits(BATCH, gen)})
         state = dict(zip(state_vars, new_state))  # the whole optimizer step
         if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
