@@ -411,15 +411,17 @@ class KroneckerTrace(Scene):
             return anims
 
         # ---- the two strands as parametric closed loops ----
-        # keyframes t=1 closed / t=2 nested / t=3 separate (t<=1: regime 1)
+        # A is the TOP strand of the bundle, so through every turn it
+        # takes the INSIDE track: A = inner loop, B = outer loop, and
+        # the strands never cross.
         KA = np.array([
-            [0, y0, 2.00, 2.00, 1.55, -0.55],
+            [0, y0, 1.88, 1.82, 1.20, -0.38],
             [0, y0 + 0.50, 1.00, 0.62, 0.95, 0.50],
             [0, 0.75, 0.80, 0.45, 0.80, 0.42],
         ])
         KB = np.array([
-            [0, y0, 1.88, 1.88, 1.55, 0.55],
-            [0, y0, 1.92, 1.90, 1.60, 1.30],
+            [0, y0, 2.00, 1.97, 1.60, 0.55],
+            [0, y0, 1.98, 1.94, 1.60, 1.30],
             [0, -0.75, 0.80, 0.45, 0.80, 0.42],
         ])
         tt = ValueTracker(1.0)
@@ -430,7 +432,7 @@ class KroneckerTrace(Scene):
 
         def looppt(K, th):
             cx, cy, rtx, rty, rbx, rby = P(K)
-            w = np.clip((np.sin(th) + 0.45) / 0.9, 0.0, 1.0)
+            w = np.clip((np.sin(th) + 0.60) / 1.20, 0.0, 1.0)
             w = w * w * (3 - 2 * w)
             rx = w * rtx + (1 - w) * rbx
             ry = w * rty + (1 - w) * rby
@@ -446,8 +448,45 @@ class KroneckerTrace(Scene):
                 lambda th: looppt(K, th), t_range=[0, 2 * np.pi + 1e-3],
                 color=col, stroke_width=2.2))
 
+        # ---- the closed-bundle ribbon: one center path, two offset
+        #      strands (constant separation, so they stay parallel) ----
+        gap = 0.09                       # node clearance
+        ax_gap = 1.85 + gap              # bundle attaches here
+        r0, RX, RY = 0.35, ax_gap + r0 if False else 0.35, 0.0  # placeholders
+        r0 = 0.35
+        RX, RY = ax_gap + r0, 1.55
+        cT = np.array([0, y0 + r0, 0])
+
+        def ribbon_path(u):
+            # u in [0,1]: left foot curl, elliptical dome, right foot curl
+            if u < 0.15:
+                a = -np.pi / 2 - (u / 0.15) * (np.pi / 2)
+                c = np.array([-ax_gap, y0 + r0, 0])
+                return c + r0 * np.array([np.cos(a), np.sin(a), 0])
+            if u > 0.85:
+                a = -np.pi / 2 + ((1 - u) / 0.15) * (np.pi / 2)
+                c = np.array([ax_gap, y0 + r0, 0])
+                return c + r0 * np.array([np.cos(a), np.sin(a), 0])
+            a = np.pi - ((u - 0.15) / 0.70) * np.pi
+            return cT + np.array([RX * np.cos(a), RY * np.sin(a), 0])
+
+        def strand(u0, u1, off, col):
+            eps = 1e-4
+
+            def f(v):
+                u = u0 + v * (u1 - u0)
+                p1 = ribbon_path(np.clip(u - eps, 0, 1))
+                p2 = ribbon_path(np.clip(u + eps, 0, 1))
+                t = p2 - p1
+                t = t / (np.linalg.norm(t) + 1e-12)
+                n = np.array([-t[1], t[0], 0])
+                return ribbon_path(u) + off * n
+
+            return ParametricFunction(f, t_range=[0, 1], color=col,
+                                      stroke_width=2.2)
+
         # ---- regime 1: the flat definition ----
-        pA0 = np.array([0, y0 + 0.55, 0])       # A label, above B
+        pA0 = np.array([0, y0 + 0.55, 0])
         pB0 = np.array([0, y0 - 0.55, 0])
         nA = node("A", pA0, color=CA)
         nB = node("B", pB0, color=CB)
@@ -458,23 +497,27 @@ class KroneckerTrace(Scene):
                        fill_color=WHITE, fill_opacity=1.0)
         triR = Polygon(apxR, cUR, cLR, color=INK, stroke_width=2.2,
                        fill_color=WHITE, fill_opacity=1.0)
-        wAl = Line(cUL, pA0, color=CA, stroke_width=2.2)
-        wAr = Line(pA0, cUR, color=CA, stroke_width=2.2)
-        wBl = Line(cLL, pB0, color=CB, stroke_width=2.2)
-        wBr = Line(pB0, cLR, color=CB, stroke_width=2.2)
-        dy = 0.055
-        inL, inR = np.array([-1.70, y0, 0]), np.array([1.70, y0, 0])
-        sAl = Line(inL + dy * UP, inL + dy * UP + 0.90 * LEFT, color=CA,
-                   stroke_width=2.2)
-        sBl = Line(inL - dy * UP, inL - dy * UP + 0.90 * LEFT, color=CB,
-                   stroke_width=2.2)
-        sAr = Line(inR + dy * UP, inR + dy * UP + 0.90 * RIGHT, color=CA,
-                   stroke_width=2.2)
-        sBr = Line(inR - dy * UP, inR - dy * UP + 0.90 * RIGHT, color=CB,
-                   stroke_width=2.2)
 
-        # z-order: wires, stubs, then triangles (fill hides the joins),
-        # then labels (masks hide the wire ends), then text
+        def cleared(p, q, d=0.09):
+            v = q - p
+            v = v / np.linalg.norm(v)
+            return p + d * v
+
+        wAl = Line(cleared(cUL, pA0), pA0, color=CA, stroke_width=2.2)
+        wAr = Line(pA0, cleared(cUR, pA0), color=CA, stroke_width=2.2)
+        wBl = Line(cleared(cLL, pB0), pB0, color=CB, stroke_width=2.2)
+        wBr = Line(pB0, cleared(cLR, pB0), color=CB, stroke_width=2.2)
+        dy = 0.055
+        sAl = Line(np.array([-ax_gap, y0 + dy, 0]),
+                   np.array([-2.62, y0 + dy, 0]), color=CA, stroke_width=2.2)
+        sBl = Line(np.array([-ax_gap, y0 - dy, 0]),
+                   np.array([-2.62, y0 - dy, 0]), color=CB, stroke_width=2.2)
+        sAr = Line(np.array([ax_gap, y0 + dy, 0]),
+                   np.array([2.62, y0 + dy, 0]), color=CA, stroke_width=2.2)
+        sBr = Line(np.array([ax_gap, y0 - dy, 0]),
+                   np.array([2.62, y0 - dy, 0]), color=CB, stroke_width=2.2)
+
+        # z-order: wires and stubs, then triangles, then labels, then text
         self.play(Create(VGroup(wAl, wAr, wBl, wBr)),
                   Create(VGroup(sAl, sBl, sAr, sBr)),
                   FadeIn(triL, triR),
@@ -484,11 +527,12 @@ class KroneckerTrace(Scene):
                   run_time=1.3)
         self.wait(0.9)
 
-        # ---- close the bundle over the top (anchored end first) ----
-        arcAl = quad(KA, np.pi, np.pi / 2, CA)          # left ends -> top
-        arcAr = quad(KA, 0, np.pi / 2, CA)              # right ends -> top
-        arcBl = quad(KB, np.pi, np.pi / 2, CB)
-        arcBr = quad(KB, 0, np.pi / 2, CB)
+        # ---- close the bundle over the top (anchored end first);
+        #      A rides the inside of the turn, B the outside ----
+        arcAl = strand(0.0, 0.5, -dy, CA)
+        arcAr = strand(1.0, 0.5, -dy, CA)
+        arcBl = strand(0.0, 0.5, +dy, CB)
+        arcBr = strand(1.0, 0.5, +dy, CB)
         self.play(ReplacementTransform(tAoB[0], tTr[1]),
                   ReplacementTransform(tAoB[1], tTr[2]),
                   ReplacementTransform(tAoB[2], tTr[3]),
@@ -502,15 +546,19 @@ class KroneckerTrace(Scene):
         self.wait(0.8)
 
         # ---- the flatten triangles cancel; wires relax into two loops ----
-        qAl = quad(KA, np.pi, 3 * np.pi / 2, CA)        # side -> bottom (at A)
+        qAl = quad(KA, np.pi, 3 * np.pi / 2, CA)
         qAr = quad(KA, 3 * np.pi / 2, 2 * np.pi, CA)
         qBl = quad(KB, np.pi, 3 * np.pi / 2, CB)
         qBr = quad(KB, 3 * np.pi / 2, 2 * np.pi, CB)
+        tAl = quad(KA, np.pi, np.pi / 2, CA)
+        tAr = quad(KA, 0, np.pi / 2, CA)
+        tBl = quad(KB, np.pi, np.pi / 2, CB)
+        tBr = quad(KB, 0, np.pi / 2, CB)
         self.play(FadeOut(triL, scale=0.4), FadeOut(triR, scale=0.4),
-                  Transform(wAl, qAl),
-                  Transform(wAr, qAr),
-                  Transform(wBl, qBl),
-                  Transform(wBr, qBr),
+                  Transform(wAl, qAl), Transform(wAr, qAr),
+                  Transform(wBl, qBl), Transform(wBr, qBr),
+                  Transform(sAl, tAl), Transform(sAr, tAr),
+                  Transform(sBl, tBl), Transform(sBr, tBr),
                   *caption(r"the flatten triangles cancel"),
                   run_time=1.2, rate_func=EASE)
         loopA, loopB = mkloop(KA, CA), mkloop(KB, CB)
