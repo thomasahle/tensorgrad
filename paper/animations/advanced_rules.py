@@ -449,30 +449,38 @@ class KroneckerTrace(Scene):
 
 
 class TraceDelete(Scene):
-    """d Tr(AXB)/dX = A^T B^T, following the storyboard: derivative loop
-    around the closed trace; the loop localizes to X; X is deleted leaving
-    two curled hooks; the closure arc pulls straight while both nodes turn
-    around (their glyphs flipping is the transpose!), and the flipped
-    nodes are relabeled A^T, B^T."""
+    """d Tr(AXB)/dX = A^T B^T.  The formula on top evolves in sync with
+    the diagram: the partial slides inside the trace as the loop
+    localizes; (BA)^T appears when X is deleted; A^T B^T appears as the
+    turned nodes spin upright."""
 
     def construct(self):
         from manim import ArcBetweenPoints as ABP
-        lhs = MathTex(r"\frac{\partial\, \mathrm{Tr}(AXB)}{\partial X}", color=INK)
-        eq = MathTex(r"=", color=INK)
-        rhs = MathTex(r"A^T B^T", color=INK)
-        title = VGroup(lhs, eq, rhs).arrange(RIGHT, buff=0.25).to_edge(UP, buff=0.55)
+        from manim import Rotate, PI
+
+        # ---- hand-built title fraction so the partial can glide ----
+        num0 = MathTex(r"\partial", r"\,\mathrm{Tr}(", "A", "X", "B", ")",
+                       color=INK)
+        den = MathTex(r"\partial X", color=INK)
+        bar0 = Line(ORIGIN, RIGHT * (num0.width + 0.2), color=INK,
+                    stroke_width=1.6)
+        frac = VGroup(num0, bar0, den).arrange(DOWN, buff=0.14)
+        eq1 = MathTex("=", color=INK)
+        m1 = MathTex(r"(BA)^T", color=INK)
+        eq2 = MathTex("=", color=INK)
+        m2 = MathTex(r"A^T\!", r"B^T", color=INK)
+        title = VGroup(frac, eq1, m1, eq2, m2).arrange(RIGHT, buff=0.28)
+        title.to_edge(UP, buff=0.45)
+        tpos = num0.get_center()
 
         ca, cb, cX = np.array([-1.15, -0.6, 0]), np.array([1.15, -0.6, 0]), np.array([0, -0.6, 0])
-        phi = ValueTracker(0.0)     # how far each node has turned (deg)
-        kap = ValueTracker(1.0)     # hook curl: 1 = curled, 0 = straight
+        phi = ValueTracker(0.0)
+        kap = ValueTracker(1.0)
 
         def dirv(deg):
             r = np.deg2rad(deg)
             return np.array([np.cos(r), np.sin(r), 0])
 
-        # the closure: a dome from A's arc-edge to B's arc-edge; the
-        # attachment angles rotate over the top as the nodes turn, and
-        # the dome flattens into the straight middle wire.
         def dome():
             u = phi.get_value() / 180.0
             aA, aB = 180 - phi.get_value(), 0 + phi.get_value()
@@ -483,8 +491,6 @@ class TraceDelete(Scene):
             c2 = p2 + (1.25 * (1 - u) + 0.12) * dirv(aB) + lift
             return CubicBezier(p1, c1, c2, p2, color=INK, stroke_width=2.2)
 
-        # the dangling derivative edges: curled hooks that unroll outward
-        # around the bottom as the nodes turn.
         def hook(c, base):
             th = base - phi.get_value() if base == 0 else base + phi.get_value()
             p = c + 0.30 * dirv(th)
@@ -492,7 +498,6 @@ class TraceDelete(Scene):
             return ABP(p, p + (0.42 + 0.13 * (1 - k)) * dirv(th + 55 * k),
                        angle=2.2 * k, color=INK, stroke_width=2.2)
 
-        # labels rotate rigidly with their nodes
         def lab(tex, c, sgn):
             m = MathTex(tex, color=INK).scale(1.1)
             m.rotate(sgn * np.deg2rad(phi.get_value())).move_to(c)
@@ -506,9 +511,7 @@ class TraceDelete(Scene):
         wAX = Line(ca + 0.30 * RIGHT, cX + 0.30 * LEFT, color=INK, stroke_width=2.2)
         wXB = Line(cX + 0.30 * RIGHT, cb + 0.30 * LEFT, color=INK, stroke_width=2.2)
 
-        # ---- build the formula and the diagram together:
-        #      X,  AXB,  Tr(AXB),  d Tr(AXB)/dX ----
-        tpos = lhs.get_center()
+        # ---- build the formula and the diagram together ----
         tX = MathTex("X", color=INK).move_to(tpos)
         tAXB = MathTex("A", "X", "B", color=INK).move_to(tpos)
         tTr = MathTex(r"\mathrm{Tr}(", "A", "X", "B", ")", color=INK).move_to(tpos)
@@ -527,8 +530,6 @@ class TraceDelete(Scene):
                   Create(soA), Create(soB), run_time=1.1)
         self.wait(0.6)
 
-        # close the trace: each stub sweeps up into its half of the dome
-        # (splitting the dome bezier at the apex avoids a ghost double)
         p1 = ca + 0.30 * dirv(180)
         p2 = cb + 0.30 * dirv(0)
         lift = 1.61 * np.array([0, 1, 0])
@@ -550,49 +551,55 @@ class TraceDelete(Scene):
         self.add(domeM)
         self.wait(0.6)
 
-        # d/dX just appears around the existing Tr(AXB), which glides
-        # into its numerator slot -- no glyph morphing.
-        g = lhs[0]
-        ymid = lhs.get_center()[1]
-        num = [m for m in g if m.get_center()[1] > ymid + 0.05]
-        num.sort(key=lambda m: m.get_center()[0])
-        tr_target = VGroup(*num[1:])          # numerator minus the partial
-        rest = VGroup(*[m for m in g if m not in num[1:]])
+        # d/dX appears around Tr(AXB), which glides into the numerator
+        tr_target = VGroup(*num0[1:])
         big = dloop(np.array([0, -0.25, 0]), 5.6, 2.9, dot_angle_deg=72,
                     long_whiskers=True)
         self.play(tTr.animate.move_to(tr_target.get_center()
                   ).scale(tr_target.height / tTr.height),
-                  FadeIn(rest),
+                  FadeIn(num0[0], bar0, den),
                   Create(big[0]), FadeIn(big[1], big[2], big[3]), run_time=1.2)
         self.remove(tTr)
-        self.add(lhs)
+        self.add(num0)
         self.wait(0.7)
 
-        # ---- panel 2: the loop localizes to the only X ----
+        # ---- the loop localizes to X; the partial slides inside too ----
+        num1 = MathTex(r"\mathrm{Tr}(", "A", r"\,\partial", "X", r"\,B", ")",
+                       color=INK).move_to(num0.get_center())
+        bar1 = Line(ORIGIN, RIGHT * (num1.width + 0.2), color=INK,
+                    stroke_width=1.6).move_to(bar0.get_center())
         small = dloop(cX + np.array([0, 0.05, 0]), 1.05, 1.0, dot_angle_deg=72,
                       long_whiskers=True, wscale=0.6)
-        self.play(Transform(big, small), run_time=1.5, rate_func=EASE)
+        self.play(Transform(big, small),
+                  ReplacementTransform(num0[0], num1[2], path_arc=-1.4),
+                  ReplacementTransform(num0[1], num1[0]),
+                  ReplacementTransform(num0[2], num1[1]),
+                  ReplacementTransform(num0[3], num1[3]),
+                  ReplacementTransform(num0[4], num1[4]),
+                  ReplacementTransform(num0[5], num1[5]),
+                  Transform(bar0, bar1),
+                  run_time=1.6, rate_func=EASE)
         self.wait(0.6)
 
-        # ---- panel 3: delete the node; its edges are left as curled hooks ----
+        # ---- delete the node; the remaining diagram IS (BA)^T ----
         hookA = always_redraw(lambda: hook(ca, 0))
         hookB = always_redraw(lambda: hook(cb, 180))
         hA0, hB0 = hook(ca, 0), hook(cb, 180)
         self.play(FadeOut(nX, big),
                   ReplacementTransform(wAX, hA0),
-                  ReplacementTransform(wXB, hB0), run_time=1.2, rate_func=EASE)
+                  ReplacementTransform(wXB, hB0),
+                  Write(eq1), FadeIn(m1),
+                  run_time=1.2, rate_func=EASE)
         self.remove(hA0, hB0)
         self.add(hookA, hookB)
         self.wait(0.7)
 
-        # ---- panels 4-5: the arc pulls straight; the nodes turn around;
-        #      the hooks unroll outward.  The flip IS the transpose. ----
+        # ---- the arc pulls straight; the nodes turn around ----
         self.play(phi.animate.set_value(180), kap.animate.set_value(0.02),
                   run_time=3.2, rate_func=EASE)
         self.wait(0.5)
 
-        # ---- panel 6: the glyphs spin upright as the ^T appears ----
-        from manim import Rotate, PI
+        # ---- the glyphs spin upright as the ^T (and A^T B^T) appear ----
         finA = MathTex("A", "^{T}", color=INK).scale(1.1)
         finA.shift(ca - finA[0].get_center())
         finB = MathTex("B", "^{T}", color=INK).scale(1.1)
@@ -604,8 +611,8 @@ class TraceDelete(Scene):
         self.play(Rotate(rotA, angle=-PI, about_point=ca),
                   Rotate(rotB, angle=PI, about_point=cb),
                   FadeIn(finA[1], finB[1]),
+                  Write(eq2), FadeIn(m2),
                   run_time=1.1, rate_func=EASE)
         self.remove(rotA, rotB)
         self.add(finA[0], finB[0])
-        self.play(Write(eq), Write(rhs), run_time=1.0)
-        self.wait(1.8)
+        self.wait(2.0)
