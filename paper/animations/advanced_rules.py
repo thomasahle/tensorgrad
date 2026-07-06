@@ -924,8 +924,8 @@ class CrossEntropyHessian(Scene):
             d['w'] = wire(pp + np.array([2.25 * sc, 0, 0]),
                           pp + np.array([2.8 * sc, 0, 0]))
             d['s'] = cdot(pp + np.array([2.85 * sc, 0, 0]))
-            d['a2'] = farrow(pp + np.array([0.93 * sc, 0.0, 0]),
-                             pp + np.array([0.5 * sc, 0, 0]))
+            d['a2'] = farrow(pp + np.array([0.97 * sc, 0.0, 0]),
+                             pp + np.array([0.68 * sc, 0, 0]))
             return d
 
         def fgroup(d):
@@ -976,11 +976,32 @@ class CrossEntropyHessian(Scene):
         yC = -0.55
         A0 = F1(np.array([-2.9, yC, 0]))
         B0 = F2(np.array([-0.2, yC, 0]))
-        self.play(Write(t0), FadeIn(fgroup(A0), fgroup(B0)),
-                  *caption(r"$\mathrm{softmax}$, from elementary functions: "
-                           r"$\exp$, sum, $\mathrm{pow}_{-1}$"),
-                  run_time=1.4)
-        self.wait(1.0)
+        # -- the definition as a fraction, first --
+        FN = F1(np.array([0.0, 0.35, 0]))
+        FD = F1(np.array([0.0, -1.4, 0]), 0.85)
+        FDs = cdot(np.array([0.71, -1.4, 0]))
+        bar0 = Line([-1.6, yC, 0], [1.6, yC, 0], color=INK, stroke_width=1.9)
+        self.play(Write(t0), FadeIn(fgroup(FN), fgroup(FD), FDs),
+                  Create(bar0),
+                  *caption(r"$\mathrm{softmax}$: exponentiate, "
+                           r"then normalize"),
+                  run_time=1.3)
+        self.wait(0.8)
+
+        # -- dividing by the sum is a function too: pow_{-1} --
+        self.play(*[ReplacementTransform(FN[k], A0[k]) for k in FN],
+                  ReplacementTransform(FD['e'], B0['e']),
+                  ReplacementTransform(FD['z'], B0['z']),
+                  ReplacementTransform(FD['a'], B0['a1']),
+                  ReplacementTransform(FD['w'], B0['w']),
+                  ReplacementTransform(FDs, B0['s']),
+                  FadeOut(bar0, target_position=[-0.65, yC, 0]),
+                  FadeIn(B0['pw'], B0['a2'],
+                         target_position=bar0.get_center()),
+                  *caption(r"dividing by the sum is a function: "
+                           r"$\mathrm{pow}_{-1}$"),
+                  run_time=1.3, rate_func=EASE)
+        self.wait(0.8)
 
         # ============ stage 2: differentiate ============
         self.play(ReplacementTransform(t0[0], num_t[1]),
@@ -1136,12 +1157,12 @@ class CrossEntropyHessian(Scene):
         bar1 = Line([-4.0, yA - 0.5, 0], [-1.4, yA - 0.5, 0],
                     color=INK, stroke_width=1.9)
         gB2 = VGroup(B2['e'], B2['a1'], B2['z'], B2['w'], B2['s'])
-        bar2 = Line([-3.5, yB - 0.3, 0], [3.7, yB - 0.3, 0],
+        bar2 = Line([-2.55, yB - 0.3, 0], [2.85, yB - 0.3, 0],
                     color=INK, stroke_width=1.9)
-        pow2g = glyph(r"\mathrm{pow}_{2}", np.array([-0.95, yB - 0.62, 0]),
+        pow2g = glyph(r"\mathrm{pow}_{2}", np.array([-1.05, yB - 0.62, 0]),
                       CA, 0.55)
-        a2new = farrow(np.array([-0.42, yB - 0.62, 0]),
-                       np.array([-0.62, yB - 0.62, 0]))
+        a2new = farrow(np.array([-0.47, yB - 0.62, 0]),
+                       np.array([-0.72, yB - 0.62, 0]))
         numL = VGroup(*[A2[k] for k in A2])
         numR = VGroup(G3['z'], G3['e'], G3['a'], jG1)
         self.play(FadeOut(B1['pw'], target_position=[-3.6, yA - 0.88, 0]),
@@ -1151,8 +1172,8 @@ class CrossEntropyHessian(Scene):
                   ReplacementTransform(pw2, pow2g),
                   Transform(B2['a2'], a2new),
                   gB2.animate.scale(0.6).move_to([0.6, yB - 0.62, 0]),
-                  numL.animate.shift(1.3 * RIGHT),
-                  numR.animate.shift(1.3 * LEFT),
+                  numL.animate.shift(2.2 * RIGHT),
+                  numR.animate.shift(2.2 * LEFT),
                   *caption(r"the $\mathrm{pow}$'s are fractions"),
                   run_time=1.5, rate_func=EASE)
         self.wait(0.9)
