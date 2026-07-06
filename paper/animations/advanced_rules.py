@@ -431,3 +431,100 @@ class KroneckerTrace(Scene):
         self.play(tt.animate.set_value(3.0), run_time=2.2, rate_func=EASE)
         self.play(ReplacementTransform(t1, t3), run_time=0.9)
         self.wait(1.8)
+
+
+class TraceDelete(Scene):
+    """d Tr(AXB)/dX = A^T B^T, following the storyboard: derivative loop
+    around the closed trace; the loop localizes to X; X is deleted leaving
+    two curled hooks; the closure arc pulls straight while both nodes turn
+    around (their glyphs flipping is the transpose!), and the flipped
+    nodes are relabeled A^T, B^T."""
+
+    def construct(self):
+        from manim import ArcBetweenPoints as ABP
+        lhs = MathTex(r"\frac{\partial\, \mathrm{Tr}(AXB)}{\partial X}", color=INK)
+        eq = MathTex(r"=", color=INK)
+        rhs = MathTex(r"A^T B^T", color=INK)
+        title = VGroup(lhs, eq, rhs).arrange(RIGHT, buff=0.25).to_edge(UP, buff=0.55)
+
+        ca, cb, cX = np.array([-1.15, -0.6, 0]), np.array([1.15, -0.6, 0]), np.array([0, -0.6, 0])
+        phi = ValueTracker(0.0)     # how far each node has turned (deg)
+        kap = ValueTracker(1.0)     # hook curl: 1 = curled, 0 = straight
+
+        def dirv(deg):
+            r = np.deg2rad(deg)
+            return np.array([np.cos(r), np.sin(r), 0])
+
+        # the closure: a dome from A's arc-edge to B's arc-edge; the
+        # attachment angles rotate over the top as the nodes turn, and
+        # the dome flattens into the straight middle wire.
+        def dome():
+            u = phi.get_value() / 180.0
+            aA, aB = 180 - phi.get_value(), 0 + phi.get_value()
+            p1 = ca + 0.30 * dirv(aA)
+            p2 = cb + 0.30 * dirv(aB)
+            lift = (1.55 * (1 - u) + 0.06) * np.array([0, 1, 0])
+            c1 = p1 + (1.25 * (1 - u) + 0.12) * dirv(aA) + lift
+            c2 = p2 + (1.25 * (1 - u) + 0.12) * dirv(aB) + lift
+            return CubicBezier(p1, c1, c2, p2, color=INK, stroke_width=2.2)
+
+        # the dangling derivative edges: curled hooks that unroll outward
+        # around the bottom as the nodes turn.
+        def hook(c, base):
+            th = base - phi.get_value() if base == 0 else base + phi.get_value()
+            p = c + 0.30 * dirv(th)
+            k = kap.get_value()
+            return ABP(p, p + (0.42 + 0.13 * (1 - k)) * dirv(th + 55 * k),
+                       angle=2.2 * k, color=INK, stroke_width=2.2)
+
+        # labels rotate rigidly with their nodes
+        def lab(tex, c, sgn):
+            m = MathTex(tex, color=INK).scale(1.1)
+            m.rotate(sgn * np.deg2rad(phi.get_value())).move_to(c)
+            mask = BackgroundRectangle(m, color=WHITE, fill_opacity=1.0, buff=0.08)
+            return VGroup(mask, m)
+
+        domeM = always_redraw(dome)
+        nA = always_redraw(lambda: lab("A", ca, -1))
+        nB = always_redraw(lambda: lab("B", cb, +1))
+        nX = node("X", cX)
+        wAX = Line(ca + 0.30 * RIGHT, cX + 0.30 * LEFT, color=INK, stroke_width=2.2)
+        wXB = Line(cX + 0.30 * RIGHT, cb + 0.30 * LEFT, color=INK, stroke_width=2.2)
+
+        # ---- panel 1: the trace, and the derivative loop around it all ----
+        self.play(Write(lhs), run_time=0.9)
+        self.add(domeM, nA, nB)
+        self.play(FadeIn(domeM, nA, nB, nX), Create(wAX), Create(wXB), run_time=1.1)
+        big = dloop(np.array([0, -0.25, 0]), 5.6, 2.9, dot_angle_deg=35)
+        self.play(Create(big[0]), FadeIn(big[1], big[2], big[3]), run_time=1.1)
+        self.wait(0.7)
+
+        # ---- panel 2: the loop localizes to the only X ----
+        small = dloop(cX + np.array([0, 0.05, 0]), 1.05, 1.0, dot_angle_deg=55)
+        self.play(Transform(big, small), run_time=1.5, rate_func=EASE)
+        self.wait(0.6)
+
+        # ---- panel 3: delete the node; its edges are left as curled hooks ----
+        hookA = always_redraw(lambda: hook(ca, 0))
+        hookB = always_redraw(lambda: hook(cb, 180))
+        hA0, hB0 = hook(ca, 0), hook(cb, 180)
+        self.play(FadeOut(nX, big),
+                  ReplacementTransform(wAX, hA0),
+                  ReplacementTransform(wXB, hB0), run_time=1.2, rate_func=EASE)
+        self.remove(hA0, hB0)
+        self.add(hookA, hookB)
+        self.wait(0.7)
+
+        # ---- panels 4-5: the arc pulls straight; the nodes turn around;
+        #      the hooks unroll outward.  The flip IS the transpose. ----
+        self.play(phi.animate.set_value(180), kap.animate.set_value(0.02),
+                  run_time=3.2, rate_func=EASE)
+        self.wait(0.5)
+
+        # ---- panel 6: relabel the turned nodes honestly ----
+        nA2 = node("A^T", ca)
+        nB2 = node("B^T", cb)
+        self.remove(nA, nB)
+        self.play(FadeIn(nA2, nB2), run_time=0.8)
+        self.play(Write(eq), Write(rhs), run_time=1.0)
+        self.wait(1.8)
