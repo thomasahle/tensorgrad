@@ -358,93 +358,181 @@ class InverseSplit(Scene):
 
 
 class KroneckerTrace(Scene):
-    """Tr(A (x) B) = Tr(A) Tr(B), following the storyboard: the closed
-    bundle trace with flatten triangles; the triangles cancel and the two
-    strands of the double wire peel apart (crossing at the sides); A's
-    loop slips inside B's (nested); the loops separate, stacked A over B.
+    """Tr(A (x) B) = Tr(A) Tr(B), 3b1b-style.  The bundle is drawn as a
+    blue strand (A) and a green strand (B) traveling together, so the
+    whole proof reads as untangling: the flatten triangles cancel, the
+    two colored loops were never linked, and they come apart into two
+    traces.  Formula, captions, and emphasis in sync throughout."""
 
-    Each loop is ONE smooth closed parametric curve throughout, whose
-    shape parameters interpolate between the four keyframes, so every
-    frame is a valid pair of closed loops.
-    """
+    def __init__(self, **kwargs):
+        from manim import config as _cfg
+        _cfg.frame_height = 5.6
+        _cfg.frame_width = 5.6 * 16 / 9
+        super().__init__(**kwargs)
 
     def construct(self):
-        from manim import ParametricFunction, Polygon
-        t1 = MathTex(r"\mathrm{Tr}(A \otimes B)", color=INK).to_edge(UP, buff=0.6)
-        t3l = MathTex(r"\mathrm{Tr}(A \otimes B)", color=INK)
-        t3e = MathTex(r"=", color=INK)
-        t3r = MathTex(r"\mathrm{Tr}(A)\,\mathrm{Tr}(B)", color=INK)
-        t3 = VGroup(t3l, t3e, t3r).arrange(RIGHT, buff=0.22).to_edge(UP, buff=0.6)
+        from manim import ParametricFunction, Polygon, Tex, Indicate, Circumscribe
 
-        # keyframes:   panel1/2 (closed trace),  panel3 (nested),  panel4 (split)
-        # params per loop: cx, cy, rtx, rty, rbx, rby  (top/bottom x/y radii)
+        CA, CB = "#1F6FB2", "#188A54"
+        GREY = "#888888"
+        y0 = -0.55
+        C = np.array([0, y0, 0])
+
+        # ---- title templates (final layout, centered stages) ----
+        tTrT = MathTex(r"\mathrm{Tr}(", "A", r"\otimes", "B", ")", color=INK)
+        tTrT[1].set_color(CA)
+        tTrT[3].set_color(CB)
+        m2 = MathTex("=", r"\;\mathrm{Tr}(", "A", ")", r"\,\mathrm{Tr}(", "B", ")",
+                     color=INK)
+        m2[2].set_color(CA)
+        m2[5].set_color(CB)
+        toprow = VGroup(tTrT, m2).arrange(RIGHT, buff=0.28).to_edge(UP, buff=0.35)
+        v0 = -tTrT.get_center()[0]
+        tTrT.shift(RIGHT * v0)          # centered until the equation grows
+        tpos = tTrT.get_center()
+
+        tAoB = MathTex("A", r"\otimes", "B", color=INK).move_to(tpos)
+        tAoB[0].set_color(CA)
+        tAoB[2].set_color(CB)
+        tTr = MathTex(r"\mathrm{Tr}(", "A", r"\otimes", "B", ")", color=INK
+                      ).move_to(tpos)
+        tTr[1].set_color(CA)
+        tTr[3].set_color(CB)
+
+        # ---- caption line ----
+        self.cap = None
+
+        def caption(text):
+            new = Tex(text, color=GREY).scale(0.62).to_edge(DOWN, buff=0.18)
+            anims = [FadeIn(new, run_time=0.6)]
+            if self.cap is not None:
+                anims.append(FadeOut(self.cap, run_time=0.4))
+            self.cap = new
+            return anims
+
+        # ---- the two strands as parametric closed loops ----
+        # keyframes t=1 closed / t=2 nested / t=3 separate (t<=1: regime 1)
         KA = np.array([
-            [0, -0.30, 2.42, 2.30, 1.25, 1.05],   # 0: double top, A inner-bottom
-            [0, -0.30, 2.42, 2.30, 1.28, 1.08],   # 1: triangles gone (peel)
-            [0,  0.20, 1.00, 0.72, 0.95, 0.62],   # 2: small loop inside B
-            [0,  0.85, 0.85, 0.52, 0.85, 0.48],   # 3: its own trace, on top
+            [0, y0, 2.00, 2.00, 1.55, -0.55],
+            [0, y0 + 0.50, 1.00, 0.62, 0.95, 0.50],
+            [0, 0.75, 0.80, 0.45, 0.80, 0.42],
         ])
         KB = np.array([
-            [0, -0.30, 2.28, 2.16, 2.10, 1.85],   # 0
-            [0, -0.30, 2.28, 2.16, 2.08, 1.83],   # 1
-            [0, -0.20, 2.15, 1.95, 1.95, 1.80],   # 2: still the big loop
-            [0, -1.35, 0.85, 0.52, 0.85, 0.48],   # 3: its own trace, below
+            [0, y0, 1.88, 1.88, 1.55, 0.55],
+            [0, y0, 1.92, 1.90, 1.60, 1.30],
+            [0, -0.75, 0.80, 0.45, 0.80, 0.42],
         ])
-        tt = ValueTracker(0.0)
+        tt = ValueTracker(1.0)
 
         def P(K):
             u = tt.get_value()
-            return np.array([np.interp(u, [0, 1, 2, 3], K[:, k])
-                             for k in range(6)])
+            return np.array([np.interp(u, [1, 2, 3], K[:, k]) for k in range(6)])
 
         def looppt(K, th):
             cx, cy, rtx, rty, rbx, rby = P(K)
-            # keep the ribbon parallel along the top; fan only at the sides
             w = np.clip((np.sin(th) + 0.45) / 0.9, 0.0, 1.0)
             w = w * w * (3 - 2 * w)
             rx = w * rtx + (1 - w) * rbx
             ry = w * rty + (1 - w) * rby
             return np.array([cx + rx * np.cos(th), cy + ry * np.sin(th), 0])
 
-        def mkloop(K):
+        def quad(K, th0, th1, col):
+            return ParametricFunction(
+                lambda u: looppt(K, th0 + u * (th1 - th0)), t_range=[0, 1],
+                color=col, stroke_width=2.2)
+
+        def mkloop(K, col):
             return always_redraw(lambda: ParametricFunction(
                 lambda th: looppt(K, th), t_range=[0, 2 * np.pi + 1e-3],
-                color=INK, stroke_width=2.2))
+                color=col, stroke_width=2.2))
 
-        loopA, loopB = mkloop(KA), mkloop(KB)
-        labA = always_redraw(lambda: node("A", looppt(KA, 3 * np.pi / 2)))
-        labB = always_redraw(lambda: node("B", looppt(KB, 3 * np.pi / 2)))
+        # ---- regime 1: the flat definition ----
+        pA0 = np.array([0, y0 + 0.55, 0])       # A label, above B
+        pB0 = np.array([0, y0 - 0.55, 0])
+        nA = node("A", pA0, color=CA)
+        nB = node("B", pB0, color=CB)
+        apxL, apxR = np.array([-1.85, y0, 0]), np.array([1.85, y0, 0])
+        cUL, cLL = np.array([-1.35, y0 + 0.20, 0]), np.array([-1.35, y0 - 0.20, 0])
+        cUR, cLR = np.array([1.35, y0 + 0.20, 0]), np.array([1.35, y0 - 0.20, 0])
+        triL = Polygon(apxL, cUL, cLL, color=INK, stroke_width=2.2,
+                       fill_color=WHITE, fill_opacity=1.0)
+        triR = Polygon(apxR, cUR, cLR, color=INK, stroke_width=2.2,
+                       fill_color=WHITE, fill_opacity=1.0)
+        wAl = Line(cUL, pA0, color=CA, stroke_width=2.2)
+        wAr = Line(pA0, cUR, color=CA, stroke_width=2.2)
+        wBl = Line(cLL, pB0, color=CB, stroke_width=2.2)
+        wBr = Line(pB0, cLR, color=CB, stroke_width=2.2)
+        dy = 0.055
+        sAl = Line(apxL + dy * UP, apxL + dy * UP + 0.75 * LEFT, color=CA,
+                   stroke_width=2.2)
+        sBl = Line(apxL - dy * UP, apxL - dy * UP + 0.75 * LEFT, color=CB,
+                   stroke_width=2.2)
+        sAr = Line(apxR + dy * UP, apxR + dy * UP + 0.75 * RIGHT, color=CA,
+                   stroke_width=2.2)
+        sBr = Line(apxR - dy * UP, apxR - dy * UP + 0.75 * RIGHT, color=CB,
+                   stroke_width=2.2)
 
-        # flatten triangles, sitting over the side fan regions as masks
-        def tri_mask(x, flip):
-            sz = 0.50
-            yc = 0.08
-            pts = [np.array([x + flip * sz, yc + 0.5 * sz, 0]),
-                   np.array([x + flip * sz, yc - 0.5 * sz, 0]),
-                   np.array([x - flip * 0.65 * sz, yc, 0])]
-            return Polygon(*pts, color=INK, stroke_width=2.2,
-                           fill_color=WHITE, fill_opacity=1.0)
+        self.play(Write(tAoB),
+                  FadeIn(nA, nB),
+                  Create(VGroup(wAl, wAr, wBl, wBr)),
+                  FadeIn(triL, triR),
+                  Create(VGroup(sAl, sBl, sAr, sBr)),
+                  *caption(r"the Kronecker product bundles two matrices"),
+                  run_time=1.3)
+        self.wait(0.9)
 
-        triL, triR = tri_mask(-2.12, +1), tri_mask(2.12, -1)
-
-        # ---- panel 1: the closed bundle trace ----
-        self.play(Write(t1), run_time=0.8)
-        self.play(Create(loopA), Create(loopB), run_time=1.6)
-        self.play(FadeIn(triL, triR, labA, labB), run_time=0.8)
-        self.wait(1.0)
-
-        # ---- panel 2: the triangles cancel; the strands peel apart ----
-        self.play(FadeOut(triL, triR),
-                  tt.animate.set_value(1.0), run_time=1.4, rate_func=EASE)
+        # ---- close the bundle over the top (anchored end first) ----
+        arcAl = quad(KA, np.pi, np.pi / 2, CA)          # left ends -> top
+        arcAr = quad(KA, 0, np.pi / 2, CA)              # right ends -> top
+        arcBl = quad(KB, np.pi, np.pi / 2, CB)
+        arcBr = quad(KB, 0, np.pi / 2, CB)
+        self.play(ReplacementTransform(tAoB[0], tTr[1]),
+                  ReplacementTransform(tAoB[1], tTr[2]),
+                  ReplacementTransform(tAoB[2], tTr[3]),
+                  FadeIn(tTr[0], tTr[4]),
+                  ReplacementTransform(sAl, arcAl),
+                  ReplacementTransform(sAr, arcAr),
+                  ReplacementTransform(sBl, arcBl),
+                  ReplacementTransform(sBr, arcBr),
+                  *caption(r"closing the bundle takes the trace"),
+                  run_time=1.4, rate_func=EASE)
         self.wait(0.8)
 
-        # ---- panel 3: A's loop slips inside ----
-        self.play(tt.animate.set_value(2.0), run_time=2.2, rate_func=EASE)
-        self.wait(0.7)
+        # ---- the flatten triangles cancel; wires relax into two loops ----
+        qAl = quad(KA, np.pi, 3 * np.pi / 2, CA)        # side -> bottom (at A)
+        qAr = quad(KA, 3 * np.pi / 2, 2 * np.pi, CA)
+        qBl = quad(KB, np.pi, 3 * np.pi / 2, CB)
+        qBr = quad(KB, 3 * np.pi / 2, 2 * np.pi, CB)
+        self.play(FadeOut(triL, scale=0.4), FadeOut(triR, scale=0.4),
+                  ReplacementTransform(wAl, qAl),
+                  ReplacementTransform(wAr, qAr),
+                  ReplacementTransform(wBl, qBl),
+                  ReplacementTransform(wBr, qBr),
+                  *caption(r"the flatten triangles cancel"),
+                  run_time=1.2, rate_func=EASE)
+        loopA, loopB = mkloop(KA, CA), mkloop(KB, CB)
+        labA = always_redraw(lambda: node("A", looppt(KA, 3 * np.pi / 2), color=CA))
+        labB = always_redraw(lambda: node("B", looppt(KB, 3 * np.pi / 2), color=CB))
+        self.remove(arcAl, arcAr, arcBl, arcBr, qAl, qAr, qBl, qBr, nA, nB)
+        self.add(loopA, loopB, labA, labB)
+        self.wait(0.5)
 
-        # ---- panel 4: two separate traces, A over B ----
-        self.play(tt.animate.set_value(3.0), run_time=2.2, rate_func=EASE)
-        self.play(ReplacementTransform(t1, t3), run_time=0.9)
+        # ---- the two loops were never linked ----
+        self.play(tt.animate.set_value(2.0),
+                  *caption(r"the two loops were never linked"),
+                  run_time=2.0, rate_func=EASE)
+        self.wait(0.5)
+
+        # ---- pull them apart: two separate traces ----
+        self.play(tt.animate.set_value(3.0),
+                  VGroup(tTr).animate.shift(RIGHT * (-v0)),
+                  *caption(r"each loop is its own trace"),
+                  run_time=2.0, rate_func=EASE)
+        self.play(Write(m2[0]), FadeIn(*m2[1:]), run_time=0.7)
+        self.play(Indicate(VGroup(*m2[1:]), color=INK, scale_factor=1.1),
+                  run_time=0.7)
+        self.play(Circumscribe(VGroup(*m2[1:]), color=INK, buff=0.12),
+                  FadeOut(self.cap), run_time=1.0)
         self.wait(1.8)
 
 
