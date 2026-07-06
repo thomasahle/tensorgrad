@@ -1222,21 +1222,35 @@ class CrossEntropyHessian(Scene):
         sm2b = smgroup(-0.1, 1.45, yF, 1)        # (j)-- softmax <- z
         sm2a = smgroup(3.5, -1.45, yF, -1)       # z -> softmax --(i)
         iw2 = wire(np.array([4.2, yF, 0]), np.array([4.6, yF, 0]))
+        mid2 = np.array([1.7, yF, 0])
         self.play(
-            ReplacementTransform(VGroup(*[A1[k] for k in A1 if k != 'w'],
-                                        gB1, bar1),
-                                 VGroup(pv1, sm1['sm'], sm1['z'], sm1['a'])),
+            # term 1: z stays z, the arrow stays, exp BECOMES softmax;
+            # the normalizer and bar are absorbed into the new name
+            ReplacementTransform(A1['z'], sm1['z']),
+            ReplacementTransform(A1['a'], sm1['a']),
+            ReplacementTransform(A1['e'], sm1['sm']),
+            FadeOut(gB1, target_position=sm1['sm'].get_center()),
+            FadeOut(bar1, target_position=sm1['sm'].get_center()),
+            Create(pv1),
             ReplacementTransform(cdA, d1),
             Transform(whis, j1f),
             ReplacementTransform(A1['w'], i1f),
             Transform(plusA, minus2),
-            ReplacementTransform(VGroup(*[A2[k] for k in A2 if k != 'w'],
-                                        gB2, pow2g, B2['a2'], bar2),
-                                 VGroup(sm2a['sm'], sm2a['z'], sm2a['a'])),
-            ReplacementTransform(A2['w'], iw2),
-            ReplacementTransform(VGroup(G3['z'], G3['e'], G3['a']),
-                                 VGroup(sm2b['sm'], sm2b['z'], sm2b['a'])),
+            # term 2, j-factor
+            ReplacementTransform(G3['z'], sm2b['z']),
+            ReplacementTransform(G3['a'], sm2b['a']),
+            ReplacementTransform(G3['e'], sm2b['sm']),
             ReplacementTransform(jG1, jw2),
+            # term 2, i-factor
+            ReplacementTransform(A2['z'], sm2a['z']),
+            ReplacementTransform(A2['a'], sm2a['a']),
+            ReplacementTransform(A2['e'], sm2a['sm']),
+            ReplacementTransform(A2['w'], iw2),
+            # the shared denominator is absorbed between its two softmaxes
+            FadeOut(gB2, target_position=mid2),
+            FadeOut(pow2g, target_position=mid2),
+            FadeOut(B2['a2'], target_position=mid2),
+            FadeOut(bar2, target_position=mid2),
             *caption(r"each fraction is a $\mathrm{softmax}$"),
             run_time=1.8, rate_func=EASE)
         self.wait(0.9)
