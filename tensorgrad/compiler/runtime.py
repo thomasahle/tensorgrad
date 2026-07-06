@@ -365,11 +365,14 @@ class CompiledStep:
     def __call__(self, *dicts: dict, dims: Optional[dict] = None, **kw) -> Output:
         feed: dict[Variable, torch.Tensor] = {}
         for d in dicts:
+            # Positional dicts are BULK state (keyed by Variable or by name)
+            # and may carry more than this program consumes — extra entries
+            # are skipped, so one state dict can feed several programs.
+            # Keywords below stay strict (a typo there should fail loudly).
             for k, v in d.items():
                 var = self._by_name.get(k) if isinstance(k, str) else k
-                if var is None:
-                    raise KeyError(f"unknown input variable name {k!r}")
-                self._add(feed, var, v)
+                if var is not None and (not isinstance(var, Variable) or var.name in self._by_name):
+                    self._add(feed, var, v)
         for name, value in kw.items():
             if name not in self._by_name:
                 known = sorted(self._by_name)

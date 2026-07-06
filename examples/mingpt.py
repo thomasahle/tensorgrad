@@ -28,8 +28,9 @@ is DERIVED symbolically instead of traced by autograd?
   one_hot @ wte -- the compiler maps it to index_select and the DERIVED
   gradient to a scatter-add; the dense indicator never exists. Integer
   TARGETS stay integers the same way: one_hot builds the target
-  distribution inside the program, and minGPT's ignore_index=-1 becomes a
-  0/1 mask that is just another structural constant. No host-side encoding.
+  distribution inside the program, and minGPT's ignore_index=-1 is a
+  window that drops the ignored positions from the loss. No host-side
+  encoding, no masking.
 
 * The data pipeline and the metric are algebra too. The model's only
   per-example input is `raw`: LENGTH random digits. The training sequence,
@@ -65,8 +66,7 @@ from sympy import Symbol, symbols
 
 import tensorgrad.functions as F
 import tensorgrad as tg
-from tensorgrad import Ones, Sum, Variable, Zero, typed
-from tensorgrad.compiler import compile_to_callable
+from tensorgrad import Ones, Sum, Variable, typed
 from tensorgrad.tensor import Tensor
 
 # The punchline: no gradient tape, ever. All gradients in this file are
@@ -75,15 +75,12 @@ torch.set_grad_enabled(False)
 torch.set_num_threads(2)
 
 # ----------------------------------------------------------------- config
-# Full gpt-nano: THREE stacked transformer blocks at n_embd=48. Every
-# parameter's gradient here — including wte's, which crosses all three
-# blocks of softmax stacks, gelus and LayerNorms — compiles into
-# reverse-mode (cotangent-first) contraction order automatically: the
-# adjoint pass (tensorgrad/compiler/adjoint.py) runs per-node adjoint
-# accumulation on the forward-mode-shaped Jacobian chains that symbolic
-# differentiation produces. (This exact program planned 522 GB of
-# intermediates before that pass; it now plans ~0.4 GB with no node above
-# a megabyte.)
+# Full gpt-nano: THREE stacked transformer blocks at n_embd=48. All 53
+# parameter gradients — including wte's, which crosses three blocks of
+# softmax stacks, gelus and LayerNorms — resolve through ONE symbolic
+# cotangent sweep (tensorgrad/compiler/reverse.py), so every backward pass
+# is a view into one shared reverse-mode DAG before the compiler ever
+# plans a contraction.
 
 N_LAYER, N_HEAD, N_EMBD = 3, 3, 48
 VOCAB, LENGTH = 3, 6  # sort 6 digits from {0,1,2}
@@ -111,10 +108,6 @@ def param(name: str, **edges) -> Variable:
 
 
 # -------------------------------------------------------------- the model
-# Inputs. Tokens AND target tokens are integer ids (carried as floats);
-# loss_mask is 0 at the positions minGPT would mark ignore_index=-1. The
-# causal mask enters as data: 0 on/below the diagonal, -1e9 above.
-
 # The ONLY per-example input is `raw`: LENGTH random digits. Everything
 # else the model consumes -- the training sequence, the shifted targets,
 # even the SORTED labels -- is derived from it inside the compiled program.
@@ -264,7 +257,7 @@ def init_weights(gen):
     for name, var in params.items():
         shape = [DIMS[s] for s in var.shape.values()]
         last = name.rsplit(".", 1)[-1]
-        ws[name] = (
+        ws[var] = (
             torch.ones(shape)
             if last == "g"  # layer-norm gains
             else torch.zeros(shape)
@@ -284,9 +277,9 @@ def main():
     # `state = step(state, ...).state` -- no order bookkeeping anywhere.
     grads = tg.grad(loss, params)
     updates = {}
-    for n in params:
-        m, v = moments[n][0].name, moments[n][1].name
-        updates[n], updates[m], updates[v] = adamw(params[n], grads[n], *moments[n])
+    for n, p in params.items():
+        mv, vv = moments[n]
+        updates[p], updates[mv], updates[vv] = adamw(p, grads[n], mv, vv)
     step = tg.compile(loss=loss, state=updates, print_info=True)
     # Evaluation is algebra too. One decode step: run the model on the
     # buffer's first `seq` slots, argmax over vocab, select the position
@@ -296,7 +289,7 @@ def main():
     eval_logits = gpt(ctx_var @ F.window(0, buf=buf, seq=seq))
     next_id = F.argmax(eval_logits, dim="vocab") @ F.one_hot(decode_pos, seq)
     decode = tg.compile(ctx=ctx_var + next_id * F.one_hot(decode_pos + 1, buf))
-    seed_ctx = tg.compile(ctx=F.concat(raw, Zero(batch, length), dim="length", size=buf).rename(length="buf"))
+    seed_ctx = tg.compile(ctx=raw @ F.window(0, length=length, buf=buf))  # zero-padded embed
     # Exact-match accuracy: the decoded half of the buffer against the SAME
     # sort_digits program the training labels come from.
     decoded = ctx_var @ F.window(LENGTH, buf=buf, length=length)
@@ -305,8 +298,8 @@ def main():
     score = tg.compile(hits=F.sum(solved))
 
     gen = torch.Generator().manual_seed(0)
-    weights = init_weights(gen)
-    state = weights | {mv.name: torch.zeros_like(weights[n]) for n in params for mv in moments[n]}
+    state = init_weights(gen)
+    state |= {mv: torch.zeros_like(state[params[n]]) for n in params for mv in moments[n]}
 
     def held_out_accuracy(n=256, seed=1234):
         """Greedy autoregressive decode on fresh problems; exact-match rate."""
@@ -315,7 +308,7 @@ def main():
         dims = DIMS | {batch: n}
         ctx = seed_ctx(dims=dims, raw=inp).ctx
         for t in range(LENGTH - 1, SEQ):
-            ctx = decode(weights, dims=dims, ctx=ctx, decode_pos=float(t)).ctx
+            ctx = decode(state, dims=dims, ctx=ctx, decode_pos=float(t)).ctx
         return score(dims=dims, ctx=ctx, raw=inp).hits.item() / n
 
     acc, t_start = 0.0, time.perf_counter()
@@ -323,7 +316,6 @@ def main():
         out = step(state, dims=DIMS, raw=random_digits(BATCH, gen),
                    c1=1 / (1 - B1**it), c2=1 / (1 - B2**it))
         state = out.state  # the whole optimizer step
-        weights = {n: state[n] for n in params}
         if it == 1:  # first call pays planning + codegen; time the rest
             t_start, warmup = time.perf_counter(), time.perf_counter() - t_start
             print(f"first step (planning + codegen): {warmup:.1f}s")
