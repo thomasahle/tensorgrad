@@ -239,7 +239,7 @@
 </span><span id="L-24"><a href="#L-24"><span class="linenos">  24</span></a>    <span class="n">_unused_edge_names</span><span class="p">,</span>
 </span><span id="L-25"><a href="#L-25"><span class="linenos">  25</span></a>    <span class="n">peel_rename</span><span class="p">,</span>
 </span><span id="L-26"><a href="#L-26"><span class="linenos">  26</span></a><span class="p">)</span>
-</span><span id="L-27"><a href="#L-27"><span class="linenos">  27</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.simplify</span><span class="w"> </span><span class="kn">import</span> <span class="n">simplify_delta_products</span>
+</span><span id="L-27"><a href="#L-27"><span class="linenos">  27</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.simplify</span><span class="w"> </span><span class="kn">import</span> <span class="n">merge_products</span><span class="p">,</span> <span class="n">simplify_delta_products</span>
 </span><span id="L-28"><a href="#L-28"><span class="linenos">  28</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">tensorgrad.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">DisjointSets</span><span class="p">,</span> <span class="n">_MatchEdgesKey</span>
 </span><span id="L-29"><a href="#L-29"><span class="linenos">  29</span></a>
 </span><span id="L-30"><a href="#L-30"><span class="linenos">  30</span></a><span class="c1"># We include a &quot;sum&quot; function, which overloads the python sum. So we keep a reference</span>
@@ -829,13 +829,13 @@
 </span><span id="L-614"><a href="#L-614"><span class="linenos"> 614</span></a>
 </span><span id="L-615"><a href="#L-615"><span class="linenos"> 615</span></a>    <span class="nd">@staticmethod</span>
 </span><span id="L-616"><a href="#L-616"><span class="linenos"> 616</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_flatten</span><span class="p">(</span><span class="n">tensors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Tensor</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Tensor</span><span class="p">]:</span>
-</span><span id="L-617"><a href="#L-617"><span class="linenos"> 617</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Flatten nested Products into a single factor list. Product.merge only</span>
+</span><span id="L-617"><a href="#L-617"><span class="linenos"> 617</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Flatten nested Products into a single factor list. merge_products only</span>
 </span><span id="L-618"><a href="#L-618"><span class="linenos"> 618</span></a><span class="sd">        flattens one level, so repeat until no factor is itself a Product.</span>
 </span><span id="L-619"><a href="#L-619"><span class="linenos"> 619</span></a><span class="sd">        Merge freshens clashing inner edges via `rename`, which is lazy on</span>
 </span><span id="L-620"><a href="#L-620"><span class="linenos"> 620</span></a><span class="sd">        composites — peel the resulting wrappers so the combination passes</span>
 </span><span id="L-621"><a href="#L-621"><span class="linenos"> 621</span></a><span class="sd">        keep seeing pow-Functions (and copy tensors) rather than Rename nodes.&quot;&quot;&quot;</span>
 </span><span id="L-622"><a href="#L-622"><span class="linenos"> 622</span></a>        <span class="k">while</span> <span class="nb">any</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Product</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tensors</span><span class="p">):</span>
-</span><span id="L-623"><a href="#L-623"><span class="linenos"> 623</span></a>            <span class="n">tensors</span> <span class="o">=</span> <span class="n">Product</span><span class="o">.</span><span class="n">merge</span><span class="p">([</span><span class="n">Product</span><span class="p">([</span><span class="n">t</span><span class="p">])</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Product</span><span class="p">)</span> <span class="k">else</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tensors</span><span class="p">])</span><span class="o">.</span><span class="n">factors</span>
+</span><span id="L-623"><a href="#L-623"><span class="linenos"> 623</span></a>            <span class="n">tensors</span> <span class="o">=</span> <span class="n">merge_products</span><span class="p">([</span><span class="n">Product</span><span class="p">([</span><span class="n">t</span><span class="p">])</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Product</span><span class="p">)</span> <span class="k">else</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tensors</span><span class="p">])</span><span class="o">.</span><span class="n">factors</span>
 </span><span id="L-624"><a href="#L-624"><span class="linenos"> 624</span></a>            <span class="n">tensors</span> <span class="o">=</span> <span class="p">[</span><span class="n">peel_rename</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tensors</span><span class="p">]</span>
 </span><span id="L-625"><a href="#L-625"><span class="linenos"> 625</span></a>        <span class="k">return</span> <span class="n">tensors</span>
 </span><span id="L-626"><a href="#L-626"><span class="linenos"> 626</span></a>
@@ -3828,7 +3828,6 @@ The formula would be C[i,j,k] = 1 if i = j + k * stride.</p>
             </div>
             <div><dt><a href="tensor.html#Tensor">tensorgrad.tensor.Tensor</a></dt>
                                 <dd id="Convolution.edges" class="variable"><a href="tensor.html#Tensor.edges">edges</a></dd>
-                <dd id="Convolution.to_book_tikz" class="function"><a href="tensor.html#Tensor.to_book_tikz">to_book_tikz</a></dd>
                 <dd id="Convolution.shape" class="variable"><a href="tensor.html#Tensor.shape">shape</a></dd>
                 <dd id="Convolution.order" class="variable"><a href="tensor.html#Tensor.order">order</a></dd>
                 <dd id="Convolution.grad" class="function"><a href="tensor.html#Tensor.grad">grad</a></dd>
@@ -3837,8 +3836,6 @@ The formula would be C[i,j,k] = 1 if i = j + k * stride.</p>
                 <dd id="Convolution.full_simplify" class="function"><a href="tensor.html#Tensor.full_simplify">full_simplify</a></dd>
                 <dd id="Convolution.substitute" class="function"><a href="tensor.html#Tensor.substitute">substitute</a></dd>
                 <dd id="Convolution.depends_on" class="function"><a href="tensor.html#Tensor.depends_on">depends_on</a></dd>
-                <dd id="Convolution.edge_structural_graph" class="function"><a href="tensor.html#Tensor.edge_structural_graph">edge_structural_graph</a></dd>
-                <dd id="Convolution.graph_to_string" class="function"><a href="tensor.html#Tensor.graph_to_string">graph_to_string</a></dd>
                 <dd id="Convolution.is_isomorphic" class="function"><a href="tensor.html#Tensor.is_isomorphic">is_isomorphic</a></dd>
                 <dd id="Convolution.isomorphisms" class="function"><a href="tensor.html#Tensor.isomorphisms">isomorphisms</a></dd>
                 <dd id="Convolution.symmetries" class="variable"><a href="tensor.html#Tensor.symmetries">symmetries</a></dd>
@@ -3892,7 +3889,6 @@ The formula would be C[i,j,k] = 1 if i = j + k * stride.</p>
             </div>
             <div><dt><a href="tensor.html#Tensor">tensorgrad.tensor.Tensor</a></dt>
                                 <dd id="Reshape.edges" class="variable"><a href="tensor.html#Tensor.edges">edges</a></dd>
-                <dd id="Reshape.to_book_tikz" class="function"><a href="tensor.html#Tensor.to_book_tikz">to_book_tikz</a></dd>
                 <dd id="Reshape.shape" class="variable"><a href="tensor.html#Tensor.shape">shape</a></dd>
                 <dd id="Reshape.order" class="variable"><a href="tensor.html#Tensor.order">order</a></dd>
                 <dd id="Reshape.grad" class="function"><a href="tensor.html#Tensor.grad">grad</a></dd>
@@ -3901,8 +3897,6 @@ The formula would be C[i,j,k] = 1 if i = j + k * stride.</p>
                 <dd id="Reshape.full_simplify" class="function"><a href="tensor.html#Tensor.full_simplify">full_simplify</a></dd>
                 <dd id="Reshape.substitute" class="function"><a href="tensor.html#Tensor.substitute">substitute</a></dd>
                 <dd id="Reshape.depends_on" class="function"><a href="tensor.html#Tensor.depends_on">depends_on</a></dd>
-                <dd id="Reshape.edge_structural_graph" class="function"><a href="tensor.html#Tensor.edge_structural_graph">edge_structural_graph</a></dd>
-                <dd id="Reshape.graph_to_string" class="function"><a href="tensor.html#Tensor.graph_to_string">graph_to_string</a></dd>
                 <dd id="Reshape.is_isomorphic" class="function"><a href="tensor.html#Tensor.is_isomorphic">is_isomorphic</a></dd>
                 <dd id="Reshape.isomorphisms" class="function"><a href="tensor.html#Tensor.isomorphisms">isomorphisms</a></dd>
                 <dd id="Reshape.symmetries" class="variable"><a href="tensor.html#Tensor.symmetries">symmetries</a></dd>
