@@ -1,5 +1,5 @@
 from collections import Counter, defaultdict
-from typing import Optional
+from typing import Any, Optional
 from dataclasses import dataclass
 from functools import singledispatchmethod
 from functools import update_wrapper
@@ -7,7 +7,7 @@ import random
 import re
 
 from tensorgrad.functions import Convolution, Reshape
-from tensorgrad.tensor import Derivative, Product, Rename, Zero, Delta, Variable, Sum, Function
+from tensorgrad.tensor import Derivative, Product, Rename, Tensor, Zero, Delta, Variable, Sum, Function
 from tensorgrad.extras import Expectation
 
 
@@ -22,7 +22,7 @@ from tensorgrad.extras import Expectation
 # - Maybe we don't need a border around functions if they don't have any broadcasted edges?
 
 
-def to_tikz(tensor):
+def to_tikz(tensor: Tensor) -> str:
     """
     Main entry point: produce the LaTeX (TikZ) code for 'tensor'.
     """
@@ -47,29 +47,29 @@ class NodeRef:
 
 
 class Namer:
-    def __init__(self):
+    def __init__(self) -> None:
         self.counter = 0
-        self.edge_mapping = {}
+        self.edge_mapping: dict[str, str] = {}
 
-    def fresh_name(self, prefix="node"):
+    def fresh_name(self, prefix: str = "node") -> str:
         name = f"{prefix}{self.counter}"
         self.counter += 1
         return name
 
-    def edge(self, edge):
+    def edge(self, edge: str) -> str:
         return self.edge_mapping.get(edge, edge)
 
 
 class depth_tracking_dispatcher(singledispatchmethod):
-    def register(self, cls, method=None):
+    def register(self, cls: Any, method: Any = None) -> Any:
         # Get the standard singledispatch register
         dispatcher = super().register(cls, method)
 
         # Create our own register that wraps the method
-        def wrapped_register(method):
+        def wrapped_register(method: Any) -> Any:
             original_method = dispatcher(method)
 
-            def wrapper(self, *args, **kwargs):
+            def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
                 self.depth += 1
                 try:
                     return original_method(self, *args, **kwargs)
@@ -87,7 +87,7 @@ class depth_tracking_dispatcher(singledispatchmethod):
 class TikzGraph:
     def __init__(self, namer: Optional[Namer] = None, depth: int = 0):
         # We store lines of TikZ to build the final diagram.
-        self.lines = []
+        self.lines: list[str] = []
         self.namer = Namer() if namer is None else namer
 
         # For outputting nice TeX
@@ -95,12 +95,12 @@ class TikzGraph:
 
         # Keep track of which node names we've actually added to this graph
         # so we don't add them more than once.
-        self.added_node_names = set()
+        self.added_node_names: set[str] = set()
 
-    def subgraph(self):
+    def subgraph(self) -> "TikzGraph":
         return TikzGraph(self.namer, self.depth + 1)
 
-    def to_tikz(self, tensor):
+    def to_tikz(self, tensor: Tensor) -> str:
         # We'll wrap everything in the prefix plus a single subgraph so that
         # if we want to do fancy layering, we can:
         code = [prefix + f"\\graph [{choose_layout(depth=0)}] {{"]
@@ -119,8 +119,13 @@ class TikzGraph:
         return "\n".join(code)
 
     def add_node(
-        self, name: str, node_type: str, label: Optional[str] = None, degree: Optional[int] = None, style=None
-    ):
+        self,
+        name: str,
+        node_type: str,
+        label: Optional[str] = None,
+        degree: Optional[int] = None,
+        style: Optional[str] = None,
+    ) -> None:
         """
         Add a single node to this graph. We rely on node_ref.name for uniqueness.
         """
@@ -174,7 +179,7 @@ class TikzGraph:
             # Fallback
             self.lines.append(f"  {name}[as=${label}$,{nudge}];")
 
-    def add_edge(self, ref1: NodeRef, ref2: NodeRef, directed=False, multiplicity=1):
+    def add_edge(self, ref1: NodeRef, ref2: NodeRef, directed: bool = False, multiplicity: int = 1) -> None:
         """
         Add an edge between two NodeRefs. We honor any edge_style stored in
         the NodeRef. If both have styles, we prefer the second's or combine them?
@@ -220,7 +225,7 @@ class TikzGraph:
 
     def add_subgraph(
         self, subgraph: "TikzGraph", cluster_id: str, *, style: Optional[str] = None, layout: Optional[str] = None
-    ):
+    ) -> None:
         """
         Insert a subgraph as a cluster. We rely on subgraph.lines (already constructed),
         and we do not re-add subgraph's nodes individually if they've already been
@@ -235,7 +240,7 @@ class TikzGraph:
         # Mark that we've effectively added all of subgraph's nodes
         self.added_node_names.update(subgraph.added_node_names)
 
-    def handle_free_edges(self, free_edges: dict):
+    def handle_free_edges(self, free_edges: dict[str, NodeRef]) -> None:
         """
         If an edge is only connected once, we create an 'invisible' node
         to represent that free edge in the diagram, so it’s visible as
@@ -250,55 +255,56 @@ class TikzGraph:
     # Singledispatch for each tensor type
     ###############################################################################
     @depth_tracking_dispatcher
-    def _to_tikz(self, tensor):
+    def _to_tikz(self, tensor: Any) -> dict[str, NodeRef]:
         raise RuntimeError(f"Unknown tensor type: {type(tensor)}")
 
     @_to_tikz.register
-    def _(self, tensor: Delta):
+    def _(self, tensor: Delta) -> dict[str, NodeRef]:
         # Make one node
         name = self.namer.fresh_name("copy")
-        label = tensor._size.name if tensor.order == 0 else None
+        # order == 0 means _size is a sympy Symbol (which has .name), not a Number
+        label = tensor._size.name if tensor.order == 0 else None  # type: ignore[union-attr]
         self.add_node(name, "identity", label=label)
         # Return that node for every edge
         return {e: NodeRef(name) for e in tensor.edges}
 
     @_to_tikz.register
-    def _(self, tensor: Variable):
+    def _(self, tensor: Variable) -> dict[str, NodeRef]:
         name = self.namer.fresh_name("var")
         self.add_node(name, "var", label=tensor.name, degree=len(tensor.edges))
         return {e: NodeRef(name, edge_label=e) for e in tensor.edges}
 
     @_to_tikz.register
-    def _(self, tensor: Rename):
+    def _(self, tensor: Rename) -> dict[str, NodeRef]:
         # Build the subgraph from the original
         edges_map = self._to_tikz(tensor.tensor)
         # Now rename the keys
-        renamed = {}
+        renamed: dict[str, NodeRef] = {}
         for old_e, ref in edges_map.items():
             new_e = tensor.mapping.get(old_e, old_e)
             renamed[new_e] = ref
         return renamed
 
     @_to_tikz.register
-    def _(self, tensor: Zero):
+    def _(self, tensor: Zero) -> dict[str, NodeRef]:
         name = self.namer.fresh_name("zero")
         self.add_node(name, "zero", degree=len(tensor.edges))
         return {e: NodeRef(name) for e in tensor.edges}
 
     @_to_tikz.register
-    def _(self, tensor: Convolution):
+    def _(self, tensor: Convolution) -> dict[str, NodeRef]:
         name = self.namer.fresh_name("conv")
         self.add_node(name, "conv", degree=len(tensor.edges))
         return {e: NodeRef(name) for e in tensor.edges}
 
     @_to_tikz.register
-    def _(self, tensor: Reshape):
+    def _(self, tensor: Reshape) -> dict[str, NodeRef]:
         name = self.namer.fresh_name("reshape")
         self.add_node(name, "reshape", degree=len(tensor.edges))
         return {e: NodeRef(name) for e in tensor.edges}
 
     @_to_tikz.register
-    def _(self, tensor: Function):
+    def _(self, tensor: Function) -> dict[str, NodeRef]:
         # We'll wrap the function node in a subgraph
         subgraph = self.subgraph()
         func_node = self.namer.fresh_name("func")
@@ -311,7 +317,7 @@ class TikzGraph:
             degree=len(tensor.shape_out),
         )
 
-        free_edges = {}
+        free_edges: dict[str, NodeRef] = {}
         # For each input t, connect it to func_ref with directed edges
         for t, input_edges in zip(tensor.inputs, tensor.signature.inputs):
             subedges = subgraph._to_tikz(t)
@@ -333,7 +339,7 @@ class TikzGraph:
         return {**out_dict, **free_edges}
 
     @_to_tikz.register
-    def _(self, tensor: Derivative):
+    def _(self, tensor: Derivative) -> dict[str, NodeRef]:
         # Subgraph for the main expression
         subgraph = self.subgraph()
         edges = subgraph._to_tikz(tensor.tensor)
@@ -348,7 +354,7 @@ class TikzGraph:
         return edges
 
     @_to_tikz.register
-    def _(self, tensor: Expectation):
+    def _(self, tensor: Expectation) -> dict[str, NodeRef]:
         # Subgraph for the main expression
         subgraph = self.subgraph()
         edges = subgraph._to_tikz(tensor.tensor)
@@ -358,21 +364,21 @@ class TikzGraph:
         return edges
 
     @_to_tikz.register
-    def _(self, tensor: Product):
+    def _(self, tensor: Product) -> dict[str, NodeRef]:
         # If empty product, return an identity node
         if len(tensor.factors) == 0:
             self.add_node(self.namer.fresh_name("id"), "identity", label="1")
             return {}
 
         # Gather sub-ids for each edge
-        sub_ids = defaultdict(list)
+        sub_ids: defaultdict[str, list[NodeRef]] = defaultdict(list)
         for t in tensor.factors:
             t_edges = self._to_tikz(t)
             for e, ref in t_edges.items():
                 sub_ids[e].append(ref)
 
         # If an edge has exactly 2 references, we connect them
-        cnt = Counter()
+        cnt: Counter[tuple[str, ...]] = Counter()
         for e, refs in sub_ids.items():
             if len(refs) == 2:
                 # We have a contraction
@@ -391,11 +397,11 @@ class TikzGraph:
         return free
 
     @_to_tikz.register
-    def _(self, tensor: Sum):
+    def _(self, tensor: Sum) -> dict[str, NodeRef]:
         # We'll represent the sum as a subgraph (unlike product, we
         # actually want to group them visually).
         subgraph = self.subgraph()
-        free_edges = {}
+        free_edges: dict[str, NodeRef] = {}
 
         for i, (w, t) in enumerate(zip(tensor.weights, tensor.terms)):
             # Each term is itself a sub-sub-graph
@@ -459,7 +465,7 @@ class TikzGraph:
 ###############################################################################
 # Formatting helpers
 ###############################################################################
-def format_label(label):
+def format_label(label: str) -> str:
     """
     Attempt to parse trailing digits and underscores to produce e.g. x_1 or x_{12}.
     Also handle "D_" for double lines, etc.
@@ -468,7 +474,7 @@ def format_label(label):
     return label
 
 
-def format_weight(w, i):
+def format_weight(w: Any, i: int) -> str:
     """Just a small helper for printing weights in sums."""
     if w == 1:
         return "+" if i > 0 else ""
@@ -479,7 +485,7 @@ def format_weight(w, i):
     return str(w)
 
 
-def format_function(label):
+def format_function(label: str) -> tuple[str, str]:
     """Just a small helper for printing weights in sums."""
     """
     Sanitizes a string so that it becomes safe to include directly in a LaTeX math environment.
@@ -495,7 +501,7 @@ def format_function(label):
 
     fraction_pattern = r"Fraction\s*\(\s*([\-0-9]+)\s*,\s*([\-0-9]+)\s*\)"
 
-    def fraction_replacer(match):
+    def fraction_replacer(match: "re.Match[str]") -> str:
         numerator = match.group(1)
         denominator = match.group(2)
         # return r"\\frac{%s}{%s}" % (numerator, denominator)
@@ -544,7 +550,7 @@ spring_layout = """\
 """
 
 
-def choose_layout(depth):
+def choose_layout(depth: int) -> str:
     """
     Switch layout or orientation by depth, if desired.
     """

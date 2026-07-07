@@ -2,7 +2,7 @@ from collections import Counter
 from functools import singledispatch, singledispatchmethod
 import math
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, Sequence, cast
 import torch
 from sympy import Symbol
 from tensorgrad import Tensor, Variable, Derivative, Function, Product
@@ -33,7 +33,7 @@ def evaluate(
     tensor: Tensor,
     values: dict[Variable, torch.Tensor],
     dims: dict[Symbol, int] | None = None,
-):
+) -> torch.Tensor:
     return Context(values, dims).evaluate(tensor)
 
 
@@ -82,20 +82,24 @@ class Context:
             assert not torch.isnan(res.rename(None)).any(), f"Got NaN in result in {tensor}"
             # We guarantee that inner_evaluate returns the edges in the same order as tensor.edges
             assert res.names == tuple(tensor.edges), f"Expected {tensor.edges=} but got {res.names=}"
-            assert all(res.size(k) == self.dims[v] for k, v in tensor.shape.items() if v in self.dims)
+            assert all(
+                res.size(k) == self.dims[v]  # type: ignore[call-overload]  # named dim
+                for k, v in tensor.shape.items()
+                if v in self.dims
+            )
 
         # If the output defined a dimension size we didn't know about, store it
         # Note this is not a guaranteed metohd, since it creates a dependency on
         # the order of evaluation.
         for k, v in tensor.shape.items():
             if v not in self.dims:
-                self.dims[v] = res.size(k)
+                self.dims[v] = res.size(k)  # type: ignore[call-overload]  # named dim
 
         self.values[tensor] = res
         return res
 
     @singledispatchmethod
-    def _evaluate(self, tensor: Tensor):
+    def _evaluate(self, tensor: Tensor) -> torch.Tensor:
         """
         The inner implementation of tensor evaluation.
 
@@ -111,7 +115,7 @@ class Context:
         raise NotImplementedError(f"Cannot evaluate {type(tensor)}")
 
     @_evaluate.register
-    def _(self, var: Variable):
+    def _(self, var: Variable) -> torch.Tensor:
         # Mostly this won't be called, since the Variable will be picked up by the caching.
         # However, the __debug__ section of evaluate calls this directly, so we need to handle it.
         res = self.values.get(var)
@@ -120,7 +124,7 @@ class Context:
         return res
 
     @_evaluate.register
-    def _(self, rename: Rename):
+    def _(self, rename: Rename) -> torch.Tensor:
         res = self.evaluate(rename.tensor)
         if rename.mapping:
             # If mapping is empty, the rename would fail
@@ -128,7 +132,7 @@ class Context:
         return res
 
     @_evaluate.register
-    def _(self, delta: Delta):
+    def _(self, delta: Delta) -> torch.Tensor:
         size = self.dims[delta.size]
         if not delta.edges:
             # Return float to match the dtype of every other evaluation path
@@ -140,11 +144,11 @@ class Context:
         return copy.rename(*delta.edges)
 
     @_evaluate.register
-    def _(self, zero: Zero):
+    def _(self, zero: Zero) -> torch.Tensor:
         return torch.zeros([self.dims[s] for s in zero.shape.values()]).rename(*zero.edges)
 
     @_evaluate.register
-    def _(self, fn: Function):
+    def _(self, fn: Function) -> torch.Tensor:
         xvals = [self.evaluate(t) for t in fn.inputs]
         res = evaluate_function(fn.signature, *xvals)
         # We require the signature eval to match the names, but not necessarily the order
@@ -152,13 +156,13 @@ class Context:
         return res.align_to(*fn.edges)
 
     @_evaluate.register
-    def _(self, deriv: Derivative):
+    def _(self, deriv: Derivative) -> torch.Tensor:
         # We could use numerical differentiation here...  But it would potentially require quite a lot of
         # evaluations, since we need to evaluate the tensor in all directions.
         raise ValueError("Derivative tensors cannot be evaluated directly. Please use simplify() first.")
 
     @_evaluate.register
-    def _(self, prod: Product):
+    def _(self, prod: Product) -> torch.Tensor:
         # TODO: Keep track of how many contractions we made
         # extras["contractions"] = extras.get("contractions", 0) + len(prod.contractions)
         if not prod.factors:
@@ -217,7 +221,7 @@ class Context:
         if has_repeated_output and merge_copies:
             # Need to deduplicate output, run einsum, then expand with diagonal
             # Track which output positions share the same index
-            dedup_output = []
+            dedup_output: list[int] = []
             seen = {}
             for idx in output_indices:
                 if idx not in seen:
@@ -284,7 +288,7 @@ class Context:
             return result.rename(*prod.edges)
 
     @_evaluate.register
-    def _(self, sum_: Sum):
+    def _(self, sum_: Sum) -> torch.Tensor:
         values = [self.evaluate(t).align_to(*sum_.edges) for t in sum_.terms]
         return sum(float(w) * v for w, v in zip(sum_.weights, values))
 
@@ -293,7 +297,7 @@ class Context:
     ################################################################################
 
     @_evaluate.register
-    def _(self, conv: Convolution):
+    def _(self, conv: Convolution) -> torch.Tensor:
         w_in = self.dims.get(conv.shape[conv.input_name])
         k_size = self.dims.get(conv.shape[conv.kernel_name])
         w_out = self.dims.get(conv.shape[conv.output_name])
@@ -320,7 +324,7 @@ class Context:
         return res.rename(conv.input_name, conv.kernel_name, conv.output_name)
 
     @_evaluate.register
-    def _(self, reshape: Reshape):
+    def _(self, reshape: Reshape) -> torch.Tensor:
         if not set(reshape.shape.values()).issubset(self.dims.keys()):
             diff = reshape.shape.values() - self.dims.keys()
             raise ValueError(f"Dims {diff} not supplied to Reshape")
@@ -338,12 +342,12 @@ def evaluate_function(func: FunctionSignature, *xs: torch.Tensor) -> torch.Tenso
 
 
 @evaluate_function.register
-def _(func: _ScaleFunction, *xs: torch.Tensor):
+def _(func: _ScaleFunction, *xs: torch.Tensor) -> torch.Tensor:
     # (cast: alpha is a plain numeric scalar; numbers.Number has no static operators)
     return cast(float, func.alpha) * evaluate_function(func.inner, *xs)
 
 
-def _(func: _DeterminantFunction, x: torch.Tensor):
+def _(func: _DeterminantFunction, x: torch.Tensor) -> torch.Tensor:
     (dims,) = func.inputs
     new_names = [n for n in x.names if n not in dims]  # Names after the determinant
     return torch.linalg.det(x.rename(None)).rename(*new_names)
@@ -371,7 +375,9 @@ def _(func: _ArgMaxFunction, x: torch.Tensor) -> torch.Tensor:
     return torch.argmax(x.rename(None), dim=i).rename(*names)
 
 
-def _sdpa_forward(func, q, k, v, mask):
+def _sdpa_forward(
+    func: Any, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None
+) -> torch.Tensor:
     """The definition: softmax(scale*<q,k>_hs + mask) @_key v, as plain torch
     over named tensors. Batch = every shared edge other than seq/key/hs."""
     batch = sorted(func.batch)
@@ -408,14 +414,14 @@ def _(func: _FusedVJP, *xs: torch.Tensor) -> torch.Tensor:
 # as `func.batch` / `func.seq` / ... unchanged.
 
 
-def _eval_sdpa_fwd(params, inputs):
+def _eval_sdpa_fwd(params: dict[str, Any], inputs: Sequence[torch.Tensor]) -> torch.Tensor:
     f = SimpleNamespace(**params)
     q, k, v = inputs[0], inputs[1], inputs[2]
     mask = inputs[3] if f.has_mask else None
     return _sdpa_forward(f, q, k, v, mask)
 
 
-def _eval_sdpa_bwd(params, which, inputs):
+def _eval_sdpa_bwd(params: dict[str, Any], which: int, inputs: Sequence[torch.Tensor]) -> torch.Tensor:
     """The reverse VJP d(input `which`) given cotangent u (inputs[3]), via
     autograd on the reference attention. The oracle for the fused backward."""
     fwd = SimpleNamespace(**params)
@@ -430,7 +436,9 @@ def _eval_sdpa_bwd(params, which, inputs):
     return g.rename(*inputs[which].names)
 
 
-def _layer_norm_forward(func, x, weight, bias):
+def _layer_norm_forward(
+    func: Any, x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor
+) -> torch.Tensor:
     """The definition: weight*(x-mean)/sqrt(var+eps)+bias over the `dim` axis
     (biased variance), as plain torch over named tensors. An INDEPENDENT
     oracle (not torch's fused native_layer_norm kernel). Batch = every edge
@@ -446,11 +454,11 @@ def _layer_norm_forward(func, x, weight, bias):
     return out.rename(*batch, func.dim)
 
 
-def _eval_layer_norm_fwd(params, inputs):
+def _eval_layer_norm_fwd(params: dict[str, Any], inputs: Sequence[torch.Tensor]) -> torch.Tensor:
     return _layer_norm_forward(SimpleNamespace(**params), inputs[0], inputs[1], inputs[2])
 
 
-def _eval_layer_norm_bwd(params, which, inputs):
+def _eval_layer_norm_bwd(params: dict[str, Any], which: int, inputs: Sequence[torch.Tensor]) -> torch.Tensor:
     fwd = SimpleNamespace(**params)
     x, weight, bias, u = inputs[0], inputs[1], inputs[2], inputs[3]
     raws = [t.rename(None).detach().clone().requires_grad_(True) for t in (x, weight, bias)]
@@ -531,7 +539,7 @@ def _(func: _EqualFunction, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 def _(func: _OneHotFunction, idx: torch.Tensor, size_carrier: torch.Tensor) -> torch.Tensor:
     """out[eq_edge, *idx_edges] = 1.0 where idx == eq_edge index. The second
     input only carries the number of classes (its single edge's size)."""
-    num_classes = size_carrier.size(func.dim)  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
+    num_classes = size_carrier.size(func.dim)  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     flat = idx.rename(None).long().reshape(1, -1)
     onehot = (flat == torch.arange(num_classes).unsqueeze(1)).to(torch.float32)
     return onehot.reshape((num_classes,) + tuple(idx.shape)).rename(func.eq_edge, *idx.names)
@@ -550,7 +558,7 @@ def _(func: _ZeroFunction, x: torch.Tensor) -> torch.Tensor:
     # which names are in x, which are not consumed in self.inputs
     broadcasted = [e for e in x.names if e not in func.inputs[0]]
     return torch.zeros(
-        size=[x.size(o) for o in broadcasted + list(func.new_edges.values())],  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
+        size=[x.size(o) for o in broadcasted + list(func.new_edges.values())],  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
         names=broadcasted + list(func.new_edges.keys()),
     )
 

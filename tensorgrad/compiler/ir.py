@@ -13,15 +13,17 @@ ever asked to build a `batch x batch` diagonal blowup that a Delta merely
 "aliases".
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from fractions import Fraction
 from numbers import Number
-from typing import Any, Iterable, Optional, Sequence, SupportsFloat, Union, cast
+from typing import Any, Callable, Iterable, Optional, Sequence, SupportsFloat, TypeVar, Union, cast
 
 import sympy
 from sympy import Symbol
 
 Dim = Union[Symbol, sympy.Expr, int]
+
+_N = TypeVar("_N", bound="Node")
 
 
 @dataclass(frozen=True, eq=False)
@@ -202,7 +204,7 @@ class Builder:
     (same class, params, operand identities, canonical wire structure) are
     the same object. This gives global CSE across all outputs for free."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache: dict = {}
         # id(node) -> insertion index, to give deterministic topo/canonical order
         self._index: dict[int, int] = {}
@@ -210,7 +212,7 @@ class Builder:
         # Typed Any: the IR deliberately does not import tensorgrad.tensor.
         self.input_vars: dict[str, Any] = {}
 
-    def _intern(self, key, make):
+    def _intern(self, key: tuple, make: Callable[[], _N]) -> _N:
         if (node := self._cache.get(key)) is None:
             node = make()
             self._cache[key] = node
@@ -222,7 +224,7 @@ class Builder:
 
     # ---- constructors -------------------------------------------------
 
-    def input(self, var) -> InputNode:
+    def input(self, var: Any) -> InputNode:
         name = var.name
         dims = tuple(var.shape.values())
         if name in self.input_vars and self.input_vars[name] is not var:
@@ -235,7 +237,7 @@ class Builder:
         params = tuple(params)
         return self._intern(("const", kind, params, tuple(dims)), lambda: ConstNode(tuple(dims), kind, params))
 
-    def scalar(self, expr) -> ConstNode:
+    def scalar(self, expr: Any) -> ConstNode:
         expr = sympy.sympify(expr)
         return self.const("scalar", (expr,), ())
 
@@ -353,12 +355,18 @@ class Builder:
         key = ("one_hot", id(idx), num_classes)
         return self._intern(key, lambda: GatherNode(dims, "one_hot", 0, (idx,)))
 
-    def fused_fwd(self, cell_name, params, ops, dims, layout=(), which=0) -> Node:
+    def fused_fwd(
+        self, cell_name: str, params: dict, ops: Sequence[Node], dims: Sequence[Dim],
+        layout: tuple = (), which: int = 0,
+    ) -> Node:
         pt = tuple(sorted(params.items()))
         key = ("fused_fwd", cell_name, pt, layout, which, tuple(id(o) for o in ops))
         return self._intern(key, lambda: FusedFwdNode(tuple(dims), cell_name, pt, layout, which, tuple(ops)))
 
-    def fused_bwd(self, cell_name, which, params, ops, dims, layout=()) -> Node:
+    def fused_bwd(
+        self, cell_name: str, which: int, params: dict, ops: Sequence[Node], dims: Sequence[Dim],
+        layout: tuple = (),
+    ) -> Node:
         pt = tuple(sorted(params.items()))
         key = ("fused_bwd", cell_name, which, pt, layout, tuple(id(o) for o in ops))
         return self._intern(key, lambda: FusedBwdNode(tuple(dims), cell_name, which, pt, layout, tuple(ops)))
@@ -378,7 +386,7 @@ def toposort(outputs: list[Node]) -> list[Node]:
     seen: dict[int, Node] = {}
     order: list[Node] = []
 
-    def visit(n: Node):
+    def visit(n: Node) -> None:
         if id(n) in seen:
             return
         seen[id(n)] = n
@@ -391,7 +399,7 @@ def toposort(outputs: list[Node]) -> list[Node]:
     return order
 
 
-def to_float(w) -> float:
+def to_float(w: Any) -> float:
     """Convert a weight (Fraction, int, sympy) to a python float."""
     if isinstance(w, Fraction):
         return w.numerator / w.denominator

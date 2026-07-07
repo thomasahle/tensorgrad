@@ -22,6 +22,7 @@ import sympy
 from sympy import Symbol
 import torch
 
+from tensorgrad.structure import Structure
 from tensorgrad.tensor import Constant, Tensor  # noqa: F401  (Tensor for docs/typing)
 
 # Coefficient rows: {edge: coeff} == const. Mapping/Sequence (not dict/list)
@@ -32,7 +33,10 @@ Rows = Sequence[tuple[Mapping[str, Union[int, Symbol, sympy.Expr]], Union[int, S
 class Affine(Constant):
     """A constant 0/1 tensor defined by integer-affine equalities on its indices."""
 
-    def __init__(self, rows: Rows, *shape0: Symbol, _symmetries=None, **shape1: Symbol):
+    def __init__(
+        self, rows: Rows, *shape0: Symbol,
+        _symmetries: None | str | set[frozenset[str]] = None, **shape1: Symbol,
+    ):
         shape = self._check_shape(shape0, shape1)
         super().__init__(_symmetries=_symmetries, **shape)
         norm: list[tuple[dict[str, sympy.Expr], sympy.Expr]] = []
@@ -69,7 +73,7 @@ class Affine(Constant):
         ]
         return Affine(rows, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
-    def structure(self):
+    def structure(self) -> Structure:
         # Two Affines with the same shape but different rows must NOT be
         # isomorphic. Conservative: bake the canonical row signature (with
         # edge names) into the label. This may miss some true isomorphisms
@@ -93,7 +97,7 @@ def affine_delta(size: Symbol, *edges: str) -> Affine:
     return Affine(rows, **{e: size for e in edge_list})
 
 
-def affine_convolution(*shape0, stride: int = 1, dilation: int = 1, **shape1) -> Affine:
+def affine_convolution(*shape0: Symbol, stride: int = 1, dilation: int = 1, **shape1: Symbol) -> Affine:
     """Convolution re-derived: input = dilation*kernel + stride*output.
 
     Same edge convention as F.Convolution(input, kernel, output); unlike the
@@ -105,7 +109,7 @@ def affine_convolution(*shape0, stride: int = 1, dilation: int = 1, **shape1) ->
     return Affine([({i: 1, k: -dilation, o: -stride}, 0)], **shape)
 
 
-def affine_shift(offset: int, **shape1) -> Affine:
+def affine_shift(offset: int, **shape1: Symbol) -> Affine:
     """Shift matrix: S[i, o] = 1 iff i = o + offset, so (x @ S)[o] = x[o + offset]."""
     shape = Tensor._check_shape((), shape1)
     assert len(shape) == 2, "Shift needs exactly 2 edges: input, output"
@@ -113,7 +117,7 @@ def affine_shift(offset: int, **shape1) -> Affine:
     return Affine([({i: 1, o: -1}, offset)], **shape)
 
 
-def affine_flatten(radix, **shape1) -> Affine:
+def affine_flatten(radix: Any, **shape1: Symbol) -> Affine:
     """Row-major flatten: F[f, i, j] = 1 iff f = radix*i + j."""
     shape = Tensor._check_shape((), shape1)
     assert len(shape) == 3, "Flatten needs exactly 3 edges: flat, outer, inner"
@@ -121,7 +125,7 @@ def affine_flatten(radix, **shape1) -> Affine:
     return Affine([({f: 1, i: -radix, j: -1}, 0)], **shape)
 
 
-def affine_basis(index: int, **shape1) -> Affine:
+def affine_basis(index: int, **shape1: Symbol) -> Affine:
     """Basis (one-hot) vector: B[i] = 1 iff i == index."""
     shape = Tensor._check_shape((), shape1)
     assert len(shape) == 1
@@ -132,7 +136,7 @@ def affine_basis(index: int, **shape1) -> Affine:
 # ---- dense indicator materialization (fallback + oracle) -------------------
 
 
-def _norm_row(row) -> tuple[str, Any, Any, Any]:
+def _norm_row(row: tuple) -> tuple[str, Any, Any, Any]:
     """Accept ('eq', coeffs, const), ('range', coeffs, k, X) or the legacy
     bare (coeffs, const) equality form."""
     if len(row) == 2:
@@ -142,7 +146,7 @@ def _norm_row(row) -> tuple[str, Any, Any, Any]:
     return ("range", row[1], row[2], row[3])
 
 
-def indicator_tensor(sizes: list[int], rows) -> torch.Tensor:
+def indicator_tensor(sizes: list[int], rows: Sequence) -> torch.Tensor:
     """Dense 0/1 tensor over axes of the given sizes; rows reference axis
     positions. Equality rows are [sum c_i*w_i == const]; range rows are
     [0 <= sum c_i*w_i + k <= X-1] (from summing an eq row over a free wire).
@@ -173,8 +177,10 @@ def indicator_tensor(sizes: list[int], rows) -> torch.Tensor:
 from tensorgrad.extras.evaluate import Context  # noqa: E402
 
 
-@Context._evaluate.register
-def _evaluate_affine(self, affine: Affine) -> torch.Tensor:
+# (explicit register(Affine): with `self` annotated, the bare decorator would
+# infer the dispatch class from the FIRST annotation, i.e. Context)
+@Context._evaluate.register(Affine)  # type: ignore[attr-defined]  # singledispatchmethod stub loses .register
+def _evaluate_affine(self: Context, affine: Affine) -> torch.Tensor:
     edges = list(affine.edges)
     missing = {s for s in affine.shape.values() if s not in self.dims}
     if missing:

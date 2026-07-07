@@ -72,8 +72,19 @@ exclude = "tests/"
 module = ["networkx.*", "sympy.*", "opt_einsum.*"]
 ignore_missing_imports = true
 
+# Remaining typing debt, exempted so `mypy tensorgrad/` gates everything else
+# (CI runs it). Remove entries as the files get cleaned.
+[[tool.mypy.overrides]]
+module = ["tensorgrad.compiler.codegen_torch"]
+ignore_errors = true
+
 
 [tool.pytest.ini_options]
 # addopts = "-s"
 # addopts = "--nbval"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+]
 

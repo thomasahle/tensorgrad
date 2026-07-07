@@ -1,7 +1,7 @@
 import itertools
 from sympy import Symbol, symbols
 import torch
-from typing import Iterable, Sequence, Tuple, Dict
+from typing import Any, Iterable, Sequence, Tuple, Dict
 import random
 import string
 from tensorgrad import Delta, Ones, Tensor, Zero, Variable
@@ -19,7 +19,7 @@ def rand_values(variables: Iterable[Variable], shape: Dict[Symbol, int] = {}) ->
     return values
 
 
-def init_tensor(variable: Variable, dims: dict, method: str = "randn", **kwargs) -> torch.Tensor:
+def init_tensor(variable: Variable, dims: dict, method: str = "randn", **kwargs: Any) -> torch.Tensor:
     """Initialize a tensor with various strategies.
 
     Args:
@@ -66,21 +66,25 @@ def init_tensor(variable: Variable, dims: dict, method: str = "randn", **kwargs)
         raise ValueError(f"Unknown initialization method: {method}")
 
 
-def assert_close(actual, expected, rtol=1e-4, atol=1e-5):
+def assert_close(
+    actual: torch.Tensor, expected: torch.Tensor, rtol: float = 1e-4, atol: float = 1e-5
+) -> None:
     assert set(actual.names) == set(expected.names), f"{actual.names=} != {expected.names=}"
     actual = actual.align_to(*expected.names).rename(None)
     expected = expected.expand_as(actual).rename(None)
     torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol)
 
 
-def broadcast_tensors(left_torch, right_torch):
+def broadcast_tensors(
+    left_torch: torch.Tensor, right_torch: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
     all_dims = list(set(left_torch.names) | set(right_torch.names))
     left_aligned = left_torch.align_to(*all_dims)
     right_aligned = right_torch.align_to(*all_dims)
     return left_aligned, right_aligned
 
 
-def generate_copy(dim: int, edges: "Sequence[str]"):
+def generate_copy(dim: int, edges: "Sequence[str]") -> torch.Tensor:
     copy = torch.zeros((dim,) * len(edges))
     for i in range(dim):
         copy[(i,) * len(edges)] = 1
@@ -106,10 +110,10 @@ def generate_random_tensor_expression(
                 # true) and predates the sympy-Symbol shape API.
                 if tensor_class == Delta:
                     dim = random.choice([2, 3])
-                    return tensor_class(edges), torch_func(dim, edges)  # pyright: ignore
+                    return tensor_class(edges), torch_func(dim, edges)  # type: ignore[operator]  # pyright: ignore
                 else:
                     dims = tuple(random.choice([2, 3]) for _ in range(len(edges)))
-                    return tensor_class(edges), torch_func(dims, names=edges)  # pyright: ignore
+                    return tensor_class(edges), torch_func(dims, names=edges)  # type: ignore[operator]  # pyright: ignore
         else:
             # Recursive case: generate subexpressions and combine them
             left_size = random.randint(1, size // 2 + 1)
@@ -159,19 +163,19 @@ def generate_random_tensor_expression(
             continue
 
 
-def make_random_tree(nodes: int):
+def make_random_tree(nodes: int) -> tuple[list[Variable], list[Variable]]:
     components = [i for i in range(nodes)]
 
-    def find(x):
+    def find(x: int) -> int:
         if components[x] != x:
             components[x] = find(components[x])
         return components[x]
 
-    def union(x, y):
+    def union(x: int, y: int) -> None:
         components[find(x)] = find(y)
 
-    edges = []
-    adj = [[] for _ in range(nodes)]
+    edges: list[tuple[int, int]] = []
+    adj: list[list[int]] = [[] for _ in range(nodes)]
     while len(edges) < nodes - 1:
         x, y = random.randint(0, nodes - 1), random.randint(0, nodes - 1)
         if len(adj[x]) < 3 and len(adj[y]) < 3 and find(x) != find(y):
@@ -182,7 +186,7 @@ def make_random_tree(nodes: int):
 
     # 3n edges, n-1 used, 2(n-1) used for connections, n+1 leaf nodes, 1 free edge left.
     names = string.ascii_uppercase
-    vectors = []
+    vectors: list[Variable] = []
     variables = []
     for i in range(nodes):
         ts = [f"{names[min(i,j)]}|{names[max(i,j)]}" for j in adj[i]]
@@ -197,7 +201,7 @@ def make_random_tree(nodes: int):
     return vectors, variables
 
 
-def atlas_generate_random_tensor_expression():
+def atlas_generate_random_tensor_expression() -> None:
     atlas = nx.graph_atlas_g()
     for _ in range(100):
         gs = [random.choice(atlas)]
@@ -205,7 +209,9 @@ def atlas_generate_random_tensor_expression():
             gs.append(random.choice(atlas))
 
 
-def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, dict[Variable, torch.Tensor]]:
+def random_tensor_expr(
+    max_depth: int = 4, max_dim: int = 4
+) -> tuple[Tensor, torch.Tensor, dict[Variable, torch.Tensor]]:
     assert max_dim >= 1
     if max_dim == 1:
         symbols_list = [symbols("a")]
@@ -221,7 +227,7 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
         for symbols in itertools.combinations(symbols_list, r)
     ]
 
-    def inner(depth):
+    def inner(depth: int) -> tuple[Tensor, torch.Tensor]:
         if depth == 0:
             # return random.choice(random.choice([vars, copys]))
             return random.choice(vars)
@@ -246,7 +252,7 @@ def random_tensor_expr(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, di
     return tensor, tensor_torch, {v: t for v, t in vars}
 
 
-def random_tensor_expr2(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, dict]:
+def random_tensor_expr2(max_depth: int = 4, max_dim: int = 4) -> tuple[Tensor, torch.Tensor, dict]:
     # 1) Randomized symbol set
     chosen_letters = random.sample(string.ascii_lowercase, max_dim)
     symbols_list = symbols(" ".join(chosen_letters))
@@ -286,7 +292,7 @@ def random_tensor_expr2(max_depth=4, max_dim=4) -> tuple[Tensor, torch.Tensor, d
 
     LEAF_POOL = vars_pool + copys_pool
 
-    def inner(depth):
+    def inner(depth: int) -> tuple[Tensor, torch.Tensor]:
         # Base case
         if depth == 0 or random.random() < 0.2:
             return random.choice(LEAF_POOL)

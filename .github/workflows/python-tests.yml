@@ -25,6 +25,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Type-check (mypy)
+        # Modules with remaining typing debt are exempted via ignore_errors
+        # overrides in pyproject.toml; everything else gates the build.
+        run: uv run mypy tensorgrad/
+
       - name: Run Tests
         run: uv run pytest tests/ --maxfail=5 --disable-warnings
 

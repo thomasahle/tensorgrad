@@ -65,7 +65,7 @@ randomized equivalence tests in tests/compiler/test_stabilize.py); the point
 is that the stable form's rounding does not overflow.
 """
 
-from typing import cast
+from typing import Any, cast
 
 import sympy
 
@@ -92,7 +92,7 @@ def _identity(k: int) -> tuple:
     return tuple(range(k))
 
 
-def stabilize_outputs(builder: Builder, outputs) -> list:
+def stabilize_outputs(builder: Builder, outputs: list) -> list:
     """Run the stabilization pass over `outputs` = [(node, edge_order), ...].
 
     Returns a new outputs list with the same edge orders; new nodes are
@@ -192,7 +192,7 @@ class _Stabilizer:
         self._neg_memo[id(n)] = r
         return r
 
-    def _exp_pair(self, node: Node):
+    def _exp_pair(self, node: Node) -> tuple | None:
         """node == alpha*exp(Y)[p] + beta*exp(-Y)[p] -> (Y, p, alpha, beta)."""
         if not (isinstance(node, LinearNode) and len(node.terms) == 2):
             return None
@@ -209,7 +209,7 @@ class _Stabilizer:
             return (y1, p1, node.weights[0], node.weights[1])
         return None
 
-    def _sum_exp(self, Z: Node):
+    def _sum_exp(self, Z: Node) -> tuple | None:
         """Z == w_z * sum over some axes of exp(X)
         -> (E, X, reduced_axes, axis_of_out, w_z)."""
         if not (isinstance(Z, EinsumNode) and len(Z.ops) == 1 and not Z.constraints):
@@ -251,7 +251,7 @@ class _Stabilizer:
         )
 
     @staticmethod
-    def _orphan_factor(wires, in_subs, out_subs, wire_dims):
+    def _orphan_factor(wires: list, in_subs: list, out_subs: tuple, wire_dims: tuple) -> Any:
         """Weight owed for contracted wires that lost their LAST holder.
 
         The pointwise identity Z^-1 * Z = ones lets a rewrite delete both
@@ -267,7 +267,7 @@ class _Stabilizer:
                 factor *= sympy.sympify(wire_dims[w])
         return factor
 
-    def _consume_power(self, ops: list, in_subs: list, p: int, out_subs, wire_dims):
+    def _consume_power(self, ops: list, in_subs: list, p: int, out_subs: tuple, wire_dims: tuple) -> Any:
         """If ops[p] is pow(Z, -k) with Z a recognized denominator, try to
         consume ONE power against another operand (in place). Returns the
         scalar weight factor the rewrite contributes, or None."""
@@ -319,7 +319,7 @@ class _Stabilizer:
         for t, j in enumerate(prm):
             zwire[j] = sr[t]
 
-        def shrink():
+        def shrink() -> None:
             if ki + 1 == 0:
                 del ops[p], in_subs[p]
             else:
@@ -412,7 +412,7 @@ class _Stabilizer:
 
     # ---- recursive division by a cosh denominator ---------------------------
 
-    def _div(self, node: Node, pos: tuple, P: Node, pe, depth: int):
+    def _div(self, node: Node, pos: tuple, P: Node, pe: tuple, depth: int) -> Node | None:
         """Return node' == node / P, with P axis j aligned to node axis pos[j],
         or None. P == a*(exp(Y) + exp(-Y))[pperm], pe = (Y, pperm, a, a)."""
         if depth > MAX_DIV_DEPTH:
@@ -424,7 +424,7 @@ class _Stabilizer:
         self._div_memo[key] = res
         return res
 
-    def _div_impl(self, node: Node, pos: tuple, P: Node, pe, depth: int):
+    def _div_impl(self, node: Node, pos: tuple, P: Node, pe: tuple, depth: int) -> Node | None:
         Y, pperm, _a, _ = pe
         negY = self._negate(Y)
         aligned = len(pos) == node.order  # pos is injective by construction
@@ -487,7 +487,7 @@ class _Stabilizer:
                     )
         return None
 
-    def _half_tanh(self, node: Node, pos: tuple, pe, alpha, beta) -> Node:
+    def _half_tanh(self, node: Node, pos: tuple, pe: tuple, alpha: Any, beta: Any) -> Node:
         """(alpha*exp(Y) + beta*exp(-Y)) / (a*(exp(Y)+exp(-Y)))
         == (alpha+beta)/(2a) + (alpha-beta)/(2a) * tanh(Y), in node's axes."""
         Y, pperm, a, _ = pe
@@ -535,7 +535,7 @@ class _Stabilizer:
                 )
         return n
 
-    def _push_terms(self, E: Node, se: tuple, L: LinearNode, sl: tuple):
+    def _push_terms(self, E: Node, se: tuple, L: LinearNode, sl: tuple) -> Node | None:
         terms, perms = [], []
         for t, pm in zip(L.terms, L.perms):
             r = self._mul_fuse(t, pm, E, se, sl)
@@ -546,7 +546,7 @@ class _Stabilizer:
             perms.append(pm2)
         return self.b.linear(terms, perms, list(L.weights))
 
-    def _mul_fuse(self, t: Node, pm: tuple, E: Node, se: tuple, sl: tuple):
+    def _mul_fuse(self, t: Node, pm: tuple, E: Node, se: tuple, sl: tuple) -> tuple | None:
         """Build t * E (aligned through the Linear's perm) and fuse; succeeds
         only if no bare E operand remains. Returns (node, perm) or None."""
         if isinstance(t, EinsumNode) and t.ops and len(set(t.out_subs)) == len(t.out_subs):

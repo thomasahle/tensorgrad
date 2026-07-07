@@ -26,29 +26,29 @@ from tensorgrad import functions as F  # if needed for function signatures
 
 
 @singledispatch
-def to_index(expr) -> str:
+def to_index(expr: Tensor) -> str:
     raise NotImplementedError(f"Index notation not implemented for type {type(expr)}")
 
 
 @singledispatch
-def to_index_free(expr) -> str:
+def to_index_free(expr: Tensor) -> str:
     raise NotImplementedError(f"Index notation not implemented for type {type(expr)}")
 
 
 @to_index.register
-def _(expr: Variable):
+def _(expr: Variable) -> str:
     if expr.edges:
         return f"{expr.name}_{{{','.join(map(str, expr.edges))}}}"
     return expr.name
 
 
 @to_index_free.register
-def _(expr: Variable):
+def _(expr: Variable) -> str:
     return expr.name
 
 
 @to_index.register
-def _(expr: Rename):
+def _(expr: Rename) -> str:
     # Rename is lazy on composites (see Tensor.rename): peel one level and
     # re-dispatch on the real node type. The irreducible Rename(Variable)
     # prints as the variable with its renamed indices.
@@ -68,7 +68,7 @@ def _(expr: Rename):
 
 
 @to_index_free.register
-def _(expr: Rename):
+def _(expr: Rename) -> str:
     # Index-free notation drops the names anyway; peel so composites are
     # rendered by their own handler (a renamed Variable stays irreducible
     # and delegates to the bare variable).
@@ -79,19 +79,19 @@ def _(expr: Rename):
 
 
 @to_index.register
-def _(expr: Zero):
+def _(expr: Zero) -> str:
     if expr.edges:
         return f"0_{{{','.join(map(str, expr.edges))}}}"
     return "0"
 
 
 @to_index_free.register
-def _(expr: Zero):
+def _(expr: Zero) -> str:
     return "0"
 
 
 @to_index.register
-def _(expr: Delta):
+def _(expr: Delta) -> str:
     # For a Kronecker delta:
     # - If there are no edges, simply output the size (as a string).
     # - Otherwise, output δ(s)_{i,j} where s is expr._size.
@@ -103,7 +103,7 @@ def _(expr: Delta):
 
 
 @to_index_free.register
-def _(expr: Delta):
+def _(expr: Delta) -> str:
     if expr.order == 0:
         return str(expr._size)
     if expr.order == 1:
@@ -113,9 +113,9 @@ def _(expr: Delta):
     return to_index(expr)  # Give up
 
 
-def _general_handle_sum(expr, term_strs):
+def _general_handle_sum(expr: Sum, term_strs: list[str]) -> str:
     # Sum over terms: combine each term with its coefficient.
-    parts = []
+    parts: list[str] = []
     for weight, term_str in zip(expr.weights, term_strs):
         sign = ("+ " if parts else "") if weight > 0 else "- "
         w = f"{abs(weight)} " if abs(weight) != 1 else ""
@@ -124,13 +124,13 @@ def _general_handle_sum(expr, term_strs):
 
 
 @to_index.register
-def _(expr: Sum):
+def _(expr: Sum) -> str:
     term_strs = [to_index(t) for t in expr.terms]
     return _general_handle_sum(expr, term_strs)
 
 
 @to_index_free.register
-def _(expr: Sum):
+def _(expr: Sum) -> str:
     term_strs = [to_index_free(t) for t in expr.terms]
     return _general_handle_sum(expr, term_strs)
 
@@ -156,7 +156,7 @@ def _unused_edge_names(edges: Iterable[str], reserved_names: Iterable[str]) -> d
     return rename
 
 
-def _handle_path(tensors: list[Tensor], edges: "list[Optional[str]]"):
+def _handle_path(tensors: list[Tensor], edges: "list[Optional[str]]") -> str:
     res = []
     for t, in_edge, out_edge in zip(tensors, edges[:-1], edges[1:]):
         inner_str = to_index_free(t)
@@ -176,7 +176,7 @@ def _handle_path(tensors: list[Tensor], edges: "list[Optional[str]]"):
     return " ".join(res)
 
 
-def _handle_trace(tensors: list[Tensor], out_edges: list[str]):
+def _handle_trace(tensors: list[Tensor], out_edges: list[str]) -> str:
     assert len(tensors) >= 2
 
     if all(isinstance(t, Delta) for t in tensors):
@@ -203,7 +203,7 @@ def _handle_trace(tensors: list[Tensor], out_edges: list[str]):
     return "tr(" + " ".join(f if marker == "M" else f"{f}^T" for f, marker in best_pairs) + ")"
 
 
-def lexicographically_minimal_rotation(factors: list[str], trans: list[str]):
+def lexicographically_minimal_rotation(factors: list[str], trans: list[str]) -> list[tuple[str, str]]:
     """
     Given two lists, `factors` and `trans` (each of the same length),
     compute all rotations of the paired list (both the original ordering
@@ -220,7 +220,7 @@ def lexicographically_minimal_rotation(factors: list[str], trans: list[str]):
         candidates.append((trans_str, rotated))
 
     # Option 2: rotations of the reversed order (with markers swapped)
-    def swap_marker(m):
+    def swap_marker(m: str) -> str:
         return "M" if m == "T" else "T" if m == "M" else m
 
     reversed_pairs = [(f, swap_marker(m)) for f, m in reversed(pairs)]
@@ -234,7 +234,7 @@ def lexicographically_minimal_rotation(factors: list[str], trans: list[str]):
 
 
 @to_index.register
-def _(prod: Product):
+def _(prod: Product) -> str:
     # Rename all the inner edges to nicer names, since we are going to display them.
     inner_edges = {e for t in prod.factors for e in t.edges if e not in prod.edges}
     rename = _unused_edge_names(inner_edges, prod.edges)
@@ -243,7 +243,7 @@ def _(prod: Product):
 
 
 @to_index_free.register
-def _(prod: Product):
+def _(prod: Product) -> str:
     G = nx.MultiGraph()
     G.add_nodes_from(range(len(prod.factors)))
     for i, t1 in enumerate(prod.factors):
@@ -295,17 +295,17 @@ def _(prod: Product):
 
 
 @to_index.register
-def _(expr: Derivative):
+def _(expr: Derivative) -> str:
     return f"d({to_index(expr.x)})/d({to_index(expr.x)})"
 
 
 @to_index_free.register
-def _(expr: Derivative):
+def _(expr: Derivative) -> str:
     return f"d({to_index_free(expr.x)})/d({to_index_free(expr.x)})"
 
 
 @to_index.register
-def _(expr: Function):
+def _(expr: Function) -> str:
     args_str = ", ".join(to_index(arg) for arg in expr.inputs)
     if isinstance(expr.signature, F._PowerFunction):
         return f"({args_str})^{{{expr.signature.k}}}"
@@ -313,7 +313,7 @@ def _(expr: Function):
 
 
 @to_index_free.register
-def _(expr: Function):
+def _(expr: Function) -> str:
     args_str = ", ".join(to_index_free(arg) for arg in expr.inputs)
     if isinstance(expr.signature, F._PowerFunction):
         return f"({args_str})^{{{expr.signature.k}}}"
@@ -321,10 +321,10 @@ def _(expr: Function):
 
 
 @to_index.register
-def _(expr: Expectation):
+def _(expr: Expectation) -> str:
     return f"E_{expr.wrt.name}[{to_index(expr.tensor)}]"
 
 
 @to_index_free.register
-def _(expr: Expectation):
+def _(expr: Expectation) -> str:
     return f"E_{expr.wrt.name}[{to_index_free(expr.tensor)}]"

@@ -16,7 +16,7 @@ from tensorgrad.extras.diagram_layout import attach_layout
 from tensorgrad.extras.to_diagram import DiagramSnapshot, to_diagram
 
 
-def diagram_mobject(diagram: Tensor | DiagramSnapshot | dict[str, Any], *, scale: float = 1.0):
+def diagram_mobject(diagram: Tensor | DiagramSnapshot | dict[str, Any], *, scale: float = 1.0) -> Any:
     """Create a Manim ``VGroup`` for a tensor diagram snapshot.
 
     The function accepts a tensorgrad expression, a ``DiagramSnapshot``, or a
@@ -90,7 +90,7 @@ def diagram_mobject(diagram: Tensor | DiagramSnapshot | dict[str, Any], *, scale
             rect = Rectangle(width=width, height=height, color=WHITE)
         rect.move_to(center)
         rect.set_stroke(opacity=0.55)
-        label = Text(box["label"], font_size=18).next_to(rect, direction=[0, 1, 0], buff=0.05)
+        label = Text(box["label"], font_size=18).next_to(rect, direction=(0, 1, 0), buff=0.05)
         box_group = VGroup(rect, label)
         mobjects[box["id"]] = box_group
         group.add_to_back(box_group)
@@ -104,12 +104,14 @@ def diagram_mobject(diagram: Tensor | DiagramSnapshot | dict[str, Any], *, scale
         if wire.get("label"):
             mx = sum(p[0] for p in points) / len(points)
             my = sum(p[1] for p in points) / len(points)
-            group.add(MathTex(_tex_escape(wire["label"])).scale(0.32).move_to([mx, my + 0.08, 0]))
+            group.add(MathTex(_tex_escape(wire["label"])).scale(0.32).move_to((mx, my + 0.08, 0)))
 
     return group
 
 
-def play_diagram_transform(scene: Any, current: Any, target: Tensor | DiagramSnapshot | dict[str, Any], **play_kwargs: Any):
+def play_diagram_transform(
+    scene: Any, current: Any, target: Tensor | DiagramSnapshot | dict[str, Any], **play_kwargs: Any
+) -> Any:
     """Play a generic Manim transform to another diagram snapshot."""
 
     try:
@@ -142,9 +144,9 @@ def _layout(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _manim_point(point: tuple[float, float], unit: float) -> list[float]:
+def _manim_point(point: tuple[float, float], unit: float) -> tuple[float, float, float]:
     x, y = point
-    return [x * unit, -y * unit, 0]
+    return (x * unit, -y * unit, 0)
 
 
 def _tex_escape(text: str) -> str:

@@ -19,6 +19,7 @@ launch, a bad deal).
 """
 
 from collections import defaultdict
+from typing import Any, TypeGuard
 
 import sympy
 
@@ -43,7 +44,7 @@ _SIZE_CEILING = 1 << 18
 GEMM_BATCHING = False
 
 
-def _numel(dims, dim_map) -> int:
+def _numel(dims: tuple, dim_map: dict) -> int:
     total = 1
     for d in dims:
         if isinstance(d, int):
@@ -56,7 +57,7 @@ def _numel(dims, dim_map) -> int:
     return total
 
 
-def _signature(nd: EinsumNode, side: int):
+def _signature(nd: EinsumNode, side: int) -> tuple:
     """Group key: identical wiring and shared operand; members differ only
     in the non-shared operand (which must be shape-identical)."""
     other = nd.ops[1 - side]
@@ -70,7 +71,7 @@ def _signature(nd: EinsumNode, side: int):
     )
 
 
-def _eligible(nd: Node) -> bool:
+def _eligible(nd: Node) -> TypeGuard[EinsumNode]:
     if not isinstance(nd, EinsumNode) or len(nd.ops) != 2:
         return False
     if nd.constraints or nd.weight != 1:
@@ -129,7 +130,7 @@ def batch_shared_gemms(builder: Builder, outputs: list, dims: dict) -> list:
         in_subs[1 - side] = (k_wire,) + tuple(proto.in_subs[1 - side])
         out_subs = (k_wire,) + tuple(proto.out_subs)
         wire_dims = dict(enumerate(proto.wire_dims)) | {k_wire: len(others)}
-        ops = [None, None]
+        ops: list[Any] = [None, None]
         ops[side] = shared
         ops[1 - side] = stacked
         big = builder.einsum(ops, in_subs, out_subs, wire_dims, proto.weight, proto.constraints)

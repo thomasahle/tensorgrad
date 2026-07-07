@@ -55,7 +55,7 @@ from tensorgrad.compiler.ir import (
 _PINNED = (InputNode, ConstNode, GatherNode, FusedFwdNode, FusedBwdNode)
 
 
-def matmul_groups(node: Node):
+def matmul_groups(node: Node) -> tuple[list, list, list, list] | None:
     """If `node` is a 2-operand einsum expressible as a (batched) matrix
     multiply, return (batch, m, k, n) wire lists; else None.
 
@@ -111,7 +111,7 @@ def _pinned(op: Node) -> bool:
     return isinstance(op, _PINNED)
 
 
-def _split_blocks(wires, batch, m, n):
+def _split_blocks(wires: list, batch: list, m: list, n: list) -> tuple[list, list, list] | None:
     """Split a block-form wire order into (b_ord, m_ord, n_ord); None if the
     order is not (batch, m-block, n-block) / (batch, n-block, m-block)."""
     nb = len(batch)
@@ -125,7 +125,7 @@ def _split_blocks(wires, batch, m, n):
     return None
 
 
-def _cell_feasible(node: EinsumNode, groups, wires) -> bool:
+def _cell_feasible(node: EinsumNode, groups: tuple, wires: list) -> bool:
     """Can this block-form output order be produced by mm/bmm WITHOUT
     permuting a PINNED operand? (Pinned operands lie in logical order; a
     block's intra order must be a subsequence match. Flexible operands are
@@ -212,7 +212,7 @@ def _decide(node: Node, votes: list) -> tuple:
 def _vote_operands(node: Node, phys: tuple, votes: dict) -> None:
     """Given node's decided layout, record desired layouts for its operands."""
 
-    def vote(op, want):
+    def vote(op: Node, want: tuple) -> None:
         # Pinned kinds ignore votes in _decide; recording them is harmless.
         votes.setdefault(id(op), []).append(tuple(want))
 
@@ -294,11 +294,11 @@ def _free_expand(node: Node) -> bool:
     return len(set(subs)) == len(subs) and set(subs) < set(node.out_subs)
 
 
-def _refine(node: Node, phys: dict):
+def _refine(node: Node, phys: dict) -> tuple | None:
     """Forward refinement for weakly-decided nodes: derive the layout the
     node's operands make FREE to produce. Returns a phys tuple or None."""
 
-    def phys_of(op):
+    def phys_of(op: Node) -> tuple:
         p = phys.get(id(op))
         return p if p is not None else tuple(range(op.order))
 

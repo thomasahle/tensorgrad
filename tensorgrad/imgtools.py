@@ -8,13 +8,13 @@ from PIL import Image, ImageDraw
 from tensorgrad.extras.to_tikz import to_tikz
 from tensorgrad.structure import edge_structural_graph
 
-from tensorgrad import Derivative
+from tensorgrad import Derivative, Tensor
 from tensorgrad.extras import Expectation
 
 import networkx as nx
 
 
-def compile_latex(latex_code, suffix=""):
+def compile_latex(latex_code: str, suffix: str = "") -> str:
     output_dir = tempfile.mkdtemp()
 
     # Save the LaTeX code to a file
@@ -58,14 +58,14 @@ def compile_latex(latex_code, suffix=""):
 
 
 def combine_images_vertically(
-    image_paths,
-    padding=10,
-    line_padding=5,
-    background_color="white",
-    line_color="black",
-    line_width=2,
-    output_path="combined_image.png",
-):
+    image_paths: list[str],
+    padding: int = 10,
+    line_padding: int = 5,
+    background_color: str = "white",
+    line_color: str = "black",
+    line_width: int = 2,
+    output_path: str = "combined_image.png",
+) -> str:
     images = [Image.open(x) for x in image_paths]
 
     # Calculate total height considering padding, maximum width, separating lines, and line padding
@@ -108,16 +108,16 @@ def combine_images_vertically(
     return combined_image_path
 
 
-def save_as_image(expr, path):
+def save_as_image(expr: Tensor, path: str) -> None:
     latex_code = to_tikz(expr)
     image_path = compile_latex(latex_code)
     os.rename(image_path, path)
     print(f"Image saved to {path}")
 
 
-def save_steps_old(expr, min_steps=None):
+def save_steps_old(expr: Tensor, min_steps: int | None = None) -> None:
     images = []
-    images.append(compile_latex(expr, suffix="0"))
+    images.append(compile_latex(expr, suffix="0"))  # type: ignore[arg-type]  # pre-existing bug
     old = expr
     while True:
         new = expr.simplify({"grad_steps": len(images)})
@@ -131,7 +131,7 @@ def save_steps_old(expr, min_steps=None):
     print(f"Combined image saved to {output_path}")
 
 
-def save_steps(expr, slow_grad=False, output_path="steps.png"):
+def save_steps(expr: Tensor, slow_grad: bool = False, output_path: str = "steps.png") -> None:
     images = []
     images.append(compile_latex(to_tikz(expr), suffix="0"))
 
@@ -168,7 +168,7 @@ def save_steps(expr, slow_grad=False, output_path="steps.png"):
     print(f"Combined image saved to {output_path}")
 
 
-def draw_structural_graph(tensor, iter=50):
+def draw_structural_graph(tensor: Tensor, iter: int = 50) -> None:
     G, _edges = edge_structural_graph(tensor)
     labels = {i: data.get("name", "") for i, data in G.nodes(data=True)}
     pos = nx.spectral_layout(G)

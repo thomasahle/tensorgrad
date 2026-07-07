@@ -41,7 +41,7 @@ the same cost function.
 """
 
 import string
-from typing import Any, cast
+from typing import Any, Sequence, cast
 
 import opt_einsum as oe
 import sympy
@@ -101,7 +101,7 @@ _LETTERS = string.ascii_letters
 _HUGE = 1e30
 
 
-def factor_outputs(builder: Builder, outputs, dims, collapse: bool = True) -> list:
+def factor_outputs(builder: Builder, outputs: list, dims: dict, collapse: bool = True) -> list:
     """Run the factoring passes over `outputs` = [(node, edge_order), ...].
 
     Returns a new outputs list with the same edge orders; `builder` is the
@@ -178,14 +178,14 @@ class _Rewriter:
         # Largest program input/output numel (set by factor_outputs).
         self._base = 1.0
 
-    def _inflated(self, dims) -> bool:
+    def _inflated(self, dims: Sequence) -> bool:
         """A forward-mode-shaped transient: bigger than every program input
         and output by INFLATE_MARGIN (nothing that big enters or leaves)."""
         return self._numel(dims) > _adj.INFLATE_MARGIN * self._base
 
     # ---- infrastructure ---------------------------------------------------
 
-    def dim_of(self, expr) -> int:
+    def dim_of(self, expr: Any) -> int:
         if (hit := self._dim_cache.get(expr)) is not None:
             return hit
         e = sympy.sympify(expr)
@@ -322,18 +322,18 @@ class _Rewriter:
             return n
         return seen
 
-    def _zero(self, dims) -> Node:
+    def _zero(self, dims: Sequence) -> Node:
         return self.b.const("zero", (), tuple(dims))
 
     # ---- cost model ---------------------------------------------------------
 
-    def _numel(self, dims) -> float:
+    def _numel(self, dims: Sequence) -> float:
         r = 1.0
         for d in dims:
             r *= self.dim_of(d)
         return r
 
-    def _escore(self, in_subs, out_subs, wire_dims) -> float:
+    def _escore(self, in_subs: Sequence, out_subs: Sequence, wire_dims: Any) -> float:
         """Score of contracting operands (wire subscripts) down to out_subs,
         using the same planner codegen uses: flops + MEM_WEIGHT * writes."""
         subs = tuple(tuple(s) for s in in_subs)
@@ -343,7 +343,7 @@ class _Rewriter:
         out = tuple(w for w in dict.fromkeys(out_subs) if w in op_wires)
         letters: dict = {}
 
-        def let(w):
+        def let(w: int) -> str:
             if w not in letters:
                 letters[w] = _LETTERS[len(letters)]
             return letters[w]
@@ -616,12 +616,12 @@ class _Rewriter:
                 return self.b.linear(nodes, [tuple(range(m))] * len(nodes), [1] * len(nodes))
         return n
 
-    def _make_term(self, n: EinsumNode, p: int, t: Node, subs_t: list, w, cnt_L: int):
+    def _make_term(self, n: EinsumNode, p: int, t: Node, subs_t: list, w: Any, cnt_L: int) -> tuple:
         """Build einsum(n with operand p replaced by Sum-term t). Returns
         (node, absorbed): `absorbed` when t was flattened into the einsum.
         Both the leaf and the flattened form are built; the score decides."""
 
-        def build(splice: bool):
+        def build(splice: bool) -> Node:
             ops = [op for q, op in enumerate(n.ops) if q != p]
             in_subs = [tuple(s) for q, s in enumerate(n.in_subs) if q != p]
             wire_dims = dict(enumerate(n.wire_dims))
@@ -681,7 +681,7 @@ class _Rewriter:
           - merge like terms (same node, same perm: weights add)."""
         m = len(L.dims)
 
-        def absorb(t, pm, w):
+        def absorb(t: Node, pm: tuple, w: Any) -> tuple:
             while (
                 isinstance(t, EinsumNode)
                 and len(t.ops) == 1
@@ -700,7 +700,7 @@ class _Rewriter:
                 pm = tuple(range(m))
             return t, pm, w
 
-        def unit_twin(t):
+        def unit_twin(t: Node) -> tuple:
             """The weight-1 twin of a weighted einsum (for weight-agnostic
             like-term keys). Codegen's step cache shares the contraction
             steps between the twin and the weighted original."""
@@ -718,7 +718,7 @@ class _Rewriter:
                 sympy.sympify(t.weight),
             )
 
-        def merged(ents):
+        def merged(ents: list) -> list:
             acc: dict = {}
             keys: list = []
             for t, pm, w in ents:
@@ -905,12 +905,12 @@ class _Rewriter:
                 seen_here.add(key)
                 groups.setdefault(key, []).append((i, o, opn))
 
-        def member_classes(sig, i, o):
+        def member_classes(sig: tuple, i: int, o: int) -> tuple:
             """(roles_w, class_wire) for occurrence (i, o) under signature sig."""
             _ops, in_subs, out_subs, _wdims, _ewt, pm, _w = views[i]
             out_wire = [out_subs[pm[j]] for j in range(m)]
             roles_w = out_wire + list(in_subs[o])
-            class_wire = {}
+            class_wire: dict[int, int] = {}
             for r, c in enumerate(sig):
                 class_wire.setdefault(c, roles_w[r])
             return roles_w, class_wire

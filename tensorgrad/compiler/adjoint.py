@@ -79,6 +79,8 @@ semantics-preserving, verified by Schwartz-Zippel fingerprints and against
 torch.autograd in tests/compiler/test_reverse_mode.py.
 """
 
+from typing import Any, Iterable, Optional, Sequence, Union, cast
+
 import sympy
 
 from tensorgrad.compiler.ir import (
@@ -108,7 +110,9 @@ MAX_WIRES = 40
 MAX_ROUNDS = 64
 
 
-def splice_child(ops, in_subs, wire_dims, rows, child: EinsumNode, child_subs):
+def splice_child(
+    ops: list, in_subs: list, wire_dims: dict, rows: list, child: EinsumNode, child_subs: Sequence[int]
+) -> sympy.Expr:
     """Append `child`'s operands/constraints to einsum parts under
     construction: child's out wires alias the parent wires `child_subs`,
     its internal wires become fresh parent wires. Returns child.weight."""
@@ -137,7 +141,7 @@ class _Collapser:
         self.base = 1.0
         self.changed = False
 
-    def _numel(self, dims_tuple) -> float:
+    def _numel(self, dims_tuple: Iterable) -> float:
         r = 1.0
         for d in dims_tuple:
             if (hit := self._numel_cache.get(d)) is None:
@@ -150,12 +154,12 @@ class _Collapser:
     def inflated(self, node: Node) -> bool:
         return self._numel(node.dims) > INFLATE_MARGIN * self.base
 
-    def _winflated(self, wires, wire_dims) -> bool:
+    def _winflated(self, wires: Iterable[int], wire_dims: tuple) -> bool:
         return self._numel([wire_dims[w] for w in wires]) > INFLATE_MARGIN * self.base
 
     # ---- rule R: one cotangent step at a head einsum -----------------------
 
-    def _pick_boundary(self, n: EinsumNode):
+    def _pick_boundary(self, n: EinsumNode) -> Optional[int]:
         """The operand to dissolve: an inflated Linear/Einsum (einsums must
         have distinct out wires; ones-einsums are absorption's job)."""
         for i, op in enumerate(n.ops):
@@ -167,7 +171,7 @@ class _Collapser:
                 return i
         return None
 
-    def _compress(self, n: EinsumNode, i: int):
+    def _compress(self, n: EinsumNode, i: int) -> Optional[tuple]:
         """Contract every operand except `i` down to the wires they share
         with operand i or with the output — the cotangent u. Returns
         (u_node, u_subs) or None (interface inflated / nothing to gain).
@@ -401,7 +405,7 @@ class _Collapser:
 
     # ---- fixpoint over the DAG ----------------------------------------------
 
-    def run(self, outputs):
+    def run(self, outputs: list) -> list:
         nodes = [n for n, _ in outputs]
         for nd in toposort(list(nodes)):
             if isinstance(nd, InputNode):
@@ -479,12 +483,12 @@ class _Accumulate(_Collapser):
 
     # ---- region ------------------------------------------------------------
 
-    def _region(self, order) -> dict:
+    def _region(self, order: list) -> dict:
         """id(node) -> node for every dissolvable transient Jacobian:
         inflated einsums with operands and distinct out wires (splice needs
         a well-defined aliasing), and inflated LinearNodes. Inflated Map/
         Reduce/Gather/Const nodes stay dense leaves (nonlinear or opaque)."""
-        region = {}
+        region: dict[int, Node] = {}
         for nd in order:
             if not self.inflated(nd):
                 continue
@@ -496,7 +500,7 @@ class _Accumulate(_Collapser):
 
     # ---- descriptors -------------------------------------------------------
 
-    def _split(self, rest, x_subs, out_subs, rows, wire_dims):
+    def _split(self, rest: list, x_subs: tuple, out_subs: tuple, rows: Any, wire_dims: dict) -> Optional[tuple]:
         """Contract the context `rest` = [(op, subs), ...] of a region read
         down to a cotangent U over the interface it shares with the chain
         operand / output / constraints / passengers. Output axes that do not
@@ -517,7 +521,7 @@ class _Accumulate(_Collapser):
         row_wires = {wr for cs, _ in rows for wr, _ in cs}
         rest = [(op, tuple(s)) for op, s in rest]
 
-        def interface(fold, pax):
+        def interface(fold: list, pax: list) -> tuple[list, float]:
             pax_wires = {wr for _, s in pax for wr in s}
             keep = sorted(
                 {wr for _, s in fold for wr in s}
@@ -540,7 +544,7 @@ class _Accumulate(_Collapser):
         # unmerged vocab-carrying cotangents on 3-layer gpt-nano, 4.3 GB).
         deferred = set(out_subs) - xw
         fold_keep, fold_size = interface(rest, [])
-        best = (fold_size, fold_keep, rest, []) if fold_size <= self.allow else None
+        best: Optional[tuple] = (fold_size, fold_keep, rest, []) if fold_size <= self.allow else None
         pax_ids = {
             q for q, (op, s) in enumerate(rest)
             if (deferred & set(s)) and id(op) in self._frozen
@@ -562,7 +566,7 @@ class _Accumulate(_Collapser):
         U = self._build_cotangent(f, tuple(keep), wire_dims)
         return U, tuple(keep), tuple(p)
 
-    def _build_cotangent(self, fold, keep, wire_dims):
+    def _build_cotangent(self, fold: list, keep: tuple, wire_dims: dict) -> Node:
         """Contract `fold` = [(op, subs), ...] down to the `keep` interface.
 
         WAIST handling: a fold operand may itself be a small einsum reading
@@ -607,7 +611,7 @@ class _Accumulate(_Collapser):
         # collapsing it here is the u·(A·B) = (u·A)·B reassociation.
         return self._recollapse(self.b.einsum(ops, in_subs, keep, wire_dims))
 
-    def _recollapse(self, U):
+    def _recollapse(self, U: Node) -> Node:
         """Recursively collapse a freshly built cotangent that still reads a
         region or tower node (bounded by MAX_DEPTH)."""
         if (
@@ -624,7 +628,10 @@ class _Accumulate(_Collapser):
                 return new
         return U
 
-    def _canon(self, U, u_subs, x_subs, out_subs, wire_dims, w, rows, pax):
+    def _canon(
+        self, U: Node, u_subs: tuple, x_subs: tuple, out_subs: tuple,
+        wire_dims: dict, w: Any, rows: Any, pax: tuple,
+    ) -> tuple:
         """Canonicalize a contribution to label space: wires relabeled by
         first occurrence over out_subs + x_subs (the shared interface), then
         u_subs, then passenger wires, then any leftover constraint wires.
@@ -669,7 +676,7 @@ class _Accumulate(_Collapser):
                tuple(str(d) for d in dims_list), rows_sig, nonce)
         return (sig, U, sympy.sympify(w), (u_l, x_l, out_l, tuple(dims_list), rows_l, pax_l))
 
-    def _merge(self, group):
+    def _merge(self, group: list) -> Node:
         """Σ_i w_i einsum([U_i, X], shared wiring) == einsum([Σ_i w_i U_i, X],
         same wiring): sum the cotangents as one LinearNode (weights ride the
         Linear — never wrap a big cotangent in a scaling copy), axes aligned
@@ -694,7 +701,7 @@ class _Accumulate(_Collapser):
 
     # ---- towers --------------------------------------------------------------
 
-    def _inline_s(self, ops, in_subs, wd, rows):
+    def _inline_s(self, ops: list, in_subs: list, wd: dict, rows: list) -> Optional[sympy.Expr]:
         """Splice every operand in self.S (absorbable region-reading tower
         einsum; see _sweep) into einsum parts under construction, mutating
         the lists in place, transitively (a spliced tower node's operands
@@ -718,7 +725,7 @@ class _Accumulate(_Collapser):
             # q+1 shifted down) — the tail is reached by the same scan.
         return w
 
-    def _inline_towers(self, n: EinsumNode):
+    def _inline_towers(self, n: EinsumNode) -> Optional[Node]:
         """Inline every tower operand of head `n` so its region reads become
         direct. Returns `n` unchanged when it has none, the rewritten node
         (possibly const-folded), or None on cap breach."""
@@ -735,7 +742,10 @@ class _Accumulate(_Collapser):
 
     # ---- one boundary ------------------------------------------------------
 
-    def _dissolve(self, Y, Um, layout, region, contributions, pieces):
+    def _dissolve(
+        self, Y: Union[EinsumNode, LinearNode], Um: Node, layout: tuple,
+        region: dict, contributions: dict, pieces: list,
+    ) -> None:
         """Push the merged cotangent read einsum([Um, pax..., Y], ...) one
         boundary into Y. Emits new descriptors for region operands and
         finished pieces for frontier ones; falls back to a dense read of Y
@@ -746,7 +756,7 @@ class _Accumulate(_Collapser):
         pax_ops = [p for p, _ in pax_l]
         pax_subs = [s for _, s in pax_l]
 
-        def dense_read(why):
+        def dense_read(why: str) -> None:
             self.stats[why] = self.stats.get(why, 0) + 1
             pieces.append(
                 self.b.einsum([Um, *pax_ops, Y], [u_l, *pax_subs, x_l], out_l, dims_map, 1, rows_l)
@@ -824,7 +834,7 @@ class _Accumulate(_Collapser):
 
     # ---- one head ----------------------------------------------------------
 
-    def _rewrite_head(self, n: EinsumNode, region: dict):
+    def _rewrite_head(self, n: EinsumNode, region: dict) -> Optional[Node]:
         """Reverse-mode program for one head, or None to leave it alone."""
         inlined = self._inline_towers(n)
         if inlined is None:
@@ -876,7 +886,9 @@ class _Accumulate(_Collapser):
                 self.stats[key] = self.stats.get(key, 0) + 1
             for group in groups.values():
                 Um = self._merge(group)
-                self._dissolve(Y, Um, group[0][3], region, contributions, pieces)
+                # (cast: _region only admits EinsumNode/LinearNode values)
+                self._dissolve(cast(Union[EinsumNode, LinearNode], Y), Um, group[0][3],
+                               region, contributions, pieces)
             if len(pieces) > self.MAX_PIECES:
                 self.stats["head:max_pieces"] = self.stats.get("head:max_pieces", 0) + 1
                 return None
@@ -887,7 +899,7 @@ class _Accumulate(_Collapser):
 
     # ---- the pass ----------------------------------------------------------
 
-    def run(self, outputs):
+    def run(self, outputs: list) -> list:
         self.stats: dict = {}  # fallback/skip telemetry, for debugging only
         self.allow = 0.0  # computed by the first sweep, then held fixed
         # Sweep 1 defers absorbable tower nodes to their top consumers'
@@ -897,7 +909,7 @@ class _Accumulate(_Collapser):
         outputs = self._sweep(outputs, defer_towers=True)
         return self._sweep(outputs, defer_towers=False)
 
-    def _sweep(self, outputs, defer_towers):
+    def _sweep(self, outputs: list, defer_towers: bool) -> list:
         nodes = [n for n, _ in outputs]
         order0 = toposort(list(nodes))
         for nd in order0:
@@ -1030,7 +1042,7 @@ def _rebuild(b: Builder, nd: Node, ops: list[Node]) -> Node:
     return nd
 
 
-def collapse_chains(builder: Builder, outputs, dims) -> list:
+def collapse_chains(builder: Builder, outputs: list, dims: dict) -> list:
     """Entry point: reverse-mode chain collapse over `outputs` =
     [(node, edge_order), ...]. Stage A (per-node adjoint accumulation)
     first, then the R/M fixpoint as a backstop for anything A skipped."""

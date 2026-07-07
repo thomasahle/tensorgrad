@@ -155,7 +155,6 @@ class Lowerer:
                     edges = list(ft.edges)
                     for e in edges[1:]:
                         aliases.union(e, edges[0])
-                    find(edges[0])
             elif isinstance(ft, F.Convolution):
                 # C[i, k, o] = 1 iff i = dilation*k + stride*o (stride/dilation
                 # currently 1 in tensorgrad, but the row form supports them).
@@ -164,20 +163,14 @@ class Lowerer:
                     ({ft.input_name: 1, ft.kernel_name: -1, ft.output_name: -stride}, 0)
                 )
                 for e in ft.edges:
-                    find(e)
                     edge_dims.setdefault(e, ft.shape[e])
             elif isinstance(ft, Affine):
                 for coeffs, const in ft.rows:
                     raw_rows.append((dict(coeffs), const))
                 for e in ft.edges:
-                    find(e)
                     edge_dims.setdefault(e, ft.shape[e])
             else:
                 operands_t.append(ft)
-                for e in ft.edges:
-                    find(e)
-        for e in out_order:
-            find(e)
 
         # Wire = union-find class. Assign wire ids.
         wire_of: dict[str, int] = {}

@@ -62,6 +62,7 @@ Public API:
 import hashlib
 import string
 from fractions import Fraction
+from typing import Any, Optional, Sequence
 
 import numpy as np
 import sympy
@@ -104,7 +105,7 @@ class _Retry(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _h(*parts) -> int:
+def _h(*parts: Any) -> int:
     """64-bit deterministic hash of a tuple of printable/bytes parts."""
     h = hashlib.blake2b(digest_size=8)
     for p in parts:
@@ -117,11 +118,11 @@ def _h(*parts) -> int:
     return int.from_bytes(h.digest(), "big")
 
 
-def _rng(*key) -> np.random.Generator:
+def _rng(*key: Any) -> np.random.Generator:
     return np.random.default_rng(_h(*key))
 
 
-def _rand_tensor(shape, *key) -> np.ndarray:
+def _rand_tensor(shape: Sequence[int], *key: Any) -> np.ndarray:
     arr = _rng(*key).integers(0, P, size=tuple(shape), dtype=np.int64)
     return arr
 
@@ -147,7 +148,7 @@ def _fraction_residue(fr: Fraction) -> int:
     return fr.numerator % P * _inv(fr.denominator) % P
 
 
-def _scalar_residue(w, assign: dict, ctx) -> int:
+def _scalar_residue(w: Any, assign: dict, ctx: Any) -> int:
     """Exact residue of a scalar weight. Fractions/ints/floats are exact
     (floats via their exact binary Fraction); sympy expressions are
     substituted with the trial's dim assignment; anything irrational left
@@ -171,7 +172,7 @@ def _scalar_residue(w, assign: dict, ctx) -> int:
     return _h(ctx, "scalar-atom", sympy.srepr(e)) % P
 
 
-def _dim(d, assign: dict) -> int:
+def _dim(d: Any, assign: dict) -> int:
     """Resolve a (possibly symbolic) dim to a positive int, else retry."""
     if isinstance(d, (int, np.integer)):
         v = int(d)
@@ -191,7 +192,7 @@ def _node_syms(node: Node) -> set:
     """All sympy symbols this node's evaluation depends on."""
     syms = set()
 
-    def add(x):
+    def add(x: Any) -> None:
         try:
             e = sympy.sympify(x)
         except (sympy.SympifyError, TypeError, ValueError):
@@ -224,7 +225,10 @@ def _node_syms(node: Node) -> set:
 # ---------------------------------------------------------------------------
 
 
-def _contract(arrA, subsA, arrB, subsB, keep, wire_sz):
+def _contract(
+    arrA: np.ndarray, subsA: Sequence[int], arrB: Optional[np.ndarray],
+    subsB: Optional[Sequence[int]], keep: set, wire_sz: dict,
+) -> tuple[np.ndarray, list]:
     """One einsum step: contract arrA (and optionally arrB) down to the
     wires in `keep`, mod P. Repeated wires within one operand are diagonals
     (np.einsum handles this natively)."""
@@ -246,11 +250,11 @@ def _contract(arrA, subsA, arrB, subsB, keep, wire_sz):
     if subsB is None:
         res = np.einsum(eq, arrA)
     else:
-        res = np.einsum(eq, arrA, arrB)
+        res = np.einsum(eq, arrA, arrB)  # type: ignore[arg-type]  # arrB is non-None whenever subsB is
     return res % P, out
 
 
-def _row_const_floors(nodes) -> dict:
+def _row_const_floors(nodes: Sequence[Any]) -> dict:
     """Per-symbol-name dim floor: |concrete row constant| + 2 for every
     symbol sizing a wire of that row (offset rows like [i = o + 5] need the
     participating dims to exceed the offset to have any solution)."""
@@ -267,7 +271,7 @@ def _row_const_floors(nodes) -> dict:
     return floors
 
 
-def _row_deficits(nodes, assign) -> dict:
+def _row_deficits(nodes: Sequence[Any], assign: dict) -> dict:
     """Symbols whose dims must rise for every affine row to have a solution
     at `assign`. A row sum(c_w * i_w) == const with i_w in [0, size_w) is
     satisfiable only if const lies in the reachable interval; rows whose
@@ -302,7 +306,7 @@ def _row_deficits(nodes, assign) -> dict:
     return need
 
 
-def _draw_assign(nodes, syms, ctx) -> dict:
+def _draw_assign(nodes: Sequence[Node], syms: set, ctx: Any) -> dict:
     """Random dims per symbol (keyed by NAME, independent of the program, so
     separately lowered expressions over the same symbols agree), redrawn
     with lifted floors until every affine row is interval-satisfiable. The
@@ -323,15 +327,17 @@ def _draw_assign(nodes, syms, ctx) -> dict:
     return assign
 
 
-def _eval_einsum(node: EinsumNode, vals, assign, ctx) -> np.ndarray:
+def _eval_einsum(node: EinsumNode, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     wire_sz = {w: _dim(d, assign) for w, d in enumerate(node.wire_dims)}
     operands = [(vals[id(op)], list(subs)) for op, subs in zip(node.ops, node.in_subs)]
 
     # Affine constraint rows -> exact 0/1 indicator operands over their wires.
     for coeffs, const in node.constraints:
         wires = [w for w, _ in coeffs]
-        cs = [sympy.sympify(c).subs(assign) for _, c in coeffs]
-        cs = [Fraction(int(c.p), int(c.q)) if c.is_Rational else Fraction(int(c)) for c in cs]
+        cs = [
+            Fraction(int(c.p), int(c.q)) if c.is_Rational else Fraction(int(c))
+            for c in (sympy.sympify(c0).subs(assign) for _, c0 in coeffs)
+        ]
         ce = sympy.sympify(const).subs(assign)
         cval = Fraction(int(ce.p), int(ce.q)) if ce.is_Rational else Fraction(int(ce))
         grids = np.indices([wire_sz[w] for w in wires])
@@ -370,7 +376,7 @@ def _eval_einsum(node: EinsumNode, vals, assign, ctx) -> np.ndarray:
         # Pure broadcast of the weight (e.g. a Ones vector: Delta order 1).
         return np.full(out_shape, wres, dtype=np.int64) if out_shape else np.array(wres, dtype=np.int64)
 
-    def keep_after(i):
+    def keep_after(i: int) -> set:
         k = set(out_subs)
         for _, s in operands[i + 1 :]:
             k |= set(s)
@@ -404,7 +410,7 @@ def _eval_einsum(node: EinsumNode, vals, assign, ctx) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def _eval_const(node: ConstNode, assign, ctx) -> np.ndarray:
+def _eval_const(node: ConstNode, assign: dict, ctx: Any) -> np.ndarray:
     kind = node.kind
     if kind == "scalar":
         return np.array(_scalar_residue(node.params[0], assign, ctx), dtype=np.int64)
@@ -454,7 +460,7 @@ def _eval_pow_int(arr: np.ndarray, k: int) -> np.ndarray:
     return out
 
 
-def _as_int_exponent(k):
+def _as_int_exponent(k: Any) -> Optional[int]:
     if isinstance(k, (int, np.integer)):
         return int(k)
     if isinstance(k, Fraction) and k.denominator == 1:
@@ -464,7 +470,7 @@ def _as_int_exponent(k):
     return None  # fractional -> atom
 
 
-def _eval_map(node: MapNode, vals, assign, ctx) -> np.ndarray:
+def _eval_map(node: MapNode, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     aligned = []
     for opnd, perm in zip(node.ops, node.perms):
         arr = vals[id(opnd)]
@@ -482,7 +488,7 @@ def _eval_map(node: MapNode, vals, assign, ctx) -> np.ndarray:
     return _rand_tensor(aligned[0].shape, *key)
 
 
-def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
+def _eval_node(node: Node, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     if isinstance(node, InputNode):
         dims = tuple(_dim(d, assign) for d in node.dims)
         return _rand_tensor(dims, ctx, "var", node.var_name, dims)
@@ -525,7 +531,7 @@ def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def _eval_trial(outs, ctx):
+def _eval_trial(outs: list, ctx: Any) -> list:
     """Evaluate all outputs at one random point. Returns, per output,
     (sorted edge names, resolved dims, array with axes sorted by edge name)."""
     nodes = toposort([n for n, _ in outs])
@@ -546,7 +552,7 @@ def _eval_trial(outs, ctx):
     return results
 
 
-def _evaluate(tensors, k, seed):
+def _evaluate(tensors: Sequence, k: int, seed: int) -> list:
     """Lower and evaluate at k random points. Returns [trial][output] ->
     (sorted_edges, dims, array)."""
     _, outs = lower_program(list(tensors))
@@ -571,7 +577,7 @@ def _evaluate(tensors, k, seed):
 # ---------------------------------------------------------------------------
 
 
-def numeric_fingerprint(tensors, k: int = 3, seed: int = 0) -> list[int]:
+def numeric_fingerprint(tensors: Sequence, k: int = 3, seed: int = 0) -> list[int]:
     """One 64-bit fingerprint per tensor: the hash of its exact mod-P values
     at k seeded random evaluation points (random dims 2..5, random variable
     tensors, random atoms for non-polynomial ops), with output axes
@@ -590,7 +596,7 @@ def numeric_fingerprint(tensors, k: int = 3, seed: int = 0) -> list[int]:
     return fps
 
 
-def equal_szfp(a, b, k: int = 3, seed: int = 0) -> bool:
+def equal_szfp(a: Any, b: Any, k: int = 3, seed: int = 0) -> bool:
     """Probabilistic equality test. True => a == b with high probability
     (error <= (deg/P)^k on the polynomial skeleton). False is definitive
     for the polynomial skeleton but may be a false negative when a and b
@@ -601,14 +607,14 @@ def equal_szfp(a, b, k: int = 3, seed: int = 0) -> bool:
     return fa == fb
 
 
-def is_zero_szfp(t, k: int = 3, seed: int = 0) -> bool:
+def is_zero_szfp(t: Any, k: int = 3, seed: int = 0) -> bool:
     """Probabilistic zero test: True iff t evaluates to 0 mod P at all k
     random points. Detects cancellation without expansion."""
     trials = _evaluate([t], k, seed)
     return all(not tvals[0][2].any() for tvals in trials)
 
 
-def verify_rewrite(before, after, k: int = 3, seed: int = 0) -> bool:
+def verify_rewrite(before: Any, after: Any, k: int = 3, seed: int = 0) -> bool:
     """Rewrite-verification oracle for the factoring pass (#17): returns
     True when `after` is (with high probability) equivalent to `before`.
     A False from a purely algebraic rewrite means the rewrite is wrong;

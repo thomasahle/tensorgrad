@@ -633,11 +633,13 @@ def diagram_transition(before: DiagramSnapshot, after: DiagramSnapshot) -> Diagr
         "boxes": _match_items(before.boxes, after.boxes),
     }
     events: list[dict[str, Any]] = []
-    for kind, match_key, before_items, after_items in [
+    _Items = Iterable[DiagramNode | DiagramWire | DiagramBox]
+    groups: list[tuple[str, str, _Items, _Items]] = [
         ("node", "nodes", before.nodes, after.nodes),
         ("wire", "wires", before.wires, after.wires),
         ("box", "boxes", before.boxes, after.boxes),
-    ]:
+    ]
+    for kind, match_key, before_items, after_items in groups:
         mapping = matches[match_key]
         old_matched = set(mapping)
         new_matched = set(mapping.values())

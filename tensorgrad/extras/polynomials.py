@@ -155,14 +155,15 @@ def _(expr: Expectation, x: Tensor) -> Poly:
     for k, v in res.items():
         if isinstance(v, (int, float)):
             # Convert scalar to Tensor with empty shape
-            v = TensorClass(v)  # pyright: ignore[reportCallIssue]  # TensorMeta.__call__ shortcut wraps numbers
+            # (ignores: TensorMeta.__call__ number-wrapping shortcut, invisible to type checkers)
+            v = TensorClass(v)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
         result[k] = Expectation(v, expr.wrt, expr.mu, expr.covar, expr.covar_names)
 
     return result
 
 
 # Helper function to normalize tensor representation
-def _normalize_tensor(tensor):
+def _normalize_tensor(tensor: Any) -> Any:
     """
     Normalize tensor representation for comparison purposes.
     Converts Sum/Product representations of scalars to simple values.

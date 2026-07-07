@@ -43,6 +43,7 @@ one shared reverse-mode spine.
 """
 
 from itertools import permutations
+from typing import Any
 
 import numpy as np
 
@@ -106,7 +107,7 @@ def _sort_perms(shape: tuple) -> list:
     return _perms_mapping(tuple(shape), tuple(sorted(shape)))
 
 
-def _canon_arr(arr: np.ndarray):
+def _canon_arr(arr: np.ndarray) -> tuple[bytes, tuple]:
     """(canonical bytes, perm) — the lexicographically smallest transpose
     over the sorted-shape orientations. Two arrays equal up to an axis
     permutation (in any axis order) have EQUAL canonical bytes."""
@@ -129,7 +130,7 @@ def _inv_perm(p: tuple) -> tuple:
     return tuple(q)
 
 
-def _eval_map_equivariant(node: MapNode, vals, assign, ctx) -> np.ndarray:
+def _eval_map_equivariant(node: MapNode, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     """Like szfp's map atoms, but keyed by the inputs' perm-canonical
     fingerprints and generated in canonical orientation: the atom function
     commutes with axis permutation, exactly like a real elementwise op."""
@@ -161,7 +162,7 @@ def _eval_map_equivariant(node: MapNode, vals, assign, ctx) -> np.ndarray:
     return np.transpose(core, _inv_perm(best_p))
 
 
-def _eval_reduce_equivariant(node: ReduceNode, vals, assign, ctx) -> np.ndarray:
+def _eval_reduce_equivariant(node: ReduceNode, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     """Shape-preserving reductions (softmax family): atom keyed by the
     operand's canonical fingerprint plus the reduced axes in canonical
     coordinates. max/argmax (shape-changing) stay orientation-exact."""
@@ -180,7 +181,7 @@ def _eval_reduce_equivariant(node: ReduceNode, vals, assign, ctx) -> np.ndarray:
     return _sz._rand_tensor(dims, *key)
 
 
-def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
+def _eval_node(node: Node, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     if isinstance(node, MapNode):
         return _eval_map_equivariant(node, vals, assign, ctx)
     if isinstance(node, ReduceNode):
@@ -188,7 +189,7 @@ def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
     return _sz._eval_node(node, vals, assign, ctx)
 
 
-def _eval_all(nodes: list, ctx) -> dict:
+def _eval_all(nodes: list, ctx: Any) -> dict:
     """One trial: exact mod-P values for every node (id -> array)."""
     syms = set()
     for n in nodes:
@@ -200,7 +201,7 @@ def _eval_all(nodes: list, ctx) -> dict:
     return vals
 
 
-def _trials(nodes: list, k: int, seed) -> list[dict]:
+def _trials(nodes: list, k: int, seed: int) -> list[dict]:
     out = []
     for trial in range(k):
         for salt in range(_sz._MAX_RETRIES):
@@ -219,7 +220,7 @@ def _trials(nodes: list, k: int, seed) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def consolidate_outputs(builder: Builder, outputs) -> list:
+def consolidate_outputs(builder: Builder, outputs: list) -> list:
     """Merge nodes whose values agree (mod P, K_TRIALS points) under one
     consistent axis permutation. `outputs` is [(node, edge_order), ...];
     returns the same structure. Falls back to `outputs` unchanged if the
@@ -294,7 +295,7 @@ def consolidate_outputs(builder: Builder, outputs) -> list:
     def res(op: Node) -> tuple:
         return R.get(id(op), (op, tuple(range(op.order))))
 
-    def rebuild(nd: Node):
+    def rebuild(nd: Node) -> tuple:
         """Rebuild nd with replaced operands; returns (node, rho)."""
         if isinstance(nd, (InputNode, ConstNode)):
             return nd, tuple(range(nd.order))
@@ -350,10 +351,10 @@ def consolidate_outputs(builder: Builder, outputs) -> list:
             new_node = builder.gather(ft, fi, new_axis)
             k_old, k_new = idx.order, fi.order
 
-            def new_pos_table(b):  # new-table axis -> position in new output
+            def new_pos_table(b: int) -> int:  # new-table axis -> position in new output
                 return b if b < new_axis else b - 1 + k_new
 
-            rho_out = []
+            rho_out: list[int] = []
             for a in range(table.order):  # old output = table axes with axis -> idx block
                 if a == nd.axis:
                     rho_out.extend(new_axis + rho_i[j] for j in range(k_old))
