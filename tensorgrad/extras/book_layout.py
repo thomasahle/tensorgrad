@@ -71,9 +71,9 @@ from tensorgrad.tensor import (
 )
 
 try:
-    from tensorgrad.extras.expectation import Expectation
+    from tensorgrad.extras.expectation import Expectation as _Expectation
 except Exception:  # pragma: no cover
-    Expectation = ()  # type: ignore
+    _Expectation = None  # type: ignore[assignment,misc]
 
 # ---------------------------------------------------------------------------
 # Metric constants (calibrated against the book's hand figures)
@@ -150,13 +150,13 @@ def _pretty_fn(name: str) -> str:
 
 
 class _UnionFind(dict):
-    def find(self, x):
+    def find(self, x: str) -> str:
         while self.setdefault(x, x) != x:
             self[x] = self[self[x]]
             x = self[x]
         return x
 
-    def union(self, a, b):
+    def union(self, a: str, b: str) -> None:
         self[self.find(a)] = self.find(b)
 
 
@@ -226,7 +226,7 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
             aid = len(g.atoms)
             fn = AtomSpec(aid, "func", _pretty_fn(t.signature.name), [])
             g.atoms.append(fn)
-            out: dict[str, str] = {}
+            fout: dict[str, str] = {}
             for inp, consumed in zip(t.inputs, t.signature.inputs):
                 first_atom = len(g.atoms)
                 sub = walk(inp)
@@ -241,14 +241,16 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
                     g.arrows[port] = "solid"
                     g.arrow_heads[port] = fn.id
                 if elementwise:
-                    anchor = first_atom if first_atom < len(g.atoms) else None
+                    anchor: Optional[int] = (
+                        first_atom if first_atom < len(g.atoms) else None
+                    )
                     if anchor is None and sub:
                         # the argument produced no atom (a bare identity /
                         # pass-through wire, e.g. exp(I)): materialize a copy-dot
                         # anchor carrying its edges, so the function isn't left
                         # orphaned and disconnected from its data
                         anchor = len(g.atoms)
-                        anchor_toks = []
+                        anchor_toks: list[str] = []
                         for e in list(sub):
                             atok = fresh("w")
                             uf.union(sub[e], atok)
@@ -263,27 +265,27 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
                         uf.union(ta, tb)
                         g.arrows[ta] = "dotted"
                         g.arrow_heads[ta] = fn.id
-                out.update(sub)  # broadcast edges pass through by name
+                fout.update(sub)  # broadcast edges pass through by name
             for e in t.shape_out:
                 port = fresh("w")
                 fn.ports.append(port)
-                out[e] = port
-            return out
+                fout[e] = port
+            return fout
         if isinstance(t, Derivative):
             first_atom = len(g.atoms)
             sub = walk(t.tensor)
             enclosed = list(range(first_atom, len(g.atoms)))
             new_edges = [e for e in t.edges if e not in t.tensor.edges]
-            out = dict(sub)
+            dout = dict(sub)
             names = []
             for e in new_edges:
                 tok = fresh("w")
                 g.deriv_tokens.add(tok)
-                out[e] = tok
+                dout[e] = tok
                 names.append(e)
             g.derivs.append((enclosed, names))
-            return out
-        if Expectation and isinstance(t, Expectation):
+            return dout
+        if _Expectation is not None and isinstance(t, _Expectation):
             first_atom = len(g.atoms)
             sub = walk(t.tensor)
             enclosed = list(range(first_atom, len(g.atoms)))
@@ -612,7 +614,7 @@ def _layout_component(
     subs: dict[int, "BookLayout"] = {}
     for k, v in enumerate(spine):
         atom = g.atoms[v]
-        if atom.kind != "group":
+        if atom.kind != "group" or atom.sub is None:
             continue
         le = re = None
         if k > 0:
@@ -627,8 +629,9 @@ def _layout_component(
     # group atoms that land OFF the spine (as pendants) still need their
     # inner layout computed, or emission crashes on `assert n.sub is not None`
     for v in comp:
-        if g.atoms[v].kind == "group" and v not in subs:
-            subs[v] = layout_any(g.atoms[v].sub)
+        atom = g.atoms[v]
+        if atom.kind == "group" and atom.sub is not None and v not in subs:
+            subs[v] = layout_any(atom.sub)
 
     def halfwidth(v: int) -> float:
         atom = g.atoms[v]
@@ -727,7 +730,7 @@ def _layout_component(
 
     # -- spine segments (application arrows point into their function) --
     for k in range(len(spine) - 1):
-        wids = adj[spine[k]].get(spine[k + 1])
+        wids = adj[spine[k]].get(spine[k + 1], [])
         if wids:
             wid = wids[0]
             drawn.append(wid)
@@ -1072,16 +1075,18 @@ def _tex_label(label: str) -> str:
     return f"${label}$"
 
 
-def _fmt_weight(w) -> tuple[str, str]:
+def _fmt_weight(w: object) -> tuple[str, str]:
     """Return (sign, coefficient-tex) for a sum weight."""
     if isinstance(w, Number):
-        if w == 1:
+        # numbers.Number has no static __float__ in typeshed, but every
+        # weight tensorgrad produces (int / sympy Integer|Rational|Float) does
+        wf = float(w)  # type: ignore[arg-type]
+        if wf == 1:
             return "+", ""
-        if w == -1:
+        if wf == -1:
             return "-", ""
-        if w == int(w):
-            w = int(w)
-        return ("-", f"{abs(w)}\\,") if w < 0 else ("+", f"{w}\\,")
+        num: float | int = int(wf) if wf == int(wf) else wf
+        return ("-", f"{abs(num)}\\,") if num < 0 else ("+", f"{num}\\,")
     return "+", f"{w}\\,"
 
 
@@ -1125,8 +1130,9 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
                 rf" {{{_tex_label(n.label)}}};"
             )
 
-    def endpoint(nid: int, other: Optional[int]) -> str:
+    def endpoint(nid: Optional[int], other: Optional[int]) -> str:
         # segments touching a group attach to the nearer paren
+        assert nid is not None  # node-to-node wires always have both ends
         if nid in group_side and other is not None:
             pl, pr = group_side[nid]
             return pl if nodes[other].x < nodes[nid].x else pr
@@ -1148,6 +1154,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
                 rf" -- ({endpoint(w.b, w.a)});"
             )
         elif w.kind == "loop":
+            assert w.a is not None
             if w.a in group_side:
                 pl, pr = group_side[w.a]
                 lines.append(
@@ -1182,6 +1189,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
                 )
         elif w.kind == "extra":
             a, b = w.a, w.b
+            assert a is not None and b is not None
             # start from the lower endpoint; bend so the curve bows DOWN,
             # away from the spine and its arcs
             if nodes[a].y > nodes[b].y or (
@@ -1200,6 +1208,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
                 rf"\draw ({w.x + dx:.2f},{w.y:.2f}) circle (0.28);"
             )
         elif w.kind == "stub":
+            assert w.a is not None
             d, anch = {
                 "left": (f"({-STUB:.2f},0)", "west"),
                 "right": (f"({STUB:.2f},0)", "east"),
@@ -1227,10 +1236,10 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
 
 
 def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
-                name: dict, group_side: dict) -> None:
+                name: dict[int, str], group_side: dict[int, tuple[str, str]]) -> None:
     """Expectation E[.] boxes: a fit-rectangle with an E label on the left."""
     for bi, (enclosed, lbl) in enumerate(layout.boxes):
-        parts = []
+        parts: list[str] = []
         for aid in enclosed:
             if aid in group_side:
                 parts.extend(f"({p})" for p in group_side[aid])
@@ -1255,12 +1264,12 @@ def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
 
 
 def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
-                 name: dict, group_side: dict) -> None:
+                 name: dict[int, str], group_side: dict[int, tuple[str, str]]) -> None:
     """Penrose derivative loops: fit-ellipse + boundary dot + whiskers."""
     nodes = {n.id: n for n in layout.nodes}
     for di, (enclosed, new_names) in enumerate(layout.derivs):
         eset = set(enclosed)
-        parts = []
+        parts: list[str] = []
         for aid in enclosed:
             if aid in group_side:
                 parts.extend(f"({p})" for p in group_side[aid])
