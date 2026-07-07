@@ -1315,14 +1315,23 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
         if n.kind == "copydot":
             lines.append(rf"\node[copydot] ({name[n.id]}) at ({x:.2f},{n.y:.2f}) {{}};")
         elif n.kind == "group":
-            # parenthesized inner sum: two paren nodes + recursive emission
+            # parenthesized inner sum: two paren nodes + recursive emission.
+            # Parens are sized to the inner content's true height (so a tall
+            # or vertically-stacked inner sum gets big brackets) and centred
+            # on its vertical midline.
             hw = n.width / 2
+            assert n.sub is not None
+            _gt, _gb = _term_extent(n.sub)
+            py = n.y + (_gt + _gb) / 2
+            hex_ = max(1.6, (_gt - _gb + 0.2) * 6.3)  # bracket height in ex
             pl, pr = f"{name[n.id]}L", f"{name[n.id]}R"
             lines.append(
-                rf"\node[scale=1.45, inner sep=0.5pt] ({pl}) at ({x - hw + 0.12:.2f},{n.y:.2f}) {{$($}};"
+                rf"\node[inner sep=0.5pt] ({pl}) at ({x - hw + 0.12:.2f},{py:.2f})"
+                rf" {{$\left(\vphantom{{\rule{{0pt}}{{{hex_:.1f}ex}}}}\right.$}};"
             )
             lines.append(
-                rf"\node[scale=1.45, inner sep=0.5pt] ({pr}) at ({x + hw - 0.12:.2f},{n.y:.2f}) {{$)$}};"
+                rf"\node[inner sep=0.5pt] ({pr}) at ({x + hw - 0.12:.2f},{py:.2f})"
+                rf" {{$\left.\vphantom{{\rule{{0pt}}{{{hex_:.1f}ex}}}}\right)$}};"
             )
             group_side[n.id] = (pl, pr)
             assert n.sub is not None
