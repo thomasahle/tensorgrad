@@ -9,6 +9,21 @@ never concurrently, one step function at a time -- and prints a markdown
 table of min-of-15 step times after 5 warmup steps. The jax side is always
 jit-compiled, so its column is identical in both modes.
 
+Reading the table (audited 2026-07):
+  * EAGER tg gaps on small models are DISPATCH COUNT (49-53 launches vs a
+    torch module's fused ops); the compiled columns are the fair fight, and
+    there diffusion/embed sit at 1.00x parity.
+  * The remaining compiled gap to JAX on training steps (gpt ~3x pure /
+    ~1.2x with cells) is the backend ceiling: we emit into torch-Inductor,
+    which cannot fuse library GEMMs, while XLA fuses whole programs --
+    measured constant across d=48 and d=384. Closing it needs the GPU /
+    Triton tier (task #15), not more IR work.
+  * Where the algebra changes the ALGORITHM, tg wins outright: hessian
+    (closed form, 0.05x jax), newton at real d (one GEMM vs a d-pass
+    transform loop, 0.4x jax), vae time-to-optimum (exact vs sampling,
+    16-19x). The `(+cells)` rows price the all-derived path against the
+    machine-verified fused-cell floor.
+
     uv run python benchmarks/run.py                  # eager tg vs eager torch
     uv run python benchmarks/run.py --torch-compile  # tg.compile(torch_compile=True)
                                                      # vs torch.compile'd modules
