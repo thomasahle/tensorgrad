@@ -43,6 +43,7 @@ from tensorgrad.compiler.cells import CELLS
 from tensorgrad.compiler.peepholes import linalg_peepholes
 from tensorgrad.compiler.consolidate import consolidate_outputs
 from tensorgrad.compiler.factor import factor_outputs
+from tensorgrad.compiler.gemm_batch import batch_shared_gemms
 from tensorgrad.compiler.layout import assign_layouts, matmul_groups
 from tensorgrad.compiler.stabilize import stabilize_outputs
 
@@ -231,6 +232,7 @@ class TorchCodegen:
         # see through — e.g. the gelu-grad sinh/cosh ratio only fuses to tanh
         # once numerator and denominator share one exponent node.
         outputs = consolidate_outputs(self.builder, outputs)
+        outputs = batch_shared_gemms(self.builder, outputs, dims)
         outputs = stabilize_outputs(self.builder, outputs)
         outputs = linalg_peepholes(self.builder, outputs)
         outputs = consolidate_outputs(self.builder, outputs)

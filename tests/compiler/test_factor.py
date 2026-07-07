@@ -260,7 +260,21 @@ def test_unexpanded_mlp_grad_max_intermediate():
     """Regression for the 68GB hazard: full_simplify(expand=False) leaves the
     (Delta_oo' - softmax) Sum as an einsum operand; unfactored, the backward
     materializes an (O,O,B) dense tensor. The factored program must stay
-    within O(B * max(H, O, D)) at out_dim where O*O*B >> B*H."""
+    within O(B * max(H, O, D)) at out_dim where O*O*B >> B*H.
+
+    GEMM batching is disabled here: it deliberately stacks k small same-size
+    tensors (a size-gated LAUNCH optimization that would not fire at scale),
+    which breaks this small-dims proxy for FACTORING's scaling invariant."""
+    from tensorgrad.compiler import gemm_batch
+
+    gemm_batch.GEMM_BATCHING = False
+    try:
+        _check_mlp_grad_max_intermediate()
+    finally:
+        gemm_batch.GEMM_BATCHING = True
+
+
+def _check_mlp_grad_max_intermediate():
     (batch, in_dim, hidden, out_dim), vars_, outs = _mlp_grads(expand=False)
     B, D, H, O = 64, 13, 32, 48
     dims = {batch: B, in_dim: D, hidden: H, out_dim: O}

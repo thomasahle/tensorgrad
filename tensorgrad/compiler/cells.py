@@ -725,3 +725,29 @@ class _SlogdetCell(FusedCell):
             pre, lu = _lu_prelude(cg, node, names)
             return f"{pre}{name} = {lu}[0].diagonal(dim1=-2, dim2=-1).abs().log().sum(-1)"
         return f"{name} = torch.linalg.slogdet({cg._logical(node.ops[0], names)})[1]"
+
+
+@register
+class _StackCell(FusedCell):
+    """torch.stack of same-shaped operands along a new leading axis; created
+    only by the gemm-batching pass (compiler/gemm_batch.py). One kernel
+    replaces k operand reads; the batched einsum downstream replaces k GEMM
+    launches with one."""
+    name = "stack"
+    n_diff = 0
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        parts = ", ".join(cg._logical(op, names) for op in node.ops)
+        return f"{name} = torch.stack(({parts}))"
+
+
+@register
+class _SelectCell(FusedCell):
+    """A zero-cost view selecting index i along the leading axis of a
+    batched result; created only by the gemm-batching pass."""
+    name = "select"
+    n_diff = 0
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        i = node.params_dict()["index"]
+        return f"{name} = {cg._logical(node.ops[0], names)}[{i}]"
