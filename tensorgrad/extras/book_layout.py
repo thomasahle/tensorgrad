@@ -1046,7 +1046,7 @@ def layout_any(
             sgn = sign if (idx > 0 or sign == "-") else ""
             tex = f"{sgn}{coeff}".strip()
             if tex:
-                pad = 0.42 + 0.1 * len(tex)
+                pad = 0.58 + 0.1 * len(tex)  # isolate the operator with space
                 out.nodes.append(LNode(sign_id, "sign", tex, x + pad - TERM_GAP, 0.0))
                 sign_id -= 1
                 x += 2 * pad - TERM_GAP
@@ -1133,8 +1133,13 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             # extra breathing room after the '(' before the first term's stub
             _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.34)
         elif n.kind == "sign":
+            # a sum operator is enlarged (and its term-gap is widened at
+            # layout time) so it reads clearly as an operator, not as another
+            # short horizontal wire -- a free-edge stub and a minus are
+            # otherwise the same stroke at the same height
             lines.append(
-                rf"\node[{_AXIS}] ({name[n.id]}) at ({x:.2f},{n.y:.2f}) {{${n.label}$}};"
+                rf"\node[{_AXIS}, scale=1.35] ({name[n.id]}) at"
+                rf" ({x:.2f},{n.y:.2f}) {{${n.label}$}};"
             )
         else:
             rot = "rotate=180, " if n.rotated else ""
@@ -1362,7 +1367,9 @@ def to_book_tikz(
     layout = layout_any(tensor, left, right)
     if scale is None and max_width is not None and layout.xmax > max_width > 0:
         scale = max_width / layout.xmax
-    opts = f"baseline={baseline}, inner sep=1pt"
+    # wires a touch lighter than a font glyph's stroke, so a free-edge stub
+    # reads as a thin line while a sum operator (enlarged) reads as an operator
+    opts = f"baseline={baseline}, inner sep=1pt, line width=0.45pt"
     if scale is not None and abs(scale - 1.0) > 1e-6:
         # `transform shape` scales node glyphs too, so the whole diagram
         # shrinks uniformly instead of nodes overlapping at moved coordinates
