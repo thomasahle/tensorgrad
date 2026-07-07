@@ -633,7 +633,7 @@ def _layout_component(
     def halfwidth(v: int) -> float:
         atom = g.atoms[v]
         if atom.kind == "group":
-            return subs[v].xmax / 2 + 0.27  # parens + padding
+            return subs[v].xmax / 2 + 0.36  # parens + symmetric padding
         if atom.kind == "copydot":
             return 0.06
         return _label_halfwidth(atom.label)
@@ -684,11 +684,22 @@ def _layout_component(
         total = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
         return total / 2
 
+    # A single-node component with ONE free edge points it to solo_side only,
+    # so it reserves stub space on just that side (an outer product's two
+    # vectors were each reserving both sides -> a big empty gap between them).
+    single = len(spine) == 1
+    n_head_frees = len(_atom_free_names(g, spine[0]))
+    reserve_left = bool(n_head_frees) and (
+        not single or n_head_frees > 1 or solo_side == "left"
+    )
+    reserve_right = bool(_atom_free_names(g, spine[-1])) and (
+        not single or n_head_frees > 1 or solo_side == "right"
+    )
+
     # -- x positions along the spine (label-width aware, pendant-aware) --
     xs: list[float] = []
     x = x0
-    head_frees = _atom_free_names(g, spine[0])
-    if head_frees:
+    if reserve_left:
         x += STUB + 0.05
     x += max(0.0, halfwidth(spine[0]) - 0.12)  # wide heads (groups) start inside
     prev_half = 0.0
@@ -950,7 +961,7 @@ def _layout_component(
             layout.wires.append(LWire("stub", v, direction="down", label=name))
 
     xmax = xs[-1] + halfwidth(spine[-1])
-    if _atom_free_names(g, spine[-1]):
+    if reserve_right:
         xmax += STUB + 0.05
     return xmax
 
@@ -1074,6 +1085,10 @@ def _fmt_weight(w) -> tuple[str, str]:
     return "+", f"{w}\\,"
 
 
+# uniform text metrics so subscripted glyphs align on a common axis
+_AXIS = "inner sep=1pt, text height=1.55ex, text depth=0.35ex"
+
+
 def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -> None:
     name = {n.id: f"{prefix}n{n.id}" for n in layout.nodes}
     nodes = {n.id: n for n in layout.nodes}
@@ -1087,22 +1102,26 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             hw = n.width / 2
             pl, pr = f"{name[n.id]}L", f"{name[n.id]}R"
             lines.append(
-                rf"\node[scale=1.45, inner sep=0.5pt] ({pl}) at ({x - hw + 0.1:.2f},{n.y:.2f}) {{$($}};"
+                rf"\node[scale=1.45, inner sep=0.5pt] ({pl}) at ({x - hw + 0.12:.2f},{n.y:.2f}) {{$($}};"
             )
             lines.append(
-                rf"\node[scale=1.45, inner sep=0.5pt] ({pr}) at ({x + hw - 0.1:.2f},{n.y:.2f}) {{$)$}};"
+                rf"\node[scale=1.45, inner sep=0.5pt] ({pr}) at ({x + hw - 0.12:.2f},{n.y:.2f}) {{$)$}};"
             )
             group_side[n.id] = (pl, pr)
             assert n.sub is not None
-            _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.17)
+            # extra breathing room after the '(' before the first term's stub
+            _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.34)
         elif n.kind == "sign":
             lines.append(
-                rf"\node ({name[n.id]}) at ({x:.2f},{n.y:.2f}) {{${n.label}$}};"
+                rf"\node[{_AXIS}] ({name[n.id]}) at ({x:.2f},{n.y:.2f}) {{${n.label}$}};"
             )
         else:
             rot = "rotate=180, " if n.rotated else ""
+            # _AXIS pins a uniform text height/depth so a subscripted label
+            # (pow_{-1}) centers on the same axis as exp/x -- its subscript no
+            # longer drags the node's centre down out of line with the wire.
             lines.append(
-                rf"\node[{rot}inner sep=1pt] ({name[n.id]}) at ({x:.2f},{n.y:.2f})"
+                rf"\node[{rot}{_AXIS}] ({name[n.id]}) at ({x:.2f},{n.y:.2f})"
                 rf" {{{_tex_label(n.label)}}};"
             )
 
