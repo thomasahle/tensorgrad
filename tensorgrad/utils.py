@@ -1,4 +1,24 @@
-from typing import Any, Optional, TypeVar, Generic
+from typing import Any, Iterator, KeysView, Optional, TypeVar, Generic
+
+
+def merge_renames(*renames: dict[str, str]) -> dict[str, str]:
+    """Compose several renaming dictionaries into one (applied left to right).
+
+    Pure dict algebra shared by Rename._rename / peel_rename (tensor.py) and
+    push_rename_down (simplify.py): chains through earlier renames are
+    followed, and later renames only add keys that aren't already bound.
+    """
+    merged: dict[str, str] = {}
+    for rename in renames:
+        used = merged.keys() | merged.values()
+        # Apply the rename to the existing chains
+        for o, n in merged.items():
+            merged[o] = rename.get(n, n)
+        # Add new renames
+        for o, n in rename.items():
+            if o not in used:
+                merged[o] = n
+    return merged
 
 
 class _MatchEdgesKey:
@@ -31,7 +51,7 @@ V = TypeVar("V")  # Value type
 
 
 class DisjointSets(Generic[K, V]):
-    def __init__(self):
+    def __init__(self) -> None:
         self.parent: dict[K, K] = {}
         self.values: dict[K, V] = {}
 
@@ -72,7 +92,7 @@ class DisjointSets(Generic[K, V]):
         return self.values.get(self.find(key), default)
 
     def items(self) -> list[tuple[list[K], Optional[V]]]:
-        groups = {}
+        groups: dict[K, list[K]] = {}
         for key in self.parent:
             root = self.find(key)
             if root not in groups:
@@ -93,7 +113,7 @@ class KeyStoringDict:
         the actual stored key object via get_with_key().
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """
         Similar to dict's constructor, it can accept:
           - KeyStoringDict(mapping)
@@ -101,34 +121,34 @@ class KeyStoringDict:
           - KeyStoringDict(key1=value1, key2=value2, ...)
         in any combination.
         """
-        self._store = {}
+        self._store: dict[Any, tuple[Any, Any]] = {}
         self.update(*args, **kwargs)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: Any, value: Any) -> None:
         # Internally store (key, value).
         self._store[key] = (key, value)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Any) -> Any:
         # Return only the user_value portion
         _, user_value = self._store[key]
         return user_value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: Any) -> None:
         del self._store[key]
 
-    def __contains__(self, key):
+    def __contains__(self, key: Any) -> bool:
         return key in self._store
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._store)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         """
         Iterating over this dict should iterate over its keys.
         """
         return iter(self._store)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Show a nice representation: KeyStoringDict({k: v, ...})
         """
@@ -136,21 +156,21 @@ class KeyStoringDict:
         items_str = ", ".join(f"{k!r}: {v!r}" for k, v in self.items())
         return f"{class_name}({{{items_str}}})"
 
-    def get_with_key(self, key, default=None):
+    def get_with_key(self, key: Any, default: Any = None) -> Any:
         """
         Return (stored_key, user_value) if key is found,
         else return 'default'.
         """
         return self._store.get(key, default)
 
-    def get(self, key, default=None):
+    def get(self, key: Any, default: Any = None) -> Any:
         """
         Normal dict .get(), returning just the user_value (or default).
         """
         _, value = self._store.get(key, (None, default))
         return value
 
-    def pop(self, key):
+    def pop(self, key: Any) -> Any:
         """
         pop(key) → user_value, removing the item if it exists.
         If key not found, raise KeyError.
@@ -158,33 +178,33 @@ class KeyStoringDict:
         _, user_value = self._store.pop(key)
         return user_value
 
-    def update(self, other: dict):
+    def update(self, other: dict) -> None:
         """
         update(...) adds/overwrites items from another dict/mapping.
         """
         for k, v in other.items():
             self[k] = v
 
-    def keys(self):
+    def keys(self) -> KeysView[Any]:
         """
         Return a view (or iterable) of keys.
         """
         return self._store.keys()
 
-    def values(self):
+    def values(self) -> Iterator[Any]:
         """
         Return a view (or iterable) of user_values.
         """
         for _, user_value in self._store.values():
             yield user_value
 
-    def items(self):
+    def items(self) -> Any:
         """
         Return a view (or iterable) of (key, user_value).
         """
         return self._store.values()
 
-    def copy(self):
+    def copy(self) -> "KeyStoringDict":
         """
         Return a shallow copy of this KeyStoringDict.
         """

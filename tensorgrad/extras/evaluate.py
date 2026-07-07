@@ -364,13 +364,6 @@ def _(func: _MatrixInverseFunction, x: torch.Tensor) -> torch.Tensor:
 
 
 @evaluate_function.register
-def _(func: _SimpleFunction, x: torch.Tensor) -> torch.Tensor:
-    # Dead code: the later _SimpleFunction registration below replaces this
-    # entry in the singledispatch registry (and _eval_fn never existed).
-    return func._eval_fn(x)  # pyright: ignore[reportAttributeAccessIssue]
-
-
-@evaluate_function.register
 def _(func: _ArgMaxFunction, x: torch.Tensor) -> torch.Tensor:
     i = x.names.index(func.dim)
     names = list(x.names)

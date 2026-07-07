@@ -23,6 +23,7 @@ from sympy import symbols
 import tensorgrad.functions as F
 from tensorgrad import Delta, Product, Sum, Variable
 from tensorgrad.tensor import Derivative, Rename, Tensor
+from tensorgrad.structure import edge_structural_graph
 
 i, j, k, n = symbols("i j k n")
 
@@ -36,8 +37,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _nx_is_isomorphic(a: Tensor, b: Tensor, match_edges: bool = False) -> bool:
     """The original (pre-fast-path) implementation, for cross-checking."""
-    G1, _ = a.edge_structural_graph(match_edges=match_edges, edge_names={})
-    G2, _ = b.edge_structural_graph(match_edges=match_edges, edge_names={})
+    G1, _ = edge_structural_graph(a, match_edges=match_edges, edge_names={})
+    G2, _ = edge_structural_graph(b, match_edges=match_edges, edge_names={})
     return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
 
 

@@ -1,6 +1,7 @@
 from sympy import symbols
 
 from tensorgrad.tensor import Delta, Variable
+from tensorgrad.structure import graph_to_string
 import tensorgrad.functions as F
 
 
@@ -27,9 +28,9 @@ def test_rename_with_function():
     a = (F.relu(x) @ Delta(i, "i")).simplify()
     b = (F.relu(x.rename(i="i_")) @ Delta(i, "i_")).simplify()
     c = (F.relu(x).rename(i="i_") @ Delta(i, "i_")).simplify()
-    print(a.graph_to_string())
-    print(b.graph_to_string())
-    print(c.graph_to_string())
+    print(graph_to_string(a))
+    print(graph_to_string(b))
+    print(graph_to_string(c))
     assert b == c
     assert a == b
     assert a == c

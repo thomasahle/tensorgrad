@@ -6,6 +6,7 @@ import subprocess
 from PIL import Image, ImageDraw
 
 from tensorgrad.extras.to_tikz import to_tikz
+from tensorgrad.structure import edge_structural_graph
 
 from tensorgrad import Derivative
 from tensorgrad.extras import Expectation
@@ -168,7 +169,7 @@ def save_steps(expr, slow_grad=False, output_path="steps.png"):
 
 
 def draw_structural_graph(tensor, iter=50):
-    G, _edges = tensor.edge_structural_graph()
+    G, _edges = edge_structural_graph(tensor)
     labels = {i: data.get("name", "") for i, data in G.nodes(data=True)}
     pos = nx.spectral_layout(G)
     pos = nx.kamada_kawai_layout(G, pos=pos)

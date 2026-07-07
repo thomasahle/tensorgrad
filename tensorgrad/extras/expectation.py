@@ -291,7 +291,19 @@ class Expectation(Tensor):
         return Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
 
     def _depends_on(self, x: "Variable") -> bool:
-        # Out-of-core node: reached via the depends_on dispatch default
-        # (tensorgrad.dependson), so the memoization on the base
-        # Tensor.depends_on applies here too.
+        # Registered in the tensorgrad.dependson dispatch table below, so the
+        # memoization on Tensor.depends_on applies here too.
         return self.tensor.depends_on(x) or self.mu.depends_on(x) or self.covar.depends_on(x)
+
+
+# The operation dispatch tables are the extension point for node types outside
+# the core set: they live in core modules that must not import extras, so
+# Expectation registers its rules here, on import. (Substitution stays
+# unregistered: Expectation deliberately does not support it.)
+from tensorgrad.dependson import _dispatch_depends_on
+from tensorgrad.grad import _dispatch_grad
+from tensorgrad.simplify import _dispatch_simplify
+
+_dispatch_simplify.register(Expectation, Expectation._simplify)
+_dispatch_grad.register(Expectation, Expectation._grad)
+_dispatch_depends_on.register(Expectation, Expectation._depends_on)

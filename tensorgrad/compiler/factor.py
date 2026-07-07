@@ -47,6 +47,7 @@ import opt_einsum as oe
 import sympy
 
 from tensorgrad.compiler import adjoint as _adj
+from tensorgrad.utils import DisjointSets
 from tensorgrad.compiler.adjoint import splice_child
 from tensorgrad.compiler.ir import (
     Dim,
@@ -422,14 +423,10 @@ class _Rewriter:
         if n.weight == 0 or any(isinstance(op, ConstNode) and op.kind == "zero" for op in n.ops):
             return self._zero(n.dims)
 
-        parent: dict[int, int] = {}
-
-        def find(w: int) -> int:
-            parent.setdefault(w, w)
-            while parent[w] != w:
-                parent[w] = parent[parent[w]]
-                w = parent[w]
-            return w
+        # Union-find over wire ids (utils.DisjointSets: union(x, y) keeps
+        # y's root as representative).
+        aliases: DisjointSets[int, Any] = DisjointSets()
+        find = aliases.find
 
         weight = n.weight
         changed = False
@@ -464,7 +461,7 @@ class _Rewriter:
                         # Alias all the delta's wires; the delta vanishes.
                         cs = sorted(classes)
                         for c in cs[1:]:
-                            parent[find(c)] = find(cs[0])
+                            aliases.union(c, cs[0])
                         changed = progress = True
                         continue
                     # >= 2 output positions: a genuine diagonal embedding —

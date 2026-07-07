@@ -21,6 +21,7 @@ import tensorgrad.functions as F
 from tensorgrad import Delta, Product, Sum, Variable, Zero
 from tensorgrad.tensor import Derivative, Rename, Tensor, function
 from tensorgrad.structure import (
+    edge_structural_graph,
     canon_info,
     structural_fingerprint,
     structural_hash,
@@ -171,7 +172,7 @@ def test_hash_invariance_on_random_iso_pairs():
     import networkx as nx
 
     pool = EXPRS
-    graphs = [t.edge_structural_graph(match_edges=False)[0] for t in pool]
+    graphs = [edge_structural_graph(t, match_edges=False)[0] for t in pool]
     found = 0
     for i in range(len(pool)):
         for j in range(i + 1, len(pool)):

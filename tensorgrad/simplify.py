@@ -24,12 +24,6 @@ in tensorgrad/functions.py):
   PLACE by :func:`tensorgrad.autodiff.step_derivative`, so a finite budget is
   shared across the tree (and across repeated ``simplify`` calls reusing the
   same dict). Used by imgtools/to_diagram for step-by-step derivations.
-- ``sum_combine_terms`` (True): gates a filter in :func:`simplify_sum`. The
-  compiler's normalize stage sets it False. NOTE: isomorphic-term merging
-  itself happens in the Counter accumulation regardless of this flag, and the
-  gated filter is subsumed by the unconditional one right after it, so the
-  flag currently has no observable effect; kept (and documented) because the
-  compiler preset sets it.
 - ``combine_products`` (True): gates the pow-combination pass
   (``_PowerFunction.simplify_outer``) in :func:`simplify_product`, i.e.
   pow(x, a) * pow(x, b) -> pow(x, a + b) and cancellations. The compiler's
@@ -63,13 +57,18 @@ Deleted knobs (flag audit, 2026-07): ``associative_products`` and
 ``associative_sums`` had no callers anywhere (defaults were True and nothing
 ever passed False), so nested-product merging and nested-sum flattening are
 now unconditional; ``distributed_products`` was never set and only raised
-NotImplementedError.
+NotImplementedError; ``sum_combine_terms`` gated a filter in simplify_sum
+that was subsumed by the unconditional one right after it (isomorphic-term
+merging itself always happened in the Counter accumulation), so it had no
+observable effect even though the compiler preset set it False.
 """
 
 import math
 from collections import Counter
-from typing import Any, Callable, Optional, cast
+from functools import singledispatch
+from typing import Any, Optional, cast
 
+from tensorgrad.structure import refined_sort_key
 from tensorgrad.tensor import (
     Delta,
     Derivative,
@@ -80,14 +79,14 @@ from tensorgrad.tensor import (
     Tensor,
     Variable,
     Zero,
-    _get_canon,
     _group_edges,
+    _unused_edge_names,
     peel_rename,
 )
-from tensorgrad.utils import _MatchEdgesKey
+from tensorgrad.utils import _MatchEdgesKey, merge_renames
 
 # The Derivative-resolution rule lives with the other differentiation logic.
-from tensorgrad.autodiff import step_derivative
+from tensorgrad.grad import step_derivative
 
 
 ################################################################################
@@ -103,7 +102,6 @@ def simplify(tensor: Tensor, args: Optional[dict[str, Any]] = None) -> Tensor:
         args = {}
     # args["grad_steps"] allows us to control how far we propagate the derivative.
     args.setdefault("grad_steps", float("inf"))
-    args.setdefault("sum_combine_terms", True)
     args.setdefault("combine_products", True)
     args.setdefault("factor_components", True)
     args.setdefault("expand_functions", True)
@@ -118,18 +116,11 @@ def simplify(tensor: Tensor, args: Optional[dict[str, Any]] = None) -> Tensor:
     memo = key = None
     if args.get("memoize") and args["grad_steps"] == float("inf"):
         memo = args.setdefault("_memo", {})
-        key = (_get_canon().refined_sort_key(tensor), tuple(tensor.edges), args["expand"])
+        key = (refined_sort_key(tensor), tuple(tensor.edges), args["expand"])
         if (hit := memo.get(key)) is not None:
             return hit
 
-    rule = _SIMPLIFY_RULES.get(type(tensor))
-    if rule is not None:
-        result = rule(tensor, args)
-    else:
-        # Types outside the core set (Expectation; Constant subclasses such
-        # as Convolution/Reshape/Affine) use the `_simplify` method protocol,
-        # which defaults to the identity.
-        result = tensor._simplify(args)
+    result = _dispatch_simplify(tensor, args)
 
     # Check that the shape is preserved
     assert result.shape == tensor.shape
@@ -146,16 +137,23 @@ def _record_simplify_provenance(args: dict[str, Any], before: Tensor, after: Ten
         recorder.record(before, after)
 
 
-################################################################################
-# Atoms
-################################################################################
+@singledispatch
+def _dispatch_simplify(tensor: Tensor, args: dict[str, Any]) -> Tensor:
+    """Dispatch a node to its per-type simplify rule (the rules below register
+    themselves).
+
+    The default is the identity: atoms (Variable and Constant — Delta, Zero,
+    Convolution, Reshape, Affine) are already simple and deliberately have no
+    registered rule. The table is the extension point: types outside the core
+    set register their rule on import (tensorgrad/extras/expectation.py
+    registers Expectation's); unknown types are treated as already simple
+    (the engine's shape assert still guards them)."""
+    return tensor
 
 
-def keep_atom(t: Tensor, args: dict[str, Any]) -> Tensor:
-    """Variable, Delta and Zero are already simple: the identity rewrite.
-    (Delta *pair* rules only apply inside a Product; see the Delta pair rules
-    below.)"""
-    return t
+# The chain-rule stepping rule for Derivative lives with the other
+# differentiation logic in tensorgrad.grad.
+_dispatch_simplify.register(Derivative, step_derivative)
 
 
 ################################################################################
@@ -163,6 +161,7 @@ def keep_atom(t: Tensor, args: dict[str, Any]) -> Tensor:
 ################################################################################
 
 
+@_dispatch_simplify.register
 def push_rename_down(t: Rename, args: dict[str, Any]) -> Tensor:
     """Normalize the (lazy) Rename wrapper: simplify the inner tensor, merge
     chains of Renames into one mapping, drop trivial ones, and materialize
@@ -181,7 +180,7 @@ def push_rename_down(t: Rename, args: dict[str, Any]) -> Tensor:
     inner = t.tensor.simplify(args)
     mapping = t.mapping
     while isinstance(inner, Rename):
-        mapping = Rename.merge_renames(inner.mapping, mapping)
+        mapping = merge_renames(inner.mapping, mapping)
         inner = inner.tensor
     mapping = {k: v for k, v in mapping.items() if k in inner.edges and k != v}
     if not mapping:
@@ -336,6 +335,7 @@ def apply_variable_equation(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Ten
 ################################################################################
 
 
+@_dispatch_simplify.register
 def simplify_function(t: Function, args: dict[str, Any]) -> Tensor:
     """Simplify a Function's inputs, pull broadcast Ones factors out of the
     inputs (they commute with the function), and delegate any signature-
@@ -346,8 +346,8 @@ def simplify_function(t: Function, args: dict[str, Any]) -> Tensor:
     new_inputs = [inp.simplify(args=args) for inp in t.inputs]
 
     # Broadcasting can be pulled out of the function.
-    pulled_out = []
-    new_inputs2 = []
+    pulled_out: list[Tensor] = []
+    new_inputs2: list[Tensor] = []
     for inp, es in zip(new_inputs, t.signature.inputs):
         if isinstance(inp, Product):
             new_prod = []
@@ -385,6 +385,22 @@ def simplify_function(t: Function, args: dict[str, Any]) -> Tensor:
 ################################################################################
 
 
+def merge_products(products: list[Product]) -> Product:
+    """Merge several Product tensors into one, renaming inner edges so they
+    are distinct."""
+    used_edges = {e for p in products for e in p.edges}
+    res = []
+    for p in products:
+        inner_edges = {e for t in p.factors for e in t.edges if e not in p.edges}
+        rename = _unused_edge_names(inner_edges, used_edges)
+        for t in p.factors:
+            res.append(t.rename(**rename))
+        used_edges.update(rename.values())  # Later renames should not clash with this one
+    return Product(res)
+
+
+
+@_dispatch_simplify.register
 def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
     """Normalize a Product: simplify factors, annihilate on Zero, flatten
     nested products, pull single-term-Sum weights up, run the Delta pair
@@ -402,7 +418,7 @@ def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
     # Combine nested products, unconditionally (the old associative_products
     # knob had no callers; see the flag audit in the module docstring).
     sub_products = [f if isinstance(f, Product) else Product([f]) for f in tensors]
-    tensors = Product.merge(sub_products).factors
+    tensors = merge_products(sub_products).factors
 
     # We can do a "small" kind of distributed products, which is handling children that are single sums
     # Also, if a child is a sum with a single element, we can pull the weight up.
@@ -429,7 +445,7 @@ def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
 
         verify_edges(tensors)
         before = tensors
-        # The renames above (Product.merge inner-edge freshening, identity-
+        # The renames above (merge_products inner-edge freshening, identity-
         # matrix removal) are lazy on composites, so factors can be Rename-
         # wrapped; peel one level so the pow pass sees pow-Functions rather
         # than Rename nodes. Deliberately NOT done outside this branch: the
@@ -443,13 +459,13 @@ def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
     # Deterministic factor order: sort by the seed-stable structural
     # fingerprint, so commutative construction order (and PYTHONHASHSEED)
     # doesn't leak into the simplified result.
-    tensors.sort(key=_get_canon().refined_sort_key)
+    tensors.sort(key=refined_sort_key)
 
     # Base cases
     if len(tensors) == 1:
         res = tensors[0]
     elif args["expand"]:
-        terms = [[]]
+        terms: list[list[Tensor]] = [[]]
         weights = [1]
         for f in tensors:
             # A (lazy) Rename wrapper can hide a Sum factor from the
@@ -481,6 +497,7 @@ def simplify_product(t: Product, args: dict[str, Any]) -> Tensor:
 ################################################################################
 
 
+@_dispatch_simplify.register
 def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
     """Normalize a Sum: simplify terms, flatten nested sums (weights
     multiply through), merge isomorphic terms by adding their weights (terms
@@ -490,7 +507,11 @@ def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
     canonicalizes."""
     terms = [term.simplify(args=args) for term in t.terms]
 
-    term_counter = Counter()
+    # Merge isomorphic terms by accumulating their weights. _MatchEdgesKey
+    # matches edge names, so isomorphic terms with different outer edge labels
+    # don't get combined: (o-i o-<jk) is isomorphic with (o-j o-<ik), but they
+    # must stay separate. This example comes up in the Hessian of softmax.
+    term_counter: Counter[_MatchEdgesKey] = Counter()
     for w, term in zip(t.weights, terms):
         # Flatten nested sums, unconditionally (the old associative_sums knob
         # had no callers; see the flag audit in the module docstring).
@@ -500,19 +521,9 @@ def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
         else:
             term_counter[_MatchEdgesKey(term)] += w
 
-    if args["sum_combine_terms"]:
-        # Identify tensors with multiplicity and combine them. We use tensor.canon_with_edges to identify tensors.
-        # It is important that isomorphic tensors with different outer edge labels don't get matched. For example
-        # (o-i o-<jk) is isomorphic with (o-j o-<ik), but they shouldn't be combined. This example comes up in the
-        # Hessian of softmax.
-        ws_tensors = [
-            (w, key.value) for key, w in term_counter.items() if w != 0 and not isinstance(key.value, Zero)
-        ]
-    else:
-        ws_tensors = [(w, key.value) for key, w in term_counter.items()]
-
     # Remove zero tensors or zero weights.
     # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
+    ws_tensors = [(w, key.value) for key, w in term_counter.items()]
     ws_tensors = [(w, u) for w, u in ws_tensors if w != 0 and not isinstance(u, Zero)]
     # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
     if not ws_tensors:
@@ -521,8 +532,7 @@ def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
     # structural fingerprint, so commutative construction order (and
     # PYTHONHASHSEED) doesn't leak into the simplified result. Positive
     # weights sort first purely for presentation (avoid a leading minus).
-    canon = _get_canon()
-    ws_tensors.sort(key=lambda wt: (wt[0] < 0, canon.refined_sort_key(wt[1]), str(wt[0])))
+    ws_tensors.sort(key=lambda wt: (wt[0] < 0, refined_sort_key(wt[1]), str(wt[0])))
     weights, tensors = zip(*ws_tensors)
     # If there is just one tensor with weight 1, we don't need LinearComb
     if weights == (1,):
@@ -530,19 +540,3 @@ def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
     return Sum(tensors, weights)
 
 
-################################################################################
-# Dispatch table
-################################################################################
-
-# (Callable[[Any, ...]]: each rule takes its concrete node type as the first
-# parameter, which a dict value type of Callable[[Tensor, ...]] would reject.)
-_SIMPLIFY_RULES: dict[type, Callable[[Any, dict[str, Any]], Tensor]] = {
-    Variable: keep_atom,
-    Delta: keep_atom,
-    Zero: keep_atom,
-    Rename: push_rename_down,
-    Function: simplify_function,
-    Derivative: step_derivative,  # chain-rule stepping lives in tensorgrad.autodiff
-    Product: simplify_product,
-    Sum: simplify_sum,
-}

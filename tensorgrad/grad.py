@@ -20,8 +20,8 @@ Every rule receives the already-validated ``new_names`` mapping
 :func:`step_derivative`) pushes it the rest of the way.
 """
 
-from types import ModuleType
-from typing import Any, Callable, Optional
+from functools import singledispatch
+from typing import Any
 
 from tensorgrad.tensor import (
     Constant,
@@ -37,26 +37,24 @@ from tensorgrad.tensor import (
     _unused_edge_names,
 )
 
-# Lazily imported tensorgrad.simplify (for the provenance hook shared with
-# the simplify engine). Lazy because simplify.py imports this module at top
-# level; the reverse edge must not be static.
-_simplify_mod: Optional[ModuleType] = None
-
-
-def _get_simplify() -> ModuleType:
-    global _simplify_mod
-    if _simplify_mod is None:
-        import tensorgrad.simplify as simplify
-
-        _simplify_mod = simplify
-    return _simplify_mod
-
-
 ################################################################################
 # Differentiation rules, one per node type
 ################################################################################
 
 
+@singledispatch
+def _dispatch_grad(tensor: Tensor, x: Variable, new_names: dict[str, str]) -> Tensor:
+    """Dispatch a node to its per-type grad rule (the rules below register
+    themselves).
+
+    The table is the extension point: types outside the core set register
+    their rule on import (tensorgrad/extras/expectation.py registers
+    Expectation's)."""
+    raise NotImplementedError(f"Derivative not implemented for {type(tensor)}")
+
+
+
+@_dispatch_grad.register
 def grad_variable(t: Variable, x: Variable, new_names: dict[str, str]) -> Tensor:
     """d/dx x = identity (an outer product of order-2 Deltas pairing each edge
     of x with its new derivative edge); d/dx y = Zero for any other variable."""
@@ -73,6 +71,7 @@ def grad_variable(t: Variable, x: Variable, new_names: dict[str, str]) -> Tensor
     return Zero(_symmetries=None, **(t.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
 
+@_dispatch_grad.register
 def grad_constant(t: Constant, x: Variable, new_names: dict[str, str]) -> Tensor:
     """d/dx c = Zero, broadcast over the new derivative edges: constants
     (Delta, Zero, Convolution, Reshape, Affine, ...) do not depend on any
@@ -80,6 +79,7 @@ def grad_constant(t: Constant, x: Variable, new_names: dict[str, str]) -> Tensor
     return Zero(_symmetries=None, **(t.shape | {new_names[e]: s for e, s in x.shape.items()}))
 
 
+@_dispatch_grad.register
 def grad_rename(t: Rename, x: Variable, new_names: dict[str, str]) -> Tensor:
     """d/dx Rename(inner) = Rename(d/dx inner): differentiate through the
     (lazy) rename wrapper. If the requested new names are used inside `inner`,
@@ -91,6 +91,7 @@ def grad_rename(t: Rename, x: Variable, new_names: dict[str, str]) -> Tensor:
     return Rename(t.tensor.grad(x, middle_names), middle_to_new | t.mapping)
 
 
+@_dispatch_grad.register
 def grad_function(t: Function, x: Variable, new_names: dict[str, str]) -> Tensor:
     """The chain rule: d/dx f(g1(x), ..., gk(x)) = sum_i (d/dx gi(x)) Dif(...).
 
@@ -128,6 +129,7 @@ def grad_function(t: Function, x: Variable, new_names: dict[str, str]) -> Tensor
     return Sum(parts)
 
 
+@_dispatch_grad.register
 def grad_derivative(t: Derivative, x: Variable, new_names: dict[str, str]) -> Tensor:
     """d/dx D_y(inner) = D_y(d/dx inner): pass the new derivative through the
     existing one (rather than creating a doubly-nested Derivative, which would
@@ -135,6 +137,7 @@ def grad_derivative(t: Derivative, x: Variable, new_names: dict[str, str]) -> Te
     return Derivative(grad_step(t.tensor, x, new_names), t.x, t.new_names)
 
 
+@_dispatch_grad.register
 def grad_product(t: Product, x: Variable, new_names: dict[str, str]) -> Tensor:
     """The product rule: d/dx (f * g) = f' * g + f * g', one term per factor.
     Inner (contraction) edges are first renamed away from the new derivative
@@ -161,6 +164,7 @@ def grad_product(t: Product, x: Variable, new_names: dict[str, str]) -> Tensor:
     )
 
 
+@_dispatch_grad.register
 def grad_sum(t: Sum, x: Variable, new_names: dict[str, str]) -> Tensor:
     """Linearity: d/dx sum_i w_i t_i = sum_i w_i (d/dx t_i)."""
     if not t.terms:
@@ -168,34 +172,9 @@ def grad_sum(t: Sum, x: Variable, new_names: dict[str, str]) -> Tensor:
     return Sum([Derivative(term, x, new_names) for term in t.terms], t.weights)
 
 
-################################################################################
-# Dispatch
-################################################################################
-
-# (Callable[[Any, ...]]: each rule takes its concrete node type as the first
-# parameter, which a dict value type of Callable[[Tensor, ...]] would reject.)
-_GRAD_RULES: dict[type, Callable[[Any, Variable, dict[str, str]], Tensor]] = {
-    Variable: grad_variable,
-    Delta: grad_constant,
-    Zero: grad_constant,
-    Rename: grad_rename,
-    Function: grad_function,
-    Derivative: grad_derivative,
-    Product: grad_product,
-    Sum: grad_sum,
-}
-
-
 def grad_step(tensor: Tensor, x: Variable, new_names: dict[str, str]) -> Tensor:
-    """Push the derivative one step into `tensor`, dispatching by node type.
-
-    Types outside the core set (Expectation; Constant subclasses such as
-    Convolution/Reshape/Affine, which inherit the zero rule) fall back to the
-    ``_grad`` method protocol on the class."""
-    rule = _GRAD_RULES.get(type(tensor))
-    if rule is not None:
-        return rule(tensor, x, new_names)
-    return tensor._grad(x, new_names)
+    """Push the derivative one step into `tensor`, dispatching by node type."""
+    return _dispatch_grad(tensor, x, new_names)
 
 
 ################################################################################
@@ -225,6 +204,10 @@ def step_derivative(t: Derivative, args: dict[str, Any]) -> Tensor:
         # grad_step, not .grad(): the public API is lazy (returns a Derivative
         # node), and this is the place that performs the actual stepping.
         grad = grad_step(inner, t.x, t.new_names)
-        _get_simplify()._record_simplify_provenance(args, inner, grad)
+        # Local import: simplify.py imports this module at top level, so the
+        # reverse edge must not be static.
+        from tensorgrad.simplify import _record_simplify_provenance
+
+        _record_simplify_provenance(args, inner, grad)
         res = grad.simplify(args)
     return res

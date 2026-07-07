@@ -76,10 +76,10 @@ Caveats:
 from __future__ import annotations
 
 import hashlib
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Callable, cast
+from typing import Any, Callable, Generator, cast
 
 import networkx as nx
 from sympy import Symbol
@@ -93,6 +93,11 @@ __all__ = [
     "structural_hash",
     "structural_fingerprint",
     "refined_sort_key",
+    "edge_structural_graph",
+    "is_isomorphic",
+    "isomorphisms",
+    "symmetry_orbits",
+    "graph_to_string",
 ]
 
 
@@ -465,3 +470,115 @@ def _canon_opaque(t: Any) -> CanonInfo:
     coarse_colors = {e: coarse_c for e in t.edges}
     refined_colors = {e: _H("opaque-e-r", refined_fp, e) for e in t.edges}
     return CanonInfo(coarse_fp, refined_fp, coarse_colors, refined_colors)
+
+
+################################################################################
+# Isomorphism queries. The bodies behind Tensor.is_isomorphic /
+# Tensor.isomorphisms / Tensor.symmetries (thin delegates in tensor.py); they
+# live here with the canon machinery they consume. edge_structural_graph and
+# graph_to_string have no Tensor delegates — call them here directly. Like the
+# rest of this module, tensors are duck-typed (t: Any) to keep the import edge
+# pointing tensor.py -> here.
+################################################################################
+
+
+def edge_structural_graph(
+    t: Any, match_edges: bool = True, edge_names: dict[str, Any] | None = None
+) -> tuple[nx.MultiDiGraph, list[str]]:
+    """Build a structural graph of the tensor with dummy nodes for outer edges.
+
+    Args:
+        match_edges: If True the names are used to match edges.
+        edge_names: An optional mapping of edge names.
+
+    Returns:
+        A tuple (G, edge_list) where G is the graph and edge_list is the list
+        of edge names.
+    """
+    if edge_names is None:
+        edge_names = {}
+
+    G, edges = build_graph(t)
+
+    for e in edges.keys():
+        if e not in edge_names:
+            edge_names[e] = ("Outer Edge", e) if match_edges else ""
+
+    for e, node in edges.items():
+        n = G.number_of_nodes()
+        G.add_node(n, name=edge_names[e])
+        G.add_edge(node, n)
+    return G, list(edges.keys())
+
+
+def is_isomorphic(
+    t: Any, other: Any, match_edges: bool = False, edge_names: dict[str, Any] | None = None
+) -> bool:
+    """Test whether two tensors are isomorphic.
+
+    Args:
+        match_edges: Whether to require a matching of edge names.
+        edge_names: Optional mapping to use for edge renaming.
+    """
+    a, b = canon_info(t), canon_info(other)
+    # Sound reject: any isomorphism (with or without edge matching)
+    # implies equal invariant hashes.
+    if a.coarse_fp != b.coarse_fp:
+        return False
+    if a.refined_fp == b.refined_fp:
+        if not match_edges and not edge_names:
+            # Sound accept: equal fingerprints imply isomorphic.
+            return True
+
+        # Name-sensitive accept: by (I1) equal fingerprints yield a
+        # color-preserving isomorphism, and by (I2) any
+        # color-preserving edge permutation is an automorphism, so a
+        # label-preserving isomorphism exists iff the (color, label)
+        # multisets agree. (Labels mirror edge_structural_graph.)
+        def label(e: str) -> Any:
+            default = ("Outer Edge", e) if match_edges else ""
+            return default if edge_names is None else edge_names.get(e, default)
+
+        if Counter((a.refined_colors[e], label(e)) for e in t.edges) == Counter(
+            (b.refined_colors[e], label(e)) for e in other.edges
+        ):
+            return True
+    # Ambiguous (hash-equal but fingerprint/label-distinct): only now
+    # pay for the exact nx isomorphism test.
+    G1, _ = edge_structural_graph(t, match_edges=match_edges, edge_names=edge_names)
+    G2, _ = edge_structural_graph(other, match_edges=match_edges, edge_names=edge_names)
+    return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
+
+
+def isomorphisms(t: Any, other: Any) -> Generator[dict[str, str], None, None]:
+    """Yield all isomorphisms (edge renamings) between t and other."""
+    G1, edges1 = edge_structural_graph(t, match_edges=False)
+    G2, edges2 = edge_structural_graph(other, match_edges=False)
+    for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
+        G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
+    ).isomorphisms_iter():
+        # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
+        # We are only interested in then `len(t.edges)` last nodes, which correspond to the outer edges
+        start_i = G1.number_of_nodes() - len(t.edges)
+        start_j = G2.number_of_nodes() - len(t.edges)
+        yield {
+            edges1[i - start_i]: edges2[j - start_j]
+            for i, j in matching.items()
+            if i >= start_i and j >= start_j
+        }
+
+
+def symmetry_orbits(t: Any) -> set[frozenset[str]]:
+    """The orbits of the automorphism group of the tensor: the sets of edges
+    that ever get mapped to each other."""
+    G = nx.Graph([(i, j) for mapping in isomorphisms(t, t) for i, j in mapping.items()])
+    return set(map(frozenset, nx.connected_components(G)))
+
+
+def graph_to_string(t: Any) -> str:
+    """An ASCII tree-like representation of the structural graph."""
+    G, _ = edge_structural_graph(t, match_edges=True)
+    # (networkx accepts an attribute name for with_labels; the stub says bool)
+    return "\n".join(
+        nx.generate_network_text(G, with_labels="name", sources=[0])  # pyright: ignore[reportArgumentType]
+    )

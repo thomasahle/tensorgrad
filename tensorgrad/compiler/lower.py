@@ -16,6 +16,7 @@ from typing import Any, Optional
 import sympy
 
 from tensorgrad import functions as F
+from tensorgrad.utils import DisjointSets
 from tensorgrad.tensor import (
     Delta,
     Derivative,
@@ -137,17 +138,9 @@ class Lowerer:
         # Union-find over edge names in this product's scope. This is the
         # derived special case of affine-row elimination: a row of the form
         # e1 - e2 = 0 is solved immediately by aliasing the two wires.
-        parent: dict[str, str] = {}
-
-        def find(e: str) -> str:
-            parent.setdefault(e, e)
-            while parent[e] != e:
-                parent[e] = parent[parent[e]]
-                e = parent[e]
-            return e
-
-        def union(e1: str, e2: str) -> None:
-            parent[find(e2)] = find(e1)
+        # (utils.DisjointSets: union(x, y) keeps y's root as representative.)
+        aliases: DisjointSets[str, Any] = DisjointSets()
+        find = aliases.find
 
         # General affine rows (edge-name form): (coeffs {edge: sympy}, const).
         raw_rows: list[tuple[dict[str, Any], Any]] = []
@@ -161,7 +154,7 @@ class Lowerer:
                 else:
                     edges = list(ft.edges)
                     for e in edges[1:]:
-                        union(edges[0], e)
+                        aliases.union(e, edges[0])
                     find(edges[0])
             elif isinstance(ft, F.Convolution):
                 # C[i, k, o] = 1 iff i = dilation*k + stride*o (stride/dilation

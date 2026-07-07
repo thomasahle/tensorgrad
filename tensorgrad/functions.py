@@ -24,7 +24,7 @@ from tensorgrad.tensor import (
     _unused_edge_names,
     peel_rename,
 )
-from tensorgrad.simplify import simplify_delta_products
+from tensorgrad.simplify import merge_products, simplify_delta_products
 from tensorgrad.utils import DisjointSets, _MatchEdgesKey
 
 # We include a "sum" function, which overloads the python sum. So we keep a reference
@@ -614,13 +614,13 @@ class _PowerFunction(FunctionSignature):
 
     @staticmethod
     def _flatten(tensors: list[Tensor]) -> list[Tensor]:
-        """Flatten nested Products into a single factor list. Product.merge only
+        """Flatten nested Products into a single factor list. merge_products only
         flattens one level, so repeat until no factor is itself a Product.
         Merge freshens clashing inner edges via `rename`, which is lazy on
         composites — peel the resulting wrappers so the combination passes
         keep seeing pow-Functions (and copy tensors) rather than Rename nodes."""
         while any(isinstance(t, Product) for t in tensors):
-            tensors = Product.merge([Product([t]) if not isinstance(t, Product) else t for t in tensors]).factors
+            tensors = merge_products([Product([t]) if not isinstance(t, Product) else t for t in tensors]).factors
             tensors = [peel_rename(t) for t in tensors]
         return tensors
 

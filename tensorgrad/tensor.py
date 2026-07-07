@@ -28,6 +28,7 @@ from sympy import Symbol
 # delegates below import them locally at the call site instead.
 import tensorgrad.structure as canon
 from tensorgrad.structure import Structure, size_key
+from tensorgrad.utils import merge_renames
 
 # Plain numeric scalars accepted by Tensor's arithmetic operators and as Sum
 # weights. `numbers.Number` covers numeric types that only register with the
@@ -125,27 +126,6 @@ class Tensor(metaclass=TensorMeta):
         """
         return Derivative(self, x, new_names)
 
-    def _check_grad(self, x: "Variable", new_names: Optional[dict[str, str]]) -> dict[str, str]:
-        # When taking a derivative with respect to a variable, we need some edge names for the derivative.
-        # If new_names is not given, we generate names based on the edge names of x.
-        # However, we need to make sure they don't clash with any names already present in the tensor.
-        # If new_names is already given, we just check to make sure they are not already present in the tensor.
-        if new_names is not None:
-            if x.edges != new_names.keys():
-                raise ValueError(f"The {new_names.keys()=} must match {x.edges=}")
-            # Check that the new names don't clash with self.edges
-            if used := self.edges & new_names.values():
-                raise ValueError(f"{used} are already present in {self.edges=}")
-            return new_names
-
-        # Make new names that are _based_ on x.edges and _avoid_ self.edges
-        return _unused_edge_names(x.edges, self.edges)
-
-    def _grad(self, x: "Variable", new_names: dict[str, str]) -> "Tensor":
-        # Fallback protocol for types outside the core dispatch table in
-        # tensorgrad/grad.py (extras like Expectation override this).
-        raise NotImplementedError(f"Derivative not implemented for {type(self)}")
-
     @final
     def rename(self, **kwargs: str) -> "Tensor":
         """
@@ -215,11 +195,6 @@ class Tensor(metaclass=TensorMeta):
 
         return simplify(self, args)
 
-    def _simplify(self, args: dict[str, Any]) -> "Tensor":
-        # Fallback protocol for types outside the core dispatch table in
-        # tensorgrad/simplify.py (extras like Expectation override this).
-        return self
-
     def full_simplify(self, expand: bool = True) -> "Tensor":
         """Applies multiple simplification rules until the expression no longer changes"""
         expr = self
@@ -249,15 +224,6 @@ class Tensor(metaclass=TensorMeta):
         from tensorgrad.substitute import _substitute_memo
 
         return _substitute_memo(self, x, y, {})
-
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        """The out-of-core `substitute` protocol hook (see tensorgrad.substitute).
-
-        The core node types register their rule in tensorgrad.substitute;
-        types outside that set reach this method via the dispatch default.
-        The base raises: Derivative and the Expectation extra deliberately do
-        not support substitution."""
-        raise NotImplementedError
 
     def __hash__(self) -> int:
         # Isomorphism-invariant hash (a == b implies equal hashes), computed
@@ -289,14 +255,6 @@ class Tensor(metaclass=TensorMeta):
             cache[id(x)] = hit = (_dispatch_depends_on(self, x), x)  # x ref pins the id
         return hit[0]
 
-    def _depends_on(self, x: "Variable") -> bool:
-        """The out-of-core `depends_on` protocol hook (see tensorgrad.dependson).
-
-        The core node types register their rule in tensorgrad.dependson; types
-        outside that set (the Expectation extra) reach this method via the
-        dispatch default and override it. Reaching the base is a bug."""
-        raise NotImplementedError
-
     def structure(self) -> "Structure":
         """Declarative structural identity of this node (the single source of
         truth for isomorphism and hashing; see tensorgrad/structure.py).
@@ -305,17 +263,6 @@ class Tensor(metaclass=TensorMeta):
         which both the networkx structural graph and the canonical
         fingerprints are derived by generic folds."""
         raise NotImplementedError
-
-    def edge_structural_graph(
-        self, match_edges: bool = True, edge_names: Optional[dict[str, Any]] = None
-    ) -> "tuple[nx.MultiDiGraph, list[str]]":
-        """Build a structural graph of the tensor with dummy nodes for outer
-        edges (see tensorgrad.structure.edge_structural_graph)."""
-        return canon.edge_structural_graph(self, match_edges, edge_names)
-
-    def graph_to_string(self) -> str:
-        """Returns an ASCII tree-like representation of the structural graph."""
-        return canon.graph_to_string(self)
 
     # Overloaded operators.
     # All binary operators accept a plain numeric scalar (int, float,
@@ -701,7 +648,23 @@ class Variable(Tensor):
             ones = Product([Delta(s, e) for e, s in lhs.shape.items()])
             rhs = ones if rhs == 1 else rhs * ones
         rhs = self._strip_constraints(rhs).simplify()
-        if (nr := self._node_count(rhs)) >= (nl := self._node_count(lhs)):
+
+        def node_count(t: "Tensor") -> int:
+            seen: set[int] = set()
+            stack = [t]
+            while stack:
+                u = stack.pop()
+                if id(u) in seen:
+                    continue
+                seen.add(id(u))
+                stack.extend(getattr(u, "factors", ()) or ())
+                stack.extend(getattr(u, "terms", ()) or ())
+                stack.extend(getattr(u, "inputs", ()) or ())
+                if (inner := getattr(u, "tensor", None)) is not None:
+                    stack.append(inner)
+            return len(seen)
+
+        if (nr := node_count(rhs)) >= (nl := node_count(lhs)):
             raise ValueError(
                 f"Constraint rhs must be strictly smaller than lhs ({nr} vs {nl} nodes): "
                 "equations rewrite lhs -> rhs during simplify, and shrinking is what "
@@ -713,22 +676,6 @@ class Variable(Tensor):
             _symmetries=self._symmetries,
             _constraints=self._constraints + ((lhs, rhs),),
         )
-
-    @staticmethod
-    def _node_count(t: "Tensor") -> int:
-        seen: set[int] = set()
-        stack = [t]
-        while stack:
-            u = stack.pop()
-            if id(u) in seen:
-                continue
-            seen.add(id(u))
-            stack.extend(getattr(u, "factors", ()) or ())
-            stack.extend(getattr(u, "terms", ()) or ())
-            stack.extend(getattr(u, "inputs", ()) or ())
-            if (inner := getattr(u, "tensor", None)) is not None:
-                stack.append(inner)
-        return len(seen)
 
     def __repr__(self) -> str:
         args = [f'"{self.name}", {", ".join(self.edges)}']
@@ -796,31 +743,8 @@ class Rename(Tensor):
         argstring = ", ".join(f'{k}="{v}"' for k, v in self.mapping.items())
         return f"{self.tensor}.rename({argstring})"
 
-    @classmethod
-    def merge_renames(cls, *renames: dict[str, str]) -> dict[str, str]:
-        """
-        Merge several renaming dictionaries into one.
-
-        Args:
-            *renames: Arbitrary number of renaming dictionaries.
-
-        Returns:
-            A single dictionary representing the merged renaming.
-        """
-        merged: dict[str, str] = {}
-        for rename in renames:
-            used = merged.keys() | merged.values()
-            # Apply the rename to the existing chains
-            for o, n in merged.items():
-                merged[o] = rename.get(n, n)
-            # Add new renames
-            for o, n in rename.items():
-                if o not in used:
-                    merged[o] = n
-        return merged
-
     def _rename(self, **kwargs: str) -> Tensor:
-        return Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
+        return Rename(self.tensor, merge_renames(self.mapping, kwargs))
 
     def structure(self) -> "Structure":
         # Rename is the only tensor that doesn't exist structurally
@@ -872,15 +796,6 @@ class Constant(Tensor, ABC):
 
     def _rename(self, **kwargs: str) -> Tensor:
         return type(self)(_symmetries=None, **{kwargs.get(e, e): s for e, s in self.shape.items()})
-
-    def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        # Thin delegate to the zero-gradient rule (tensorgrad.grad
-        # dispatches Delta/Zero there directly; this protocol fallback covers
-        # the Constant subclasses outside the core table: Convolution,
-        # Reshape, Affine).
-        from tensorgrad.grad import grad_constant
-
-        return grad_constant(self, x, new_names)
 
 
 class Delta(Constant):
@@ -1260,8 +1175,18 @@ class Derivative(Tensor):
         """
         self.tensor = tensor
         self.x = wrt
-        # If no edges were given, pick some names based on x, but avoid clashes with tensor.
-        self.new_names = tensor._check_grad(wrt, new_names)
+        # The derivative adds one new edge per edge of `wrt`, and those names
+        # must not clash with the names already present in `tensor`. If
+        # new_names is given, validate it; otherwise generate names based on
+        # wrt's edges, avoiding tensor's.
+        if new_names is not None:
+            if wrt.edges != new_names.keys():
+                raise ValueError(f"The {new_names.keys()=} must match {wrt.edges=}")
+            if used := tensor.edges & new_names.values():
+                raise ValueError(f"{used} are already present in {tensor.edges=}")
+            self.new_names = new_names
+        else:
+            self.new_names = _unused_edge_names(wrt.edges, tensor.edges)
         self._shape = tensor.shape | {self.new_names[e]: wrt.shape[e] for e in wrt.edges}
 
     def _rename(self, **kwargs: str) -> Tensor:
@@ -1329,28 +1254,6 @@ class Product(Tensor):
         # contain keys that are in self.edges.
         rename |= kwargs
         return Product([t.rename(**rename) for t in self.factors])
-
-    @staticmethod
-    def merge(products: list["Product"]) -> "Product":
-        """
-        Merge several Product tensors into one, renaming inner edges so they are distinct.
-
-        Args:
-            products: A list of Product tensors.
-
-        Returns:
-            A new Product tensor merging the inputs.
-        """
-        used_edges = {e for p in products for e in p.edges}
-        res = []
-        for p in products:
-            # Maybe this could also be expressed in terms of avoid_internal_edges
-            inner_edges = {e for t in p.factors for e in t.edges if e not in p.edges}
-            rename = _unused_edge_names(inner_edges, used_edges)
-            for t in p.factors:
-                res.append(t.rename(**rename))
-            used_edges.update(rename.values())  # Later renames should not clash with this one
-        return Product(res)
 
     def __repr__(self) -> str:
         if len(self.factors) <= 1:
@@ -1493,7 +1396,7 @@ def peel_rename(t: Tensor) -> Tensor:
         return t
     inner, mapping = t.tensor, t.mapping
     while isinstance(inner, Rename):
-        mapping = Rename.merge_renames(inner.mapping, mapping)
+        mapping = merge_renames(inner.mapping, mapping)
         inner = inner.tensor
     # _rename implementations assume the mapping is restricted to free edges
     # (Tensor.rename guarantees this; merged/hand-built mappings may not be).

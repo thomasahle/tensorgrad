@@ -54,7 +54,7 @@ class EdgeSpec:
         self.open = open
 
     @classmethod
-    def of(cls, item) -> "EdgeSpec":
+    def of(cls, item: Any) -> "EdgeSpec":
         """Build from a __class_getitem__ subscript: Tensor["a", "b"],
         Tensor["a"], the space-separated Tensor["a b"], or the open form
         Tensor[..., "d"] (an Ellipsis anywhere marks the spec open)."""
@@ -96,14 +96,14 @@ class EdgeSpec:
         parts = (["..."] if self.open else []) + list(map(repr, self.edges))
         return f"Tensor[{', '.join(parts)}]"
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, EdgeSpec) and set(self.edges) == set(other.edges) and self.open == other.open
 
     def __hash__(self) -> int:
         return hash((frozenset(self.edges), self.open))
 
 
-def _specs(func) -> dict[str, EdgeSpec]:
+def _specs(func: Callable[..., Any]) -> dict[str, EdgeSpec]:
     """The function's EdgeSpec annotations, evaluating string annotations
     (`from __future__ import annotations` turns them all into strings)."""
     out = {}
@@ -129,7 +129,7 @@ def typed(func: F) -> F:
     ret = specs.pop("return", None)
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = sig.bind(*args, **kwargs)
         for name, spec in specs.items():
             if name in bound.arguments:
@@ -139,4 +139,6 @@ def typed(func: F) -> F:
             ret.check(result, f"{func.__qualname__}(): return value")
         return result
 
-    return wrapper  # pyright: ignore[reportReturnType]  # functools.wraps preserves the signature
+    # functools.wraps preserves the signature, but the wrapper's static type
+    # (a _Wrapped) can't be reconciled with the TypeVar F.
+    return wrapper  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
