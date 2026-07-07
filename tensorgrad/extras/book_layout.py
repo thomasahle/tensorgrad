@@ -1600,7 +1600,11 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             # long connectors sag deeper so they route BELOW tall content
             # (e.g. a stacked group) instead of striking through it
             span_x = abs(nodes[a].x - nodes[b].x)
-            bend = min(80, int(30 + 6 * span_x))
+            span_y = abs(nodes[a].y - nodes[b].y)
+            reach = max(span_x, span_y)
+            # short duplicates (a second wire between already-joined nodes)
+            # need a WIDE bend to separate from the straight wire
+            bend = 55 if reach < 1.2 else min(80, int(30 + 6 * span_x))
             na, nb = endpoint(a, b), endpoint(b, a)
             tip = f"{direction}, " if direction else ""
             dot = "densely dotted, " if w.arrow == "dotted" else ""
@@ -1645,6 +1649,18 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                              rf" inner sep=1.5pt] {{${_tex_edge(outer_lbl)}$}}")
             src = name[w.a]
             if w.a in group_side:
+                if w.direction in ("up", "down"):
+                    # extra group edges exit horizontally from the right
+                    # bracket at stacked heights (vertical stubs off a paren
+                    # top read as shooting into the air)
+                    pr = group_side[w.a][1]
+                    yshift = 0.42 + 0.3 * abs(w.x) / 0.26 if w.x else 0.42
+                    if w.direction == "down":
+                        yshift = -yshift
+                    lines.append(
+                        rf"\draw ([yshift={yshift:.2f}cm]{pr}.east)"
+                        rf" -- ++({STUB:.2f},0){lab};")
+                    continue
                 src = group_side[w.a][0 if w.direction == "left" else 1]
             shift = f"[xshift={w.x:.2f}cm]" if w.x else ""
             lines.append(rf"\draw ({shift}{src}.{anch}) -- ++{d}{lab};")
