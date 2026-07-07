@@ -1,0 +1,819 @@
+%% Tensorgrad: PLDI draft.
+%% Build: latexmk -pdf main.tex   (acmart is in texlive 2023)
+%% Submission target: PLDI (sigplan); evaluation written to also serve an
+%% MLSys/NeurIPS-systems audience.
+\documentclass[sigplan,10pt,review]{acmart}
+%% For submission, switch to: \documentclass[sigplan,10pt,review,anonymous]{acmart}
+
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  language=Python,
+  basicstyle=\small\ttfamily,
+  keywordstyle=\bfseries,
+  commentstyle=\color{gray},
+  columns=fullflexible,
+  keepspaces=true,
+}
+
+%% Prominent TODO boxes so the draft is honest about what is landed vs pending.
+\newcommand{\todopaper}[1]{\par\noindent\colorbox{orange!25}{%
+  \parbox{\dimexpr\linewidth-2\fboxsep}{\textbf{TODO:} #1}}\par}
+
+\setcopyright{none}
+\settopmatter{printfolios=true}
+
+\begin{document}
+
+\title{Do the Calculus Once: A Tensor Language Where Equality Is
+  Isomorphism and Differentiation Is Rewriting}
+
+\author{Thomas D. Ahle}
+\affiliation{\institution{}\country{}}
+%% \author{...}  % TODO: author list
+
+\begin{abstract}
+Deep-learning frameworks differentiate programs by recording and replaying
+tapes at runtime; computer-algebra systems differentiate expressions
+symbolically but do not produce competitive kernels. We present
+\textsc{tensorgrad}, a tensor language that does the calculus once,
+ahead of time. Expressions are tensor networks with \emph{named edges} and
+no axis order; equality is graph isomorphism, so commutativity,
+associativity, and index renaming are quotiented out by representation
+rather than by rewrite rules. Derivatives are rewrites: only irreducible
+scalar leaves carry differentiation rules, and every composite---softmax,
+layer normalization, attention---receives gradients and Hessians derived by
+the language itself. A compiler lowers the resulting algebra to
+straight-line PyTorch kernels. Its central pass restores reverse-mode
+ordering to symbolically derived gradients, which naturally arrive
+forward-mode-shaped: on a 12-block GPT-2--dimension gradient graph, planned
+intermediates fall from 11.3\,exabytes to 19.8\,gigabytes (largest node
+23\,MB). Every optimization rewrite is verified by exact modular
+Schwartz--Zippel evaluation, and a value-numbering pass merges
+algebraically equal subgraphs that no structural canonicalization can
+identify, guarded by a fresh-seed refusal gate that turns any unsound merge
+into a no-op. Derived backward passes match or beat runtime autograd on
+CPU (layer-norm gradient $3.3\times$ faster, convolutions
+$2.4$--$4.8\times$), the cross-entropy--softmax Hessian simplifies to its
+target-free two-term closed form automatically, and on structured
+second-order workloads the symbolic head start is decisive: the compiled
+Hessian of $x^{\top}Ax$ runs $8\times$ faster than \texttt{torch.func}
+and $20\times$ faster than JAX. A three-block GPT
+trains to 100\% task accuracy with autograd disabled globally---forward,
+all 53 gradients, and the AdamW optimizer compiled into a single fused
+program.
+\end{abstract}
+
+\maketitle
+
+\section{Introduction}\label{sec:intro}
+
+This work began with a complaint. A researcher wanted the Hessian of
+softmax cross-entropy---not to train a network, but to \emph{understand}
+one---and found that no mainstream framework would give it to them in a
+form a human could read. Automatic differentiation frameworks
+\cite{jax,pytorch} will evaluate Hessian--vector products efficiently, but
+the Hessian itself, as an object with visible structure
+($\mathrm{diag}(s) - ss^{\top}$, independent of the target when the target
+lies on the simplex), is available only by hand derivation. Computer
+algebra systems \cite{mathematica,sympy} can derive it, but they neither
+speak tensors with named indices natively nor compile their results into
+kernels one could train with.
+
+\textsc{Tensorgrad} closes this gap with a two-layer design that we argue
+is the right division of labor for symbolic tensor computation:
+
+\begin{itemize}
+\item \textbf{The language layer normalizes.} Expressions are tensor
+  networks; simplification is deterministic, search-free, semantics-%
+  preserving rewriting toward a normal form. There is no cost model and no
+  backtracking at this layer.
+\item \textbf{The compiler layer optimizes.} Everything that requires
+  search, cost models, or randomized reasoning---contraction ordering,
+  reverse-mode recovery, numerical stabilization, layout assignment,
+  kernel selection---lives in compiler passes over a lowered IR, verified
+  independently of the language's notion of equality.
+\end{itemize}
+
+Mainstream systems blur these layers: \texttt{sympy}'s
+\texttt{simplify} is a heuristic search with a complexity objective;
+Mathematica's \texttt{FullSimplify} explores rule sequences under a time
+budget; XLA and TorchInductor optimize numerics with no algebraic layer
+above them. Keeping the layers separate is what lets the language stay
+small---the entire user-facing kernel is nine node types and one equality
+relation---while the compiler grows ambitious.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item A tensor language in which \emph{equality is graph isomorphism}
+  (\S\ref{sec:language}). Axes are named edges; expressions never specify
+  an axis order; commutativity, associativity, and $\alpha$-renaming are
+  unexpressible rather than rewritten away. Equality is decided by
+  compositional canonical fingerprints---exact on the tree-shaped parts of
+  expressions, Weisfeiler--Leman--refined on contraction multigraphs, with
+  exact verification reserved for the rare fingerprint collisions
+  (\S\ref{sec:iso}). Value constraints are \emph{equations in the language
+  itself} with a termination order (\S\ref{sec:constraints}).
+\item A differentiation discipline in which only irreducible leaves carry
+  derivative rules (\S\ref{sec:autodiff}). We show empirically that a
+  user-defined softmax---three lines of primitives---receives a correct
+  gradient, a fused and numerically stable compiled kernel, and a
+  closed-form Hessian, with no framework code (\S\ref{sec:tier0}).
+\item An \emph{adjoint pass} that restores reverse-mode ordering to
+  symbolically derived gradients (\S\ref{sec:adjoint}). We identify why no
+  local cost model can find reverse mode (a cost valley: dissolving one
+  chain boundary improves the objective by ${<}2\%$ until the entire chain
+  collapses), and give a scoring-free structural algorithm. Planned
+  gradient intermediates on transformer graphs drop by up to nine orders
+  of magnitude (Table~\ref{tab:adjoint}).
+\item Randomized algebraic verification as compiler infrastructure
+  (\S\ref{sec:sz}): every rewrite class is checked by exact evaluation
+  over $\mathbb{F}_p$ at random points (Schwartz--Zippel), and a
+  consolidation pass merges value-equal subgraphs modulo axis permutation
+  under a \emph{fresh-seed refusal gate} that converts any unsound merge
+  into a clean fallback. On a 3-block GPT training step this removes 71\%
+  of compute nodes and $4.5\times$ of runtime.
+\item Technology mapping for a language without axis order
+  (\S\ref{sec:techmap}): because programs never over-specify layout, the
+  compiler assigns physical axis orders globally, reducing every remaining
+  transpose to a zero-cost view, and maps contractions onto BLAS cells.
+\item An evaluation (\S\ref{sec:eval}) showing derived backward passes at
+  or beyond runtime-autograd performance on CPU, automatic recovery of
+  hand-derived Hessian structure, and an end-to-end GPT trained with
+  \texttt{torch.set\_grad\_enabled(False)}: forward, all gradients, and
+  AdamW as one compiled program.
+\end{enumerate}
+
+The comparison with JAX runs through the paper and is honest in both
+directions: \texttt{jax.grad} composes and compiles \emph{numerics},
+and XLA's whole-program fusion wins the training-step wall clock on CPU
+at every scale we measured (\S\ref{sec:e2e}); tensorgrad simplifies
+\emph{algebra} before compiling, which is where target-free Hessians,
+structural zeros, and the $8$--$20\times$ second-order wins of
+\S\ref{sec:hessian} come from.
+
+\section{The Language}\label{sec:language}
+
+\subsection{Named edges and tensor networks}
+
+A \textsc{tensorgrad} expression is a tensor network: a multigraph whose
+vertices are tensors and whose edges are named indices. A variable
+declares its edges and their (symbolic) sizes:
+
+\begin{lstlisting}
+b, s, v, d = symbols("batch seq vocab d")
+X  = Variable("X", batch=b, seq=s, d=d)
+W  = Variable("W", d=d, vocab=v)
+logits = X @ W          # contracts the shared edge `d`
+\end{lstlisting}
+
+There is no axis order: \texttt{X} is not a ``$b \times s \times d$
+array'' but a tensor with three named edges. Contraction is edge fusion;
+\texttt{@} contracts edges with equal names. Multi-head attention needs no
+\texttt{view}/\texttt{transpose}: heads are an edge named \texttt{head},
+and attention keys are made by renaming \texttt{seq} to \texttt{key}.
+Order-dependence is unexpressible, which has a consequence we exploit in
+\S\ref{sec:techmap}: the compiler owns physical layout globally, because
+the program never gave that freedom away.
+
+The language kernel has nine node types: \texttt{Variable},
+\texttt{Delta} (Kronecker/copy tensors, which also serve as hyperedges),
+\texttt{Zero}, \texttt{Sum} (weighted, unordered), \texttt{Product}
+(unordered), \texttt{Function} (opaque signatures over inputs),
+\texttt{Derivative}, \texttt{Rename}, and constants. The type set is
+closed by design; operations over it grow (\S\ref{sec:rules-as-data}).
+
+\subsection{Equality is isomorphism}\label{sec:iso}
+
+Two expressions are equal iff their tensor networks are isomorphic
+(respecting labels; optionally matching free-edge names). This is a
+semantic decision baked into the representation: since \texttt{Product}
+holds an unordered multiset of factors wired by named edges,
+commutativity and associativity cannot be stated, and $\alpha$-renaming of
+contracted edges is invisible. Where \texttt{sympy} canonicalizes
+\texttt{Mul} arguments by sorting and Mathematica matches modulo
+\texttt{Orderless} attributes, \textsc{tensorgrad} has nothing to do: the
+quotient is structural.
+
+Deciding isomorphism is, of course, not free. We use a compositional
+canonical fingerprint, computed bottom-up and cached on immutable nodes:
+a node's fingerprint hashes its label and its children's fingerprints
+(sorted where children are interchangeable, slotted where they are not),
+plus a Weisfeiler--Leman refinement of the contraction wiring for
+\texttt{Product} multigraphs. Three properties matter:
+
+\begin{itemize}
+\item \emph{Soundness of rejection}: isomorphic terms have equal
+  fingerprints, so unequal fingerprints prove inequality. Real workloads
+  are rejection-dominated (hash-consing, memoization, term collection).
+\item \emph{Exactness on trees}: outside \texttt{Product}, expressions are
+  trees, where the fingerprint is the classic AHU canonical code---not a
+  heuristic.
+\item \emph{Verified acceptance}: equal fingerprints are confirmed by an
+  exact isomorphism check (VF2). Because product vertices arrive heavily
+  colored (names, shapes, child fingerprints), refinement shatters
+  essentially all practical instances: across a full 3-block GPT build
+  (loss + 53 gradients, 1{,}431 pairwise equality queries), the verifier
+  fired \textbf{12 times, each on a 4-node graph}. Graph-isomorphism
+  hardness is not repealed; it is confined to a measured-to-be-tiny
+  verification step.
+\end{itemize}
+
+The fingerprint replaced a networkx-based path (rebuild the graph, run WL,
+per query, per node) that spent its time constructing graphs; the
+compositional design is what makes hashing $O(\text{degree})$ per new node
+rather than $\Omega(\text{subtree})$, a distinction that decides whether
+deep-model simplification is linear or quadratic
+(\S\ref{sec:depth}).
+
+\paragraph{One source of structural truth.}
+Both the fingerprint and the verification graph must agree on what
+participates in identity (symmetries, value constraints, function
+parameters). We derive both as \emph{folds over a single declarative
+description}: each node type declares
+$\textit{structure}() = (\textit{label},\ \textit{children},\
+\textit{child roles},\ \textit{junctions})$, where equal child roles
+declare interchangeability and a \emph{junction} is a set of endpoints
+identified as one wire. Contraction, broadcast pass-through, hyperedges,
+and edge exposure are all junctions; inner edge names are used only to
+group endpoints and then discarded, making $\alpha$-invariance a property
+of the datum rather than a discipline of two encoders.
+
+The refactor is complete: both the fingerprint and the verification
+graph are now folds over \textit{structure}() declarations, and the two
+legacy encoders were deleted after bridge-testing agreement over a
+randomized corpus.
+
+\subsection{Constraints are equations}\label{sec:constraints}
+
+Facts about a variable's \emph{values} are declared as equations in the
+language itself:
+
+\begin{lstlisting}
+y = Variable("y", batch=b, vocab=v)
+y = y.with_eq_constraint(F.sum(y, ["vocab"]), 1)   # rows sum to 1
+W = W.with_eq_constraint(W @ W.rename(i="j"),
+                         Delta(i, "i", "j"))       # orthonormal
+\end{lstlisting}
+
+During simplification, any subnetwork isomorphic to a declared left-hand
+side is replaced by the right-hand side. Because tensorgrad's own
+canonicalization turns Hadamard squares into \texttt{pow} nodes and sums
+into ones-contractions, simplex, unit-norm, and orthogonality constraints
+are all two-factor patterns matched in the existing pairwise rewrite loop.
+Termination is a declaration-time obligation: the right-hand side must be
+strictly smaller (node count) than the left, so constraint rewriting
+always shrinks. Equation sets must be closed under the variable's symmetry
+orbits (checked at declaration). Constraints participate in identity but
+deliberately \emph{not} in differentiation: gradients are taken in the
+ambient space.
+
+The payoff is visible in \S\ref{sec:hessian}: declaring that targets lie
+on the simplex is exactly what makes the cross-entropy--softmax Hessian
+simplify to a target-free closed form.
+
+\subsection{Rules as code, becoming rules as data}\label{sec:rules-as-data}
+
+The expression-problem split is in place: the data-type module holds
+nine node types and their structural declarations, while simplification
+lives in an enumerable rule catalog with a single engine; the equation
+engine of \S\ref{sec:constraints} was its first rules-as-data component,
+carrying its own termination order. The same movement recurs in the
+backend, where kernel mappings are cells in a registry rather than
+compiler code (\S\ref{sec:techmap}).
+
+\todopaper{[G] Land the confluence harness: a declared
+termination measure per rule plus randomized local-confluence testing
+(overlapping redexes, both application orders, canonical-equality of
+normal forms, Schwartz--Zippel as the semantic backstop separating
+confluence bugs from soundness bugs); by Newman's lemma this tests exactly
+the property required. Report the number of rule pairs fuzzed and any
+divergences found.}
+
+\section{Differentiation as Rewriting}\label{sec:autodiff}
+
+\texttt{Derivative} is a node. Simplification pushes it through the
+algebra: linearity over \texttt{Sum}, the product rule over
+\texttt{Product} (new edges appear for the differentiated variable's
+indices), and the chain rule at \texttt{Function} nodes, whose signatures
+supply derivatives \emph{only at irreducible leaves}: \texttt{exp},
+\texttt{log}, \texttt{pow}, \texttt{tanh}, \texttt{erf}, matrix inverse,
+determinant, sign. Everything else is a composition and differentiates by
+rewriting. This is a design law, not a default: the system contains no
+hand-written Jacobian for any composite.\footnote{The law was violated
+twice during development---hand-fused softmax and gather Jacobians added
+for performance---and both violations were later deleted with zero
+measured regression: the derived gradients compile to identical programs
+(\S\ref{sec:eval}). We keep this footnote as an honest ablation: the
+hand-derived math was redundant, but discovering that required the
+compiler passes of \S\ref{sec:compiler} to exist. A separate, opt-in
+tier of technology-mapping \emph{cells} (\S\ref{sec:techmap}) does map
+selected composites---attention, layer norm, GELU---onto fused
+forward+backward library kernels; those are not derivative rules in the
+language: the derived gradient remains the specification, and each
+cell's backward is machine-checked against it.}
+
+Integer-indexed operations fit the same discipline: \texttt{gather} is
+a contraction with a one-hot indicator of integer data
+($\texttt{table} \mathbin{@} \texttt{one\_hot}(\texttt{idx})$), linear in
+the table, so its scatter-add gradient falls out of the product rule.
+
+\subsection{The depth problem}\label{sec:depth}
+
+Symbolic systems traditionally fail on deep models for a reason
+independent of algebra: expression DAGs with residual sharing
+($x \mapsto x + f(x)$) have exponentially many root-to-leaf \emph{paths},
+and any recursion that walks paths---substitution, dependency queries,
+renaming, unmemoized simplification---is exponential in depth even though
+the DAG is small. We treat this as a single disease with a single cure:
+all structural recursions are memoized per $(\text{node},
+\text{query})$ pair, and renaming is \emph{lazy}: \texttt{Rename} is a
+node, constructed in $O(1)$, lowered by the same simplification pass that
+owns all other rewriting. With these in place, building and normalizing
+the loss and all 53 parameter gradients of a 3-block GPT takes seconds
+(Table~\ref{tab:e2e}).
+
+\subsection{Tier 0: what a user must write}\label{sec:tier0}
+
+The founding promise is that a researcher writes mathematics and nothing
+else. Concretely, with the library's softmax ignored:
+
+\begin{lstlisting}
+def my_softmax(x, dim):
+    e = F.exp(x)
+    return e / F.sum(e, dim, keepdims=True)
+
+loss = F.sum(y * -F.log(my_softmax(x, ["v"])))
+step = compile_to_callable(loss, loss.grad(x))
+\end{lstlisting}
+
+Measured, from these lines alone: the gradient matches
+\texttt{torch.autograd} to $1.5\times10^{-8}$; the generated kernel
+contains \texttt{torch.softmax} and \emph{no} \texttt{torch.exp}
+(the stabilization pass of \S\ref{sec:stabilize} matches IR shapes, not
+names); the compiled program is finite at $|{\log its}|\approx 600$; and
+$\texttt{loss.grad(x).grad(x)}$---the Hessian that motivated the
+project---derives and compiles in 0.05\,s.
+
+\section{The Compiler}\label{sec:compiler}
+
+\begin{figure}
+\begin{verbatim}
+symbolic tensors
+  | normalize    resolve Derivative nodes (memoized,
+  |              shared across all outputs)
+  v
+  lower         one hash-consed einsum DAG for ALL
+  |             outputs; Deltas become shared wires;
+  |             structured tensors -> affine rows
+  v
+  adjoint       restore reverse-mode ordering (S5.2)
+  v
+  factor        (un)distribute by contraction cost
+  v
+  stabilize     exp-ratio / logsumexp -> stable kernels
+  v
+  consolidate   SZ value numbering mod permutation (S6)
+  v
+  layout        global physical axis assignment (S7)
+  v
+  codegen       BLAS cells, index_select/index_add,
+  |             spec-time strides, liveness `del`s
+  v
+  runtime       per-shape specialization; optional
+                torch.compile (fullgraph=True)
+\end{verbatim}
+\caption{The pass pipeline. All outputs (loss and every gradient) share
+one DAG, so forward work is shared across outputs by construction.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Lowering: structure as equations, deltas as wires}
+
+Products lower to einsum nodes over positional wires; named edges survive
+only at program boundaries. \texttt{Delta} tensors never materialize:
+they alias wires via union--find. Structured tensors (convolution,
+reshape, shift, one-hot) are indicators of integer-affine index relations
+$[\sum_i c_i e_i = k]$, carried as constraint rows on einsum nodes and
+eliminated at code generation into strided views (\texttt{as\_strided},
+\texttt{index\_select}); a dense indicator remains as the always-correct
+fallback, so structure is a fast path, never a correctness requirement.
+
+\subsection{The adjoint pass: recovering reverse mode}\label{sec:adjoint}
+
+Symbolic differentiation produces \emph{forward-mode-shaped} gradients:
+the derivative of a deep composition arrives as Jacobian chains that drag
+the parameter's indices through every layer above it. The numbers are
+disqualifying (Table~\ref{tab:adjoint}): one transformer block at GPT-2
+dimensions plans 404{,}597\,GB of intermediates for three gradients; the
+same mathematics, associated cotangent-first, needs megabytes.
+
+The key diagnosis is that \emph{no local cost model can fix this}. The
+factoring pass's greedy sweeps, which successfully recover shared
+backward structure elsewhere, cannot cross the gap: dissolving a single
+boundary of a Jacobian chain improves local cost by under $2\%$ (measured
+$0.2\%$ at the chain head), because the neighboring node is still read at
+full width---the payoff appears only when the entire chain has collapsed.
+Greedy search faces a valley with the reward at the far side.
+
+The adjoint pass is therefore \emph{scoring-free and structural}. A node
+is a \emph{transient Jacobian} if its element count exceeds every program
+input and output by a margin; such nodes must not survive. Two rules run
+to a fixpoint: (R)~at a small-output einsum reading an inflated operand,
+contract everything else down to the shared interface---an explicit,
+hash-consed \emph{cotangent} node---then dissolve one boundary of the
+inflated operand's chain; (M)~cotangents reading the same inflated node
+accumulate: per-node adjoint accumulation across sums, across gradient
+outputs, program-wide. Rule M's globality is what carries the pass across
+arbitrary depth: contributions from different stacked blocks meet at the
+shared node exactly as in classical reverse-mode AD, but discovered as an
+IR transformation over symbolically derived algebra. Every rewrite is
+einsum reassociation or distribution, pinned by the verification of
+\S\ref{sec:sz}.
+
+\begin{table}
+\caption{Adjoint pass: planned gradient intermediates (fp32) before
+lowering-only, and after the full pipeline. ``max'' is the largest single
+node. CPU, symbolic shapes fixed at GPT-2 dimensions
+($d{=}768$, $h{=}12$, $s{=}256$, $b{=}8$) except gpt-nano ($d{=}48$).}
+\label{tab:adjoint}
+\small
+\begin{tabular}{lrrr}
+\toprule
+program & lowered & final & max node \\
+\midrule
+1 block, loss+3 grads & 404{,}597\,GB & 0.87\,GB & 25\,MB \\
+3-block nano, loss+53 grads & 841\,GB & 0.41\,GB & 1.0\,MB \\
+12 blocks, loss+3 grads & 11.26\,EB & 19.8\,GB & 23\,MB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 3-block program \emph{runs}: 184\,ms per step eager on two CPU
+threads, every gradient within $7\times10^{-6}$ relative of
+\texttt{torch.autograd}. One measurement deserves a remark: the
+attention key-bias gradients agree with autograd only under an absolute
+tolerance floor---because their true value is \emph{exactly zero} by
+softmax shift-invariance. The symbolic system knows a theorem the numeric
+comparison must be protected from.
+
+\subsection{Stability is a compiler contract}\label{sec:stabilize}
+
+Derived gradients arrive as expanded primitive algebra
+($\exp/\Sigma\exp$ ratios). A stabilization pass over the IR recognizes
+these shapes---including inside gradients and Hessians, and including
+numerator/denominator pairs that factoring has separated---and emits
+fused stable kernels (\texttt{softmax}, \texttt{log\_softmax},
+\texttt{logsumexp}). The pass matches shapes, not names, which is what
+makes \S\ref{sec:tier0} work for user-defined functions. Boundary,
+measured: a shift-invariant softmax variant
+($1/\sum_j e^{x_j - x_i}$) is \emph{not} matched---and compiles to its
+literal (correct, and in this case self-stabilizing) algebra. Misses
+degrade performance, never correctness. The eager interpreter runs no
+IR passes and is deliberately simple; compiled programs are the stability
+contract.
+
+\section{Randomized Verification and Consolidation}\label{sec:sz}
+
+Structural canonicalization cannot see \emph{algebraic} equality: after
+factoring, the 53 gradients of a 3-block GPT contain hundreds of cotangent
+chains that compute equal tensors through different contraction groupings
+and axis orders. Measured: a full recursive quotient modulo axis
+permutation removes only 568 of 2{,}925 compute nodes; the equality is
+semantic, not syntactic.
+
+We therefore verify and merge \emph{by value}. Every IR node can be
+evaluated exactly over $\mathbb{F}_p$ (Mersenne $p$) at seeded random
+points, with transcendental atoms mapped to fresh field elements keyed by
+the value-fingerprint of their inputs---so $\tanh(x)^{\top}$ and
+$\tanh(x^{\top})$ collide, as they must, while $\exp$ never accidentally
+equals $\log$. This machinery serves twice:
+
+\begin{itemize}
+\item \emph{Rewrite verification}: every optimization pass's rewrite
+  classes are pinned by fingerprint equality before/after (a
+  Schwartz--Zippel bound quantifies the error probability).
+\item \emph{Consolidation}: value numbering modulo axis permutation
+  merges nodes whose evaluations agree at every trial under one
+  consistent permutation; consumers are rewired through zero-cost
+  permuted views. A \emph{fresh-seed refusal gate} then re-evaluates the
+  original and consolidated programs side by side at new points and
+  rejects the entire rewrite on any mismatch: a bookkeeping bug becomes a
+  no-op, never a miscompile.
+\end{itemize}
+
+On the 3-block GPT training step, consolidation removes
+$2{,}925 \rightarrow 844$ compute nodes ($7{,}127 \rightarrow 2{,}052$
+emitted kernels) and reduces the step from 185\,ms to 41\,ms eager. We
+believe the broader point is of independent interest: randomized
+polynomial identity testing is practical \emph{compiler} infrastructure,
+not just a proof technique.
+
+\section{Technology Mapping}\label{sec:techmap}
+
+The analogy that organizes the backend is physical design in EDA: a
+technology-independent netlist (the einsum DAG) is mapped onto a
+characterized cell library (BLAS and fused kernels), and placement
+(layout) is a global optimization variable.
+
+\paragraph{Global layout assignment.} Because the language never fixes an
+axis order, every IR node's physical layout is free. A reverse-topological
+voting pass lets cells that care (matmuls, reductions) propose operand
+layouts, elementwise nodes propagate them, and inputs pin to declared
+order; BLAS absorbs one transpose per operand for free, so only genuine
+copies count as cost. Result on the GPT program: \textbf{zero}
+permute-copies---every remaining \texttt{permute} in generated code is a
+stride view absorbed by its consumer. This is the concrete return on
+under-specification: a PyTorch program has already committed to layouts
+everywhere; a tensorgrad program has committed nowhere.
+
+\paragraph{Cell selection.} Two-operand einsums that are (batched)
+matmuls emit \texttt{mm}/\texttt{bmm}/\texttt{addmm} with merged reshape
+groups (einsum count halved on the GPT program); one-hot contractions
+emit \texttt{index\_select}/\texttt{index\_add\_}; reductions and
+Hadamard-reductions emit fused forms. The generated code is
+straight-line, with spec-time integer strides (it traces as a single
+dynamo graph, so \texttt{torch.compile(fullgraph=True)} succeeds and
+Inductor serves as a whole-program kernel generator), and liveness
+\texttt{del}s that cut peak memory by up to $3\times$.
+
+\paragraph{The cell library is data.} Every fused kernel is one object
+in one registry (\texttt{compiler/cells.py}), and the registry spans four
+different relationships to differentiation: \emph{differentiable leaves}
+(matrix inverse and determinant, whose cookbook derivative rules expand
+symbolically upstream, the cell mapping only surviving forward
+applications onto \texttt{torch.linalg}); \emph{opaque forward+reverse
+pairs} (attention, layer norm, GELU: a reverse-VJP hook emits a fused
+backward cell, machine-verified against the derived gradient);
+a \emph{multi-output, non-differentiable} optimizer update (AdamW:
+$w',m',v'$ from one call, no VJP -- making it opaque also removed a
+duplicated backward that value numbering could not see through, a
+$1.5\times$ step improvement); and \emph{rewrite patterns carried by the
+cells themselves}, applied by one generic engine:
+$\mathrm{inverse}(A)\,b$ becomes \texttt{linalg.solve}, and
+$\log\det A$ becomes \texttt{slogdet} -- the Gaussian-process example
+runs in plain float32 because the latter rescues a determinant that
+underflows to exactly $0$. Misses degrade performance, never
+correctness; retargeting is a second registry.
+
+\todopaper{Tech-mapping phase 2 (DP covering over the cell library,
+using per-cell cost) and a GPU tier (Triton emission for fused affine
+regions; a second cell registry) are designed but not landed; the
+evaluation marks where they matter.}
+
+\section{Evaluation}\label{sec:eval}
+
+All numbers: Apple M-series CPU, 2 threads, fp32, PyTorch 2.7; JAX
+baselines are CPU \texttt{jit} with the same thread pinning, timed
+min-of-$N$ with \texttt{block\_until\_ready}. Gradients
+are verified against \texttt{torch.autograd} (typically
+$\le 10^{-6}$ relative) and against an interpreter oracle; program
+rewrites additionally against exact $\mathbb{F}_p$ fingerprints.
+
+\subsection{Derived backward passes vs.\ runtime autograd}
+
+\begin{table}
+\caption{Loss+gradient microbenchmarks at $(256,1024)$, eager CPU.
+tensorgrad kernels are \emph{derived} from primitive definitions; torch
+baselines use built-in fused ops under autograd.}
+\label{tab:micro}
+\small
+\begin{tabular}{lrrr}
+\toprule
+workload & tensorgrad & autograd & ratio \\
+\midrule
+layer-norm grad & 0.252\,ms & 0.826\,ms & $\mathbf{3.3\times}$ faster \\
+gelu (tanh) grad & 0.960\,ms & 1.254\,ms & $1.3\times$ faster \\
+softmax grad & 0.449\,ms & 0.495\,ms & parity \\
+conv1d fwd+bwd & \multicolumn{3}{c}{$2.4$--$4.8\times$ faster (3 sizes)} \\
+CE--softmax HVP & \multicolumn{3}{c}{parity with double backward} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The layer-norm result is the thesis in miniature: its backward pass was
+never written---three lines of \texttt{mean}/\texttt{sqrt} primitives
+were differentiated, factored, stabilized, and mapped---and the result
+beats the framework's hand-fused runtime path by $3.3\times$. JAX on the
+same kernel: \texttt{jit(grad)} runs it in 0.27\,ms to our 0.33\,ms
+---XLA edges the derived kernel while torch's runtime autograd trails
+both.
+
+\subsection{The founding benchmark: Hessians}\label{sec:hessian}
+
+$\partial^2 \mathrm{CE}(\mathrm{softmax}(x), y)/\partial x^2$ simplifies,
+in 0.23\,s, to the two-term
+$\mathrm{diag}(s) - ss^{\top}$ (batched), \emph{with the target $y$
+eliminated}---because $y$ was declared on the simplex
+(\S\ref{sec:constraints}) and $\sum_v y = 1$ is a rewrite. Hessian-vector
+products compile to parity with \texttt{torch} double-backward. No
+mainstream AD system exposes this closed form; symbolic systems that
+could do not compile it.
+
+Where the closed form does asymptotically less work, the wall clock
+follows. At $n{=}2048$, $\partial^2(x^{\top}Ax)$ compiles to literally
+$A + A^{\top}$ (the tests pin a two-statement ceiling, $x$ never read)
+and runs in 2.1\,ms, against 17.7\,ms for \texttt{torch.func.hessian}
+and 42.7\,ms for \texttt{jax.hessian} ($8\times$ and $20\times$): both
+frameworks replay autodiff at runtime, and no amount of XLA fusion helps
+when the algorithm itself is $n$ backward passes. The pattern holds on a
+real second-order training loop and grows with dimension: assembling the
+logistic-regression Hessian $X^{\top}\mathrm{diag}(\sigma(1-\sigma))X$
+at $(n,d)=(2048,256)$---derived, never written---is ONE GEMM at 0.5\,ms,
+against 1.2\,ms for \texttt{jax.hessian}'s $d$-pass transform loop and
+4.7\,ms for \texttt{torch.func} ($2.5\times$ and $9\times$, widening
+with $d$; at toy $d{=}32$ JAX's dispatch still wins, which is why the
+claim is about real sizes). The logsumexp Hessian
+(softmax plus a rank-one correction) shows the boundary honestly: our
+0.72\,ms beats \texttt{torch.func}'s 1.47\,ms, but XLA materializes the
+dense $n^2$ result faster still (0.47\,ms)---once the output is
+unavoidably quadratic, the win reverts from asymptotic to constant.
+
+\subsection{Expectations without sampling; input sets as theorems}
+\label{sec:vae}
+
+An \texttt{Expectation} node resolves Gaussian expectations by Stein's
+lemma during simplification, and composing it with derived derivatives
+yields a model no runtime-AD framework can express
+(\texttt{examples/vae.py}): a VAE whose ELBO is written as its
+definition, $\mathbb{E}_z[\log p(x|z)] - \mathbb{E}_z[\log q(z|x) -
+\log p(z)]$ with $z \sim \mathcal{N}(\mu(x), \mathrm{diag}\,\sigma^2)$,
+and resolves entirely to closed form. The textbook Gaussian KL,
+$\tfrac12\sum(\mu^2 + \sigma^2 - 2\log\sigma - 1)$, appears nowhere in
+the program text: it is \emph{derived} (verified against Monte-Carlo
+estimates and against the textbook form). There is no reparametrization
+trick and no sampling---$z$ never exists at runtime---so gradients have
+zero variance. Training needs no optimizer either: the resolved ELBO is
+quadratic in each weight block, so $\partial^2/\partial W^2$ \emph{of a
+derived expectation} yields exact per-block Newton solves (the 4-edge
+Hessian of a matrix block factors as a Kronecker product whose factors
+are recovered from the derived Hessian itself by two Delta
+contractions), and cycling the four blocks reaches the analytic
+optimum---probabilistic PCA---in five rounds and 0.2\,s. No step size
+exists anywhere in the file. Head to head on time-to-optimum (reaching
+$1.05\times$ the analytic PCA floor): the exact method takes 3 rounds and
+10\,ms; the reparametrization-trick estimator torch and JAX must use
+instead---runtime autodiff cannot differentiate through sampling, and both
+hand-code the closed-form KL that tensorgrad derives---needs ${\sim}800$
+Adam steps and 160--180\,ms, a $16$--$19\times$ gap, with gradient noise
+the exact method simply does not have.
+
+One observation from this exercise generalizes. The compiled Newton
+update for the posterior standard deviation consumes only
+$(\sigma, W_{\mathrm{dec}})$: cancellation removed the data and the
+encoder from the program, because a linear-Gaussian posterior's
+covariance is input-independent---a theorem of PPCA that the derived
+gradient rediscovered. (We first investigated it as a compiler bug: an
+input had ``disappeared''. Every stage checked out.) Together with the
+exactly-zero attention key-bias gradients of \S\ref{sec:adjoint}, a
+pattern emerges that we did not design for: \emph{the input set of a
+compiled program is a machine-derived statement of conditional
+independence}, visible before a single number is computed. Runtime
+autodiff cannot make such statements; it evaluates at a point. The same
+discipline powers the rest of the example suite: a Gaussian process
+whose marginal-likelihood gradients derive the cookbook identities
+$\partial \log|K| = \mathrm{tr}(K^{-1}\,\partial K)$ and
+$\partial(K^{-1}) = -K^{-1}(\partial K)K^{-1}$ from the \texttt{det} and
+\texttt{inverse} rewrite rules (matching finite differences to
+$10^{-10}$), a Newton optimizer that is a single compiled expression
+with quadratic convergence to $|g|^2 \approx 10^{-13}$, and a DDPM whose
+forward corruption process is algebra inside the training step.
+
+\subsection{End-to-end: a GPT with no autograd}\label{sec:e2e}
+
+\begin{table}
+\caption{minGPT (3 blocks, $d{=}48$) on the sorting task; 2-thread CPU,
+min-of-$N$ on a quiet machine. The tensorgrad step program computes loss,
+all 53 gradients, and the full AdamW update (160 outputs) as one compiled
+function; \texttt{torch.set\_grad\_enabled(False)} is global. ``+
+cells'' opts the same program into the fused attention/layer-norm/GELU/
+AdamW cells of \S\ref{sec:techmap}.}
+\label{tab:e2e}
+\small
+\begin{tabular}{lr}
+\toprule
+training step & time \\
+\midrule
+tensorgrad, all-derived (eager) & 42\,ms \\
+tensorgrad, all-derived ($\times$ Inductor) & 25\,ms \\
+tensorgrad + cells ($\times$ Inductor) & 7.4\,ms \\
+torch autograd + SDPA + fused AdamW (compiled) & 5.2\,ms \\
+JAX \texttt{jit} of the whole step & 4.8\,ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both tensorgrad variants train to 100\% held-out accuracy (peak RSS
+657\,MB eager vs.\ $\sim$285\,MB for torch). The gap structure is now
+measured rather than conjectured. Between the all-derived and cell
+variants lies the elementwise tail of the derived backward---the price
+of full generality, recoverable kernel by kernel through the cell
+registry. The remaining $1.4\times$ to JAX is \emph{architectural}: we
+emit into torch's backend, and XLA's whole-program fusion beats
+torch-Inductor on this workload at every scale we measured (jax 4.8 vs.\
+torch 5.2\,ms at $d{=}48$; 40.7 vs.\ 51.7\,ms at $d{=}384$, where both
+are firmly compute-bound and tensorgrad+cells sits $1.2\times$ above
+torch). A backend we rent bounds us by its own ceiling; the workloads of
+\S\ref{sec:hessian}, where algebra changes the exponent rather than the
+constant, are where the symbolic layer wins outright.
+
+\subsection{Compile-time behavior}
+
+Deriving, normalizing and lowering loss+53 gradients: 0.5\,s; planning
+plus code generation on the first call: 5.5\,s (all one-time; earlier in
+development this took 44\,s---the hash-consed fingerprints of
+\S\ref{sec:iso} and the memoized structural recursions of
+\S\ref{sec:depth} are what moved it). The adjoint pass runs in
+0.5--6.8\,s at all scales of Table~\ref{tab:adjoint}. Equality
+infrastructure: the exact-verification fallback fired 12 times (4-node
+graphs) across the entire build.
+
+\subsection{What is missing}\label{sec:eval-todo}
+
+\todopaper{\textbf{JAX baselines, remaining}: the training step, the
+layer-norm gradient, and both Hessians are now measured
+(Table~\ref{tab:e2e}, \S\ref{sec:hessian}); still to do are JAX and
+torch versions of the full example suite (diffusion, Newton--GLM,
+sample-free VAE, GP)---where the frameworks must hand-code what
+tensorgrad derives (reparametrization trick, closed-form KL, cookbook
+gradients)---plus XLA compile times next to ours.}
+
+\todopaper{\textbf{GPU tier}: either land Triton emission (task \#15) and
+report A100/H100 numbers, or scope all claims to ahead-of-time CPU
+compilation and say so in the abstract.}
+
+\todopaper{\textbf{Scale}: one training run beyond gpt-nano (12-block
+GPT-2 dims now plans in 19.8\,GB and should execute on a 40\,GB device);
+plus a second task domain (the conv/MNIST pipeline exists).}
+
+\todopaper{\textbf{Cleanup program}: [A] wrapper-tier deletion, [C]
+structure declarations, [F] rule catalog and [B] lazy-rename default
+have all landed (the claims of \S\ref{sec:language} now hold
+``exactly''); [G] the confluence harness remains.}
+
+\todopaper{\textbf{Formal statements}: a semantics appendix (expressions
+as multigraphs, evaluation as a functor to multilinear maps; equality =
+isomorphism soundness/completeness), termination of the rewrite system
+under the declared measure, and the Schwartz--Zippel error bounds for
+verification and consolidation (union bound over rewrites; the refusal
+gate's independence argument).}
+
+\section{Related Work}\label{sec:related}
+
+\paragraph{Autodiff systems.} JAX \cite{jax}, PyTorch \cite{pytorch}, and
+Enzyme differentiate programs at runtime or at the IR of a general
+language; derivatives are computed, not simplified. Dex and named-tensor
+proposals \cite{namedtensor} share our index discipline without the
+algebraic layer. Our adjoint pass can be read as: reverse mode is a
+\emph{theorem about contraction orderings} that survives being forgotten
+and rediscovered by a compiler.
+
+\paragraph{Computer algebra.} Mathematica and \texttt{sympy} rewrite
+expression trees with AC-matching and search;
+\S\ref{sec:language} argues for quotient-by-representation instead.
+Mathematica's \texttt{PossibleZeroQ} anticipates our use of randomized
+identity testing; we push it from a predicate to load-bearing compiler
+verification.
+
+\paragraph{Tensor compilers.} TACO, TVM, Tensor Comprehensions, and
+XLA/Inductor optimize loop nests or kernel graphs below the level of
+algebra; we sit above them and, on CPU, emit into one of them
+(Inductor) as our kernel generator. Equality saturation (egg; Tensat)
+offers globally optimal rewriting at memory cost; our design keeps the
+language layer deterministic and search-free and quarantines
+cost-directed transformation in compiler passes---the adjoint pass shows
+a case where the winning transformation is found structurally, with no
+search at all.
+
+\paragraph{EDA.} Layout assignment and cell selection are deliberate
+transplants of placement and technology mapping; functional (rather than
+structural) matching via value fingerprints mirrors Boolean matching in
+logic synthesis.
+
+\todopaper{Flesh out citations (bibliography is skeletal), including
+tensor-network contraction-ordering literature (opt\_einsum,
+cotengra), AHU/WL/nauty for \S\ref{sec:iso}, and the Tensor Cookbook as
+the notation companion.}
+
+\section{Conclusion}
+
+A tensor language whose equality is isomorphism, whose derivatives are
+rewrites, and whose compiler treats reverse-mode AD, numerical stability,
+and kernel selection as recoverable \emph{properties of algebra} can
+train a real model with autograd switched off---and, on the workloads
+where its symbolic head start matters, outrun the tape.
+
+\begin{thebibliography}{9}
+\bibitem{jax} Bradbury et al. JAX: composable transformations of
+Python+NumPy programs. 2018.
+\bibitem{pytorch} Paszke et al. PyTorch: an imperative style,
+high-performance deep learning library. NeurIPS 2019.
+\bibitem{mathematica} Wolfram Research. Mathematica.
+\bibitem{sympy} Meurer et al. SymPy: symbolic computing in Python.
+PeerJ CS 2017.
+\bibitem{namedtensor} Chiang, Rush, Barak. Named Tensor Notation. 2021.
+\end{thebibliography}
+
+\end{document}

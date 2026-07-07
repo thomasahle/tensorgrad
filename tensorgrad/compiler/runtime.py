@@ -40,7 +40,6 @@ def normalize_args() -> dict:
         "grad_steps": float("inf"),
         "expand_functions": False,
         "combine_products": False,
-        "sum_combine_terms": False,
         "factor_components": False,
         "memoize": True,
     }
@@ -148,6 +147,17 @@ class CompiledProgram:
         (graph breaks around the offending op, fuses the rest) and record the
         event in self.used_fullgraph_fallback."""
         import torch._dynamo
+
+        # Dynamo's shared entry frame re-specializes per compiled callable
+        # (guarded on fn.__code__), so a process that compiles many programs
+        # -- the benchmark suite compiles 15+ -- trips the default recompile
+        # limit (8), which under fullgraph=True RAISES instead of falling
+        # back. Raise the ceiling; the per-program fallback below still
+        # catches a genuine overflow.
+        cfg = torch._dynamo.config
+        cfg.cache_size_limit = max(getattr(cfg, "cache_size_limit", 8), 128)
+        if hasattr(cfg, "recompile_limit"):
+            cfg.recompile_limit = max(cfg.recompile_limit, 128)
 
         state = {"fn": torch.compile(fn, fullgraph=True, dynamic=False)}
 
