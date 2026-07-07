@@ -67,7 +67,7 @@ def test_compile_round_trip():
 def test_compile_binding_errors_and_scalars():
     x, params, loss = _setup()
     step = tg.compile(loss=loss)
-    with pytest.raises(KeyError, match="is not an input variable"):
+    with pytest.raises(KeyError, match="is not an input of this program"):
         step(dims={b: 2, d: 3}, nope=torch.randn(1))
     # positional dicts keyed by name or Variable; python scalars auto-wrap
     c = Variable("c")

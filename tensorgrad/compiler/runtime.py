@@ -135,7 +135,7 @@ class CompiledProgram:
 
     # -----------------------------------------------------------------
 
-    def _torch_compile(self, fn):
+    def _torch_compile(self, fn: Any) -> Any:
         """torch.compile with fullgraph=True, guarded by a lazy fallback.
 
         Codegen emits spec-time integer strides (codegen_torch.STATIC_STRIDES),
@@ -151,7 +151,7 @@ class CompiledProgram:
 
         state = {"fn": torch.compile(fn, fullgraph=True, dynamic=False)}
 
-        def wrapper(*args):
+        def wrapper(*args: Any) -> Any:
             try:
                 return state["fn"](*args)
             except torch._dynamo.exc.TorchDynamoException:  # pyright: ignore[reportAttributeAccessIssue]  # dynamo has no stubs
@@ -159,10 +159,10 @@ class CompiledProgram:
                 state["fn"] = torch.compile(fn, fullgraph=False, dynamic=False)
                 return state["fn"](*args)
 
-        wrapper._source = fn._source  # keep the generated source inspectable
+        wrapper._source = fn._source  # type: ignore[attr-defined]  # keep the generated source inspectable
         return wrapper
 
-    def _resolve_dims(self, values, shapes):
+    def _resolve_dims(self, values: dict, shapes: Optional[dict]) -> dict:
         dims = dict(shapes) if shapes else {}
         for v, t in values.items():
             if not isinstance(v, Variable):
@@ -335,7 +335,7 @@ class Output:
     """Compiled-step results: one attribute per output keyword, each shaped
     like the pytree it was declared with."""
 
-    def __init__(self, **groups):
+    def __init__(self, **groups: Any):
         self.__dict__.update(groups)
 
     def __getattr__(self, name: str) -> Any:
@@ -363,12 +363,20 @@ class CompiledStep:
         self._fn = compile_to_callable(*flat, torch_compile=torch_compile, print_info=print_info)
         self._by_name = {v.name: v for v in self._fn.vars}
 
-    def _add(self, feed: dict, var, value) -> None:
+    @property
+    def inputs(self) -> list[str]:
+        """The program's input variable names. Smaller than you might
+        expect is normal: partial derivatives legitimately drop variables
+        by cancellation (an input set is a statement of conditional
+        independence, not an oversight)."""
+        return sorted(self._by_name)
+
+    def _add(self, feed: dict, var: Any, value: Any) -> None:
         if not isinstance(value, torch.Tensor):
             value = torch.as_tensor(value, dtype=torch.get_default_dtype())
         feed[var] = value
 
-    def __call__(self, *dicts: dict, dims: Optional[dict] = None, **kw) -> Output:
+    def __call__(self, *dicts: dict, dims: Optional[dict] = None, **kw: Any) -> Output:
         feed: dict[Variable, torch.Tensor] = {}
         for d in dicts:
             # Positional dicts are BULK state (keyed by Variable or by name)
@@ -381,8 +389,13 @@ class CompiledStep:
                     self._add(feed, var, v)
         for name, value in kw.items():
             if name not in self._by_name:
-                known = sorted(self._by_name)
-                raise KeyError(f"{name!r} is not an input variable; known: {known}")
+                raise KeyError(
+                    f"{name!r} is not an input of this program; inputs: {self.inputs}. "
+                    f"Note that derived programs may not depend on every variable "
+                    f"(partial derivatives drop inputs by cancellation). Keyword "
+                    f"feeds are strict to catch typos; pass bulk state as a "
+                    f"positional dict, where extra entries are skipped."
+                )
             self._add(feed, self._by_name[name], value)
         outs = self._fn(feed, dims)
         if not isinstance(outs, tuple):

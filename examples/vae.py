@@ -91,15 +91,13 @@ PARAMS = (We, Wd, bd, logs)
 mu = x @ We
 s = F.exp(logs)
 
-# q(z|x) = N(mu, diag(s^2)) for the Expectation: mean tensor + covariance
-# tensor covar[b,l,b2,l2] = delta(b,b2) delta(l,l2) s2[l], built from an
-# order-3 copy tensor. Deltas stay structural -- nothing materializes.
-covar = (s * s).rename(l="li") @ Delta(l, "l", "l2", "li") @ Delta(b, "b", "b2")
-
 
 def E(t: Tensor) -> Tensor:
-    """E_{z ~ q(z|x)}[t], resolved symbolically by Stein's lemma."""
-    return Expectation(t, z, mu, covar, {"b": "b2", "l": "l2"}).full_simplify()
+    """E_{z ~ q(z|x)}[t] for q = N(mu, diag(s^2)), resolved symbolically by
+    Stein's lemma. Expectation.gaussian builds the structural diagonal
+    covariance (Deltas through an order-3 copy tensor -- nothing
+    materializes); the missing batch edge of s broadcasts."""
+    return Expectation.gaussian(t, z, mu, std=s).full_simplify()
 
 
 # The ELBO from its definition. Log-density algebra in, closed forms out.

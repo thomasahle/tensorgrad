@@ -12,7 +12,7 @@ from tensorgrad.tensor import (
 )
 import tensorgrad.functions as F
 from tensorgrad.functions import _PowerFunction
-from typing import cast
+from typing import Any, cast
 
 
 class Expectation(Tensor):
@@ -27,6 +27,9 @@ class Expectation(Tensor):
         """
         Take the Expectation of a tensor with respect to a variable, assumed to have a multi-normal
         distribution with the given expectation and covariance.
+
+        For the everyday DIAGONAL Gaussian, use the Expectation.gaussian
+        classmethod instead of building the covariance by hand.
 
         Note:
             The covariance tensor should be the expectation, covar = E[x x^T - mu mu^T].
@@ -57,6 +60,7 @@ class Expectation(Tensor):
             covar = Product([Delta(wrt.shape[e], e, e2) for e, e2 in covar_names.items()])
         elif covar_names is None:
             raise ValueError("If covar is not given, covar_names must be given.")
+        assert covar is not None and covar_names is not None  # narrowed above
         # Check that covar has at least the required edges (wrt edges + renamed edges)
         required_edges = wrt.shape | {covar_names[k]: s for k, s in wrt.shape.items()}
         for edge, size in required_edges.items():
@@ -72,7 +76,46 @@ class Expectation(Tensor):
         self.covar_names = covar_names
         self.covar = covar
 
-    def _simplify(self, args: dict[str, str]):
+    @classmethod
+    def gaussian(
+        cls,
+        tensor: Tensor,
+        wrt: Variable,
+        mu: None | Tensor = None,
+        std: None | Tensor = None,
+    ) -> "Expectation":
+        """E[tensor] for wrt ~ N(mu, diag(std^2)) -- the everyday diagonal
+        Gaussian, without building the covariance tensor by hand.
+
+        std's edges must be a subset of wrt's; missing edges broadcast (a
+        0-dim std is isotropic), and std=None means the identity
+        covariance. The construction is structural: diag(std^2) is Deltas
+        wired through an order-3 copy tensor, nothing materializes.
+
+        Args:
+            tensor: The expression to take the expectation of.
+            wrt: The Gaussian variable being integrated out.
+            mu: Its mean (defaults to zero).
+            std: Its per-coordinate standard deviation.
+        """
+        if std is None:
+            return cls(tensor, wrt, mu)
+        if not std.edges <= wrt.edges:
+            raise ValueError(f"std edges {set(std.edges)} must be a subset of wrt edges {set(wrt.edges)}")
+        for e in std.edges:
+            if std.shape[e] != wrt.shape[e]:
+                raise ValueError(f"std edge {e} has size {std.shape[e]} != wrt's {wrt.shape[e]}")
+        used = set(wrt.edges) | set(tensor.edges) | set(std.edges) | (set(mu.edges) if mu is not None else set())
+        covar_names = _unused_edge_names(wrt.edges, used)
+        used |= set(covar_names.values())
+        inner = _unused_edge_names(std.edges, used)
+        covar = (std * std).rename(**inner)
+        for e in wrt.edges:
+            legs = (e, covar_names[e]) + ((inner[e],) if e in inner else ())
+            covar = covar @ Delta(wrt.shape[e], *legs)
+        return cls(tensor, wrt, mu, covar, covar_names)
+
+    def _simplify(self, args: dict[str, str]) -> Tensor:
         # We prefer products to not be factored using the pow function when taking expectations
         inner = self.tensor.simplify(args=args | {"factor_components": False})
 
@@ -146,7 +189,7 @@ class Expectation(Tensor):
         # If nothing was found that we know how to simplify, we just return the original
         return Expectation(inner, self.wrt, self.mu, self.covar, self.covar_names)
 
-    def _simplify_product(self, prod: Product, args: dict[str, str]):
+    def _simplify_product(self, prod: Product, args: dict[str, str]) -> Tensor:
         assert isinstance(prod, Product), f"{prod=}"
 
         # See if there are constant terms we can pull out
@@ -209,7 +252,7 @@ class Expectation(Tensor):
         # Unable to simplify
         return Expectation(prod, self.wrt, self.mu, self.covar, self.covar_names)
 
-    def _simplify_function(self, fn: Function, args: dict[str, str]):
+    def _simplify_function(self, fn: Function, args: dict[str, str]) -> Tensor:
         # If the function is a power function with a positive exponent, we can simplify it
         if isinstance(fn.signature, _PowerFunction) and fn.signature.k >= 0:
             (inner,) = fn.inputs
@@ -226,10 +269,10 @@ class Expectation(Tensor):
             raise ValueError("Cannot take the gradient wrt the variable we're taking the expectation over")
         return Expectation(Derivative(self.tensor, x, new_names), self.wrt, self.mu, self.covar, self.covar_names)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"E[{self.tensor}]"
 
-    def structure(self):
+    def structure(self) -> Any:
         from tensorgrad.structure import Structure
 
         # Free edges are the tensor's; wrt/mu/covar contribute their full
@@ -243,13 +286,12 @@ class Expectation(Tensor):
             junctions,
         )
 
-    def _rename(self, **kwargs: str):
+    def _rename(self, **kwargs: str) -> "Expectation":
         # The variables, wrt, mu, covar shouldn't influence our free edge names
         return Expectation(self.tensor.rename(**kwargs), self.wrt, self.mu, self.covar, self.covar_names)
 
-    def depends_on(self, x: "Variable") -> bool:
-        return (
-            self.tensor.depends_on(x) 
-            or self.mu.depends_on(x) 
-            or self.covar.depends_on(x)
-        )
+    def _depends_on(self, x: "Variable") -> bool:
+        # Out-of-core node: reached via the depends_on dispatch default
+        # (tensorgrad.dependson), so the memoization on the base
+        # Tensor.depends_on applies here too.
+        return self.tensor.depends_on(x) or self.mu.depends_on(x) or self.covar.depends_on(x)
