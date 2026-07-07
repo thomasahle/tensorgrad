@@ -759,6 +759,18 @@ def _layout_component(
 
     drawn: list[str] = []  # every wid rendered; audited for conservation below
 
+    def _group_edge_name(wid: str, *atoms_: int) -> str:
+        # a wire into a group is otherwise unidentifiable (the group is an
+        # opaque box with several ports) -- recover its edge name so the
+        # emission can label it
+        for aid in atoms_:
+            atom_ = g.atoms[aid]
+            if atom_.kind == "group":
+                nm = atom_.port_names.get(wid)
+                if nm:
+                    return nm
+        return ""
+
     # -- spine segments (application arrows point into their function) --
     for k in range(len(spine) - 1):
         wids = adj[spine[k]].get(spine[k + 1], [])
@@ -769,7 +781,9 @@ def _layout_component(
             a, b = spine[k], spine[k + 1]
             if arrow and g.arrow_heads.get(wid) == a:
                 a, b = b, a
-            layout.wires.append(LWire("segment", a, b, arrow=arrow))
+            layout.wires.append(
+                LWire("segment", a, b, arrow=arrow,
+                      label=_group_edge_name(wid, a, b)))
 
     # -- arcs (keep application-arrow decorations; tip at the function) --
     chords = _spine_chords(g, spine, adj)
@@ -808,7 +822,9 @@ def _layout_component(
         pa, pb = parent_of[v], v
         if arrow and g.arrow_heads.get(wid) == pa:
             pa, pb = pb, pa
-        layout.wires.append(LWire("pendant", pa, pb, arrow=arrow))
+        layout.wires.append(
+            LWire("pendant", pa, pb, arrow=arrow,
+                  label=_group_edge_name(wid, pa, pb)))
         node_x[v] = cx
         kids = children.get(v, [])
         if not kids:
@@ -855,7 +871,8 @@ def _layout_component(
                 layout.wires.append(LWire("loop", a, a, lane=2 + extra_i))
             else:
                 layout.wires.append(
-                    LWire("extra", a, b, direction=tip, arrow=arrow)
+                    LWire("extra", a, b, direction=tip, arrow=arrow,
+                          label=_group_edge_name(wid, a, b))
                 )
 
     # -- free-edge stubs --
@@ -1379,11 +1396,16 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             )
 
     def endpoint(nid: Optional[int], other: Optional[int]) -> str:
-        # segments touching a group attach to the nearer paren
+        # segments touching a group attach to the NEARER paren (by actual
+        # paren position -- comparing against the group centre sent a wire
+        # from a node under the middle all the way to the far paren)
         assert nid is not None  # node-to-node wires always have both ends
         if nid in group_side and other is not None:
             pl, pr = group_side[nid]
-            return pl if nodes[other].x < nodes[nid].x else pr
+            hw = nodes[nid].width / 2
+            lx, rx = nodes[nid].x - hw, nodes[nid].x + hw
+            ox = nodes[other].x
+            return pl if abs(ox - lx) <= abs(ox - rx) else pr
         return name[nid]
 
     # application arrows keep clearance at both ends: the head stops short of
@@ -1395,11 +1417,17 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
         "solid": f"[->, {_clear}]",
         "dotted": f"[densely dotted, ->, {_clear}]",
     }
+    def _wire_label(w: LWire) -> str:
+        if not w.label:
+            return ""
+        return (rf" node[midway, above, font=\scriptsize, inner sep=1.5pt]"
+                rf" {{${_tex_edge(w.label)}$}}")
+
     for w in layout.wires:
         if w.kind == "segment" or w.kind == "pendant":
             lines.append(
                 rf"\draw{style[w.arrow].strip()} ({endpoint(w.a, w.b)})"
-                rf" -- ({endpoint(w.b, w.a)});"
+                rf" -- ({endpoint(w.b, w.a)}){_wire_label(w)};"
             )
         elif w.kind == "loop":
             assert w.a is not None
@@ -1457,7 +1485,8 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             tip = f"{direction}, " if direction else ""
             dot = "densely dotted, " if w.arrow == "dotted" else ""
             lines.append(
-                rf"\draw[{tip}{dot}] ({na}) to[bend {bend_dir}={bend}] ({nb});"
+                rf"\draw[{tip}{dot}] ({na}) to[bend {bend_dir}={bend}]"
+                rf" ({nb}){_wire_label(w)};"
             )
         elif w.kind == "ring":
             lines.append(
