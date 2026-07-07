@@ -1190,15 +1190,19 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
         elif w.kind == "extra":
             a, b = w.a, w.b
             assert a is not None and b is not None
+            direction = w.direction  # '->'=head at b, '<-'=head at a (orig order)
             # start from the lower endpoint; bend so the curve bows DOWN,
             # away from the spine and its arcs
             if nodes[a].y > nodes[b].y or (
                 nodes[a].y == nodes[b].y and nodes[a].x > nodes[b].x
             ):
                 a, b = b, a
+                # the endpoints swapped, so the arrowhead token must flip too,
+                # or an application arrow points into the argument not the func
+                direction = {"->": "<-", "<-": "->"}.get(direction, direction)
             bend = "right" if nodes[a].x < nodes[b].x else "left"
             na, nb = endpoint(a, b), endpoint(b, a)
-            tip = f"{w.direction}, " if w.direction else ""
+            tip = f"{direction}, " if direction else ""
             dot = "densely dotted, " if w.arrow == "dotted" else ""
             lines.append(
                 rf"\draw[{tip}{dot}] ({na}) to[bend {bend}=45] ({nb});"

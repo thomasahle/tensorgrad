@@ -427,3 +427,20 @@ def test_elementwise_of_bare_identity_stays_connected():
     g = extract_graph(e)
     assert len(_components(g)) == 1  # connected, no floating function node
     assert "dotted" in to_book_tikz(e)  # application arrow present
+
+
+def test_multi_input_function_arrows_point_into_function():
+    # a matmul-like function consuming edges from two inputs: every
+    # application arrow must point INTO the function, even the 'extra'
+    # (bowed) ones whose endpoints get geometrically swapped
+    from tensorgrad.tensor import function
+
+    A = Variable("A", i=n, k=n)
+    B = Variable("B", k=n, j=n)
+    mm = function("mm", {"i": n, "j": n}, (A, "i", "k"), (B, "k", "j"))
+    tex = to_book_tikz(mm)
+    # the function node is n0; every bowed 'extra' arrow ends at it (->)
+    for line in tex.splitlines():
+        if "to[bend" in line:
+            assert line.strip().startswith(r"\draw[->"), line
+            assert line.rstrip().endswith("(n0);"), line
