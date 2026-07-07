@@ -97,24 +97,24 @@ class FusedCell:
                      # (trailing inputs -- e.g. an attention mask -- are not)
 
     # -- language side: build the forward Function and its reverse VJP -------
-    def build(self, inputs: Sequence[Tensor], params: dict) -> Tensor:
-        raise NotImplementedError
+    def build(self, inputs: Sequence[Tensor], params: dict) -> Any:
+        raise NotImplementedError  # single-output cells return a Tensor; adamw a tuple
 
     def vjp(self, inputs: Sequence[Tensor], which: int, u: Tensor, params: dict) -> Tensor:
         raise NotImplementedError
 
     # -- compiler side: lowering to IR (cell owns its edge->wire layout) -----
-    def lower_fwd(self, lower, t: Function):
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
         raise NotImplementedError
 
-    def lower_bwd(self, lower, t: Function):
+    def lower_bwd(self, lower: Any, t: Function) -> Any:
         raise NotImplementedError
 
     # -- backend side: emit target kernels + the value oracle ----------------
-    def emit_fwd(self, cg, node, name: str, names, dim_of) -> str:
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any) -> str:
         raise NotImplementedError
 
-    def emit_bwd(self, cg, node, name: str, names, dim_of) -> str:
+    def emit_bwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any) -> str:
         raise NotImplementedError
 
     def eval_fwd(self, params: dict, inputs: tuple[torch.Tensor, ...], out_idx: int = 0) -> torch.Tensor:
@@ -298,7 +298,7 @@ class _SDPACell(FusedCell):
         S = dim_of(node.ops[0].dims[p0[nb]])
         E = dim_of(node.ops[0].dims[p0[nb + 1]])
         K = dim_of(node.ops[1].dims[perms[1][nb]])
-        def r(i, seqlen):
+        def r(i: int, seqlen: Any) -> str:
             return f"{cg._sdpa_canon(node.ops[i], perms[i], names)}.reshape({bsz}, 1, {seqlen}, {E})"
         return r(0, S), r(1, K), r(2, K), (bsz, S, K, E)
 
