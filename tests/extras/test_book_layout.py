@@ -170,7 +170,9 @@ def test_tikz_smoke():
 def test_sum_signs():
     A, B = _A(), _A("B")
     tex = to_book_tikz(Sum([A, B], [2, -1]))
-    assert "$2\\," in tex and "$-" in tex
+    # numeric coefficient stays plain; the bare minus operator is bolded
+    assert "$2\\," in tex
+    assert r"\boldsymbol{-}" in tex
 
 
 def test_arcs_use_book_style():

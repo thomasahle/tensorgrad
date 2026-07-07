@@ -1133,13 +1133,17 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             # extra breathing room after the '(' before the first term's stub
             _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.34)
         elif n.kind == "sign":
-            # a sum operator is enlarged (and its term-gap is widened at
-            # layout time) so it reads clearly as an operator, not as another
-            # short horizontal wire -- a free-edge stub and a minus are
-            # otherwise the same stroke at the same height
+            # a sum operator is enlarged, spaced out (term-gap widened at
+            # layout time) AND bold so it reads clearly as an operator, not as
+            # another short horizontal wire -- a free-edge stub and a thin
+            # minus are otherwise the same stroke at the same height. Only bare
+            # +/- are bolded; numeric coefficients (2, -3) don't look like
+            # wires and stay in the normal weight.
+            body = (rf"\boldsymbol{{{n.label}}}" if n.label in ("+", "-")
+                    else n.label)
             lines.append(
-                rf"\node[{_AXIS}, scale=1.35] ({name[n.id]}) at"
-                rf" ({x:.2f},{n.y:.2f}) {{${n.label}$}};"
+                rf"\node[{_AXIS}, scale=1.4] ({name[n.id]}) at"
+                rf" ({x:.2f},{n.y:.2f}) {{${body}$}};"
             )
         else:
             rot = "rotate=180, " if n.rotated else ""
