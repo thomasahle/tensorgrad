@@ -960,6 +960,15 @@ def _layout_component(
                 assigned.append(("up", name))
         ups = [nm for d, nm in assigned if d == "up"]
         ui = 0
+        atom_v = g.atoms[v]
+        inner_of = {}
+        if atom_v.kind == "group":
+            # a group port whose inner name differs from the outer free name
+            # is a RENAMING edge: label it with both, inner::outer
+            for idx_, nm_ in _atom_free_names(g, v):
+                inner = atom_v.port_names.get(atom_v.ports[idx_])
+                if inner and inner != nm_:
+                    inner_of[nm_] = inner
         for direction, name in assigned:
             # store the edge name on every stub; left/right labels are only
             # DRAWN when edge_labels is on (up/down always draw)
@@ -967,8 +976,9 @@ def _layout_component(
             if direction == "up" and len(ups) > 1:
                 off = (ui - (len(ups) - 1) / 2) * 0.26
                 ui += 1
+            lbl = f"{inner_of[name]}::{name}" if name in inner_of else name
             layout.wires.append(
-                LWire("stub", v, direction=direction, label=name, x=off))
+                LWire("stub", v, direction=direction, label=lbl, x=off))
             if direction == "left" and layout.left_edge is None:
                 layout.left_edge = name
             if direction == "right":
@@ -1100,7 +1110,37 @@ def layout_tensor(
     layout.derivs = list(g.derivs)
     layout.boxes = list(g.boxes)
     _separate_deriv_loops(layout)
+    _reserve_loop_margins(layout)
     return layout
+
+
+def _reserve_loop_margins(layout: "BookLayout") -> None:
+    """Widen the layout's footprint by the horizontal reach of its Penrose
+    ellipses (and E-boxes): a fit-ellipse extends well past its atoms, so a
+    sum places terms by xmax and their ellipses would otherwise overlap the
+    neighbouring term (and swallow the +/- signs)."""
+    if not layout.derivs and not layout.boxes:
+        return
+    nb = {n.id: n for n in layout.nodes}
+    lo, hi = 0.0, layout.xmax
+    regions = [(enc, 0.5 + 0.28 * sum(
+        1 for e2, _ in layout.derivs if set(e2) < set(enc)))
+        for enc, _ in layout.derivs]
+    regions += [(enc, 0.35) for enc, _ in layout.boxes]
+    for enc, m in regions:
+        xs = [nb[a].x for a in enc if a in nb]
+        if not xs:
+            continue
+        lo = min(lo, min(xs) - m - 0.1)
+        hi = max(hi, max(xs) + m + 0.1)
+    if lo < 0:  # shift everything right so the leftmost ellipse starts at 0
+        for n in layout.nodes:
+            n.x -= lo
+        for w in layout.wires:
+            if w.kind in ("bare", "ring"):
+                w.x -= lo
+        hi -= lo
+    layout.xmax = max(layout.xmax, hi)
 
 
 # a top-level sum wider than this (cm) is stacked vertically (one term per
@@ -1365,7 +1405,11 @@ def _layout_sum_horizontal(
 # ---------------------------------------------------------------------------
 
 
-def _tex_label(label: str) -> str:
+def _tex_label(label: str, kind: str = "var") -> str:
+    # variables render in math italic (cursive), functions in roman -- so
+    # 'target' (a tensor) is visually distinct from 'exp' (a function)
+    if kind == "var":
+        return rf"$\mathit{{{label}}}$" if len(label) > 1 else f"${label}$"
     if len(label) > 2:
         return rf"$\mathrm{{{label}}}$"
     return f"${label}$"
@@ -1443,7 +1487,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             # a transpose is shown with a ^T superscript (clearer than an
             # upside-down glyph). _AXIS pins a uniform text height/depth so a
             # subscripted label centers on the same axis as its neighbours.
-            label = _tex_label(n.label)
+            label = _tex_label(n.label, n.kind)
             if n.rotated:  # insert the transpose superscript inside the $...$
                 label = label[:-1] + r"^{\top}$"
             lines.append(
@@ -1587,8 +1631,18 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                 # collision), and hugging the end symmetrically for both sides
                 anchor = {"up": "south", "down": "north",
                           "left": "south", "right": "south"}[w.direction]
-                lab = (rf" node[anchor={anchor}, font=\scriptsize,"
-                       rf" inner sep=1.5pt] {{${_tex_edge(w.label)}$}}")
+                outer_lbl = w.label
+                pre = ""
+                if "::" in w.label:
+                    # a RENAMING edge (group port renamed): inner name near
+                    # the bracket, outer name at the free end -- like
+                    # to_tikz's double-labeled edges
+                    inner_lbl, outer_lbl = w.label.split("::", 1)
+                    pre = (rf" node[pos=0.1, anchor={anchor},"
+                           rf" font=\scriptsize, inner sep=1.5pt]"
+                           rf" {{${_tex_edge(inner_lbl)}$}}")
+                lab = pre + (rf" node[anchor={anchor}, font=\scriptsize,"
+                             rf" inner sep=1.5pt] {{${_tex_edge(outer_lbl)}$}}")
             src = name[w.a]
             if w.a in group_side:
                 src = group_side[w.a][0 if w.direction == "left" else 1]
