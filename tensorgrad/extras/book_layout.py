@@ -624,7 +624,53 @@ def _layout_component(
             return 0.06
         return _label_halfwidth(atom.label)
 
-    # -- x positions along the spine (label-width aware) --
+    # -- build the below-spine pendant forest FIRST, so its subtree widths
+    # can widen the spine: two adjacent spine nodes that each carry pendant
+    # structure must be far enough apart that their forests don't overlap --
+    PEND_GAP = 0.42
+    placed = set(spine)
+    children: dict[int, list[int]] = {}
+    parent_of: dict[int, int] = {}
+    parent_wire: dict[int, str] = {}
+    _frontier = list(spine)
+    while _frontier:
+        u = _frontier.pop(0)
+        for v in sorted(adj[u]):
+            if v in placed:
+                continue
+            placed.add(v)
+            children.setdefault(u, []).append(v)
+            parent_of[v] = u
+            parent_wire[v] = adj[u][v][0]
+            _frontier.append(v)
+
+    def _pw(v: int) -> float:
+        atom = g.atoms[v]
+        if atom.kind == "group":
+            return 2 * halfwidth(v)
+        return 0.12 if atom.kind == "copydot" else 2 * _label_halfwidth(atom.label)
+
+    subtree_w: dict[int, float] = {}
+
+    def subtree_width(v: int) -> float:
+        if v in subtree_w:
+            return subtree_w[v]
+        kids = children.get(v, [])
+        w = _pw(v)
+        if kids:
+            kids_w = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
+            w = max(w, kids_w)
+        subtree_w[v] = w
+        return w
+
+    def forest_half(u: int) -> float:
+        kids = children.get(u, [])
+        if not kids:
+            return 0.0
+        total = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
+        return total / 2
+
+    # -- x positions along the spine (label-width aware, pendant-aware) --
     xs: list[float] = []
     x = x0
     head_frees = _atom_free_names(g, spine[0])
@@ -639,7 +685,10 @@ def _layout_component(
             # zone than a plain wire: room for the arrowhead AND its dots
             wids = adj[spine[k - 1]].get(v, [])
             clearance = 0.58 if any(g.arrows.get(w) for w in wids) else 0.38
-            x += max(PITCH, prev_half + half + clearance)
+            gap = max(PITCH, prev_half + half + clearance)
+            # widen so neighbouring pendant forests don't interleave
+            gap = max(gap, forest_half(spine[k - 1]) + forest_half(v) + 0.3)
+            x += gap
         xs.append(x)
         prev_half = half
     for v, xv in zip(spine, xs):
@@ -681,47 +730,10 @@ def _layout_component(
             )
 
     # -- pendants (off-spine structure hangs below its attachment) --
-    # Build the below-spine forest as a BFS tree, then lay each subtree out
-    # recursively: a subtree reserves its full width so siblings never
-    # overlap, and every parent is centered over its children. (The old flat
-    # per-parent x-offset collided whenever a pendant had its own descendants
-    # -- e.g. an exp->pow chain hanging off a softmax copydot.)
-    PEND_GAP = 0.42
-    placed = set(spine)
-    children: dict[int, list[int]] = {}
-    parent_of: dict[int, int] = {}
-    parent_wire: dict[int, str] = {}
-    frontier = list(spine)
-    while frontier:
-        u = frontier.pop(0)
-        for v in sorted(adj[u]):
-            if v in placed:
-                continue
-            placed.add(v)
-            children.setdefault(u, []).append(v)
-            parent_of[v] = u
-            parent_wire[v] = adj[u][v][0]
-            frontier.append(v)
-
-    def _pw(v: int) -> float:
-        atom = g.atoms[v]
-        if atom.kind == "group":
-            return 2 * halfwidth(v)
-        return 0.12 if atom.kind == "copydot" else 2 * _label_halfwidth(atom.label)
-
-    subtree_w: dict[int, float] = {}
-
-    def subtree_width(v: int) -> float:
-        if v in subtree_w:
-            return subtree_w[v]
-        kids = children.get(v, [])
-        w = _pw(v)
-        if kids:
-            kids_w = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
-            w = max(w, kids_w)
-        subtree_w[v] = w
-        return w
-
+    # The forest (children/parent_of/subtree_width) was built above so the
+    # spine could reserve room for it; now lay each subtree out recursively:
+    # a subtree reserves its full width so siblings never overlap, and every
+    # parent is centered over its children.
     node_x = {n.id: n.x for n in layout.nodes}
 
     def place_subtree(v: int, cx: float, y: float) -> None:
@@ -960,7 +972,7 @@ def layout_any(
         return layout_tensor(tensor, left, right)
     out = BookLayout()
     x = 0.0
-    sign_id = 100000
+    sign_id = -1  # negative ids never collide with term/atom ids
     for idx, (term, weight) in enumerate(zip(tensor.terms, tensor.weights)):
         sign, coeff = _fmt_weight(weight)
         show_sign = idx > 0 or sign == "-" or coeff
@@ -970,7 +982,7 @@ def layout_any(
             if tex:
                 pad = 0.42 + 0.1 * len(tex)
                 out.nodes.append(LNode(sign_id, "sign", tex, x + pad - TERM_GAP, 0.0))
-                sign_id += 1
+                sign_id -= 1
                 x += 2 * pad - TERM_GAP
         sub = layout_tensor(term, left, right)
         if left is None and sub.left_edge is not None:
@@ -979,22 +991,22 @@ def layout_any(
             right = sub.right_edge
         for nd in sub.nodes:
             out.nodes.append(
-                LNode(nd.id + idx * 1000, nd.kind, nd.label, nd.x + x, nd.y,
+                LNode(nd.id + idx * 1_000_000, nd.kind, nd.label, nd.x + x, nd.y,
                       sub=nd.sub, width=nd.width, rotated=nd.rotated)
             )
         for w in sub.wires:
             wx = w.x + x if w.kind in ("bare", "ring") else w.x
             out.wires.append(
                 LWire(w.kind,
-                      None if w.a is None else w.a + idx * 1000,
-                      None if w.b is None else w.b + idx * 1000,
+                      None if w.a is None else w.a + idx * 1_000_000,
+                      None if w.b is None else w.b + idx * 1_000_000,
                       w.direction, w.label, w.arrow, w.span, w.lane,
                       wx, w.y)
             )
         for enclosed, names in sub.derivs:
-            out.derivs.append(([a + idx * 1000 for a in enclosed], names))
+            out.derivs.append(([a + idx * 1_000_000 for a in enclosed], names))
         for enclosed, lbl in sub.boxes:
-            out.boxes.append(([a + idx * 1000 for a in enclosed], lbl))
+            out.boxes.append(([a + idx * 1_000_000 for a in enclosed], lbl))
         x += sub.xmax + TERM_GAP
     out.xmax = x - TERM_GAP
     return out

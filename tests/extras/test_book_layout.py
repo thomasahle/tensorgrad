@@ -231,8 +231,11 @@ def test_sum_of_group_products_no_overlap():
 
     lay = layout_any(s2)
     # term boundaries must not interleave: every node of term 0 left of term 1
-    xs0 = [nd.x + nd.width / 2 for nd in lay.nodes if nd.id < 1000 and nd.kind != "sign"]
-    xs1 = [nd.x - nd.width / 2 for nd in lay.nodes if 1000 <= nd.id < 2000]
+    # (term idx tags node ids with idx * 1_000_000; signs use negative ids)
+    M = 1_000_000
+    xs0 = [nd.x + nd.width / 2 for nd in lay.nodes
+           if 0 <= nd.id < M and nd.kind != "sign"]
+    xs1 = [nd.x - nd.width / 2 for nd in lay.nodes if M <= nd.id < 2 * M]
     assert max(xs0) < min(xs1)
 
 
@@ -367,3 +370,30 @@ def test_off_spine_group_does_not_crash():
          Variable("b", j=n, yy=n), grp]
     )
     assert "tikzpicture" in to_book_tikz(expr)
+
+
+def test_adjacent_pendant_forests_dont_overlap():
+    # two adjacent copydots each carrying pendant legs must be spaced so their
+    # forests don't interleave (regression for cross-parent pendant overlap)
+    from tensorgrad.extras.book_layout import layout_tensor, _label_halfwidth
+
+    c1 = Delta(n, "L", "mid", "p1", "q1")
+    c2 = Delta(n, "mid", "R", "p2", "q2")
+    expr = Product([c1, c2,
+                    Variable("aaaa", p1=n), Variable("bbbb", q1=n),
+                    Variable("cccc", p2=n), Variable("dddd", q2=n)])
+    pend = sorted((nd for nd in layout_tensor(expr).nodes if nd.y < 0),
+                  key=lambda m: m.x)
+    for a, b in zip(pend, pend[1:]):
+        need = _label_halfwidth(a.label) + _label_halfwidth(b.label)
+        assert b.x - a.x >= need - 0.01, f"{a.label}/{b.label} overlap"
+
+
+def test_large_sum_unique_node_ids():
+    # >100 terms must not collide sign ids with term ids
+    import re
+
+    terms = [Variable("A", i=n, j=n) for _ in range(150)]
+    tex = to_book_tikz(Sum(terms))
+    names = re.findall(r"\\node[^(]*\(([^)]+)\)", tex)
+    assert len(names) == len(set(names))
