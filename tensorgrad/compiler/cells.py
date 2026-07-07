@@ -791,3 +791,76 @@ class _SoftplusCell(FusedCell):
 
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         return f"{name} = torch.nn.functional.softplus({cg._logical(node.ops[0], names)})"
+
+
+@register
+class _SigmoidCell(FusedCell):
+    """exp(x) / (1 + exp(x)) -> torch.sigmoid (task #59; completes #53).
+
+    This is the shape of softplus's DERIVATIVE, where it arrives smeared:
+    the derivative wraps exp(x) in a diagonal einsum and the reciprocal
+    (pow(-1) of 1+exp(x)) joins one node later, so the raw composition
+    overflows float32 at x ~ 89 even after the forward is stabilized.
+    The pattern matches an einsum that multiplies recip(1+exp(x)) with the
+    SAME exp(x) -- directly, or as a factor of an inner einsum (the
+    derivative's diag) -- and substitutes sigmoid(x), dropping the
+    reciprocal operand (its wires must be a subset of the exp-carrier's,
+    i.e. a pure hadamard join)."""
+    name = "sigmoid"
+    n_diff = 0
+
+    @staticmethod
+    def _recip_of_one_plus_exp(op: Any) -> Any:
+        """Return the exp MapNode if `op` is pow(-1)(1 + exp(x)), else None."""
+        from tensorgrad.compiler.ir import EinsumNode, LinearNode, MapNode
+
+        if not (isinstance(op, MapNode) and op.op == "pow" and op.params == (-1,)):
+            return None
+        lin = op.ops[0]
+        if not (isinstance(lin, LinearNode) and len(lin.terms) == 2 and tuple(lin.weights) == (1, 1)):
+            return None
+        for i in (0, 1):
+            t = lin.terms[i]
+            o = lin.terms[1 - i]
+            if (isinstance(t, MapNode) and t.op == "exp" and len(t.ops) == 1
+                    and isinstance(o, EinsumNode) and not o.ops and not o.constraints and o.weight == 1):
+                return t
+        return None
+
+    def match(self, b: Any, node: Any) -> Any:
+        from tensorgrad.compiler.ir import EinsumNode
+
+        if not isinstance(node, EinsumNode) or node.constraints or len(node.ops) < 2:
+            return None
+        for ri, rop in enumerate(node.ops):
+            exp_node = self._recip_of_one_plus_exp(rop)
+            if exp_node is None:
+                continue
+            r_wires = set(node.in_subs[ri])
+            for oi, oop in enumerate(node.ops):
+                if oi == ri or not r_wires <= set(node.in_subs[oi]):
+                    continue
+                carrier = None
+                if oop is exp_node:
+                    carrier = b.fused_fwd("sigmoid", {}, list(exp_node.ops), exp_node.dims)
+                elif isinstance(oop, EinsumNode) and not oop.constraints and any(
+                    o is exp_node for o in oop.ops
+                ):
+                    sig = b.fused_fwd("sigmoid", {}, list(exp_node.ops), exp_node.dims)
+                    inner_ops = [sig if o is exp_node else o for o in oop.ops]
+                    carrier = b.einsum(
+                        inner_ops, list(oop.in_subs), oop.out_subs,
+                        dict(enumerate(oop.wire_dims)), oop.weight, oop.constraints,
+                    )
+                if carrier is None:
+                    continue
+                new_ops = [carrier if j == oi else op for j, op in enumerate(node.ops) if j != ri]
+                new_subs = [node.in_subs[j] for j in range(len(node.ops)) if j != ri]
+                return b.einsum(
+                    new_ops, new_subs, node.out_subs,
+                    dict(enumerate(node.wire_dims)), node.weight, node.constraints,
+                )
+        return None
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        return f"{name} = torch.sigmoid({cg._logical(node.ops[0], names)})"

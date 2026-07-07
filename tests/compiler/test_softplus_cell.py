@@ -2,11 +2,11 @@
 
 log(1 + exp(x)) overflows float32 at x ~ 89; the cell pattern-matches the
 composition and emits torch.nn.functional.softplus. The DERIVATIVE's
-sigmoid (exp/(1+exp), smeared through the derivative's delta-einsum) is a
-separate pattern -- documented xfail below until the sigmoid cell lands.
+sigmoid (exp/(1+exp), smeared through the derivative's delta-einsum) is
+handled by the sigmoid cell, so softplus training is overflow-proof end
+to end.
 """
 
-import pytest
 import sympy
 import torch
 
@@ -46,12 +46,21 @@ def test_gradient_correct_at_moderate_x():
     torch.testing.assert_close(out.rename(None), torch.sigmoid(xm), atol=1e-6, rtol=1e-6)
 
 
-@pytest.mark.xfail(reason="derivative's sigmoid (exp/(1+exp) through the "
-                   "derivative delta-einsum) not yet pattern-matched; "
-                   "overflows at x ~ 89 -- the sigmoid cell is the follow-up")
 def test_gradient_survives_overflow():
+    # the sigmoid cell (exp/(1+exp) through the derivative's diag-einsum)
     x = Variable("x", n)
     g = F.sum(F.log(1 + F.exp(x))).grad(x)
     prog = tg.compile(g=g)
     out = prog(dims={n: 4}, x=X).g
-    assert torch.isfinite(out.rename(None)).all()
+    src = next(iter(prog._fn._specializations.values()))._source
+    assert "torch.sigmoid" in src
+    torch.testing.assert_close(out.rename(None), torch.sigmoid(X))
+
+
+def test_sigmoid_direct_hadamard_form():
+    # exp(x) * (1+exp(x))^-1 written directly (no derivative diag between)
+    x = Variable("x", n)
+    expr = F.exp(x) * F.pow(1 + F.exp(x), -1)
+    prog = tg.compile(y=expr)
+    out = prog(dims={n: 4}, x=X).y
+    torch.testing.assert_close(out.rename(None), torch.sigmoid(X))
