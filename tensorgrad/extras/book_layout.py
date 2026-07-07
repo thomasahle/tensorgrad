@@ -635,35 +635,80 @@ def _layout_component(
                       span=j - i, lane=lanes[wid])
             )
 
-    # -- pendants (off-spine vertices hang below their attachment) --
-    hang_x: dict[int, float] = {}
+    # -- pendants (off-spine structure hangs below its attachment) --
+    # Build the below-spine forest as a BFS tree, then lay each subtree out
+    # recursively: a subtree reserves its full width so siblings never
+    # overlap, and every parent is centered over its children. (The old flat
+    # per-parent x-offset collided whenever a pendant had its own descendants
+    # -- e.g. an exp->pow chain hanging off a softmax copydot.)
+    PEND_GAP = 0.42
     placed = set(spine)
+    children: dict[int, list[int]] = {}
+    parent_of: dict[int, int] = {}
+    parent_wire: dict[int, str] = {}
     frontier = list(spine)
     while frontier:
         u = frontier.pop(0)
-        for v, wids in adj[u].items():
+        for v in sorted(adj[u]):
             if v in placed:
                 continue
             placed.add(v)
-            ux = next(n.x for n in layout.nodes if n.id == u)
-            uy = next(n.y for n in layout.nodes if n.id == u)
-            atom = g.atoms[v]
-            half = _label_halfwidth(atom.label)
-            off = hang_x.get(u, 0.0)
-            if off:
-                off += half  # previous sibling's right edge + our halfwidth
-            hang_x[u] = off + half + 0.25
-            layout.nodes.append(
-                LNode(v, atom.kind, atom.label, ux + off, uy - PENDANT_DY)
-            )
-            wid = wids[0]
-            drawn.append(wid)
-            arrow = g.arrows.get(wid, "")
-            pa, pb = u, v
-            if arrow and g.arrow_heads.get(wid) == pa:
-                pa, pb = pb, pa
-            layout.wires.append(LWire("pendant", pa, pb, arrow=arrow))
+            children.setdefault(u, []).append(v)
+            parent_of[v] = u
+            parent_wire[v] = adj[u][v][0]
             frontier.append(v)
+
+    def _pw(v: int) -> float:
+        atom = g.atoms[v]
+        return 0.12 if atom.kind == "copydot" else 2 * _label_halfwidth(atom.label)
+
+    subtree_w: dict[int, float] = {}
+
+    def subtree_width(v: int) -> float:
+        if v in subtree_w:
+            return subtree_w[v]
+        kids = children.get(v, [])
+        w = _pw(v)
+        if kids:
+            kids_w = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
+            w = max(w, kids_w)
+        subtree_w[v] = w
+        return w
+
+    node_x = {n.id: n.x for n in layout.nodes}
+
+    def place_subtree(v: int, cx: float, y: float) -> None:
+        atom = g.atoms[v]
+        layout.nodes.append(LNode(v, atom.kind, atom.label, cx, y))
+        wid = parent_wire[v]
+        drawn.append(wid)
+        arrow = g.arrows.get(wid, "")
+        pa, pb = parent_of[v], v
+        if arrow and g.arrow_heads.get(wid) == pa:
+            pa, pb = pb, pa
+        layout.wires.append(LWire("pendant", pa, pb, arrow=arrow))
+        node_x[v] = cx
+        kids = children.get(v, [])
+        if not kids:
+            return
+        total = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
+        x = cx - total / 2
+        for k in kids:
+            w = subtree_width(k)
+            place_subtree(k, x + w / 2, y - PENDANT_DY)
+            x += w + PEND_GAP
+
+    for u in spine:
+        kids = children.get(u, [])
+        if not kids:
+            continue
+        ux = node_x[u]
+        total = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
+        x = ux - total / 2
+        for k in kids:
+            w = subtree_width(k)
+            place_subtree(k, x + w / 2, -PENDANT_DY)
+            x += w + PEND_GAP
 
     # -- wire conservation: anything not yet drawn becomes an extra
     # connector (below the spine) or a loop -- NEVER silently dropped --
