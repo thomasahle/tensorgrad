@@ -75,23 +75,64 @@ def collect() -> list[tuple[str, Tensor | None, str | None]]:
     return out
 
 
+MAX_STEPS = 8
+
+
+def derivation_steps(expr) -> list:
+    """The chain expr = step1 = step2 = ... (one simplify step at a time,
+    like imgtools.save_steps), capped at MAX_STEPS."""
+    from tensorgrad.tensor import Derivative
+    from tensorgrad.extras.expectation import Expectation
+
+    steps = [expr]
+    # unfold stacked derivatives/expectations one level per step
+    cnt, d = 0, expr
+    while isinstance(d, (Derivative, Expectation)):
+        cnt += 1
+        d = d.tensor
+    try:
+        if cnt > 1:
+            expr = expr.simplify({"grad_steps": cnt})
+            steps.append(expr)
+        expand = False
+        while len(steps) < MAX_STEPS:
+            args: dict = {"grad_steps": 1}
+            if expand:
+                args["expand"] = True
+            new = expr.simplify(args).simplify()
+            if new == expr:
+                if not expand:
+                    expand = True
+                    continue
+                break
+            steps.append(new)
+            expr = new
+    except Exception:
+        pass  # keep whatever steps we collected
+    return steps
+
+
 def render(rows) -> None:
-    body = [r"\section*{examples/main.py rendered with book\_layout}"]
+    body = [r"\section*{examples/main.py: step-by-step derivations}"]
     for name, tensor, err in rows:
         body.append(rf"\subsection*{{\texttt{{{name}}}}}")
         if tensor is None:
             body.append(rf"\texttt{{\small {err}}}")
             continue
-        try:
-            body.append(r"\noindent")
-            body.append(to_book_tikz(tensor, max_width=15, edge_labels=True))
-        except Exception:  # unevaluated contracted derivatives etc.
+        steps = derivation_steps(tensor)
+        drew_any = False
+        for k, step in enumerate(steps):
             try:
-                body.append(r"\noindent")
-                body.append(to_book_tikz(tensor.simplify(), max_width=15, edge_labels=True))
-                body[-3] = body[-3].replace("}}", " (simplified)}}")
+                tikz = to_book_tikz(step, max_width=14.5, edge_labels=True)
             except Exception as e:
-                body.append(rf"\texttt{{\small draw: {type(e).__name__}: {e}}}")
+                body.append(rf"\par\texttt{{\small step {k}: {type(e).__name__}}}")
+                continue
+            prefix = r"$=$\;" if drew_any else r"\noindent"
+            body.append(rf"\par {prefix} {tikz}")
+            body.append(r"\medskip")
+            drew_any = True
+        if not drew_any:
+            body.append(rf"\texttt{{\small no step drawable}}")
     tex = "\n".join([
         r"\documentclass{article}",
         r"\usepackage[margin=0.5in]{geometry}",
