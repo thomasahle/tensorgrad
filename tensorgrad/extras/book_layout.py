@@ -577,6 +577,15 @@ def _choose_spine(
                     if g.arrows.get(wid):
                         head_atom = g.arrow_heads.get(wid)
                         score += 6 if head_atom == u else -6
+            # keep each derivative region's atoms CONTIGUOUS on the spine, so
+            # its Penrose ellipse wraps only its own atoms instead of
+            # stretching across foreign ones and crossing other loops
+            pos = {v: k for k, v in enumerate(cand)}
+            for enclosed, _ in g.derivs:
+                idxs = sorted(pos[a] for a in enclosed if a in pos)
+                if len(idxs) >= 2:
+                    span = idxs[-1] - idxs[0]
+                    score -= 8 * (span - (len(idxs) - 1))
             score -= 0.01 * cand[0]
             if best_score is None or score > best_score:
                 best, best_score = list(cand), score
