@@ -284,6 +284,16 @@ class TorchCodegen:
         # mean/rstd instead of recomputing). Keyed by (cell, site).
         self._fused_fwd_cache: dict = {}
         self._fused_bwd_cache: dict = {}
+        # Factorization reuse: operands consumed by >= 2 linalg cells
+        # (inverse / solve / slogdet) share ONE torch.linalg.lu_factor --
+        # jax's solve/slogdet adjoints share a factorization the same way,
+        # and this was the measured residual gap on the GP benchmark.
+        # Single-consumer sites keep their dedicated kernels.
+        lin_uses: dict = {}
+        for _n in toposort([n for n, _ in outputs]):
+            if isinstance(_n, FusedFwdNode) and _n.cell_name in ("inverse", "solve", "slogdet"):
+                lin_uses[id(_n.ops[0])] = lin_uses.get(id(_n.ops[0]), 0) + 1
+        self._lu_shared = {k for k, c in lin_uses.items() if c >= 2}
 
         def const_name(tensor: torch.Tensor, base: str) -> str:
             name = f"_c{len(consts)}_{base}"

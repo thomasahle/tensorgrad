@@ -94,3 +94,33 @@ def test_matrix_rhs_not_rewritten_and_still_correct():
         out.align_to("i", "k").rename(None), torch.linalg.solve(Av.T, Bv),
         atol=1e-4, rtol=1e-4,
     )
+
+
+def test_lu_factorization_sharing():
+    # An operand consumed by >= 2 linalg cells (inverse + log-det + solve)
+    # shares ONE torch.linalg.lu_factor; single-consumer sites elsewhere
+    # keep their dedicated kernels. Values must match the dedicated paths.
+    K = Variable("K", i=n, j=n)
+    b2 = Variable("b2", i=n)
+    Ki = F.inverse(K, {"i", "j"})
+    prog = tg.compile(inv=Ki, ld=F.log(F.det(K, {"i", "j"})), sol=Ki @ b2)
+    A, bv = _mk(9)
+    out = prog(dims={n: N}, K=A.rename("i", "j"), b2=bv.rename("i"))
+    src = _src(prog)
+    assert src.count("lu_factor") == 1, src.count("lu_factor")
+    assert "linalg.inv" not in src and "linalg.slogdet" not in src
+    torch.testing.assert_close(
+        out.inv.align_to("i", "j").rename(None), torch.linalg.inv(A).T, atol=1e-4, rtol=1e-4
+    )
+    torch.testing.assert_close(out.ld, torch.linalg.slogdet(A)[1], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(out.sol.rename(None), torch.linalg.solve(A, bv), atol=1e-5, rtol=1e-5)
+
+
+def test_single_consumer_keeps_dedicated_kernels():
+    K = Variable("K", i=n, j=n)
+    prog = tg.compile(ld=F.log(F.det(K, {"i", "j"})))
+    A, _ = _mk(10)
+    out = prog(dims={n: N}, K=A.rename("i", "j")).ld
+    src = _src(prog)
+    assert "slogdet" in src and "lu_factor" not in src
+    torch.testing.assert_close(out, torch.linalg.slogdet(A)[1])

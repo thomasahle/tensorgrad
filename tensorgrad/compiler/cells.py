@@ -231,6 +231,21 @@ def _prod(xs: Any) -> Any:
     return p(xs)
 
 
+def _lu_prelude(cg: Any, node: Any, names: Any) -> tuple:
+    """Shared LU factorization for an operand consumed by several linalg
+    cells (codegen pre-scans consumers into cg._lu_shared): the first cell
+    at a site emits torch.linalg.lu_factor once; the rest reuse it. This is
+    the factorization reuse jax's solve/slogdet adjoints get implicitly."""
+    key = ("lu", names[id(node.ops[0])])
+    tmp = cg._fused_fwd_cache.get(key)
+    prelude = ""
+    if tmp is None:
+        tmp = f"_lu{len(cg._fused_fwd_cache)}"
+        cg._fused_fwd_cache[key] = tmp
+        prelude = f"{tmp} = torch.linalg.lu_factor({cg._logical(node.ops[0], names)}); "
+    return prelude, tmp
+
+
 @register
 class _SDPACell(FusedCell):
     name = "sdpa"
@@ -594,7 +609,12 @@ class _InverseCell(FusedCell):
         return lower.b.fused_fwd(self.name, {}, [n], dims), out_order
 
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
-        return f"{name} = torch.linalg.inv({cg._logical(node.ops[0], names)})"
+        A = cg._logical(node.ops[0], names)
+        if id(node.ops[0]) in getattr(cg, "_lu_shared", ()):
+            pre, lu = _lu_prelude(cg, node, names)
+            n_ = dim_of(node.dims[-1])
+            return f"{pre}{name} = torch.linalg.lu_solve({lu}[0], {lu}[1], torch.eye({n_}, dtype={A}.dtype))"
+        return f"{name} = torch.linalg.inv({A})"
 
 
 @register
@@ -670,7 +690,12 @@ class _SolveCell(FusedCell):
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         A = cg._logical(node.ops[0], names)
         b = cg._logical(node.ops[1], names)
-        if node.params_dict()["transposed"]:
+        adj = node.params_dict()["transposed"]
+        if id(node.ops[0]) in getattr(cg, "_lu_shared", ()):
+            pre, lu = _lu_prelude(cg, node, names)
+            return (f"{pre}{name} = torch.linalg.lu_solve({lu}[0], {lu}[1], "
+                    f"{b}.unsqueeze(-1), adjoint={adj}).squeeze(-1)")
+        if adj:
             A = f"{A}.transpose(-2, -1)"
         return f"{name} = torch.linalg.solve({A}, {b})"
 
@@ -696,4 +721,7 @@ class _SlogdetCell(FusedCell):
         return None
 
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        if id(node.ops[0]) in getattr(cg, "_lu_shared", ()):
+            pre, lu = _lu_prelude(cg, node, names)
+            return f"{pre}{name} = {lu}[0].diagonal(dim1=-2, dim2=-1).abs().log().sum(-1)"
         return f"{name} = torch.linalg.slogdet({cg._logical(node.ops[0], names)})[1]"

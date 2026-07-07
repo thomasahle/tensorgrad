@@ -121,6 +121,12 @@ def _tg_state():
 
 
 def make_tg_step():
+    # Four programs, cycled Gauss-Seidel. Audited alternatives, both worse:
+    # Jacobi (all four updates from ONE program) diverges on this bilinear
+    # objective, and symbolic Gauss-Seidel (substituting each update into
+    # the next before compiling) converges identically (3 rounds) but runs
+    # 0.65 ms vs 0.49 -- the substitution duplicates work that CSE does not
+    # fully recover, which costs more than the ~0.1 ms of saved dispatch.
     solvers = {v: tg.compile(o=expr) for v, expr in _NEWTON.items()}
     st = _tg_state()
 
