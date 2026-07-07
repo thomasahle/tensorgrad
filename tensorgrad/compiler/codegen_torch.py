@@ -189,7 +189,8 @@ class TorchCodegen:
         self.input_names = sorted(builder.input_vars)
 
     def specialize(
-        self, dims: dict[sympy.Symbol, int], verbose: bool = False, dtype: Optional[torch.dtype] = None
+        self, dims: dict[sympy.Symbol, int], verbose: bool = False,
+        dtype: Optional[torch.dtype] = None, for_inductor: bool = False,
     ):
         """Generate and exec source for concrete dims.
         Returns a function f(*input_tensors) -> tuple[torch.Tensor, ...].
@@ -252,8 +253,13 @@ class TorchCodegen:
         # the returned order. The sdpa/addmm plans and the layout assignment
         # above are per-node (ids, node refs, axis fits — nothing positional)
         # and remain valid under any toposort of the same DAG.
+        # Foreach grouping cuts EAGER launch overhead, but torch._foreach_*
+        # are opaque library calls Inductor cannot fuse -- under torch.compile
+        # the ungrouped elementwise fuses into one region instead (measured
+        # faster). So skip grouping when compiling.
         order, foreach_plans, foreach_deferred = self._plan_foreach(
-            order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed, addmm_plans, addmm_suppressed
+            order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed,
+            addmm_plans, addmm_suppressed, for_inductor
         )
         self._foreach_tmp = 0  # counter for _f{k} foreach list temporaries
         # Spec-time layout knowledge: emitted name -> (sizes, strides, offset).
@@ -974,7 +980,7 @@ class TorchCodegen:
         return out
 
     def _plan_foreach(self, order, output_ids, dims, dim_of, sdpa_plans, sdpa_suppressed,
-                      addmm_plans, addmm_suppressed):
+                      addmm_plans, addmm_suppressed, for_inductor=False):
         """Group families of shape-isomorphic elementwise chains (MapNode,
         LinearNode, pure-Hadamard EinsumNode) into multi-tensor
         torch._foreach_* calls (the 53 per-parameter AdamW update chains are
@@ -1005,7 +1011,7 @@ class TorchCodegen:
         "recipes"} (the whole family is emitted at its first member's loop
         position); deferred is the set of remaining member ids, skipped by
         the emission loop."""
-        if not FOREACH_GROUPING:
+        if not FOREACH_GROUPING or for_inductor:
             return order, {}, set()
         excluded = (
             sdpa_plans.keys() | sdpa_suppressed | addmm_plans.keys() | addmm_suppressed

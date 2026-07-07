@@ -213,7 +213,8 @@ class CompiledProgram:
             key = key + (str(dtype),)
         fn = self._specializations.get(key)
         if fn is None:
-            fn = self.codegen.specialize(dims, verbose=self.verbose, dtype=dtype)
+            fn = self.codegen.specialize(dims, verbose=self.verbose, dtype=dtype,
+                                         for_inductor=self.torch_compile)
             if self.torch_compile:
                 fn = self._torch_compile(fn)
             self._specializations[key] = fn
