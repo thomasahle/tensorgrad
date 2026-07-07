@@ -13,5 +13,6 @@ from .tensor import (
 from .typing import typed  # noqa: F401
 from .compiler.runtime import Output, compile, grad  # noqa: F401
 from .extras.expectation import Expectation  # noqa: F401
+from .extras.book_layout import to_book_tikz  # noqa: F401
 from .functions import frobenius2, kronecker, diag, sum, log, pow, trace  # noqa: F401
 from sympy import symbols  # noqa: F401

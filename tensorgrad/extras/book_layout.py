@@ -1,4 +1,4 @@
-"""Book-grammar layout for tensor diagrams.
+r"""Book-grammar layout for tensor diagrams.
 
 Turns a tensorgrad ``Tensor`` into a diagram laid out the way the Tensor
 Cookbook draws them by hand.  This is deliberately NOT a general graph-drawing
@@ -51,7 +51,9 @@ from dataclasses import dataclass, field
 from numbers import Number
 from typing import Optional
 
-from tensorgrad.tensor import Delta, Derivative, Function, Product, Rename, Sum, Tensor, Variable
+from tensorgrad.tensor import (
+    Delta, Derivative, Function, Product, Rename, Sum, Tensor, Variable, Zero,
+)
 
 try:
     from tensorgrad.extras.expectation import Expectation
@@ -165,6 +167,15 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
             label = t.name
             g.atoms.append(AtomSpec(aid, "var", label, toks))
             return dict(zip(list(t.edges), toks))
+        if isinstance(t, Zero):
+            edges = list(t.edges)
+            aid = len(g.atoms)
+            if not edges:
+                g.atoms.append(AtomSpec(aid, "scalar", "0", []))
+                return {}
+            toks = [fresh("w") for _ in edges]
+            g.atoms.append(AtomSpec(aid, "var", "0", toks))
+            return dict(zip(edges, toks))
         if isinstance(t, Delta):
             edges = list(t.edges)
             if len(edges) == 2:
@@ -1211,11 +1222,28 @@ def to_book_tikz(
     left: Optional[str] = None,
     right: Optional[str] = None,
     baseline: str = "-.25em",
+    scale: Optional[float] = None,
+    max_width: Optional[float] = None,
 ) -> str:
-    """Render a tensorgrad Tensor as book-style TikZ (uses tikz-styles.tex)."""
-    lines: list[str] = [
-        rf"\begin{{tikzpicture}}[baseline={baseline}, inner sep=1pt]"
-    ]
-    _emit_layout(layout_any(tensor, left, right), lines, prefix="", dx=0.0)
+    """Render a tensorgrad Tensor as book-style TikZ (uses tikz-styles.tex).
+
+    Args:
+        left/right: force the named free edge to exit that side (covariance).
+        baseline: TikZ baseline anchor for inline use.
+        scale: explicit TikZ scale factor for the whole picture.
+        max_width: if the laid-out diagram is wider than this (in cm), scale
+            it down to fit -- wide gradients/products then stay on the page
+            instead of overflowing. Ignored if `scale` is given.
+    """
+    layout = layout_any(tensor, left, right)
+    if scale is None and max_width is not None and layout.xmax > max_width > 0:
+        scale = max_width / layout.xmax
+    opts = f"baseline={baseline}, inner sep=1pt"
+    if scale is not None and abs(scale - 1.0) > 1e-6:
+        # `transform shape` scales node glyphs too, so the whole diagram
+        # shrinks uniformly instead of nodes overlapping at moved coordinates
+        opts += f", scale={scale:.3f}, transform shape"
+    lines: list[str] = [rf"\begin{{tikzpicture}}[{opts}]"]
+    _emit_layout(layout, lines, prefix="", dx=0.0)
     lines.append(r"\end{tikzpicture}")
     return "\n".join(lines)

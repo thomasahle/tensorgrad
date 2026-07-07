@@ -324,3 +324,28 @@ def test_expectation_nested_in_sum():
     assert len(lay.boxes) == 1
     ids = set(nd.id for nd in lay.nodes)
     assert all(a in ids for a in lay.boxes[0][0])
+
+
+def test_zero_tensor():
+    from tensorgrad.tensor import Zero
+
+    assert "0" in to_book_tikz(Zero(i=n))  # zero vector -> labeled 0 node
+    assert to_book_tikz(Zero(i=n, j=n)).count(r"\node") >= 1
+    assert "0" in to_book_tikz(Zero())  # scalar zero
+
+
+def test_max_width_scales_wide_diagrams():
+    import tensorgrad.functions as F
+
+    z = Variable("z", i=n)
+    y = Variable("y", i=n)
+    ce = F.cross_entropy(z, y, dim="i").grad(z, {"i": "j"}).simplify()
+    wide = to_book_tikz(ce)
+    narrowed = to_book_tikz(ce, max_width=8)
+    assert "transform shape" in narrowed and "scale=" in narrowed
+    assert "transform shape" not in wide  # unconstrained stays full size
+
+
+def test_scale_explicit():
+    tex = to_book_tikz(Product([_A(), Variable("B", j=n, k=n)]), scale=0.5)
+    assert "scale=0.5" in tex and "transform shape" in tex

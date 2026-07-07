@@ -131,6 +131,18 @@ class Tensor(metaclass=TensorMeta):
         """Returns an _ordered_ set of edge names"""
         return self.shape.keys()
 
+    def to_book_tikz(self, **kwargs) -> str:
+        """Render this tensor as a book-style tensor diagram (TikZ).
+
+        See :func:`tensorgrad.extras.book_layout.to_book_tikz` for options
+        (``left``/``right`` to fix free-edge sides, ``max_width`` to fit wide
+        diagrams). Call ``.simplify()`` first if the expression still contains
+        derivatives you want evaluated.
+        """
+        from tensorgrad.extras.book_layout import to_book_tikz
+
+        return to_book_tikz(self, **kwargs)
+
     @property
     def shape(self) -> dict[str, Symbol]:
         if not hasattr(self, "_shape"):
