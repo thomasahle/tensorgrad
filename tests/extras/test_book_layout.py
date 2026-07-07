@@ -397,3 +397,21 @@ def test_large_sum_unique_node_ids():
     tex = to_book_tikz(Sum(terms))
     names = re.findall(r"\\node[^(]*\(([^)]+)\)", tex)
     assert len(names) == len(set(names))
+
+
+def test_double_edge_transpose_distinguished():
+    # Tr(AB) (crossed ports) and Tr(AB^T) (parallel ports) are DIFFERENT
+    # tensors and must not render identically; the parallel one rotates a
+    # matrix (transpose convention). Same for ||A||_F vs Tr(A^2).
+    tr_ab = Product([Variable("A", i=n, j=n), Variable("B", j=n, i=n)])
+    tr_abt = Product([Variable("A", i=n, j=n), Variable("B", i=n, j=n)])
+    fro = Product([Variable("A", i=n, j=n), Variable("A", i=n, j=n)])
+    tr_a2 = Product([Variable("A", i=n, j=n), Variable("A", j=n, i=n)])
+
+    def n_rot(e):
+        return sum(nd.rotated for nd in layout_tensor(e).nodes if nd.kind == "var")
+
+    assert n_rot(tr_ab) == 0 and n_rot(tr_a2) == 0  # crossed: upright
+    assert n_rot(tr_abt) == 1 and n_rot(fro) == 1  # parallel: one rotated
+    assert to_book_tikz(tr_ab) != to_book_tikz(tr_abt)
+    assert to_book_tikz(fro) != to_book_tikz(tr_a2)

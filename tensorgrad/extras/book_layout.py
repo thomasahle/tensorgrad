@@ -904,6 +904,30 @@ def _layout_component(
         if li > ri and has_free:
             node = next(n for n in layout.nodes if n.id == v)
             node.rotated = True
+
+    # -- double-edge transpose: two adjacent 2-port matrices that share BOTH
+    # their edges are either Tr(AB) (ports pair CROSSED: A's inner index meets
+    # B's inner index) or Tr(AB^T) / ||A||_F (ports pair PARALLEL: same index
+    # on both). A parallel pairing must rotate the right matrix, else the two
+    # genuinely different tensors would draw byte-identically (a segment + arc
+    # with no crossing) -- the semantic-fidelity bug. --
+    rotated_ids = {n.id for n in layout.nodes if n.rotated}
+    for k in range(len(spine) - 1):
+        u, v = spine[k], spine[k + 1]
+        shared = adj[u].get(v, [])
+        au, av = g.atoms[u], g.atoms[v]
+        if (len(shared) != 2 or au.kind != "var" or av.kind != "var"
+                or len(au.ports) != 2 or len(av.ports) != 2):
+            continue
+        try:
+            parallel = all(au.ports.index(w) == av.ports.index(w) for w in shared)
+        except ValueError:
+            continue
+        if parallel and v not in rotated_ids:
+            node = next(n for n in layout.nodes if n.id == v)
+            node.rotated = True
+            rotated_ids.add(v)
+
     # free edges on pendants leave downward
     for v in comp:
         if v in pos_index:
