@@ -29,11 +29,14 @@ Contracts a cell must honor:
 
 from __future__ import annotations
 
-from typing import Any, Sequence, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast
 
 import torch
 
 from tensorgrad.tensor import Function, FunctionSignature, Tensor
+
+if TYPE_CHECKING:  # runtime imports of ir stay function-local (import cycle)
+    from tensorgrad.compiler.ir import MapNode
 
 
 # ---------------------------------------------------------------------------
@@ -810,7 +813,7 @@ class _SigmoidCell(FusedCell):
     n_diff = 0
 
     @staticmethod
-    def _recip_of_one_plus_exp(op: Any) -> Any:
+    def _recip_of_one_plus_exp(op: Any) -> MapNode | None:
         """Return the exp MapNode if `op` is pow(-1)(1 + exp(x)), else None."""
         from tensorgrad.compiler.ir import EinsumNode, LinearNode, MapNode
 
