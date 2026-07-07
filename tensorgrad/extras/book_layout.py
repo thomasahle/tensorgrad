@@ -694,7 +694,7 @@ def _layout_component(
     def halfwidth(v: int) -> float:
         atom = g.atoms[v]
         if atom.kind == "group":
-            return subs[v].xmax / 2 + 0.5  # parens + symmetric padding
+            return subs[v].xmax / 2 + 0.62  # parens + symmetric padding
         if atom.kind == "copydot":
             return 0.06
         return _label_halfwidth(atom.label)
@@ -771,6 +771,11 @@ def _layout_component(
             # zone than a plain wire: room for the arrowhead AND its dots
             wids = adj[spine[k - 1]].get(v, [])
             clearance = 0.58 if any(g.arrows.get(w) for w in wids) else 0.38
+            # crossing an E-box boundary? leave room for the bracket + label
+            for enc_, _lbl in g.boxes:
+                if (spine[k - 1] in enc_) != (v in enc_):
+                    clearance += 0.55
+                    break
             gap = max(PITCH, prev_half + half + clearance)
             # widen so neighbouring pendant forests don't interleave
             gap = max(gap, forest_half(spine[k - 1]) + forest_half(v) + 0.3)
@@ -1061,6 +1066,15 @@ def _layout_component(
             layout.wires.append(LWire("stub", v, direction="down", label=name))
 
     xmax = xs[-1] + halfwidth(spine[-1])
+    # pendants placed BESIDE a group extend past the spine's right end;
+    # the component footprint must cover them or the enclosing bracket /
+    # next component lands on top of them
+    for v_, cx_ in node_x.items():
+        try:
+            hw_ = halfwidth(v_)
+        except KeyError:  # a pendant group with no computed sub-layout
+            hw_ = 0.5
+        xmax = max(xmax, cx_ + max(hw_, 0.3) + 0.15)
     if reserve_right:
         xmax += STUB + 0.05
     return xmax
@@ -1244,6 +1258,10 @@ def _term_extent(sub: "BookLayout") -> tuple[float, float]:
         grow = 0.55 + 0.3 * min(len(sub.derivs), 3)
         top += grow
         bot -= grow
+    elif sub.boxes:
+        # an E-box's bracket + any dome inside rises well above its atoms
+        top += 0.8
+        bot -= 0.3
     elif any(w.kind in ("arc", "loop") for w in sub.wires):
         top += 0.75
     else:
@@ -1469,7 +1487,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             group_side[n.id] = (pl, pr)
             # extra breathing room after the '(' before the first term (which
             # may be a wide node like pow_{-1}, else the paren jams into it)
-            _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.48,
+            _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.58,
                          edge_labels=edge_labels, dy=sub_dy)
         elif n.kind == "sign":
             # a sum operator is enlarged, spaced out (term-gap widened at
@@ -1524,8 +1542,40 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
         return (rf" node[midway, above, font=\scriptsize, inner sep=1.5pt]"
                 rf" {{${_tex_edge(w.label)}$}}")
 
+    def _cuts_foreign_group(a: int, b: int) -> bool:
+        # would a straight a--b wire pass through a bracket group that is
+        # neither of its endpoints?
+        for gid in group_side:
+            if gid in (a, b):
+                continue
+            gn = nodes[gid]
+            hw_ = gn.width / 2
+            if max(nodes[a].x, nodes[b].x) <= gn.x - hw_:
+                continue
+            if min(nodes[a].x, nodes[b].x) >= gn.x + hw_:
+                continue
+            return True
+        return False
+
+    def _broken_stubs(w: LWire) -> None:
+        # draw the wire as two matching labeled stubs (edge names connect
+        # them); the arrowhead, if any, stays on its stub
+        assert w.a is not None and w.b is not None
+        for nid, other in ((w.a, w.b), (w.b, w.a)):
+            side = 1 if nodes[other].x >= nodes[nid].x else -1
+            sty = style[w.arrow].strip() if nid == w.b else ""
+            lines.append(
+                rf"\draw{sty} ({endpoint(nid, other)}) -- ++({0.3 * side:.2f},0)"
+                rf" node[anchor=south, font=\scriptsize, inner sep=1.5pt]"
+                rf" {{${_tex_edge(w.label)}$}};"
+            )
+
     for w in layout.wires:
         if w.kind == "segment" or w.kind == "pendant":
+            assert w.a is not None and w.b is not None
+            if w.label and _cuts_foreign_group(w.a, w.b):
+                _broken_stubs(w)
+                continue
             lines.append(
                 rf"\draw{style[w.arrow].strip()} ({endpoint(w.a, w.b)})"
                 rf" -- ({endpoint(w.b, w.a)}){_wire_label(w)};"
@@ -1538,9 +1588,12 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                     rf"\path ({pl}) edge [out=160, in=20, looseness=1.6] ({pr});"
                 )
             else:
-                dist = f", min distance={4 + 5 * (w.lane - 1)}mm, looseness=5.5"
+                md = max(4, int(_label_halfwidth(nodes[w.a].label) * 14) + 2)
+                dist = f", min distance={md + 5 * (w.lane - 1)}mm, looseness=5.5"
+                oi = ("out=-160, in=-20" if nodes[w.a].y < -0.1
+                      else "out=160, in=20")
                 lines.append(
-                    rf"\path ({name[w.a]}) edge [out=160, in=20, loop{dist}]"
+                    rf"\path ({name[w.a]}) edge [{oi}, loop{dist}]"
                     rf" ({name[w.a]});"
                 )
         elif w.kind == "arc":
@@ -1590,19 +1643,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             # if the straight path would cut through a bracket group, don't
             # draw it: split into two matching labeled stubs (edge names
             # connect them, like the book does for far-apart contractions)
-            cut = False
-            for gid in group_side:
-                gn = nodes[gid]
-                if gid in (a, b):
-                    continue
-                hw_ = gn.width / 2
-                if max(nodes[a].x, nodes[b].x) <= gn.x - hw_:
-                    continue
-                if min(nodes[a].x, nodes[b].x) >= gn.x + hw_:
-                    continue
-                cut = True
-                break
-            if cut and w.label:
+            if w.label and _cuts_foreign_group(a, b):
                 for nid, other in ((a, b), (b, a)):
                     side = 1 if nodes[other].x >= nodes[nid].x else -1
                     src_ = endpoint(nid, other)
@@ -1714,21 +1755,29 @@ def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
         eset_b = set(enclosed)
         nodes_b = {n.id: n for n in layout.nodes}
         for w in layout.wires:
-            if w.kind == "arc" and w.a in eset_b and w.b in eset_b:
+            if (w.kind == "arc" and w.a is not None and w.b is not None
+                    and (w.a in eset_b or w.b in eset_b)):
                 na_, nb_ = nodes_b[w.a], nodes_b[w.b]
                 wide_b = abs(na_.x - nb_.x) > 3.0
                 h = (0.35 + 0.08 * w.span if wide_b
                      else 0.32 + 0.16 * w.span + 0.24 * (w.lane - 1))
                 if na_.kind == "group" or nb_.kind == "group":
                     h = 0.45 + 0.05 * (abs(na_.x - nb_.x) + na_.width)
-                mx_ = (na_.x + nb_.x) / 2
                 my_ = max(na_.y, nb_.y) + h + 0.15
+                if w.a in eset_b and w.b in eset_b:
+                    mx_ = (na_.x + nb_.x) / 2
+                else:
+                    # boundary-crossing arc: raise the box TOP so the arc
+                    # clears the bracket, but don't pull the box sideways
+                    # toward the outside endpoint (that dragged the bracket
+                    # and its E label onto the outside atom)
+                    mx_ = na_.x if w.a in eset_b else nb_.x
                 parts.append(f"({mx_:.2f},{my_:.2f})")
             elif w.kind == "loop" and w.a in eset_b:
                 parts.append(
                     f"({nodes_b[w.a].x:.2f},{nodes_b[w.a].y + 0.55:.2f})")
         inside = sum(1 for e2, _ in layout.boxes if set(e2) < set(enclosed))
-        sep = 3.5 + 4.0 * inside
+        sep = 6.0 + 4.0 * inside
         bn = f"{prefix}bE{bi}"
         # an INVISIBLE fit node sizes the brackets; we draw actual [ ] shapes
         # (a vertical edge with short top/bottom serifs) exactly around the
@@ -1745,7 +1794,8 @@ def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
             rf" -- ({bn}.south east) -- ([xshift=-3pt]{bn}.south east);"
         )
         lines.append(
-            rf"\node[anchor=east, inner sep=3pt] at ({bn}.west) {{$\mathbb{{{lbl}}}$}};"
+            rf"\node[anchor=north east, inner sep=1.5pt]"
+            rf" at ([xshift=-1pt]{bn}.north west) {{$\mathbb{{{lbl}}}$}};"
         )
 
 
