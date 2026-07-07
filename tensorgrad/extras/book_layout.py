@@ -53,6 +53,11 @@ from typing import Optional
 
 from tensorgrad.tensor import Delta, Derivative, Function, Product, Rename, Sum, Tensor, Variable
 
+try:
+    from tensorgrad.extras.expectation import Expectation
+except Exception:  # pragma: no cover
+    Expectation = ()  # type: ignore
+
 # ---------------------------------------------------------------------------
 # Metric constants (calibrated against the book's hand figures)
 # ---------------------------------------------------------------------------
@@ -99,6 +104,8 @@ class OpenGraph:
     # Penrose derivative loops: (atom ids enclosed, new edge names)
     derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
     deriv_tokens: set = field(default_factory=set)  # wires owned by loops
+    # E[.] expectation boxes: (enclosed atom ids, label tex)
+    boxes: list[tuple[list[int], str]] = field(default_factory=list)
 
 
 def _tex_edge(name: str) -> str:
@@ -236,6 +243,12 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
                 names.append(e)
             g.derivs.append((enclosed, names))
             return out
+        if Expectation and isinstance(t, Expectation):
+            first_atom = len(g.atoms)
+            sub = walk(t.tensor)
+            enclosed = list(range(first_atom, len(g.atoms)))
+            g.boxes.append((enclosed, "E"))
+            return sub
         if isinstance(t, Sum):
             # a Sum factor becomes a parenthesized group atom; its inner
             # terms are laid out recursively at layout time
@@ -340,6 +353,7 @@ class BookLayout:
     left_edge: Optional[str] = None  # free edge that exits leftmost
     right_edge: Optional[str] = None
     derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
+    boxes: list[tuple[list[int], str]] = field(default_factory=list)
 
 
 def _label_halfwidth(label: str) -> float:
@@ -897,6 +911,7 @@ def layout_tensor(
         x = x_end + COMPONENT_GAP
     layout.xmax = x - COMPONENT_GAP
     layout.derivs = list(g.derivs)
+    layout.boxes = list(g.boxes)
     return layout
 
 
@@ -941,6 +956,8 @@ def layout_any(
             )
         for enclosed, names in sub.derivs:
             out.derivs.append(([a + idx * 1000 for a in enclosed], names))
+        for enclosed, lbl in sub.boxes:
+            out.boxes.append(([a + idx * 1000 for a in enclosed], lbl))
         x += sub.xmax + TERM_GAP
     out.xmax = x - TERM_GAP
     return out
@@ -1099,7 +1116,36 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             lines.append(
                 rf"\draw ({w.x + dx:.2f},{w.y:.2f}) -- ++({1.0:.2f},0);"
             )
+    _emit_boxes(layout, lines, prefix, name, group_side)
     _emit_derivs(layout, lines, prefix, name, group_side)
+
+
+def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
+                name: dict, group_side: dict) -> None:
+    """Expectation E[.] boxes: a fit-rectangle with an E label on the left."""
+    for bi, (enclosed, lbl) in enumerate(layout.boxes):
+        parts = []
+        for aid in enclosed:
+            if aid in group_side:
+                parts.extend(f"({p})" for p in group_side[aid])
+            elif aid in name:
+                parts.append(f"({name[aid]})")
+        if not parts:
+            continue
+        inside = sum(1 for e2, _ in layout.boxes if set(e2) < set(enclosed))
+        sep = 3.5 + 4.0 * inside
+        bn = f"{prefix}bE{bi}"
+        lines.append(
+            rf"\node[draw, rounded corners=1pt, inner sep={sep:.1f}pt, "
+            rf"fit={{{''.join(parts)}}}] ({bn}) {{}};"
+        )
+        # the E[ ] label brackets sit on the box's left and right edges
+        lines.append(
+            rf"\node[anchor=east, inner sep=2pt] at ({bn}.west) {{$\mathbb{{{lbl}}}\big[$}};"
+        )
+        lines.append(
+            rf"\node[anchor=west, inner sep=2pt] at ({bn}.east) {{$\big]$}};"
+        )
 
 
 def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,

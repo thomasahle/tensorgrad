@@ -300,3 +300,27 @@ def test_rotation_still_marks_transpose_with_free_edge():
     )
     lay = layout_any(h)
     assert any(nd.rotated for nd in lay.nodes if nd.kind == "var")
+
+
+def test_expectation_draws_box():
+    from tensorgrad.extras.expectation import Expectation
+
+    x = Variable("x", i=n)
+    x2 = Variable("x", j=n)
+    tex = to_book_tikz(Expectation(Product([x, x2]), x))
+    assert "fit=" in tex and "draw" in tex  # the box
+    assert r"\mathbb{E}" in tex  # the E[ label
+
+
+def test_expectation_nested_in_sum():
+    from tensorgrad.extras.expectation import Expectation
+    from tensorgrad.extras.book_layout import layout_any
+
+    x = Variable("x", i=n)
+    A = _A()
+    e = Expectation(Product([x, A, x.rename(i="j")]), x)
+    lay = layout_any(Sum([e, A]))
+    # the box's enclosed ids are remapped into the first term's id space
+    assert len(lay.boxes) == 1
+    ids = set(nd.id for nd in lay.nodes)
+    assert all(a in ids for a in lay.boxes[0][0])
