@@ -1,6 +1,7 @@
 from collections import Counter
 from functools import singledispatch, singledispatchmethod
 import math
+from types import SimpleNamespace
 from typing import cast
 import torch
 from sympy import Symbol
@@ -16,10 +17,6 @@ from tensorgrad.functions import (
     _SimpleFunction,
     _ArgMaxFunction,
     _ArgSortFunction,
-    _SDPAFunction,
-    _SDPAVJPSignature,
-    _LayerNormFunction,
-    _LayerNormVJPSignature,
     _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
@@ -407,31 +404,37 @@ def _(func: _FusedFunction, *xs: torch.Tensor) -> torch.Tensor:
 
 @evaluate_function.register
 def _(func: _FusedVJP, *xs: torch.Tensor) -> torch.Tensor:
-    # inputs are the cell's original inputs followed by the cotangent u
-    return CELLS[func.cell_name].eval_bwd(func.params, func.which, xs[:-1], xs[-1])
+    # xs = the cell's VJP inputs (originals + cotangent u); the cell knows u's
+    # position (e.g. before an attention mask), so hand it the whole list.
+    return CELLS[func.cell_name].eval_bwd(func.params, func.which, xs)
 
 
-@evaluate_function.register
-def _(func: _SDPAFunction, *xs: torch.Tensor) -> torch.Tensor:
-    q, k, v = xs[0], xs[1], xs[2]
-    mask = xs[3] if func.has_mask else None
-    return _sdpa_forward(func, q, k, v, mask)
+# The fused-cell oracles (tensorgrad/compiler/cells.py dispatches here through
+# the generic _FusedFunction / _FusedVJP registrations above). `params` is the
+# cell's argument dict; a SimpleNamespace lets the reference forwards read it
+# as `func.batch` / `func.seq` / ... unchanged.
 
 
-@evaluate_function.register
-def _(func: _SDPAVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
-    """The reverse VJP d(input i) given output cotangent u, via autograd on
-    the reference attention. The oracle for the fused backward."""
-    fwd = func.fwd
-    q, k, v, u = xs[0], xs[1], xs[2], xs[3]
-    mask = xs[4] if fwd.has_mask else None
+def _eval_sdpa_fwd(params, inputs):
+    f = SimpleNamespace(**params)
+    q, k, v = inputs[0], inputs[1], inputs[2]
+    mask = inputs[3] if f.has_mask else None
+    return _sdpa_forward(f, q, k, v, mask)
+
+
+def _eval_sdpa_bwd(params, which, inputs):
+    """The reverse VJP d(input `which`) given cotangent u (inputs[3]), via
+    autograd on the reference attention. The oracle for the fused backward."""
+    fwd = SimpleNamespace(**params)
+    q, k, v, u = inputs[0], inputs[1], inputs[2], inputs[3]
+    mask = inputs[4] if fwd.has_mask else None
     raws = [t.rename(None).detach().clone().requires_grad_(True) for t in (q, k, v)]
-    named = [raws[j].rename(*xs[j].names) for j in range(3)]
+    named = [raws[j].rename(*inputs[j].names) for j in range(3)]
     with torch.enable_grad():
         out = _sdpa_forward(fwd, named[0], named[1], named[2], mask)
         u_al = u.align_to(*out.names).rename(None)
-        (g,) = torch.autograd.grad(out.rename(None), raws[func.i], grad_outputs=u_al)
-    return g.rename(*xs[func.i].names)
+        (g,) = torch.autograd.grad(out.rename(None), raws[which], grad_outputs=u_al)
+    return g.rename(*inputs[which].names)
 
 
 def _layer_norm_forward(func, x, weight, bias):
@@ -450,24 +453,20 @@ def _layer_norm_forward(func, x, weight, bias):
     return out.rename(*batch, func.dim)
 
 
-@evaluate_function.register
-def _(func: _LayerNormFunction, *xs: torch.Tensor) -> torch.Tensor:
-    return _layer_norm_forward(func, xs[0], xs[1], xs[2])
+def _eval_layer_norm_fwd(params, inputs):
+    return _layer_norm_forward(SimpleNamespace(**params), inputs[0], inputs[1], inputs[2])
 
 
-@evaluate_function.register
-def _(func: _LayerNormVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
-    """The reverse VJP d(input i) given output cotangent u, via autograd on
-    the reference (definition) layer norm. The oracle for the fused backward."""
-    fwd = func.fwd
-    x, weight, bias, u = xs[0], xs[1], xs[2], xs[3]
+def _eval_layer_norm_bwd(params, which, inputs):
+    fwd = SimpleNamespace(**params)
+    x, weight, bias, u = inputs[0], inputs[1], inputs[2], inputs[3]
     raws = [t.rename(None).detach().clone().requires_grad_(True) for t in (x, weight, bias)]
-    named = [raws[j].rename(*xs[j].names) for j in range(3)]
+    named = [raws[j].rename(*inputs[j].names) for j in range(3)]
     with torch.enable_grad():
         out = _layer_norm_forward(fwd, named[0], named[1], named[2])
         u_al = u.align_to(*out.names).rename(None)
-        (g,) = torch.autograd.grad(out.rename(None), raws[func.i], grad_outputs=u_al)
-    return g.rename(*xs[func.i].names)
+        (g,) = torch.autograd.grad(out.rename(None), raws[which], grad_outputs=u_al)
+    return g.rename(*inputs[which].names)
 
 
 @evaluate_function.register

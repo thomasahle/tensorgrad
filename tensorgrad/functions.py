@@ -1318,58 +1318,6 @@ class _ArgSortFunction(FunctionSignature):
 # --------------------------------------------------------------------------
 
 
-class _SDPAFunction(FunctionSignature):
-    def __init__(self, seq, key, hs, batch, scale, has_mask):
-        self.seq, self.key, self.hs = seq, key, hs
-        self.batch = frozenset(batch)
-        self.scale = scale
-        self.has_mask = has_mask
-        out = self.batch | {seq, hs}
-        ins = [self.batch | {seq, hs}, self.batch | {key, hs}, self.batch | {key, hs}]
-        if has_mask:
-            ins.append(frozenset({seq, key}))
-        super().__init__(f"sdpa[s={scale},m={has_mask},b={sorted(batch)},sq={seq},k={key},h={hs}]",
-                         frozenset(out), tuple(frozenset(i) for i in ins))
-
-    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
-        # sdpa is fused only in REVERSE mode: reverse.py special-cases this
-        # signature to emit a clean VJP primitive (u as an explicit input),
-        # so the Jacobian is never formed. Single-grad forward-mode fusion is
-        # not offered -- write attention from primitives if you need it.
-        raise NotImplementedError(
-            "F.sdpa gradients use reverse mode (compile a gradient FAMILY, as any "
-            "training loop does); a lone forward-mode d/dinput is not fused."
-        )
-
-
-class _SDPAVJPSignature(FunctionSignature):
-    """The reverse VJP of sdpa w.r.t. input `i`: inputs (q, k, v, u[, mask])
-    with u the output cotangent; output edges = input i's edges. Lowers
-    straight to the fused flash-attention backward kernel."""
-
-    def __init__(self, fwd: "_SDPAFunction", i: int, u_edges):
-        self.fwd = fwd
-        self.i = i
-        in_i = list(fwd.inputs[i])
-        ins = [fwd.inputs[0], fwd.inputs[1], fwd.inputs[2], frozenset(u_edges)]
-        if fwd.has_mask:
-            ins.append(fwd.inputs[3])
-        super().__init__(f"sdpa_vjp[i={i},s={fwd.scale},m={fwd.has_mask},sq={fwd.seq},k={fwd.key},h={fwd.hs}]",
-                         frozenset(in_i), tuple(ins))
-
-    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
-        raise NotImplementedError("Second-order sdpa is not fused; write attention from primitives.")
-
-
-def sdpa_vjp(fwd_sig: "_SDPAFunction", i: int, q, k, v, u, mask=None) -> Tensor:
-    """d(input i) of sdpa given output cotangent u (reverse mode)."""
-    ins = [q, k, v, u] + ([mask] if fwd_sig.has_mask else [])
-    sig = _SDPAVJPSignature(fwd_sig, i, u.edges)
-    shape_out = {e: q.shape[e] if i == 0 else k.shape[e] for e in [
-        *sorted(fwd_sig.batch), (fwd_sig.seq if i == 0 else fwd_sig.key), fwd_sig.hs]}
-    return Function(sig, tuple(ins), shape_out)
-
-
 def sdpa(q: Tensor, k: Tensor, v: Tensor, *, seq="seq", key="key", hs="hs", mask=None, scale) -> Tensor:
     batch = frozenset(q.edges) - {seq, hs}
     for name, t, want in [("q", q, batch | {seq, hs}), ("k", k, batch | {key, hs}), ("v", v, batch | {key, hs})]:
@@ -1380,9 +1328,9 @@ def sdpa(q: Tensor, k: Tensor, v: Tensor, *, seq="seq", key="key", hs="hs", mask
         if set(mask.edges) != {seq, key}:
             raise ValueError(f"sdpa mask edges {set(mask.edges)} != {{{seq}, {key}}}")
         ins.append(mask)
-    sig = _SDPAFunction(seq, key, hs, batch, float(scale), mask is not None)
-    shape_out = {**{e: q.shape[e] for e in batch}, seq: q.shape[seq], hs: q.shape[hs]}
-    return Function(sig, tuple(ins), shape_out)
+    from tensorgrad.compiler.cells import CELLS
+    params = dict(seq=seq, key=key, hs=hs, batch=batch, scale=float(scale), has_mask=mask is not None)
+    return CELLS["sdpa"].build(tuple(ins), params)
 
 
 # --------------------------------------------------------------------------
@@ -1403,57 +1351,6 @@ def sdpa(q: Tensor, k: Tensor, v: Tensor, *, seq="seq", key="key", hs="hs", mask
 # --------------------------------------------------------------------------
 
 
-class _LayerNormFunction(FunctionSignature):
-    def __init__(self, dim, batch, eps):
-        self.dim = dim
-        self.batch = frozenset(batch)
-        self.eps = eps
-        out = self.batch | {dim}
-        # x consumes (batch..., dim); weight, bias consume {dim}. The batch
-        # edges are CONSUMED (normalized/re-emitted), not broadcast, so grad
-        # weight/bias reduce over them, matching native_layer_norm.
-        ins = [self.batch | {dim}, frozenset({dim}), frozenset({dim})]
-        super().__init__(f"layer_norm[d={dim},b={sorted(batch)},eps={eps}]",
-                         frozenset(out), tuple(frozenset(i) for i in ins))
-
-    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
-        # layer_norm is fused only in REVERSE mode: reverse.py special-cases
-        # this signature to emit a clean VJP primitive (u as an explicit
-        # input), so the Jacobian is never formed. A lone forward-mode
-        # d/dinput is not fused -- write layer norm from primitives if needed.
-        raise NotImplementedError(
-            "F.layer_norm gradients use reverse mode (compile a gradient FAMILY, as any "
-            "training loop does); a lone forward-mode d/dinput is not fused."
-        )
-
-
-class _LayerNormVJPSignature(FunctionSignature):
-    """The reverse VJP of layer_norm w.r.t. input `i`: inputs (x, weight,
-    bias, u) with u the output cotangent; output edges = input i's edges
-    (grad_x has x's edges; grad_weight/grad_bias have {dim}). Lowers straight
-    to the fused native_layer_norm backward kernel."""
-
-    def __init__(self, fwd: "_LayerNormFunction", i: int, u_edges):
-        self.fwd = fwd
-        self.i = i
-        in_i = list(fwd.inputs[i])
-        # inputs (x, weight, bias, u); u consumes all its (output-space) edges.
-        ins = [fwd.inputs[0], fwd.inputs[1], fwd.inputs[2], frozenset(u_edges)]
-        super().__init__(f"layer_norm_vjp[i={i},d={fwd.dim},b={sorted(fwd.batch)},eps={fwd.eps}]",
-                         frozenset(in_i), tuple(ins))
-
-    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
-        raise NotImplementedError("Second-order layer_norm is not fused; write it from primitives.")
-
-
-def layer_norm_vjp(fwd_sig: "_LayerNormFunction", i: int, x, weight, bias, u) -> Tensor:
-    """d(input i) of layer_norm given output cotangent u (reverse mode)."""
-    ins = [x, weight, bias, u]
-    sig = _LayerNormVJPSignature(fwd_sig, i, u.edges)
-    shape_out: dict = dict(x.shape) if i == 0 else {fwd_sig.dim: x.shape[fwd_sig.dim]}
-    return Function(sig, tuple(ins), shape_out)
-
-
 def layer_norm(x: Tensor, *, dim: str, weight: Tensor, bias: Tensor, eps: float = 1e-5) -> Tensor:
     """Fused layer normalization over the single edge `dim`. weight and bias
     have edges {dim} and broadcast over it; x has (batch..., dim); output
@@ -1465,9 +1362,9 @@ def layer_norm(x: Tensor, *, dim: str, weight: Tensor, bias: Tensor, eps: float 
         raise ValueError(f"layer_norm weight edges {set(weight.edges)} != {{{dim}}}")
     if set(bias.edges) != {dim}:
         raise ValueError(f"layer_norm bias edges {set(bias.edges)} != {{{dim}}}")
-    sig = _LayerNormFunction(dim, batch, float(eps))
-    shape_out = dict(x.shape)
-    return Function(sig, (x, weight, bias), shape_out)
+    from tensorgrad.compiler.cells import CELLS
+    params = dict(dim=dim, batch=batch, eps=float(eps))
+    return CELLS["layer_norm"].build((x, weight, bias), params)
 
 
 class _MaxGradFunction(FunctionSignature):

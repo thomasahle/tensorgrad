@@ -38,10 +38,6 @@ from tensorgrad.compiler.ir import (
     ConstNode,
     FusedBwdNode,
     FusedFwdNode,
-    LayerNormBwdNode,
-    LayerNormFwdNode,
-    SDPABwdNode,
-    SDPAFwdNode,
     EinsumNode,
     GatherNode,
     InputNode,
@@ -56,8 +52,7 @@ from tensorgrad.compiler.ir import (
 # every fused technology-mapping cell (its kernel emits row-major output).
 # ONE source of truth -- the GELU layout bug was a copy-paste that missed
 # one of three separate pin-site tuples this constant replaces.
-_PINNED = (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode,
-           LayerNormFwdNode, LayerNormBwdNode, FusedFwdNode, FusedBwdNode)
+_PINNED = (InputNode, ConstNode, GatherNode, FusedFwdNode, FusedBwdNode)
 
 
 def matmul_groups(node: Node):

@@ -29,7 +29,7 @@ Contracts a cell must honor:
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Sequence, cast
 
 import torch
 
@@ -89,12 +89,14 @@ class _FusedVJP(FunctionSignature):
 
 class FusedCell:
     name: str = ""
+    n_diff: int = 1  # number of leading inputs the reverse VJP differentiates
+                     # (trailing inputs -- e.g. an attention mask -- are not)
 
     # -- language side: build the forward Function and its reverse VJP -------
-    def build(self, inputs: tuple[Tensor, ...], params: dict) -> Tensor:
+    def build(self, inputs: Sequence[Tensor], params: dict) -> Tensor:
         raise NotImplementedError
 
-    def vjp(self, inputs: tuple[Tensor, ...], which: int, u: Tensor, params: dict) -> Tensor:
+    def vjp(self, inputs: Sequence[Tensor], which: int, u: Tensor, params: dict) -> Tensor:
         raise NotImplementedError
 
     # -- compiler side: lowering to IR (cell owns its edge->wire layout) -----
@@ -105,17 +107,16 @@ class FusedCell:
         raise NotImplementedError
 
     # -- backend side: emit target kernels + the value oracle ----------------
-    def emit_fwd(self, cg, node, name: str, names) -> str:
+    def emit_fwd(self, cg, node, name: str, names, dim_of) -> str:
         raise NotImplementedError
 
-    def emit_bwd(self, cg, node, name: str, names) -> str:
+    def emit_bwd(self, cg, node, name: str, names, dim_of) -> str:
         raise NotImplementedError
 
     def eval_fwd(self, params: dict, inputs: tuple[torch.Tensor, ...]) -> torch.Tensor:
         raise NotImplementedError
 
-    def eval_bwd(self, params: dict, which: int, inputs: tuple[torch.Tensor, ...],
-                 u: torch.Tensor) -> torch.Tensor:
+    def eval_bwd(self, params: dict, which: int, inputs: tuple[torch.Tensor, ...]) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -167,11 +168,11 @@ class _GeluCell(FusedCell):
         dims = tuple(t.shape[e] for e in xo)
         return lower.b.fused_bwd(self.name, 0, params, [xn, u_al], dims), xo
 
-    def emit_fwd(self, cg, node, name, names):
+    def emit_fwd(self, cg, node, name, names, dim_of=None):
         a = node.params_dict()["approximate"]
         return f"{name} = torch.nn.functional.gelu({cg._logical(node.ops[0], names)}, approximate='{a}')"
 
-    def emit_bwd(self, cg, node, name, names):
+    def emit_bwd(self, cg, node, name, names, dim_of=None):
         a = node.params_dict()["approximate"]
         return (f"{name} = torch.ops.aten.gelu_backward({cg._logical(node.ops[1], names)}, "
                 f"{cg._logical(node.ops[0], names)}, approximate='{a}')")
@@ -181,9 +182,286 @@ class _GeluCell(FusedCell):
         names = x.names
         return torch.nn.functional.gelu(x.rename(None), approximate=params["approximate"]).rename(*names)
 
-    def eval_bwd(self, params, which, inputs, u):
-        (x,) = inputs
+    def eval_bwd(self, params, which, inputs):
+        x, u = inputs[0], inputs[1]
         names = x.names
         u_al = u.align_to(*names).rename(None)
         g = torch.ops.aten.gelu_backward(u_al, x.rename(None), approximate=params["approximate"])  # pyright: ignore[reportCallIssue]
         return g.rename(*names)
+
+
+# ---------------------------------------------------------------------------
+# Cells with reshape + saved-state caching. SDPA and layer norm share a shape:
+# reshape operands into the aten kernel's canonical layout, call the fused
+# forward (returning out plus saved state), reshape out back; the backward
+# reuses the forward's saved state (or recomputes it in a backward-only
+# program -- NEVER via a lambda, which would break torch.compile fullgraph)
+# and returns all input grads in one call, deduped per site. The forward's
+# saved-state temp and the backward's tuple live in generic per-codegen
+# caches keyed by (cell, site).
+# ---------------------------------------------------------------------------
+
+
+def _fmt(x):  # lazy handle to codegen's weight formatter (avoids import cycle)
+    from tensorgrad.compiler.codegen_torch import _fmt_weight
+    return _fmt_weight(x)
+
+
+def _tup(xs):
+    from tensorgrad.compiler.codegen_torch import _tup as t
+    return t(xs)
+
+
+def _prod(xs):
+    from tensorgrad.compiler.codegen_torch import _prod as p
+    return p(xs)
+
+
+@register
+class _SDPACell(FusedCell):
+    name = "sdpa"
+    n_diff = 3  # q, k, v differentiate; a trailing mask does not
+    FWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu"
+    BWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu_backward"
+
+    def build(self, inputs, params):
+        seq, key, hs, batch = params["seq"], params["key"], params["hs"], params["batch"]
+        out = batch | {seq, hs}
+        ins = [batch | {seq, hs}, batch | {key, hs}, batch | {key, hs}]
+        if params["has_mask"]:
+            ins.append(frozenset({seq, key}))
+        sig = _FusedFunction(self.name, out, tuple(frozenset(i) for i in ins), params)
+        q = inputs[0]
+        shape_out = {**{e: q.shape[e] for e in batch}, seq: q.shape[seq], hs: q.shape[hs]}
+        return Function(sig, tuple(inputs), shape_out)
+
+    def vjp(self, inputs, which, u, params):
+        seq, key, hs, batch = params["seq"], params["key"], params["hs"], params["batch"]
+        q, k = inputs[0], inputs[1]
+        ins = [q, k, inputs[2], u] + ([inputs[3]] if params["has_mask"] else [])
+        in_edges = [batch | {seq, hs}, batch | {key, hs}, batch | {key, hs}, frozenset(u.edges)]
+        if params["has_mask"]:
+            in_edges.append(frozenset({seq, key}))
+        out_i = (batch | {seq, hs}) if which == 0 else (batch | {key, hs})
+        sig = _FusedVJP(self.name, which, out_i, tuple(frozenset(e) for e in in_edges), params)
+        role = seq if which == 0 else key
+        shape_out = {e: (q.shape[e] if which == 0 else k.shape[e])
+                     for e in [*sorted(batch), role, hs]}
+        return Function(sig, tuple(ins), shape_out)
+
+    def lower_fwd(self, lower, t):
+        p = cast(_FusedFunction, t.signature).params
+        batch = sorted(p["batch"])
+        q_order = batch + [p["seq"], p["hs"]]
+        kv_order = batch + [p["key"], p["hs"]]
+        ops, perms = [], []
+        for oi, order in [(0, q_order), (1, kv_order), (2, kv_order)]:
+            n, o = lower.lower(t.inputs[oi])
+            ops.append(n); perms.append(tuple(o.index(e) for e in order))
+        if p["has_mask"]:
+            mn, mo = lower.lower(t.inputs[3])
+            ops.append(mn); perms.append(tuple(mo.index(e) for e in [p["seq"], p["key"]]))
+        out_order = tuple(batch + [p["seq"], p["hs"]])
+        dims = tuple(t.shape[e] for e in out_order)
+        node = lower.b.fused_fwd(self.name, p, ops, dims, layout=(len(batch), tuple(perms)))
+        return node, out_order
+
+    def lower_bwd(self, lower, t):
+        sig = cast(_FusedVJP, t.signature)
+        p, which = sig.params, sig.which
+        batch = sorted(p["batch"])
+        specs = [(0, batch + [p["seq"], p["hs"]]), (1, batch + [p["key"], p["hs"]]),
+                 (2, batch + [p["key"], p["hs"]]), (3, batch + [p["seq"], p["hs"]])]  # 3 = u
+        ops, perms = [], []
+        for oi, oedges in specs:
+            n, o = lower.lower(t.inputs[oi])
+            ops.append(n); perms.append(tuple(o.index(e) for e in oedges))
+        if p["has_mask"]:
+            mn, mo = lower.lower(t.inputs[4])
+            ops.append(mn); perms.append(tuple(mo.index(e) for e in [p["seq"], p["key"]]))
+        role = p["seq"] if which == 0 else p["key"]
+        out_order = tuple(t.edges)
+        res_perm = tuple((batch + [role, p["hs"]]).index(e) for e in out_order)
+        dims = tuple(t.shape[e] for e in out_order)
+        node = lower.b.fused_bwd(self.name, which, p, ops, dims,
+                                 layout=(len(batch), tuple(perms), res_perm))
+        return node, out_order
+
+    def _qkv(self, cg, node, names, dim_of):
+        nb, perms = node.layout[0], node.layout[1]
+        p0 = perms[0]
+        bsz = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
+        S = dim_of(node.ops[0].dims[p0[nb]])
+        E = dim_of(node.ops[0].dims[p0[nb + 1]])
+        K = dim_of(node.ops[1].dims[perms[1][nb]])
+        def r(i, seqlen):
+            return f"{cg._sdpa_canon(node.ops[i], perms[i], names)}.reshape({bsz}, 1, {seqlen}, {E})"
+        return r(0, S), r(1, K), r(2, K), (bsz, S, K, E)
+
+    def _site(self, node, names, mask_idx):
+        p = node.params_dict()
+        return ("sdpa", names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
+                p["scale"], p["has_mask"], names[id(node.ops[mask_idx])] if p["has_mask"] else None)
+
+    def emit_fwd(self, cg, node, name, names, dim_of):
+        p = node.params_dict()
+        q4, k4, v4, _ = self._qkv(cg, node, names, dim_of)
+        mask = cg._sdpa_canon(node.ops[3], node.layout[1][3], names) if p["has_mask"] else "None"
+        bshape = _tup(str(dim_of(d)) for d in node.dims)
+        tmp = f"_sdpaf{len(cg._fused_fwd_cache)}"
+        cg._fused_fwd_cache[self._site(node, names, 3)] = tmp
+        return (f"{tmp} = {self.FWD}({q4}, {k4}, {v4}, 0.0, False, "
+                f"attn_mask={mask}, scale={_fmt(p['scale'])}); {name} = {tmp}[0].reshape({bshape})")
+
+    def emit_bwd(self, cg, node, name, names, dim_of):
+        p = node.params_dict()
+        nb, perms, res_perm = node.layout
+        q4, k4, v4, (bsz, S, K, E) = self._qkv(cg, node, names, dim_of)
+        u4 = f"{cg._sdpa_canon(node.ops[3], perms[3], names)}.reshape({bsz}, 1, {S}, {E})"
+        mask = cg._sdpa_canon(node.ops[4], perms[4], names) if p["has_mask"] else "None"
+        gkey = ("sdpa", names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
+                names[id(node.ops[3])], p["scale"], p["has_mask"],
+                names[id(node.ops[4])] if p["has_mask"] else None)
+        prelude = ""
+        tmp = cg._fused_bwd_cache.get(gkey)
+        if tmp is None:
+            tmp = f"_sdpab{len(cg._fused_bwd_cache)}"
+            cg._fused_bwd_cache[gkey] = tmp
+            kw = f"0.0, False, attn_mask={mask}, scale={_fmt(p['scale'])}"
+            fwd_tmp = cg._fused_fwd_cache.get(self._site(node, names, 4))
+            if fwd_tmp is None:
+                fwd_tmp = f"_sdpar{len(cg._fused_fwd_cache)}"
+                cg._fused_fwd_cache[self._site(node, names, 4)] = fwd_tmp
+                prelude = f"{fwd_tmp} = {self.FWD}({q4}, {k4}, {v4}, {kw}); "
+            prelude += (f"{tmp} = {self.BWD}({u4}, {q4}, {k4}, {v4}, "
+                        f"{fwd_tmp}[0], {fwd_tmp}[1], {kw}); ")
+        role = S if node.which == 0 else K
+        bdims = [str(dim_of(node.ops[0].dims[a])) for a in perms[0][:nb]]
+        gshape = _tup(bdims + [str(role), str(E)])
+        return (f"{prelude}{name} = {tmp}[{node.which}]"
+                f".reshape({gshape}).permute({_tup(map(str, res_perm))})")
+
+    def eval_fwd(self, params, inputs):
+        from tensorgrad.extras.evaluate import _eval_sdpa_fwd
+        return _eval_sdpa_fwd(params, inputs)
+
+    def eval_bwd(self, params, which, inputs):
+        from tensorgrad.extras.evaluate import _eval_sdpa_bwd
+        return _eval_sdpa_bwd(params, which, inputs)
+
+
+@register
+class _LayerNormCell(FusedCell):
+    name = "layer_norm"
+    n_diff = 3  # x, weight, bias
+    FWD = "torch.ops.aten.native_layer_norm"
+    BWD = "torch.ops.aten.native_layer_norm_backward"
+
+    def build(self, inputs, params):
+        dim, batch = params["dim"], params["batch"]
+        out = batch | {dim}
+        ins = [batch | {dim}, frozenset({dim}), frozenset({dim})]
+        sig = _FusedFunction(self.name, out, tuple(frozenset(i) for i in ins), params)
+        x = inputs[0]
+        shape_out = {**{e: x.shape[e] for e in batch}, dim: x.shape[dim]}
+        return Function(sig, tuple(inputs), shape_out)
+
+    def vjp(self, inputs, which, u, params):
+        dim, batch = params["dim"], params["batch"]
+        x = inputs[0]
+        ins = (x, inputs[1], inputs[2], u)
+        in_edges = [batch | {dim}, frozenset({dim}), frozenset({dim}), frozenset(u.edges)]
+        out_i = (batch | {dim}) if which == 0 else frozenset({dim})
+        sig = _FusedVJP(self.name, which, out_i, tuple(in_edges), params)
+        if which == 0:
+            shape_out = {**{e: x.shape[e] for e in batch}, dim: x.shape[dim]}
+        else:
+            shape_out = {dim: x.shape[dim]}
+        return Function(sig, ins, shape_out)
+
+    def lower_fwd(self, lower, t):
+        p = cast(_FusedFunction, t.signature).params
+        dim, batch = p["dim"], sorted(p["batch"])
+        xn, xo = lower.lower(t.inputs[0])
+        wn, wo = lower.lower(t.inputs[1])
+        bn, bo = lower.lower(t.inputs[2])
+        perms = [tuple(xo.index(e) for e in batch + [dim]), (wo.index(dim),), (bo.index(dim),)]
+        out_order = tuple(batch + [dim])
+        dims = tuple(t.shape[e] for e in out_order)
+        node = lower.b.fused_fwd(self.name, p, [xn, wn, bn], dims, layout=(len(batch), tuple(perms)))
+        return node, out_order
+
+    def lower_bwd(self, lower, t):
+        sig = cast(_FusedVJP, t.signature)
+        p, which = sig.params, sig.which
+        dim, batch = p["dim"], sorted(p["batch"])
+        specs = [(0, batch + [dim]), (1, [dim]), (2, [dim]), (3, batch + [dim])]  # 3 = u
+        ops, perms = [], []
+        for oi, oedges in specs:
+            n, o = lower.lower(t.inputs[oi])
+            ops.append(n); perms.append(tuple(o.index(e) for e in oedges))
+        out_order = tuple(t.edges)
+        grad_canon = (batch + [dim]) if which == 0 else [dim]
+        res_perm = tuple(grad_canon.index(e) for e in out_order)
+        dims = tuple(t.shape[e] for e in out_order)
+        node = lower.b.fused_bwd(self.name, which, p, ops, dims,
+                                 layout=(len(batch), tuple(perms), res_perm))
+        return node, out_order
+
+    def _xwb(self, cg, node, names, dim_of):
+        nb, perms = node.layout[0], node.layout[1]
+        p0 = perms[0]
+        rows = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
+        D = dim_of(node.ops[0].dims[p0[nb]])
+        x2d = f"{cg._sdpa_canon(node.ops[0], perms[0], names)}.reshape({rows}, {D})"
+        w1d = f"{cg._sdpa_canon(node.ops[1], perms[1], names)}.reshape({D})"
+        b1d = f"{cg._sdpa_canon(node.ops[2], perms[2], names)}.reshape({D})"
+        return x2d, w1d, b1d, (rows, D)
+
+    def _site(self, node, names):
+        return ("layer_norm", names[id(node.ops[0])], names[id(node.ops[1])],
+                names[id(node.ops[2])], node.params_dict()["eps"])
+
+    def emit_fwd(self, cg, node, name, names, dim_of):
+        eps = _fmt(node.params_dict()["eps"])
+        x2d, w1d, b1d, (rows, D) = self._xwb(cg, node, names, dim_of)
+        bshape = _tup(str(dim_of(d)) for d in node.dims)
+        tmp = f"_lnf{len(cg._fused_fwd_cache)}"
+        cg._fused_fwd_cache[self._site(node, names)] = tmp
+        return (f"{tmp} = {self.FWD}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
+                f"{name} = {tmp}[0].reshape({bshape})")
+
+    def emit_bwd(self, cg, node, name, names, dim_of):
+        nb, perms, res_perm = node.layout
+        eps = _fmt(node.params_dict()["eps"])
+        x2d, w1d, b1d, (rows, D) = self._xwb(cg, node, names, dim_of)
+        u2d = f"{cg._sdpa_canon(node.ops[3], perms[3], names)}.reshape({rows}, {D})"
+        gkey = ("layer_norm", names[id(node.ops[0])], names[id(node.ops[1])],
+                names[id(node.ops[2])], names[id(node.ops[3])], node.params_dict()["eps"])
+        prelude = ""
+        tmp = cg._fused_bwd_cache.get(gkey)
+        if tmp is None:
+            tmp = f"_lnb{len(cg._fused_bwd_cache)}"
+            cg._fused_bwd_cache[gkey] = tmp
+            fwd_tmp = cg._fused_fwd_cache.get(self._site(node, names))
+            if fwd_tmp is None:
+                fwd_tmp = f"_lnr{len(cg._fused_fwd_cache)}"
+                cg._fused_fwd_cache[self._site(node, names)] = fwd_tmp
+                prelude = f"{fwd_tmp} = {self.FWD}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
+            prelude += (f"{tmp} = {self.BWD}({u2d}, {x2d}, [{D}], {fwd_tmp}[1], {fwd_tmp}[2], "
+                        f"{w1d}, {b1d}, [True, True, True]); ")
+        if node.which == 0:  # grad_x: (rows, D) -> (batch..., dim) canonical
+            bdims = [str(dim_of(node.ops[0].dims[a])) for a in perms[0][:nb]]
+            gshape = _tup(bdims + [str(D)])
+        else:  # grad_weight / grad_bias: (D,) -> (dim,)
+            gshape = _tup([str(D)])
+        return (f"{prelude}{name} = {tmp}[{node.which}]"
+                f".reshape({gshape}).permute({_tup(map(str, res_perm))})")
+
+    def eval_fwd(self, params, inputs):
+        from tensorgrad.extras.evaluate import _eval_layer_norm_fwd
+        return _eval_layer_norm_fwd(params, inputs)
+
+    def eval_bwd(self, params, which, inputs):
+        from tensorgrad.extras.evaluate import _eval_layer_norm_bwd
+        return _eval_layer_norm_bwd(params, which, inputs)

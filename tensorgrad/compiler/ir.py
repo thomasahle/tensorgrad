@@ -48,86 +48,16 @@ class InputNode(Node):
 
 
 @dataclass(frozen=True, eq=False)
-class SDPAFwdNode(Node):
-    """Fused attention forward -> torch flash-attention CPU kernel.
-    ops = (q, k, v[, mask]). `perms` gives, per operand, the permutation of
-    its axes into canonical (batch..., role, hs) order (role = seq for q,
-    key for k/v; mask -> (seq, key)). `nb` = number of batch axes. Output
-    dims are (batch..., seq, hs) in that canonical order."""
-
-    scale: float = 1.0
-    has_mask: bool = False
-    nb: int = 0
-    perms: tuple = ()  # (q_perm, k_perm, v_perm[, mask_perm])
-    ops: tuple = ()
-
-    def operands(self) -> tuple["Node", ...]:
-        return self.ops
-
-
-@dataclass(frozen=True, eq=False)
-class SDPABwdNode(Node):
-    """Fused attention backward for input `which` (0=q,1=k,2=v). Recomputes
-    out/lse from q,k,v internally (self-contained). ops = (q,k,v,u[,mask]);
-    `perms` per operand into canonical (batch..., role, hs); `res_perm` maps
-    the kernel's (batch..., role, hs) gradient back to this node's dims."""
-
-    scale: float = 1.0
-    has_mask: bool = False
-    which: int = 0
-    nb: int = 0
-    perms: tuple = ()  # (q_perm, k_perm, v_perm, u_perm[, mask_perm])
-    res_perm: tuple = ()
-    ops: tuple = ()
-
-    def operands(self) -> tuple["Node", ...]:
-        return self.ops
-
-
-@dataclass(frozen=True, eq=False)
-class LayerNormFwdNode(Node):
-    """Fused layer-norm forward -> torch native_layer_norm CPU kernel.
-    ops = (x, weight, bias). `perms` gives, per operand, the permutation of
-    its axes into canonical order (x -> (batch..., dim); weight, bias ->
-    (dim,)). `nb` = number of batch axes. Output dims are (batch..., dim) in
-    that canonical order."""
-
-    eps: float = 1e-5
-    nb: int = 0
-    perms: tuple = ()  # (x_perm, weight_perm, bias_perm)
-    ops: tuple = ()
-
-    def operands(self) -> tuple["Node", ...]:
-        return self.ops
-
-
-@dataclass(frozen=True, eq=False)
-class LayerNormBwdNode(Node):
-    """Fused layer-norm backward for input `which` (0=x, 1=weight, 2=bias).
-    Recomputes mean/rstd from x internally (self-contained). ops = (x, weight,
-    bias, u); `perms` per operand into canonical order; `res_perm` maps the
-    kernel's gradient (canonical (batch..., dim) for x, (dim,) for
-    weight/bias) back to this node's dims."""
-
-    eps: float = 1e-5
-    which: int = 0
-    nb: int = 0
-    perms: tuple = ()  # (x_perm, weight_perm, bias_perm, u_perm)
-    res_perm: tuple = ()
-    ops: tuple = ()
-
-    def operands(self) -> tuple["Node", ...]:
-        return self.ops
-
-
-@dataclass(frozen=True, eq=False)
 class FusedFwdNode(Node):
     """Forward of a fused technology-mapping cell (tensorgrad/compiler/cells.py).
     `cell_name` selects the cell; `params` is a sorted hashable tuple of its
-    scalar arguments. Opaque to differentiation, pinned in layout, an atom in
-    szfp -- the generic node behind sdpa/layer_norm/gelu/... ."""
+    scalar + edge-role arguments; `layout` is cell-defined lowering metadata
+    (operand permutations into canonical order, batch-axis count). Opaque to
+    differentiation, pinned in layout, an atom in szfp -- the generic node
+    behind sdpa/layer_norm/gelu/... ."""
     cell_name: str = ""
     params: tuple = ()
+    layout: tuple = ()
     ops: tuple = ()
     def operands(self) -> tuple["Node", ...]:
         return self.ops
@@ -141,6 +71,7 @@ class FusedBwdNode(Node):
     cell_name: str = ""
     which: int = 0
     params: tuple = ()
+    layout: tuple = ()
     ops: tuple = ()
     def operands(self) -> tuple["Node", ...]:
         return self.ops
@@ -419,35 +350,15 @@ class Builder:
         key = ("one_hot", id(idx), num_classes)
         return self._intern(key, lambda: GatherNode(dims, "one_hot", 0, (idx,)))
 
-    def fused_fwd(self, cell_name, params, ops, dims) -> Node:
+    def fused_fwd(self, cell_name, params, ops, dims, layout=()) -> Node:
         pt = tuple(sorted(params.items()))
-        key = ("fused_fwd", cell_name, pt, tuple(id(o) for o in ops))
-        return self._intern(key, lambda: FusedFwdNode(tuple(dims), cell_name, pt, tuple(ops)))
+        key = ("fused_fwd", cell_name, pt, layout, tuple(id(o) for o in ops))
+        return self._intern(key, lambda: FusedFwdNode(tuple(dims), cell_name, pt, layout, tuple(ops)))
 
-    def fused_bwd(self, cell_name, which, params, ops, dims) -> Node:
+    def fused_bwd(self, cell_name, which, params, ops, dims, layout=()) -> Node:
         pt = tuple(sorted(params.items()))
-        key = ("fused_bwd", cell_name, which, pt, tuple(id(o) for o in ops))
-        return self._intern(key, lambda: FusedBwdNode(tuple(dims), cell_name, which, pt, tuple(ops)))
-
-    def sdpa_fwd(self, ops, dims, scale, has_mask, nb, perms) -> Node:
-        key = ("sdpa_fwd", tuple(id(o) for o in ops), scale, has_mask, nb, perms)
-        return self._intern(key, lambda: SDPAFwdNode(tuple(dims), scale, has_mask, nb, perms, tuple(ops)))
-
-    def sdpa_bwd(self, ops, dims, scale, has_mask, which, nb, perms, res_perm) -> Node:
-        key = ("sdpa_bwd", tuple(id(o) for o in ops), scale, has_mask, which, nb, perms, res_perm)
-        return self._intern(
-            key, lambda: SDPABwdNode(tuple(dims), scale, has_mask, which, nb, perms, res_perm, tuple(ops))
-        )
-
-    def layer_norm_fwd(self, ops, dims, eps, nb, perms) -> Node:
-        key = ("layer_norm_fwd", tuple(id(o) for o in ops), eps, nb, perms)
-        return self._intern(key, lambda: LayerNormFwdNode(tuple(dims), eps, nb, perms, tuple(ops)))
-
-    def layer_norm_bwd(self, ops, dims, eps, which, nb, perms, res_perm) -> Node:
-        key = ("layer_norm_bwd", tuple(id(o) for o in ops), eps, which, nb, perms, res_perm)
-        return self._intern(
-            key, lambda: LayerNormBwdNode(tuple(dims), eps, which, nb, perms, res_perm, tuple(ops))
-        )
+        key = ("fused_bwd", cell_name, which, pt, layout, tuple(id(o) for o in ops))
+        return self._intern(key, lambda: FusedBwdNode(tuple(dims), cell_name, which, pt, layout, tuple(ops)))
 
     def reduce(self, op: str, axes: tuple[int, ...], operand: Node) -> Node:
         axes = tuple(sorted(axes))

@@ -29,14 +29,10 @@ from tensorgrad.compiler.ir import (
     EinsumNode,
     GatherNode,
     InputNode,
-    LayerNormBwdNode,
-    LayerNormFwdNode,
     LinearNode,
     MapNode,
     Node,
     ReduceNode,
-    SDPABwdNode,
-    SDPAFwdNode,
     FusedBwdNode,
     FusedFwdNode,
     to_float,
@@ -280,10 +276,11 @@ class TorchCodegen:
         # is what lets a loss and its gradients share partial contractions
         # (e.g. dlogits) even when the symbolic Sum-of-Products form doesn't.
         step_cache: dict[tuple, str] = {}
-        self._sdpa_bwd_cache: dict = {}
-        self._sdpa_fwd_cache: dict = {}
-        self._layer_norm_fwd_cache: dict = {}
-        self._layer_norm_bwd_cache: dict = {}
+        # Generic fused-cell caches (SDPA/layer-norm saved state, shared by a
+        # site's forward and backward so the backward reuses out/lse or
+        # mean/rstd instead of recomputing). Keyed by (cell, site).
+        self._fused_fwd_cache: dict = {}
+        self._fused_bwd_cache: dict = {}
 
         def const_name(tensor: torch.Tensor, base: str) -> str:
             name = f"_c{len(consts)}_{base}"
@@ -347,18 +344,10 @@ class TorchCodegen:
                     lines.append(None)
             elif isinstance(node, ReduceNode):
                 lines.append(self._emit_reduce(node, name, names))
-            elif isinstance(node, SDPAFwdNode):
-                lines.append(self._emit_sdpa_fwd(node, name, names, dim_of))
-            elif isinstance(node, SDPABwdNode):
-                lines.append(self._emit_sdpa_bwd(node, name, names, dim_of))
             elif isinstance(node, FusedFwdNode):
-                lines.append(CELLS[node.cell_name].emit_fwd(self, node, name, names))
+                lines.append(CELLS[node.cell_name].emit_fwd(self, node, name, names, dim_of))
             elif isinstance(node, FusedBwdNode):
-                lines.append(CELLS[node.cell_name].emit_bwd(self, node, name, names))
-            elif isinstance(node, LayerNormFwdNode):
-                lines.append(self._emit_layer_norm_fwd(node, name, names, dim_of))
-            elif isinstance(node, LayerNormBwdNode):
-                lines.append(self._emit_layer_norm_bwd(node, name, names, dim_of))
+                lines.append(CELLS[node.cell_name].emit_bwd(self, node, name, names, dim_of))
             else:
                 raise NotImplementedError(f"codegen for {type(node).__name__}")
 
@@ -2237,151 +2226,17 @@ class TorchCodegen:
             raise NotImplementedError(f"map op {op}")
         return f"{name} = {expr}"
 
-    _SDPA_FWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu"
-    _SDPA_BWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu_backward"
-
     def _sdpa_canon(self, op, perm, names):
-        """Emit `op` permuted into canonical (batch..., role, hs) order
-        (perm = logical axes in that order), composing its physical layout."""
+        """Emit `op` permuted into canonical order (perm = logical axes in that
+        order), composing its physical layout. Shared by the fused cells for
+        their operand reshapes."""
         phys = self._phys_of(op)
         actual = tuple(phys.index(a) for a in perm)
         return self._perm_str(names[id(op)], actual)
 
-    def _sdpa_qkv(self, node, names, dim_of):
-        """Emit q4, k4, v4 as (B, 1, S/K, E) 4D views; sizes read from the
-        operands' canonical (batch..., role, hs) layouts (works for fwd and
-        bwd, whose node.dims differ)."""
-        nb = node.nb
-        p0 = node.perms[0]
-        bsz = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
-        S = dim_of(node.ops[0].dims[p0[nb]])
-        E = dim_of(node.ops[0].dims[p0[nb + 1]])
-        K = dim_of(node.ops[1].dims[node.perms[1][nb]])
-        def r(i, seqlen):
-            return f"{self._sdpa_canon(node.ops[i], node.perms[i], names)}.reshape({bsz}, 1, {seqlen}, {E})"
-        return r(0, S), r(1, K), r(2, K), (bsz, S, K, E)
-
-    @staticmethod
-    def _sdpa_site_key(node, names):
-        """(q, k, v, scale, mask) identity of an attention site, shared by its
-        forward and backward nodes so the backward can reuse the forward's
-        out/lse instead of recomputing them."""
-        mi = 3 if isinstance(node, SDPAFwdNode) else 4
-        return (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
-                node.scale, node.has_mask, names[id(node.ops[mi])] if node.has_mask else None)
-
-    def _emit_sdpa_fwd(self, node, name, names, dim_of) -> str:
-        q4, k4, v4, _ = self._sdpa_qkv(node, names, dim_of)
-        mask = self._sdpa_canon(node.ops[3], node.perms[3], names) if node.has_mask else "None"
-        bshape = _tup(str(dim_of(d)) for d in node.dims)
-        scale = _fmt_weight(node.scale)
-        # Keep the whole (out, lse) tuple in a temp so a later backward at the
-        # same site can consume out/lse without recomputing the forward.
-        tmp = f"_sdpaf{len(self._sdpa_fwd_cache)}"
-        self._sdpa_fwd_cache[self._sdpa_site_key(node, names)] = tmp
-        return (f"{tmp} = {self._SDPA_FWD}({q4}, {k4}, {v4}, 0.0, False, "
-                f"attn_mask={mask}, scale={scale}); {name} = {tmp}[0].reshape({bshape})")
-
-    def _emit_sdpa_bwd(self, node, name, names, dim_of) -> str:
-        # dq/dk/dv of ONE attention site come from ONE fused backward call
-        # (which returns all three); dedup by the (q,k,v,u,scale,mask) site so
-        # the recompute + backward run once, and each node selects its slot.
-        q4, k4, v4, (bsz, S, K, E) = self._sdpa_qkv(node, names, dim_of)
-        u4 = f"{self._sdpa_canon(node.ops[3], node.perms[3], names)}.reshape({bsz}, 1, {S}, {E})"
-        mask = self._sdpa_canon(node.ops[4], node.perms[4], names) if node.has_mask else "None"
-        gkey = (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
-                names[id(node.ops[3])], node.scale, node.has_mask,
-                names[id(node.ops[4])] if node.has_mask else None)
-        prelude = ""
-        tmp = self._sdpa_bwd_cache.get(gkey)
-        if tmp is None:
-            tmp = f"_sdpab{len(self._sdpa_bwd_cache)}"
-            self._sdpa_bwd_cache[gkey] = tmp
-            scale = _fmt_weight(node.scale)
-            kw = f"0.0, False, attn_mask={mask}, scale={scale}"
-            # Reuse the forward's (out, lse) if it was already emitted at this
-            # site; else recompute (a backward-only program has no forward).
-            fwd_tmp = self._sdpa_fwd_cache.get(self._sdpa_site_key(node, names))
-            if fwd_tmp is None:
-                # No forward emitted at this site (backward-only program):
-                # recompute it into a temp. NO lambda -- a lambda in the
-                # generated code is a MAKE_FUNCTION bytecode that breaks
-                # torch.compile's fullgraph tracing (and thus all fusion).
-                fwd_tmp = f"_sdpar{len(self._sdpa_fwd_cache)}"
-                self._sdpa_fwd_cache[self._sdpa_site_key(node, names)] = fwd_tmp
-                prelude = f"{fwd_tmp} = {self._SDPA_FWD}({q4}, {k4}, {v4}, {kw}); "
-            prelude += f"{tmp} = {self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, {fwd_tmp}[0], {fwd_tmp}[1], {kw}); "
-        role = S if node.which == 0 else K
-        nb = node.nb
-        bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
-        gshape = _tup(bdims + [str(role), str(E)])
-        return (f"{prelude}{name} = {tmp}[{node.which}]"
-                f".reshape({gshape}).permute({_tup(map(str, node.res_perm))})")
-
-    _LAYER_NORM = "torch.ops.aten.native_layer_norm"
-    _LAYER_NORM_BWD = "torch.ops.aten.native_layer_norm_backward"
-
-    def _layer_norm_xwb(self, node, names, dim_of):
-        """Emit x2d (rows, D), w1d (D,), b1d (D,); rows = prod(batch dims),
-        D = normalized-dim size (read from x's canonical (batch..., dim)
-        layout). Works for fwd and bwd (whose node.dims differ)."""
-        nb = node.nb
-        p0 = node.perms[0]  # x's perm into canonical (batch..., dim)
-        rows = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
-        D = dim_of(node.ops[0].dims[p0[nb]])
-        x2d = f"{self._sdpa_canon(node.ops[0], node.perms[0], names)}.reshape({rows}, {D})"
-        w1d = f"{self._sdpa_canon(node.ops[1], node.perms[1], names)}.reshape({D})"
-        b1d = f"{self._sdpa_canon(node.ops[2], node.perms[2], names)}.reshape({D})"
-        return x2d, w1d, b1d, (rows, D)
-
-    @staticmethod
-    def _ln_site_key(node, names):
-        return (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])], node.eps)
-
-    def _emit_layer_norm_fwd(self, node, name, names, dim_of) -> str:
-        x2d, w1d, b1d, (rows, D) = self._layer_norm_xwb(node, names, dim_of)
-        bshape = _tup(str(dim_of(d)) for d in node.dims)
-        eps = _fmt_weight(node.eps)
-        tmp = f"_lnf{len(self._layer_norm_fwd_cache)}"
-        self._layer_norm_fwd_cache[self._ln_site_key(node, names)] = tmp
-        return (f"{tmp} = {self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
-                f"{name} = {tmp}[0].reshape({bshape})")
-
-    def _emit_layer_norm_bwd(self, node, name, names, dim_of) -> str:
-        # grad_x/grad_weight/grad_bias of ONE layer-norm site come from ONE
-        # fused backward call (which returns all three); dedup by the
-        # (x, weight, bias, u, eps) site so the recompute + backward run once,
-        # and each node selects its slot (0=x, 1=weight, 2=bias).
-        x2d, w1d, b1d, (rows, D) = self._layer_norm_xwb(node, names, dim_of)
-        u2d = f"{self._sdpa_canon(node.ops[3], node.perms[3], names)}.reshape({rows}, {D})"
-        eps = _fmt_weight(node.eps)
-        gkey = (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
-                names[id(node.ops[3])], node.eps)
-        prelude = ""
-        tmp = self._layer_norm_bwd_cache.get(gkey)
-        if tmp is None:
-            tmp = f"_lnb{len(self._layer_norm_bwd_cache)}"
-            self._layer_norm_bwd_cache[gkey] = tmp
-            # native_layer_norm -> (out, mean, rstd); the backward needs
-            # mean/rstd. Reuse the forward's if emitted, else recompute into a
-            # temp. NO lambda -- a lambda breaks torch.compile fullgraph.
-            fwd_tmp = self._layer_norm_fwd_cache.get(self._ln_site_key(node, names))
-            if fwd_tmp is None:
-                fwd_tmp = f"_lnr{len(self._layer_norm_fwd_cache)}"
-                self._layer_norm_fwd_cache[self._ln_site_key(node, names)] = fwd_tmp
-                prelude = f"{fwd_tmp} = {self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
-            prelude += (f"{tmp} = {self._LAYER_NORM_BWD}({u2d}, {x2d}, [{D}], {fwd_tmp}[1], {fwd_tmp}[2], "
-                        f"{w1d}, {b1d}, [True, True, True]); ")
-        nb = node.nb
-        if node.which == 0:  # grad_x: (rows, D) -> (batch..., dim) canonical
-            bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
-            gshape = _tup(bdims + [str(D)])
-        else:  # grad_weight / grad_bias: (D,) -> (dim,)
-            gshape = _tup([str(D)])
-        return (f"{prelude}{name} = {tmp}[{node.which}]"
-                f".reshape({gshape}).permute({_tup(map(str, node.res_perm))})")
-
     def _logical(self, op, names):
+        """Emit `op` in logical (identity) axis order, composing its physical
+        layout -- an elementwise cell reads its operand this way."""
         phys = self._phys_of(op)
         return self._perm_str(names[id(op)], tuple(phys.index(a) for a in range(op.order)))
 

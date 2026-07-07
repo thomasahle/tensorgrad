@@ -75,12 +75,8 @@ from tensorgrad.compiler.ir import (
     MapNode,
     Node,
     ReduceNode,
-    SDPAFwdNode,
-    SDPABwdNode,
     FusedFwdNode,
     FusedBwdNode,
-    LayerNormFwdNode,
-    LayerNormBwdNode,
     toposort,
 )
 from tensorgrad.compiler.lower import lower_program
@@ -512,13 +508,6 @@ def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
         dims = tuple(_dim(d, assign) for d in node.dims)
         key = ("atom-reduce", node.op, node.axes, tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
         return _rand_tensor(dims, *key)
-    if isinstance(node, (SDPAFwdNode, SDPABwdNode)):
-        dims = tuple(_dim(d, assign) for d in node.dims)
-        key = ("atom-sdpa", type(node).__name__, getattr(node, "approximate", ""),
-               getattr(node, "scale", 0.0), getattr(node, "has_mask", False),
-               getattr(node, "which", -1), getattr(node, "perms", ()), getattr(node, "res_perm", ()),
-               tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
-        return _rand_tensor(dims, *key)
     if isinstance(node, (FusedFwdNode, FusedBwdNode)):
         # Opaque fused cell: a seeded-random field element keyed by cell,
         # params, VJP index, and the value-fingerprints of the operands, so
@@ -526,12 +515,6 @@ def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
         # cells never do.
         dims = tuple(_dim(d, assign) for d in node.dims)
         key = ("atom-fused", node.cell_name, node.params, getattr(node, "which", -1),
-               tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
-        return _rand_tensor(dims, *key)
-    if isinstance(node, (LayerNormFwdNode, LayerNormBwdNode)):
-        dims = tuple(_dim(d, assign) for d in node.dims)
-        key = ("atom-layer_norm", type(node).__name__, node.eps,
-               getattr(node, "which", -1), node.perms, getattr(node, "res_perm", ()),
                tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
         return _rand_tensor(dims, *key)
     raise NotImplementedError(f"szfp: no evaluation for {type(node).__name__}")

@@ -89,19 +89,11 @@ def _function_vjp(t: Function, u: Tensor, inp: Tensor, i: int) -> Tensor:
     import tensorgrad.functions as F
     from tensorgrad.compiler.cells import CELLS, _FusedFunction
 
-    if isinstance(t.signature, _FusedFunction):
+    # Fused technology-mapping cells (sdpa/layer_norm/gelu/...): bypass the
+    # dense Jacobian entirely. u is the output cotangent; the cell emits a
+    # clean VJP primitive that lowers to the fused backward kernel.
+    if isinstance(t.signature, _FusedFunction) and i < CELLS[t.signature.cell_name].n_diff:
         return CELLS[t.signature.cell_name].vjp(t.inputs, i, u, t.signature.params)
-
-    if isinstance(t.signature, F._SDPAFunction) and i in (0, 1, 2):
-        # Fused reverse VJP: bypass the (dense) Jacobian entirely. u is the
-        # output cotangent; sdpa_vjp lowers to the flash-attention backward.
-        mask = t.inputs[3] if t.signature.has_mask else None
-        return F.sdpa_vjp(t.signature, i, t.inputs[0], t.inputs[1], t.inputs[2], u, mask)
-
-    if isinstance(t.signature, F._LayerNormFunction) and i in (0, 1, 2):
-        # Fused reverse VJP: bypass the (dense) Jacobian entirely. u is the
-        # output cotangent; layer_norm_vjp lowers to native_layer_norm_backward.
-        return F.layer_norm_vjp(t.signature, i, t.inputs[0], t.inputs[1], t.inputs[2], u)
 
     input_edges = t.signature.inputs[i]
     connection_names = _unused_edge_names(input_edges, t.edges | inp.edges)
