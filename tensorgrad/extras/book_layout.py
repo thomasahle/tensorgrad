@@ -240,15 +240,29 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
                     uf.union(tok, port)
                     g.arrows[port] = "solid"
                     g.arrow_heads[port] = fn.id
-                if elementwise and first_atom < len(g.atoms):
-                    # no consumed edges: synthesize the dotted application
-                    # arrow from the input's principal atom
-                    ta, tb = fresh("w"), fresh("w")
-                    fn.ports.append(ta)
-                    g.atoms[first_atom].ports.append(tb)
-                    uf.union(ta, tb)
-                    g.arrows[ta] = "dotted"
-                    g.arrow_heads[ta] = fn.id
+                if elementwise:
+                    anchor = first_atom if first_atom < len(g.atoms) else None
+                    if anchor is None and sub:
+                        # the argument produced no atom (a bare identity /
+                        # pass-through wire, e.g. exp(I)): materialize a copy-dot
+                        # anchor carrying its edges, so the function isn't left
+                        # orphaned and disconnected from its data
+                        anchor = len(g.atoms)
+                        anchor_toks = []
+                        for e in list(sub):
+                            atok = fresh("w")
+                            uf.union(sub[e], atok)
+                            anchor_toks.append(atok)
+                        g.atoms.append(AtomSpec(anchor, "copydot", "", anchor_toks))
+                    if anchor is not None:
+                        # synthesize the dotted application arrow from the
+                        # input's principal atom into the function
+                        ta, tb = fresh("w"), fresh("w")
+                        fn.ports.append(ta)
+                        g.atoms[anchor].ports.append(tb)
+                        uf.union(ta, tb)
+                        g.arrows[ta] = "dotted"
+                        g.arrow_heads[ta] = fn.id
                 out.update(sub)  # broadcast edges pass through by name
             for e in t.shape_out:
                 port = fresh("w")

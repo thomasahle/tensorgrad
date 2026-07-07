@@ -415,3 +415,15 @@ def test_double_edge_transpose_distinguished():
     assert n_rot(tr_abt) == 1 and n_rot(fro) == 1  # parallel: one rotated
     assert to_book_tikz(tr_ab) != to_book_tikz(tr_abt)
     assert to_book_tikz(fro) != to_book_tikz(tr_a2)
+
+
+def test_elementwise_of_bare_identity_stays_connected():
+    # exp(I): the identity produces no atom, but the function must not be
+    # left orphaned -- an anchor node keeps it connected to its data
+    import tensorgrad.functions as F
+    from tensorgrad.extras.book_layout import _components
+
+    e = F.exp(Delta(n, "i", "j"))
+    g = extract_graph(e)
+    assert len(_components(g)) == 1  # connected, no floating function node
+    assert "dotted" in to_book_tikz(e)  # application arrow present
