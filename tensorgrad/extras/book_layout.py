@@ -1805,17 +1805,33 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
             rf"\node[ellipse, draw, inner sep={sep:.1f}pt, "
             rf"fit={{{''.join(parts)}}}] ({en}) {{}};"
         )
-        # the wrt tag names what the derivative is taken with respect to
+        # the wrt tag names what the derivative is taken with respect to.
+        # It sits just INSIDE the boundary, below the dot the new edges
+        # emerge from -- the dot IS the d/dX operation, so tag and whiskers
+        # explain each other, and the tag stays anchored to the action no
+        # matter how large the ellipse grows. (Whiskers point up, so the
+        # space below the dot is free.)
         wtex = wrt if len(wrt) <= 1 else rf"\mathit{{{wrt}}}"
-        lines.append(
-            rf"\node[anchor=north west, inner sep=1.5pt] at ({en}.{-35 - 14 * inside})"
-            rf" {{$\partial {wtex}$}};"
-        )
+        # collision guard: below-the-dot needs interior room. Tight loops
+        # (a short chain hugging its boundary) fall back to a rim tag.
+        exs = [nodes[a].x for a in enclosed if a in nodes]
+        roomy = exs and (max(exs) - min(exs)) >= 2.0
+
+        def _dot_tag(ang_: int) -> str:
+            if roomy:
+                return (rf"\node[anchor=north, inner sep=2pt, font=\small]"
+                        rf" at ([shift={{(0.05,-0.06)}}]{en}.{ang_})"
+                        rf" {{$\partial {wtex}$}};")
+            return (rf"\node[anchor=north west, inner sep=1.5pt,"
+                    rf" font=\small] at ({en}.{-35 - 14 * inside})"
+                    rf" {{$\partial {wtex}$}};")
+
         # whisker labels ride BESIDE the wire (midway, offset to the side)
         # -- a label AT the free tip reads as if it were a tensor node
         if len(new_names) == 1:
             ang = 125 + 14 * inside  # fan nested whiskers apart
             lines.append(rf"\fill ({en}.{ang}) circle (1.4pt);")
+            lines.append(_dot_tag(ang))
             lines.append(
                 rf"\draw ({en}.{ang}) .. controls +({ang - 25}:.12) .."
                 rf" ++(-.24,.26)"
@@ -1825,6 +1841,7 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
         else:
             ang = 55
             lines.append(rf"\fill ({en}.{ang}) circle (1.4pt);")
+            lines.append(_dot_tag(ang))
             whisk = [("80:.12", "++(-.2,.28)", "above left"),
                      ("45:.12", "++(.28,.18)", "above right")]
             for nm, (ctrl, end, anch) in zip(new_names, whisk):
