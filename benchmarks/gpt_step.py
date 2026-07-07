@@ -198,12 +198,99 @@ def make_torch_step(seed=0):
     return step_fn
 
 
+def make_jax_step(seed=0):
+    """Architecture parity with the torch reference (LayerNorm gains+biases,
+    qkvo/mlp biases, tanh-GELU, tied dims), hand-written decoupled AdamW with
+    the same decay policy (dim >= 2), same host-side data pipeline."""
+    import jax
+    import jax.numpy as jnp
+
+    gen = torch.Generator().manual_seed(seed)
+
+    def rnd(*sh):
+        return jnp.asarray((0.02 * torch.randn(*sh, generator=gen)).numpy())
+
+    P = {"wte": rnd(VOCAB, D), "wpe": jnp.zeros((SEQ, D)), "lm": rnd(D, VOCAB),
+         "lnfg": jnp.ones(D), "lnfb": jnp.zeros(D)}
+    for i in range(N_LAYER):
+        P[f"h{i}.ln1g"], P[f"h{i}.ln1b"] = jnp.ones(D), jnp.zeros(D)
+        P[f"h{i}.ln2g"], P[f"h{i}.ln2b"] = jnp.ones(D), jnp.zeros(D)
+        for nm, sh in [("wq", (D, D)), ("wk", (D, D)), ("wv", (D, D)), ("wo", (D, D)),
+                       ("fc", (D, D_MLP)), ("proj", (D_MLP, D))]:
+            P[f"h{i}.{nm}"] = rnd(*sh)
+            P[f"h{i}.{nm}b"] = jnp.zeros(sh[1])
+    mask = jnp.tril(jnp.ones((SEQ, SEQ)))
+
+    def ln(x, g_, b_):
+        mu = x.mean(-1, keepdims=True)
+        var = ((x - mu) ** 2).mean(-1, keepdims=True)
+        return (x - mu) / jnp.sqrt(var + 1e-5) * g_ + b_
+
+    def fwd(P, idx):
+        x = P["wte"][idx] + P["wpe"]
+        for i in range(N_LAYER):
+            h = ln(x, P[f"h{i}.ln1g"], P[f"h{i}.ln1b"])
+
+            def proj(nm):
+                return (h @ P[f"h{i}.{nm}"] + P[f"h{i}.{nm}b"]).reshape(
+                    BATCH, SEQ, N_HEAD, HS).transpose(0, 2, 1, 3)
+
+            q, k, v = proj("wq"), proj("wk"), proj("wv")
+            att = q @ k.transpose(0, 1, 3, 2) / math.sqrt(HS)
+            att = jnp.where(mask == 0, -jnp.inf, att)
+            y = jax.nn.softmax(att, -1) @ v
+            y = y.transpose(0, 2, 1, 3).reshape(BATCH, SEQ, D)
+            x = x + y @ P[f"h{i}.wo"] + P[f"h{i}.wob"]
+            h2 = ln(x, P[f"h{i}.ln2g"], P[f"h{i}.ln2b"])
+            u = jax.nn.gelu(h2 @ P[f"h{i}.fc"] + P[f"h{i}.fcb"], approximate=True)
+            x = x + u @ P[f"h{i}.proj"] + P[f"h{i}.projb"]
+        return ln(x, P["lnfg"], P["lnfb"]) @ P["lm"]
+
+    def loss_fn(P, tokens, targets):
+        logits = fwd(P, tokens)[:, LENGTH - 1 :, :]
+        tgt = targets[:, LENGTH - 1 :]
+        logp = jax.nn.log_softmax(logits, -1)
+        return -jnp.take_along_axis(logp, tgt[..., None], -1).mean()
+
+    @jax.jit
+    def update(P, m, v, t, tokens, targets):
+        lv, g_ = jax.value_and_grad(loss_fn)(P, tokens, targets)
+        m = jax.tree.map(lambda a, b: B1 * a + (1 - B1) * b, m, g_)
+        v = jax.tree.map(lambda a, b: B2 * a + (1 - B2) * b * b, v, g_)
+        c1, c2 = 1 / (1 - B1**t), 1 / (1 - B2**t)
+
+        def upd(w, mm, vv):
+            decay = 1 - LR * WD if w.ndim >= 2 else 1.0  # mirrors `w.order >= 2`
+            return w * decay - LR * (c1 * mm) / (jnp.sqrt(c2 * vv) + EPS)
+
+        return jax.tree.map(upd, P, m, v), m, v, lv
+
+    st = {"P": P, "m": jax.tree.map(jnp.zeros_like, P), "v": jax.tree.map(jnp.zeros_like, P), "t": 0}
+    dgen = torch.Generator().manual_seed(seed)
+
+    def step_fn() -> float:
+        tokens, targets = _torch_batch(dgen)
+        tj, gj = jnp.asarray(tokens.numpy()), jnp.asarray(targets.numpy())
+        st["t"] += 1
+        st["P"], st["m"], st["v"], lv = update(st["P"], st["m"], st["v"], st["t"], tj, gj)
+        return float(lv)
+
+    return step_fn
+
+
 # ------------------------------------------------------------- correctness gate
 def _correctness_gate():
     """Inits differ, so losses are not comparable across implementations; the
     gate is that each one's loss DECREASES over GATE_STEPS steps of training
     (mean of first 3 vs mean of last 3, robust to per-batch noise)."""
-    for label, make in (("tensorgrad", make_tg_step), ("torch", make_torch_step)):
+    makers = [("tensorgrad", make_tg_step), ("torch", make_torch_step)]
+    try:
+        import jax  # noqa: F401
+
+        makers.append(("jax", make_jax_step))
+    except ImportError:
+        pass
+    for label, make in makers:
         step = make()
         losses = [step() for _ in range(GATE_STEPS)]
         first, last = sum(losses[:3]) / 3, sum(losses[-3:]) / 3

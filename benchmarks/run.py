@@ -1,10 +1,13 @@
-"""Suite runner: one training-step benchmark table, tensorgrad vs torch.
+"""Suite runner: one training-step benchmark table, tensorgrad vs torch vs jax.
 
 Discovers every module in benchmarks/ that exposes the suite contract
 (module-level BENCH_NAME, make_tg_step(), make_torch_step(); the module
-self-verifies correctness at import), runs each side SERIALLY -- never
-concurrently, one step function at a time -- and prints a markdown table of
-min-of-15 step times after 5 warmup steps.
+self-verifies correctness at import; make_jax_step() is OPTIONAL and only
+timed when jax is importable -- run the campaign with
+`uv run --with jax python benchmarks/run.py`), runs each side SERIALLY --
+never concurrently, one step function at a time -- and prints a markdown
+table of min-of-15 step times after 5 warmup steps. The jax side is always
+jit-compiled, so its column is identical in both modes.
 
     uv run python benchmarks/run.py                  # eager tg vs eager torch
     uv run python benchmarks/run.py --torch-compile  # tg.compile(torch_compile=True)
@@ -24,6 +27,10 @@ import os
 import sys
 import time
 from pathlib import Path
+
+# Pin XLA/OMP threads BEFORE any jax import (jax reads env at import).
+os.environ.setdefault("XLA_FLAGS", "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2")
+os.environ.setdefault("OMP_NUM_THREADS", "2")
 
 import torch
 
@@ -122,6 +129,24 @@ def bench_side(make_step, label: str, torch_side: bool, compiled: bool):
         return None
 
 
+def bench_jax(mod, name: str):
+    """Time the optional jax side. Absent hook or absent jax -> None (shown
+    as '-'). jax steps are jit end-to-end and must block_until_ready
+    internally; failures skip gracefully (jax is not a project dependency)."""
+    if not hasattr(mod, "make_jax_step"):
+        return None
+    try:
+        import jax  # noqa: F401
+    except ImportError:
+        _log(f"  note: {name} has a jax side but jax is not installed (use --with jax)")
+        return None
+    try:
+        return bench_min(mod.make_jax_step())
+    except Exception as e:  # noqa: BLE001 -- optional side, never breaks the suite
+        _log(f"  note: {name} jax side skipped: {type(e).__name__}: {e}")
+        return None
+
+
 # ------------------------------------------------------------------------ main
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -148,23 +173,26 @@ def main() -> None:
             if not args.torch_compile:
                 raise
             _log(f"  note: {path.stem} import failed under torch.compile: {type(e).__name__}: {e}")
-            rows.append((path.stem, None, None))
+            rows.append((path.stem, None, None, None))
             continue
         name = mod.BENCH_NAME
         _log(f"[{name}] timing tg step ...")
         t_tg = bench_side(mod.make_tg_step, f"{name} tg", torch_side=False, compiled=args.torch_compile)
         _log(f"[{name}] timing torch step ...")
         t_th = bench_side(mod.make_torch_step, f"{name} torch", torch_side=True, compiled=args.torch_compile)
-        rows.append((name, t_tg, t_th))
+        _log(f"[{name}] timing jax step ...")
+        t_jx = bench_jax(mod, name)
+        rows.append((name, t_tg, t_th, t_jx))
 
     tg_col = "tg ms (torch.compile)" if args.torch_compile else "tg eager ms"
     th_col = "torch ms (compiled)" if args.torch_compile else "torch ms"
-    fmt = lambda t: f"{t:.2f}" if t is not None else "skip"  # noqa: E731
-    print(f"\n| benchmark | {tg_col} | {th_col} | ratio |")
-    print("|---|---:|---:|---:|")
-    for name, t_tg, t_th in rows:
-        ratio = f"{t_tg / t_th:.2f}x" if t_tg is not None and t_th is not None else "-"
-        print(f"| {name} | {fmt(t_tg)} | {fmt(t_th)} | {ratio} |")
+    fmt = lambda t: f"{t:.2f}" if t is not None else "-"  # noqa: E731
+    print(f"\n| benchmark | {tg_col} | {th_col} | jax jit ms | tg/torch | tg/jax |")
+    print("|---|---:|---:|---:|---:|---:|")
+    for name, t_tg, t_th, t_jx in rows:
+        r_th = f"{t_tg / t_th:.2f}x" if t_tg is not None and t_th is not None else "-"
+        r_jx = f"{t_tg / t_jx:.2f}x" if t_tg is not None and t_jx is not None else "-"
+        print(f"| {name} | {fmt(t_tg)} | {fmt(t_th)} | {fmt(t_jx)} | {r_th} | {r_jx} |")
 
 
 if __name__ == "__main__":

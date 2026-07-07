@@ -161,6 +161,35 @@ def make_torch_step():
     return step_fn
 
 
+def make_jax_step():
+    """Same assembly + damped solve via jax.grad / jax.hessian, jit whole."""
+    import jax
+    import jax.numpy as jnp
+
+    Xv, yv = _make_data()
+    Xj = jnp.asarray(Xv.numpy())
+    sj = jnp.asarray((2 * yv - 1).numpy())
+
+    def loss_fn(w):
+        margin = -(sj * (Xj @ w))
+        return jnp.log(1 + jnp.exp(margin)).mean() + 0.5 * LAMBDA * (w @ w)
+
+    @jax.jit
+    def newton(w):
+        lv = loss_fn(w)
+        g_ = jax.grad(loss_fn)(w)
+        H_ = jax.hessian(loss_fn)(w)
+        return w - jnp.linalg.solve(H_ + MU * jnp.eye(D), g_), lv
+
+    holder = {"w": jnp.zeros(D)}
+
+    def step_fn() -> float:
+        holder["w"], lv = newton(holder["w"])
+        return float(lv)
+
+    return step_fn
+
+
 # ------------------------------------------------------------ correctness gate
 def _correctness_gate():
     prog = _tg_program()
