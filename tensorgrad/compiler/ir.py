@@ -48,6 +48,43 @@ class InputNode(Node):
 
 
 @dataclass(frozen=True, eq=False)
+class SDPAFwdNode(Node):
+    """Fused attention forward -> torch flash-attention CPU kernel.
+    ops = (q, k, v[, mask]). `perms` gives, per operand, the permutation of
+    its axes into canonical (batch..., role, hs) order (role = seq for q,
+    key for k/v; mask -> (seq, key)). `nb` = number of batch axes. Output
+    dims are (batch..., seq, hs) in that canonical order."""
+
+    scale: float = 1.0
+    has_mask: bool = False
+    nb: int = 0
+    perms: tuple = ()  # (q_perm, k_perm, v_perm[, mask_perm])
+    ops: tuple = ()
+
+    def operands(self) -> tuple["Node", ...]:
+        return self.ops
+
+
+@dataclass(frozen=True, eq=False)
+class SDPABwdNode(Node):
+    """Fused attention backward for input `which` (0=q,1=k,2=v). Recomputes
+    out/lse from q,k,v internally (self-contained). ops = (q,k,v,u[,mask]);
+    `perms` per operand into canonical (batch..., role, hs); `res_perm` maps
+    the kernel's (batch..., role, hs) gradient back to this node's dims."""
+
+    scale: float = 1.0
+    has_mask: bool = False
+    which: int = 0
+    nb: int = 0
+    perms: tuple = ()  # (q_perm, k_perm, v_perm, u_perm[, mask_perm])
+    res_perm: tuple = ()
+    ops: tuple = ()
+
+    def operands(self) -> tuple["Node", ...]:
+        return self.ops
+
+
+@dataclass(frozen=True, eq=False)
 class ConstNode(Node):
     """A constant tensor that only depends on dimension sizes.
     Built once per shape-specialization and closed over by the generated code.
@@ -317,6 +354,16 @@ class Builder:
         dims = (num_classes,) + idx.dims
         key = ("one_hot", id(idx), num_classes)
         return self._intern(key, lambda: GatherNode(dims, "one_hot", 0, (idx,)))
+
+    def sdpa_fwd(self, ops, dims, scale, has_mask, nb, perms) -> Node:
+        key = ("sdpa_fwd", tuple(id(o) for o in ops), scale, has_mask, nb, perms)
+        return self._intern(key, lambda: SDPAFwdNode(tuple(dims), scale, has_mask, nb, perms, tuple(ops)))
+
+    def sdpa_bwd(self, ops, dims, scale, has_mask, which, nb, perms, res_perm) -> Node:
+        key = ("sdpa_bwd", tuple(id(o) for o in ops), scale, has_mask, which, nb, perms, res_perm)
+        return self._intern(
+            key, lambda: SDPABwdNode(tuple(dims), scale, has_mask, which, nb, perms, res_perm, tuple(ops))
+        )
 
     def reduce(self, op: str, axes: tuple[int, ...], operand: Node) -> Node:
         axes = tuple(sorted(axes))

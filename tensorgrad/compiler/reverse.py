@@ -88,6 +88,12 @@ def _function_vjp(t: Function, u: Tensor, inp: Tensor, i: int) -> Tensor:
     grad.py's grad_function part for input i)."""
     import tensorgrad.functions as F
 
+    if isinstance(t.signature, F._SDPAFunction) and i in (0, 1, 2):
+        # Fused reverse VJP: bypass the (dense) Jacobian entirely. u is the
+        # output cotangent; sdpa_vjp lowers to the flash-attention backward.
+        mask = t.inputs[3] if t.signature.has_mask else None
+        return F.sdpa_vjp(t.signature, i, t.inputs[0], t.inputs[1], t.inputs[2], u, mask)
+
     input_edges = t.signature.inputs[i]
     connection_names = _unused_edge_names(input_edges, t.edges | inp.edges)
     outside = Function(

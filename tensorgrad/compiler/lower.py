@@ -27,7 +27,7 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
 )
-from tensorgrad.compiler.ir import Builder, ConstNode, Dim, EinsumNode, GatherNode, Node
+from tensorgrad.compiler.ir import Builder, ConstNode, Dim, EinsumNode, GatherNode, Node, SDPABwdNode, SDPAFwdNode
 from tensorgrad.compiler.affine import Affine
 
 # Elementwise function signatures with "scalar" shape (edges pass through).
@@ -317,6 +317,47 @@ class Lowerer:
             out_order = tuple(t.edges)
             perms = [tuple(o1.index(e) for e in out_order), tuple(o2.index(e) for e in out_order)]
             return self.b.map("equal", (), [n1, n2], perms), out_order
+
+        if isinstance(sig, F._SDPAFunction):
+            qn, qo = self.lower(t.inputs[0])
+            kn, ko = self.lower(t.inputs[1])
+            vn, vo = self.lower(t.inputs[2])
+            batch = sorted(sig.batch)
+            q_order = batch + [sig.seq, sig.hs]
+            kv_order = batch + [sig.key, sig.hs]
+            perms = [tuple(qo.index(e) for e in q_order),
+                     tuple(ko.index(e) for e in kv_order),
+                     tuple(vo.index(e) for e in kv_order)]
+            ops = [qn, kn, vn]
+            if sig.has_mask:
+                mn, mo = self.lower(t.inputs[3])
+                perms.append(tuple(mo.index(e) for e in [sig.seq, sig.key]))
+                ops.append(mn)
+            out_order = tuple(batch + [sig.seq, sig.hs])
+            dims = tuple(t.shape[e] for e in out_order)
+            node = self.b.sdpa_fwd(ops, dims, sig.scale, sig.has_mask, len(batch), tuple(perms))
+            return node, out_order
+
+        if isinstance(sig, F._SDPAVJPSignature):
+            fwd = sig.fwd
+            batch = sorted(fwd.batch)
+            ops, perms = [], []
+            specs = [(0, batch + [fwd.seq, fwd.hs]), (1, batch + [fwd.key, fwd.hs]),
+                     (2, batch + [fwd.key, fwd.hs]), (3, batch + [fwd.seq, fwd.hs])]  # 3 = u (output space)
+            for oi, oedges in specs:
+                n, o = self.lower(t.inputs[oi])
+                ops.append(n); perms.append(tuple(o.index(e) for e in oedges))
+            if fwd.has_mask:
+                mn, mo = self.lower(t.inputs[4])
+                ops.append(mn); perms.append(tuple(mo.index(e) for e in [fwd.seq, fwd.key]))
+            role = fwd.seq if sig.i == 0 else fwd.key
+            out_order = tuple(t.edges)
+            grad_canon = batch + [role, fwd.hs]
+            res_perm = tuple(grad_canon.index(e) for e in out_order)
+            dims = tuple(t.shape[e] for e in out_order)
+            node = self.b.sdpa_bwd(ops, dims, fwd.scale, fwd.has_mask, sig.i,
+                                   len(batch), tuple(perms), res_perm)
+            return node, out_order
 
         if isinstance(sig, F._ArgMaxFunction):
             node, order = self.lower(t.inputs[0])

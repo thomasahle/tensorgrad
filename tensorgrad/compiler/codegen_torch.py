@@ -33,6 +33,8 @@ from tensorgrad.compiler.ir import (
     MapNode,
     Node,
     ReduceNode,
+    SDPABwdNode,
+    SDPAFwdNode,
     to_float,
     toposort,
 )
@@ -267,6 +269,7 @@ class TorchCodegen:
         # is what lets a loss and its gradients share partial contractions
         # (e.g. dlogits) even when the symbolic Sum-of-Products form doesn't.
         step_cache: dict[tuple, str] = {}
+        self._sdpa_bwd_cache: dict = {}
 
         def const_name(tensor: torch.Tensor, base: str) -> str:
             name = f"_c{len(consts)}_{base}"
@@ -330,6 +333,10 @@ class TorchCodegen:
                     lines.append(None)
             elif isinstance(node, ReduceNode):
                 lines.append(self._emit_reduce(node, name, names))
+            elif isinstance(node, SDPAFwdNode):
+                lines.append(self._emit_sdpa_fwd(node, name, names, dim_of))
+            elif isinstance(node, SDPABwdNode):
+                lines.append(self._emit_sdpa_bwd(node, name, names, dim_of))
             else:
                 raise NotImplementedError(f"codegen for {type(node).__name__}")
 
@@ -2207,6 +2214,65 @@ class TorchCodegen:
         else:
             raise NotImplementedError(f"map op {op}")
         return f"{name} = {expr}"
+
+    _SDPA_FWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu"
+    _SDPA_BWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu_backward"
+
+    def _sdpa_canon(self, op, perm, names):
+        """Emit `op` permuted into canonical (batch..., role, hs) order
+        (perm = logical axes in that order), composing its physical layout."""
+        phys = self._phys_of(op)
+        actual = tuple(phys.index(a) for a in perm)
+        return self._perm_str(names[id(op)], actual)
+
+    def _sdpa_qkv(self, node, names, dim_of):
+        """Emit q4, k4, v4 as (B, 1, S/K, E) 4D views; sizes read from the
+        operands' canonical (batch..., role, hs) layouts (works for fwd and
+        bwd, whose node.dims differ)."""
+        nb = node.nb
+        p0 = node.perms[0]
+        bsz = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
+        S = dim_of(node.ops[0].dims[p0[nb]])
+        E = dim_of(node.ops[0].dims[p0[nb + 1]])
+        K = dim_of(node.ops[1].dims[node.perms[1][nb]])
+        def r(i, seqlen):
+            return f"{self._sdpa_canon(node.ops[i], node.perms[i], names)}.reshape({bsz}, 1, {seqlen}, {E})"
+        return r(0, S), r(1, K), r(2, K), (bsz, S, K, E)
+
+    def _emit_sdpa_fwd(self, node, name, names, dim_of) -> str:
+        q4, k4, v4, _ = self._sdpa_qkv(node, names, dim_of)
+        mask = self._sdpa_canon(node.ops[3], node.perms[3], names) if node.has_mask else "None"
+        bshape = _tup(str(dim_of(d)) for d in node.dims)
+        scale = _fmt_weight(node.scale)
+        return (f"{name} = {self._SDPA_FWD}({q4}, {k4}, {v4}, 0.0, False, "
+                f"attn_mask={mask}, scale={scale})[0].reshape({bshape})")
+
+    def _emit_sdpa_bwd(self, node, name, names, dim_of) -> str:
+        # dq/dk/dv of ONE attention site come from ONE fused backward call
+        # (which returns all three); dedup by the (q,k,v,u,scale,mask) site so
+        # the recompute + backward run once, and each node selects its slot.
+        q4, k4, v4, (bsz, S, K, E) = self._sdpa_qkv(node, names, dim_of)
+        u4 = f"{self._sdpa_canon(node.ops[3], node.perms[3], names)}.reshape({bsz}, 1, {S}, {E})"
+        mask = self._sdpa_canon(node.ops[4], node.perms[4], names) if node.has_mask else "None"
+        gkey = (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
+                names[id(node.ops[3])], node.scale, node.has_mask,
+                names[id(node.ops[4])] if node.has_mask else None)
+        prelude = ""
+        tmp = self._sdpa_bwd_cache.get(gkey)
+        if tmp is None:
+            tmp = f"_sdpab{len(self._sdpa_bwd_cache)}"
+            self._sdpa_bwd_cache[gkey] = tmp
+            scale = _fmt_weight(node.scale)
+            kw = f"0.0, False, attn_mask={mask}, scale={scale}"
+            fwd = f"{self._SDPA_FWD}({q4}, {k4}, {v4}, {kw})"
+            bwd = f"{self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, _r[0], _r[1], {kw})"
+            prelude = f"{tmp} = (lambda _r: {bwd})({fwd}); "
+        role = S if node.which == 0 else K
+        nb = node.nb
+        bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
+        gshape = _tup(bdims + [str(role), str(E)])
+        return (f"{prelude}{name} = {tmp}[{node.which}]"
+                f".reshape({gshape}).permute({_tup(map(str, node.res_perm))})")
 
     def _emit_reduce(self, node: ReduceNode, name, names) -> str:
         (opnd,) = node.ops

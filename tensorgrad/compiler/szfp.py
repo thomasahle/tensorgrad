@@ -75,6 +75,8 @@ from tensorgrad.compiler.ir import (
     MapNode,
     Node,
     ReduceNode,
+    SDPAFwdNode,
+    SDPABwdNode,
     toposort,
 )
 from tensorgrad.compiler.lower import lower_program
@@ -505,6 +507,12 @@ def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
     if isinstance(node, ReduceNode):
         dims = tuple(_dim(d, assign) for d in node.dims)
         key = ("atom-reduce", node.op, node.axes, tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
+        return _rand_tensor(dims, *key)
+    if isinstance(node, (SDPAFwdNode, SDPABwdNode)):
+        dims = tuple(_dim(d, assign) for d in node.dims)
+        key = ("atom-sdpa", type(node).__name__, node.scale, node.has_mask,
+               getattr(node, "which", -1), node.perms, getattr(node, "res_perm", ()),
+               tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
         return _rand_tensor(dims, *key)
     raise NotImplementedError(f"szfp: no evaluation for {type(node).__name__}")
 

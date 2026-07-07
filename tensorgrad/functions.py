@@ -1293,6 +1293,90 @@ class _ArgSortFunction(FunctionSignature):
         return _MultiZeroFunction(self.edges | set(new_edges.values()), self.inputs)
 
 
+# --------------------------------------------------------------------------
+# Fused scaled-dot-product attention: a technology-mapping primitive.
+#
+# F.sdpa(q, k, v, mask=, scale=) IS softmax(scale*<q,k>_hs + mask) @_key v --
+# its VALUE is the composite, machine-verified against that definition by the
+# szfp fingerprints and the evaluate() oracle. But it is an OPAQUE Function,
+# so differentiation does not expand the softmax; the compiler maps both the
+# forward AND the derived backward onto torch's fused flash-attention CPU
+# kernels. This is the attention analogue of offering torch.nn.functional.
+# scaled_dot_product_attention: the algebra stays derivable (write attention
+# from primitives if you want the derivation), this is the fast path.
+#
+# Edge convention: q (batch..., seq, hs); k, v (batch..., key, hs);
+# out (batch..., seq, hs). mask (optional) has edges (seq, key).
+# --------------------------------------------------------------------------
+
+
+class _SDPAFunction(FunctionSignature):
+    def __init__(self, seq, key, hs, batch, scale, has_mask):
+        self.seq, self.key, self.hs = seq, key, hs
+        self.batch = frozenset(batch)
+        self.scale = scale
+        self.has_mask = has_mask
+        out = self.batch | {seq, hs}
+        ins = [self.batch | {seq, hs}, self.batch | {key, hs}, self.batch | {key, hs}]
+        if has_mask:
+            ins.append(frozenset({seq, key}))
+        super().__init__(f"sdpa[s={scale},m={has_mask},b={sorted(batch)},sq={seq},k={key},h={hs}]",
+                         frozenset(out), tuple(frozenset(i) for i in ins))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        # sdpa is fused only in REVERSE mode: reverse.py special-cases this
+        # signature to emit a clean VJP primitive (u as an explicit input),
+        # so the Jacobian is never formed. Single-grad forward-mode fusion is
+        # not offered -- write attention from primitives if you need it.
+        raise NotImplementedError(
+            "F.sdpa gradients use reverse mode (compile a gradient FAMILY, as any "
+            "training loop does); a lone forward-mode d/dinput is not fused."
+        )
+
+
+class _SDPAVJPSignature(FunctionSignature):
+    """The reverse VJP of sdpa w.r.t. input `i`: inputs (q, k, v, u[, mask])
+    with u the output cotangent; output edges = input i's edges. Lowers
+    straight to the fused flash-attention backward kernel."""
+
+    def __init__(self, fwd: "_SDPAFunction", i: int, u_edges):
+        self.fwd = fwd
+        self.i = i
+        in_i = list(fwd.inputs[i])
+        ins = [fwd.inputs[0], fwd.inputs[1], fwd.inputs[2], frozenset(u_edges)]
+        if fwd.has_mask:
+            ins.append(fwd.inputs[3])
+        super().__init__(f"sdpa_vjp[i={i},s={fwd.scale},m={fwd.has_mask},sq={fwd.seq},k={fwd.key},h={fwd.hs}]",
+                         frozenset(in_i), tuple(ins))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        raise NotImplementedError("Second-order sdpa is not fused; write attention from primitives.")
+
+
+def sdpa_vjp(fwd_sig: "_SDPAFunction", i: int, q, k, v, u, mask=None) -> Tensor:
+    """d(input i) of sdpa given output cotangent u (reverse mode)."""
+    ins = [q, k, v, u] + ([mask] if fwd_sig.has_mask else [])
+    sig = _SDPAVJPSignature(fwd_sig, i, u.edges)
+    shape_out = {e: q.shape[e] if i == 0 else k.shape[e] for e in [
+        *sorted(fwd_sig.batch), (fwd_sig.seq if i == 0 else fwd_sig.key), fwd_sig.hs]}
+    return Function(sig, tuple(ins), shape_out)
+
+
+def sdpa(q: Tensor, k: Tensor, v: Tensor, *, seq="seq", key="key", hs="hs", mask=None, scale) -> Tensor:
+    batch = frozenset(q.edges) - {seq, hs}
+    for name, t, want in [("q", q, batch | {seq, hs}), ("k", k, batch | {key, hs}), ("v", v, batch | {key, hs})]:
+        if set(t.edges) != set(want):
+            raise ValueError(f"sdpa {name} edges {set(t.edges)} != expected {set(want)}")
+    ins = [q, k, v]
+    if mask is not None:
+        if set(mask.edges) != {seq, key}:
+            raise ValueError(f"sdpa mask edges {set(mask.edges)} != {{{seq}, {key}}}")
+        ins.append(mask)
+    sig = _SDPAFunction(seq, key, hs, batch, float(scale), mask is not None)
+    shape_out = {**{e: q.shape[e] for e in batch}, seq: q.shape[seq], hs: q.shape[hs]}
+    return Function(sig, tuple(ins), shape_out)
+
+
 class _MaxGradFunction(FunctionSignature):
     def __init__(self, dims: Iterable[str]):
         self.name = "max-grad"

@@ -16,6 +16,8 @@ from tensorgrad.functions import (
     _SimpleFunction,
     _ArgMaxFunction,
     _ArgSortFunction,
+    _SDPAFunction,
+    _SDPAVJPSignature,
     _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
@@ -374,6 +376,48 @@ def _(func: _ArgMaxFunction, x: torch.Tensor) -> torch.Tensor:
     names = list(x.names)
     names.pop(i)
     return torch.argmax(x.rename(None), dim=i).rename(*names)
+
+
+def _sdpa_forward(func, q, k, v, mask):
+    """The definition: softmax(scale*<q,k>_hs + mask) @_key v, as plain torch
+    over named tensors. Batch = every shared edge other than seq/key/hs."""
+    batch = sorted(func.batch)
+    q = q.align_to(*batch, func.seq, func.hs).rename(None)
+    k = k.align_to(*batch, func.key, func.hs).rename(None)
+    v = v.align_to(*batch, func.key, func.hs).rename(None)
+    bshape = q.shape[:-2]
+    S, K, E = q.shape[-2], k.shape[-2], q.shape[-1]
+    qb, kb, vb = q.reshape(-1, S, E), k.reshape(-1, K, E), v.reshape(-1, K, E)
+    scores = func.scale * torch.bmm(qb, kb.transpose(-2, -1))  # (B, S, K)
+    if mask is not None:
+        m = mask.align_to(func.seq, func.key).rename(None)
+        scores = scores + m
+    att = torch.softmax(scores, dim=-1)
+    out = torch.bmm(att, vb).reshape(*bshape, S, E)
+    return out.rename(*batch, func.seq, func.hs)
+
+
+@evaluate_function.register
+def _(func: _SDPAFunction, *xs: torch.Tensor) -> torch.Tensor:
+    q, k, v = xs[0], xs[1], xs[2]
+    mask = xs[3] if func.has_mask else None
+    return _sdpa_forward(func, q, k, v, mask)
+
+
+@evaluate_function.register
+def _(func: _SDPAVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
+    """The reverse VJP d(input i) given output cotangent u, via autograd on
+    the reference attention. The oracle for the fused backward."""
+    fwd = func.fwd
+    q, k, v, u = xs[0], xs[1], xs[2], xs[3]
+    mask = xs[4] if fwd.has_mask else None
+    raws = [t.rename(None).detach().clone().requires_grad_(True) for t in (q, k, v)]
+    named = [raws[j].rename(*xs[j].names) for j in range(3)]
+    with torch.enable_grad():
+        out = _sdpa_forward(fwd, named[0], named[1], named[2], mask)
+        u_al = u.align_to(*out.names).rename(None)
+        (g,) = torch.autograd.grad(out.rename(None), raws[func.i], grad_outputs=u_al)
+    return g.rename(*xs[func.i].names)
 
 
 @evaluate_function.register

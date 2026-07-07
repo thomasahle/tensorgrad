@@ -36,6 +36,8 @@ from typing import Sequence, cast
 
 from tensorgrad.compiler.ir import (
     ConstNode,
+    SDPABwdNode,
+    SDPAFwdNode,
     EinsumNode,
     GatherNode,
     InputNode,
@@ -99,7 +101,7 @@ def _majority(votes: list) -> tuple:
 
 
 def _pinned(op: Node) -> bool:
-    return isinstance(op, (InputNode, ConstNode, GatherNode))
+    return isinstance(op, (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode))
 
 
 def _split_blocks(wires, batch, m, n):
@@ -146,7 +148,7 @@ def _cell_feasible(node: EinsumNode, groups, wires) -> bool:
 def _decide(node: Node, votes: list) -> tuple:
     """Pick the physical layout for `node` given its consumers' votes."""
     ident = tuple(range(node.order))
-    if isinstance(node, (InputNode, ConstNode, GatherNode)):
+    if isinstance(node, (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode)):
         return ident  # pinned: canonical arrival / row-major build
 
     if isinstance(node, EinsumNode):
@@ -393,7 +395,7 @@ def assign_layouts(
         _vote_operands(node, p, votes)
 
     for node in order:  # forward: operands refined before consumers
-        if id(node) in weak and not isinstance(node, (InputNode, ConstNode, GatherNode)):
+        if id(node) in weak and not isinstance(node, (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode)):
             p2 = _refine(node, phys)
             if p2 is not None:
                 phys[id(node)] = p2
