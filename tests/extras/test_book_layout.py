@@ -230,13 +230,15 @@ def test_sum_of_group_products_no_overlap():
     from tensorgrad.extras.book_layout import layout_any
 
     lay = layout_any(s2)
-    # term boundaries must not interleave: every node of term 0 left of term 1
-    # (term idx tags node ids with idx * 1_000_000; signs use negative ids)
-    M = 1_000_000
-    xs0 = [nd.x + nd.width / 2 for nd in lay.nodes
-           if 0 <= nd.id < M and nd.kind != "sign"]
-    xs1 = [nd.x - nd.width / 2 for nd in lay.nodes if M <= nd.id < 2 * M]
-    assert max(xs0) < min(xs1)
+    # no two glyph nodes at the same height may overlap horizontally (the
+    # wide group term must not run into the next term)
+    glyphs = sorted(
+        (nd for nd in lay.nodes if nd.kind in ("var", "group", "sign")),
+        key=lambda m: m.x,
+    )
+    for a, b in zip(glyphs, glyphs[1:]):
+        if abs(a.y - b.y) < 0.1:
+            assert a.x + a.width / 2 <= b.x - b.width / 2 + 0.4
 
 
 def test_double_partial_trace_two_visible_loops():

@@ -1025,6 +1025,10 @@ def layout_any(
     out = BookLayout()
     x = 0.0
     sign_id = -1  # negative ids never collide with term/atom ids
+    # each term's node ids are shifted by a running offset past the previous
+    # term's largest id -- collision-proof for any term size (a fixed
+    # multiplier would cap the atoms-per-term it can separate)
+    offset = 0
     for idx, (term, weight) in enumerate(zip(tensor.terms, tensor.weights)):
         sign, coeff = _fmt_weight(weight)
         show_sign = idx > 0 or sign == "-" or coeff
@@ -1043,22 +1047,24 @@ def layout_any(
             right = sub.right_edge
         for nd in sub.nodes:
             out.nodes.append(
-                LNode(nd.id + idx * 1_000_000, nd.kind, nd.label, nd.x + x, nd.y,
+                LNode(nd.id + offset, nd.kind, nd.label, nd.x + x, nd.y,
                       sub=nd.sub, width=nd.width, rotated=nd.rotated)
             )
         for w in sub.wires:
             wx = w.x + x if w.kind in ("bare", "ring") else w.x
             out.wires.append(
                 LWire(w.kind,
-                      None if w.a is None else w.a + idx * 1_000_000,
-                      None if w.b is None else w.b + idx * 1_000_000,
+                      None if w.a is None else w.a + offset,
+                      None if w.b is None else w.b + offset,
                       w.direction, w.label, w.arrow, w.span, w.lane,
                       wx, w.y)
             )
         for enclosed, names in sub.derivs:
-            out.derivs.append(([a + idx * 1_000_000 for a in enclosed], names))
+            out.derivs.append(([a + offset for a in enclosed], names))
         for enclosed, lbl in sub.boxes:
-            out.boxes.append(([a + idx * 1_000_000 for a in enclosed], lbl))
+            out.boxes.append(([a + offset for a in enclosed], lbl))
+        max_local = max((nd.id for nd in sub.nodes), default=-1)
+        offset += max_local + 1
         x += sub.xmax + TERM_GAP
     out.xmax = x - TERM_GAP
     return out
