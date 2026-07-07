@@ -94,21 +94,27 @@ def derivation_steps(expr) -> list:
         if cnt > 1:
             expr = expr.simplify({"grad_steps": cnt})
             steps.append(expr)
-        expand = False
-        while len(steps) < MAX_STEPS:
+    except Exception:
+        pass
+    expand = False
+    while len(steps) < MAX_STEPS:
+        try:
             args: dict = {"grad_steps": 1}
             if expand:
                 args["expand"] = True
             new = expr.simplify(args).simplify()
-            if new == expr:
-                if not expand:
-                    expand = True
-                    continue
+        except Exception:
+            try:
+                new = expr.simplify()  # step-wise failed; take a full step
+            except Exception:
                 break
-            steps.append(new)
-            expr = new
-    except Exception:
-        pass  # keep whatever steps we collected
+        if new == expr:
+            if not expand:
+                expand = True
+                continue
+            break
+        steps.append(new)
+        expr = new
     return steps
 
 
@@ -121,18 +127,20 @@ def render(rows) -> None:
             continue
         steps = derivation_steps(tensor)
         drew_any = False
+        skipped = 0
         for k, step in enumerate(steps):
             try:
                 tikz = to_book_tikz(step, max_width=14.5, edge_labels=True)
-            except Exception as e:
-                body.append(rf"\par\texttt{{\small step {k}: {type(e).__name__}}}")
+            except Exception:
+                skipped += 1  # e.g. a raw form with contracted deriv edges
                 continue
             prefix = r"$=$\;" if drew_any else r"\noindent"
             body.append(rf"\par {prefix} {tikz}")
             body.append(r"\medskip")
             drew_any = True
         if not drew_any:
-            body.append(rf"\texttt{{\small no step drawable}}")
+            body.append(rf"\texttt{{\small no drawable step"
+                        rf" ({skipped} skipped)}}")
     tex = "\n".join([
         r"\documentclass{article}",
         r"\usepackage[margin=0.5in]{geometry}",

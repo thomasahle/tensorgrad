@@ -799,7 +799,8 @@ def _layout_component(
         else:
             layout.wires.append(
                 LWire("arc", spine[i], spine[j], direction=tip, arrow=arrow,
-                      span=j - i, lane=lanes[wid])
+                      span=j - i, lane=lanes[wid],
+                      label=_group_edge_name(wid, spine[i], spine[j]))
             )
 
     # -- pendants (off-spine structure hangs below its attachment) --
@@ -1199,14 +1200,33 @@ def layout_any(
     """
     if not isinstance(tensor, Sum):
         return layout_tensor(tensor, left, right)
-    horizontal = _layout_sum_horizontal(tensor, left, right)
+    pairs = _flatten_sum(tensor)
+    horizontal = _layout_sum_horizontal(pairs, left, right)
     if stack is False or (stack is None and horizontal.xmax <= STACK_WIDTH):
         return horizontal
-    return _layout_sum_vertical(tensor, left, right)
+    return _layout_sum_vertical(pairs, left, right)
+
+
+def _flatten_sum(tensor: Sum) -> list[tuple[Tensor, object]]:
+    """Flatten nested Sums into (term, weight) pairs, multiplying weights
+    through. Addition is associative, so ((a + 2b) + c) -- the shape that
+    repeated '+=' builds -- needs no brackets: it IS a + 2b + c. Brackets
+    remain only where they mean something (a Sum inside a Product)."""
+    pairs: list[tuple[Tensor, object]] = []
+
+    def rec(t: Tensor, w: object) -> None:
+        if isinstance(t, Sum):
+            for tt, ww in zip(t.terms, t.weights):
+                rec(tt, w * ww if (w != 1 or ww != 1) else 1)  # type: ignore[operator]
+        else:
+            pairs.append((t, w))
+
+    rec(tensor, 1)
+    return pairs
 
 
 def _layout_sum_vertical(
-    tensor: Sum, left: Optional[str], right: Optional[str]
+    pairs: list[tuple[Tensor, object]], left: Optional[str], right: Optional[str]
 ) -> BookLayout:
     """Stack a sum's terms vertically: term k on its own row, the operator in
     a left column, rows spaced by each term's true vertical extent."""
@@ -1218,7 +1238,7 @@ def _layout_sum_vertical(
     TERM_COL = 0.75    # terms start here (room for the sign)
     cursor = 0.0       # y of the top of the next row
     max_x = 0.0
-    for idx, (term, weight) in enumerate(zip(tensor.terms, tensor.weights)):
+    for idx, (term, weight) in enumerate(pairs):
         sub = layout_tensor(term, left, right)
         if left is None and sub.left_edge is not None:
             left = sub.left_edge
@@ -1263,7 +1283,7 @@ def _layout_sum_vertical(
 
 
 def _layout_sum_horizontal(
-    tensor: Sum, left: Optional[str], right: Optional[str]
+    pairs: list[tuple[Tensor, object]], left: Optional[str], right: Optional[str]
 ) -> BookLayout:
     """Lay a sum's terms side by side on one line."""
     out = BookLayout()
@@ -1273,7 +1293,7 @@ def _layout_sum_horizontal(
     # term's largest id -- collision-proof for any term size (a fixed
     # multiplier would cap the atoms-per-term it can separate)
     offset = 0
-    for idx, (term, weight) in enumerate(zip(tensor.terms, tensor.weights)):
+    for idx, (term, weight) in enumerate(pairs):
         sign, coeff = _fmt_weight(weight)
         show_sign = idx > 0 or sign == "-" or coeff
         if show_sign:
@@ -1447,31 +1467,51 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                     rf"\path ({pl}) edge [out=160, in=20, looseness=1.6] ({pr});"
                 )
             else:
-                dist = ""
-                if w.lane > 1:
-                    dist = f", min distance={6 + 5 * (w.lane - 1)}mm"
+                dist = f", min distance={4 + 5 * (w.lane - 1)}mm, looseness=5.5"
                 lines.append(
                     rf"\path ({name[w.a]}) edge [out=160, in=20, loop{dist}]"
                     rf" ({name[w.a]});"
                 )
         elif w.kind == "arc":
-            na, nb = endpoint(w.a, w.b), endpoint(w.b, w.a)
+            assert w.a is not None and w.b is not None
             tip = f", {w.direction}" if w.direction else ""
             dot = "densely dotted, " if w.arrow == "dotted" else ""
-            if w.span <= 3:
+            mid = ""
+            if w.label:
+                mid = (rf" node[pos=0.5, above, font=\scriptsize,"
+                       rf" inner sep=1.5pt] {{${_tex_edge(w.label)}$}}")
+            if w.a in group_side or w.b in group_side:
+                # a closure between groups (e.g. a Frobenius trace) domes from
+                # the FAR parens over everything, labeled with its edge
+                def _far(nid: int, other: int) -> str:
+                    if nid in group_side:
+                        pl, pr = group_side[nid]
+                        return pl if nodes[other].x >= nodes[nid].x else pr
+                    return name[nid]
+
+                fa, fb = _far(w.a, w.b), _far(w.b, w.a)
+                span_x = abs(nodes[w.a].x - nodes[w.b].x) + nodes[w.a].width
+                h = 0.45 + 0.05 * span_x + 0.25 * (w.lane - 1)
+                lines.append(
+                    rf"\draw ({fa}.north) .. controls +(0.2,{h:.2f}) and"
+                    rf" +(-0.2,{h:.2f}) .. ({fb}.north){mid};"
+                )
+            elif w.span <= 3:
+                na, nb = endpoint(w.a, w.b), endpoint(w.b, w.a)
                 loose = 0.55 + 0.47 * w.span + 0.5 * (w.lane - 1)
                 lines.append(
                     rf"\path[{dot.rstrip(', ')}] ({na}) edge [out=160, in=20{tip}, "
-                    rf"looseness={loose:.2f}] ({nb});"
+                    rf"looseness={loose:.2f}]{mid} ({nb});"
                 )
             else:
+                na, nb = endpoint(w.a, w.b), endpoint(w.b, w.a)
                 # long spans: flat north-anchored dome hugging the chain
                 h = 0.35 + 0.08 * w.span + 0.28 * (w.lane - 1)
                 arrowopt = f"[{dot}{w.direction}] " if (w.direction or dot) else ""
                 lines.append(
                     rf"\draw{arrowopt.strip()} ({na}.north west) .. controls"
                     rf" +(-0.15,{h:.2f}) and +(0.15,{h:.2f}) .."
-                    rf" ({nb}.north east);"
+                    rf" ({nb}.north east){mid};"
                 )
         elif w.kind == "extra":
             a, b = w.a, w.b
