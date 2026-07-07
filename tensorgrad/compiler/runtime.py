@@ -264,9 +264,8 @@ def compile_to_callable(
             not isinstance(n, (InputNode, ConstNode)) for n in toposort([n for n, _ in program.outputs])
         )
         print(
-            f"compiled loss + {len(tensors)} gradients + adamw ({len(program.outputs)} "
-            f"outputs) into one program of {n_ops} tensor ops "
-            f"({time.perf_counter() - t0:.1f}s)"
+            f"compiled {len(program.outputs)} outputs into one program of "
+            f"{n_ops} tensor ops ({time.perf_counter() - t0:.1f}s)"
         )
     return program
 

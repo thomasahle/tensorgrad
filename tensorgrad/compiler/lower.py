@@ -329,6 +329,9 @@ class Lowerer:
         if isinstance(sig, _FusedFunction):
             return CELLS[sig.cell_name].lower_fwd(self, t)
 
+        if isinstance(sig, F._MatrixInverseFunction):
+            return CELLS["inverse"].lower_fwd(self, t)
+
         if isinstance(sig, _FusedVJP):
             return CELLS[sig.cell_name].lower_bwd(self, t)
 

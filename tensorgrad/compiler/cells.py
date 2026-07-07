@@ -549,3 +549,39 @@ class _AdamWCell(FusedCell):
         v_new = b2 * vv + (1.0 - b2) * gv * gv
         w_new = wv * decay - lr * (c1v * m_new) / (torch.sqrt(c2v * v_new) + eps)
         return (w_new, m_new, v_new)[out_idx].rename(*names)
+
+
+# ---------------------------------------------------------------------------
+# Matrix inverse: a cell that is NOT opaque to differentiation. F.inverse
+# keeps its classic signature whose SYMBOLIC derivative (the cookbook
+# identity d(K^-1) = -K^-1 dK K^-1) expands during simplification, so
+# lowering only ever sees forward applications -- the cell contributes just
+# the backend mapping. It shows the registry's span: differentiable leaf
+# (this), opaque forward+reverse pairs (sdpa/layer_norm/gelu), and
+# multi-output optimizer updates (adamw) are all "cells".
+#
+# Edge convention (matches the interpreter oracle in extras/evaluate.py):
+# the output carries the input's two edges SWAPPED, so contracting
+# same-name edges with the original cancels: out[.., j:e2, i:e1] =
+# inv(in[.., i:e1, j:e2]) -- orientation-free since inv(M^T) = inv(M)^T.
+# ---------------------------------------------------------------------------
+
+
+@register
+class _InverseCell(FusedCell):
+    name = "inverse"
+    n_diff = 0  # differentiation happened symbolically, upstream of lowering
+
+    def lower_fwd(self, lower, t):
+        e1, e2 = sorted(t.signature.edges)
+        n, o = lower.lower(t.inputs[0])
+        rest = [e for e in o if e not in (e1, e2)]
+        want = tuple(rest + [e1, e2])
+        if want != tuple(o):  # align operand to (batch..., e1, e2)
+            n = lower.b.linear([n], [tuple(o.index(e) for e in want)], [1])
+        out_order = tuple(rest + [e2, e1])  # swapped naming = cancel convention
+        dims = tuple(t.shape[e] for e in out_order)
+        return lower.b.fused_fwd(self.name, {}, [n], dims), out_order
+
+    def emit_fwd(self, cg, node, name, names, dim_of=None):
+        return f"{name} = torch.linalg.inv({cg._logical(node.ops[0], names)})"
