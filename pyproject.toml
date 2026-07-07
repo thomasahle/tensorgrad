@@ -61,7 +61,16 @@ indent-width = 4
 check_untyped_defs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+# Allow reusing a variable name for a value of a different type (loop-variable
+# overwrite, double assignment, reassigning a narrow result to a wider type),
+# so idiomatic Python doesn't need a `x: Type = ...` annotation at every reuse.
+allow_redefinition = true
 exclude = "tests/"
+
+# Third-party libraries that ship no type stubs / py.typed marker.
+[[tool.mypy.overrides]]
+module = ["networkx.*", "sympy.*", "opt_einsum.*"]
+ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]

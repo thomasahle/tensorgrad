@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: type-check the staged tensorgrad sources with mypy.
+#
+# Scope is the STAGED files only (not the whole package): the codebase still
+# carries pre-existing mypy debt in compiler/ and extras/, so a full
+# `mypy tensorgrad/` would block every commit. `--follow-imports=silent`
+# type-checks each staged file against the real types of everything it imports
+# but reports errors ONLY in the staged files -- so clean files stay clean and
+# new code must type-check, while untouched debt doesn't get in your way.
+#
+# Enable it (once per clone):   git config core.hooksPath .githooks
+# Skip it for one commit:       git commit --no-verify
+set -euo pipefail
+
+# Staged (Added/Copied/Modified/Renamed) Python files under tensorgrad/.
+# tests/ is excluded to match [tool.mypy] exclude in pyproject.toml.
+mapfile -t files < <(
+  git diff --cached --name-only --diff-filter=ACMR -- 'tensorgrad/**/*.py' 'tensorgrad/*.py'
+)
+
+if [ ${#files[@]} -eq 0 ]; then
+  exit 0
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "pre-commit: 'uv' not found; skipping mypy. Install uv or run 'git commit --no-verify'." >&2
+  exit 0
+fi
+
+echo "pre-commit: mypy on ${#files[@]} staged file(s)..." >&2
+if ! uv run mypy --follow-imports=silent "${files[@]}"; then
+  echo >&2
+  echo "pre-commit: mypy failed. Fix the errors above, or bypass with 'git commit --no-verify'." >&2
+  exit 1
+fi
