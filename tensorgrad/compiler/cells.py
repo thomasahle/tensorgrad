@@ -751,3 +751,43 @@ class _SelectCell(FusedCell):
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         i = node.params_dict()["index"]
         return f"{name} = {cg._logical(node.ops[0], names)}[{i}]"
+
+
+@register
+class _SoftplusCell(FusedCell):
+    """log(1 + exp(x)) -> torch.nn.functional.softplus (task #53). The raw
+    composition overflows float32 at x ~ 89; softplus computes it exactly.
+    Same contract as the other stabilization patterns: the DERIVATIVE was
+    already taken symbolically upstream, so only the surviving forward
+    composition is rewritten -- misses degrade numerics headroom, never
+    correctness of what does compile."""
+    name = "softplus"
+    n_diff = 0
+
+    def match(self, b: Any, node: Any) -> Any:
+        from tensorgrad.compiler.ir import EinsumNode, LinearNode, MapNode
+
+        if not (isinstance(node, MapNode) and node.op == "log" and len(node.ops) == 1):
+            return None
+        lin = node.ops[0]
+        if not (isinstance(lin, LinearNode) and len(lin.terms) == 2):
+            return None
+        if tuple(lin.weights) != (1, 1):
+            return None
+
+        def is_ones(t: Any) -> bool:
+            return isinstance(t, EinsumNode) and not t.ops and not t.constraints and t.weight == 1
+
+        for i in (0, 1):
+            exp_ = lin.terms[i]
+            if (isinstance(exp_, MapNode) and exp_.op == "exp" and len(exp_.ops) == 1
+                    and is_ones(lin.terms[1 - i])):
+                x = exp_.ops[0]
+                perm = lin.perms[i]
+                if tuple(perm) != tuple(range(len(perm))):
+                    x = b.linear([x], [tuple(perm)], [1])
+                return b.fused_fwd("softplus", {}, [x], node.dims)
+        return None
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        return f"{name} = torch.nn.functional.softplus({cg._logical(node.ops[0], names)})"
