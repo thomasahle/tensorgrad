@@ -349,3 +349,21 @@ def test_max_width_scales_wide_diagrams():
 def test_scale_explicit():
     tex = to_book_tikz(Product([_A(), Variable("B", j=n, k=n)]), scale=0.5)
     assert "scale=0.5" in tex and "transform shape" in tex
+
+
+def test_off_spine_group_does_not_crash():
+    # a Sum group that lands off-spine as a pendant must still get its inner
+    # layout computed -- regression for the cross_entropy AssertionError crash
+    import tensorgrad.functions as F
+
+    z = Variable("z", i=n)
+    y = Variable("y", i=n)
+    tex = to_book_tikz(F.cross_entropy(z, y, dim="i"))
+    assert "tikzpicture" in tex
+    # synthetic minimal trigger: a group hanging off a copydot
+    grp = Sum([Variable("p", m=n), Variable("q", m=n)])
+    expr = Product(
+        [Variable("a", i=n, x=n), Delta(n, "i", "j", "m"),
+         Variable("b", j=n, yy=n), grp]
+    )
+    assert "tikzpicture" in to_book_tikz(expr)

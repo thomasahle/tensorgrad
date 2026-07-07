@@ -610,6 +610,11 @@ def _layout_component(
             if wids:
                 re = atom.port_names.get(wids[0])
         subs[v] = layout_any(atom.sub, left=le, right=re)
+    # group atoms that land OFF the spine (as pendants) still need their
+    # inner layout computed, or emission crashes on `assert n.sub is not None`
+    for v in comp:
+        if g.atoms[v].kind == "group" and v not in subs:
+            subs[v] = layout_any(g.atoms[v].sub)
 
     def halfwidth(v: int) -> float:
         atom = g.atoms[v]
@@ -700,6 +705,8 @@ def _layout_component(
 
     def _pw(v: int) -> float:
         atom = g.atoms[v]
+        if atom.kind == "group":
+            return 2 * halfwidth(v)
         return 0.12 if atom.kind == "copydot" else 2 * _label_halfwidth(atom.label)
 
     subtree_w: dict[int, float] = {}
@@ -719,7 +726,11 @@ def _layout_component(
 
     def place_subtree(v: int, cx: float, y: float) -> None:
         atom = g.atoms[v]
-        layout.nodes.append(LNode(v, atom.kind, atom.label, cx, y))
+        layout.nodes.append(
+            LNode(v, atom.kind, atom.label, cx, y,
+                  sub=subs.get(v),
+                  width=2 * halfwidth(v) if atom.kind == "group" else 0.0)
+        )
         wid = parent_wire[v]
         drawn.append(wid)
         arrow = g.arrows.get(wid, "")
