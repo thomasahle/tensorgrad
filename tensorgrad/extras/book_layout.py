@@ -656,6 +656,16 @@ def _layout_component(
             wids = adj[v].get(spine[k + 1], [])
             if wids:
                 re = atom.port_names.get(wids[0])
+        # a group at a spine END will get an outer stub for its free edge;
+        # tell the inner layout which side, or the edge exits LEFT inside
+        # the bracket and RIGHT outside it (reads like a spurious transpose)
+        frees_v = [nm for _, nm in _atom_free_names(g, v)]
+        if k == 0 and le is None and frees_v:
+            le = left if left in frees_v else frees_v[0]
+        if k == len(spine) - 1 and re is None and frees_v:
+            cand_r = right if right in frees_v else frees_v[-1]
+            if cand_r != le:
+                re = cand_r
         subs[v] = layout_any(atom.sub, left=le, right=re)
     # group atoms that land OFF the spine (as pendants) still need their
     # inner layout computed, or emission crashes on `assert n.sub is not None`
@@ -1629,10 +1639,25 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
         # include their topmost point in the fit spec
         for w in layout.wires:
             if w.kind == "arc" and w.a in eset and w.b in eset:
-                h = (0.32 + 0.16 * w.span + 0.24 * (w.lane - 1)
-                     if w.span <= 3 else 0.35 + 0.08 * w.span)
-                mx = (nodes[w.a].x + nodes[w.b].x) / 2 + dx
-                my = max(nodes[w.a].y, nodes[w.b].y) + h + 0.12 + dy
+                na_, nb_ = nodes[w.a], nodes[w.b]
+                if na_.kind == "group" or nb_.kind == "group":
+                    # mirror the group-dome emission: it rises from the paren
+                    # TOPS, so the ellipse must reach above tall brackets too
+                    span_x = abs(na_.x - nb_.x) + na_.width
+                    h = 0.45 + 0.05 * span_x + 0.25 * (w.lane - 1)
+                    base = 0.0
+                    for nd_ in (na_, nb_):
+                        half = 0.35
+                        if nd_.kind == "group" and nd_.sub is not None:
+                            gt_, gb_ = _term_extent(nd_.sub)
+                            half = (gt_ - gb_) / 2 + 0.15
+                        base = max(base, nd_.y + half)
+                    my = base + h + 0.15 + dy
+                else:
+                    h = (0.32 + 0.16 * w.span + 0.24 * (w.lane - 1)
+                         if w.span <= 3 else 0.35 + 0.08 * w.span)
+                    my = max(na_.y, nb_.y) + h + 0.12 + dy
+                mx = (na_.x + nb_.x) / 2 + dx
                 parts.append(f"({mx:.2f},{my:.2f})")
             elif w.kind == "loop" and w.a in eset:
                 lx = nodes[w.a].x + dx
@@ -1650,25 +1675,27 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
             rf"\node[ellipse, draw, inner sep={sep:.1f}pt, "
             rf"fit={{{''.join(parts)}}}] ({en}) {{}};"
         )
+        # whisker labels ride BESIDE the wire (midway, offset to the side)
+        # -- a label AT the free tip reads as if it were a tensor node
         if len(new_names) == 1:
             ang = 125 + 14 * inside  # fan nested whiskers apart
             lines.append(rf"\fill ({en}.{ang}) circle (1.4pt);")
             lines.append(
                 rf"\draw ({en}.{ang}) .. controls +({ang - 25}:.12) .."
                 rf" ++(-.24,.26)"
-                rf" node[anchor=south east, font=\scriptsize, inner sep=1pt]"
-                rf" {{${_tex_edge(new_names[0])}$}};"
+                rf" node[pos=0.75, above right, font=\scriptsize,"
+                rf" inner sep=0.5pt] {{${_tex_edge(new_names[0])}$}};"
             )
         else:
             ang = 55
             lines.append(rf"\fill ({en}.{ang}) circle (1.4pt);")
-            whisk = [("80:.12", "++(-.2,.28)", "south east"),
-                     ("45:.12", "++(.28,.18)", "south west")]
+            whisk = [("80:.12", "++(-.2,.28)", "above left"),
+                     ("45:.12", "++(.28,.18)", "above right")]
             for nm, (ctrl, end, anch) in zip(new_names, whisk):
                 lines.append(
                     rf"\draw ({en}.{ang}) .. controls +({ctrl}) .. {end}"
-                    rf" node[anchor={anch}, font=\scriptsize, inner sep=1pt]"
-                    rf" {{${_tex_edge(nm)}$}};"
+                    rf" node[pos=0.85, {anch}, font=\scriptsize,"
+                    rf" inner sep=0.5pt] {{${_tex_edge(nm)}$}};"
                 )
 
 
