@@ -274,6 +274,7 @@ class TorchCodegen:
         # (e.g. dlogits) even when the symbolic Sum-of-Products form doesn't.
         step_cache: dict[tuple, str] = {}
         self._sdpa_bwd_cache: dict = {}
+        self._sdpa_fwd_cache: dict = {}
         self._layer_norm_bwd_cache: dict = {}
 
         def const_name(tensor: torch.Tensor, base: str) -> str:
@@ -2252,13 +2253,26 @@ class TorchCodegen:
             return f"{self._sdpa_canon(node.ops[i], node.perms[i], names)}.reshape({bsz}, 1, {seqlen}, {E})"
         return r(0, S), r(1, K), r(2, K), (bsz, S, K, E)
 
+    @staticmethod
+    def _sdpa_site_key(node, names):
+        """(q, k, v, scale, mask) identity of an attention site, shared by its
+        forward and backward nodes so the backward can reuse the forward's
+        out/lse instead of recomputing them."""
+        mi = 3 if isinstance(node, SDPAFwdNode) else 4
+        return (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
+                node.scale, node.has_mask, names[id(node.ops[mi])] if node.has_mask else None)
+
     def _emit_sdpa_fwd(self, node, name, names, dim_of) -> str:
         q4, k4, v4, _ = self._sdpa_qkv(node, names, dim_of)
         mask = self._sdpa_canon(node.ops[3], node.perms[3], names) if node.has_mask else "None"
         bshape = _tup(str(dim_of(d)) for d in node.dims)
         scale = _fmt_weight(node.scale)
-        return (f"{name} = {self._SDPA_FWD}({q4}, {k4}, {v4}, 0.0, False, "
-                f"attn_mask={mask}, scale={scale})[0].reshape({bshape})")
+        # Keep the whole (out, lse) tuple in a temp so a later backward at the
+        # same site can consume out/lse without recomputing the forward.
+        tmp = f"_sdpaf{len(self._sdpa_fwd_cache)}"
+        self._sdpa_fwd_cache[self._sdpa_site_key(node, names)] = tmp
+        return (f"{tmp} = {self._SDPA_FWD}({q4}, {k4}, {v4}, 0.0, False, "
+                f"attn_mask={mask}, scale={scale}); {name} = {tmp}[0].reshape({bshape})")
 
     def _emit_sdpa_bwd(self, node, name, names, dim_of) -> str:
         # dq/dk/dv of ONE attention site come from ONE fused backward call
@@ -2277,9 +2291,15 @@ class TorchCodegen:
             self._sdpa_bwd_cache[gkey] = tmp
             scale = _fmt_weight(node.scale)
             kw = f"0.0, False, attn_mask={mask}, scale={scale}"
-            fwd = f"{self._SDPA_FWD}({q4}, {k4}, {v4}, {kw})"
-            bwd = f"{self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, _r[0], _r[1], {kw})"
-            prelude = f"{tmp} = (lambda _r: {bwd})({fwd}); "
+            # Reuse the forward's (out, lse) if it was already emitted at this
+            # site; else recompute (a backward-only program has no forward).
+            fwd_tmp = self._sdpa_fwd_cache.get(self._sdpa_site_key(node, names))
+            if fwd_tmp is not None:
+                prelude = f"{tmp} = {self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, {fwd_tmp}[0], {fwd_tmp}[1], {kw}); "
+            else:
+                fwd = f"{self._SDPA_FWD}({q4}, {k4}, {v4}, {kw})"
+                bwd = f"{self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, _r[0], _r[1], {kw})"
+                prelude = f"{tmp} = (lambda _r: {bwd})({fwd}); "
         role = S if node.which == 0 else K
         nb = node.nb
         bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
