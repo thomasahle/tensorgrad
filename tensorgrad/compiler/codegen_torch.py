@@ -29,6 +29,8 @@ from tensorgrad.compiler.ir import (
     EinsumNode,
     GatherNode,
     InputNode,
+    LayerNormBwdNode,
+    LayerNormFwdNode,
     LinearNode,
     MapNode,
     Node,
@@ -270,6 +272,7 @@ class TorchCodegen:
         # (e.g. dlogits) even when the symbolic Sum-of-Products form doesn't.
         step_cache: dict[tuple, str] = {}
         self._sdpa_bwd_cache: dict = {}
+        self._layer_norm_bwd_cache: dict = {}
 
         def const_name(tensor: torch.Tensor, base: str) -> str:
             name = f"_c{len(consts)}_{base}"
@@ -337,6 +340,10 @@ class TorchCodegen:
                 lines.append(self._emit_sdpa_fwd(node, name, names, dim_of))
             elif isinstance(node, SDPABwdNode):
                 lines.append(self._emit_sdpa_bwd(node, name, names, dim_of))
+            elif isinstance(node, LayerNormFwdNode):
+                lines.append(self._emit_layer_norm_fwd(node, name, names, dim_of))
+            elif isinstance(node, LayerNormBwdNode):
+                lines.append(self._emit_layer_norm_bwd(node, name, names, dim_of))
             else:
                 raise NotImplementedError(f"codegen for {type(node).__name__}")
 
@@ -2271,6 +2278,59 @@ class TorchCodegen:
         nb = node.nb
         bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
         gshape = _tup(bdims + [str(role), str(E)])
+        return (f"{prelude}{name} = {tmp}[{node.which}]"
+                f".reshape({gshape}).permute({_tup(map(str, node.res_perm))})")
+
+    _LAYER_NORM = "torch.ops.aten.native_layer_norm"
+    _LAYER_NORM_BWD = "torch.ops.aten.native_layer_norm_backward"
+
+    def _layer_norm_xwb(self, node, names, dim_of):
+        """Emit x2d (rows, D), w1d (D,), b1d (D,); rows = prod(batch dims),
+        D = normalized-dim size (read from x's canonical (batch..., dim)
+        layout). Works for fwd and bwd (whose node.dims differ)."""
+        nb = node.nb
+        p0 = node.perms[0]  # x's perm into canonical (batch..., dim)
+        rows = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
+        D = dim_of(node.ops[0].dims[p0[nb]])
+        x2d = f"{self._sdpa_canon(node.ops[0], node.perms[0], names)}.reshape({rows}, {D})"
+        w1d = f"{self._sdpa_canon(node.ops[1], node.perms[1], names)}.reshape({D})"
+        b1d = f"{self._sdpa_canon(node.ops[2], node.perms[2], names)}.reshape({D})"
+        return x2d, w1d, b1d, (rows, D)
+
+    def _emit_layer_norm_fwd(self, node, name, names, dim_of) -> str:
+        x2d, w1d, b1d, (rows, D) = self._layer_norm_xwb(node, names, dim_of)
+        bshape = _tup(str(dim_of(d)) for d in node.dims)
+        eps = _fmt_weight(node.eps)
+        return (f"{name} = {self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps})"
+                f"[0].reshape({bshape})")
+
+    def _emit_layer_norm_bwd(self, node, name, names, dim_of) -> str:
+        # grad_x/grad_weight/grad_bias of ONE layer-norm site come from ONE
+        # fused backward call (which returns all three); dedup by the
+        # (x, weight, bias, u, eps) site so the recompute + backward run once,
+        # and each node selects its slot (0=x, 1=weight, 2=bias).
+        x2d, w1d, b1d, (rows, D) = self._layer_norm_xwb(node, names, dim_of)
+        u2d = f"{self._sdpa_canon(node.ops[3], node.perms[3], names)}.reshape({rows}, {D})"
+        eps = _fmt_weight(node.eps)
+        gkey = (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
+                names[id(node.ops[3])], node.eps)
+        prelude = ""
+        tmp = self._layer_norm_bwd_cache.get(gkey)
+        if tmp is None:
+            tmp = f"_lnb{len(self._layer_norm_bwd_cache)}"
+            self._layer_norm_bwd_cache[gkey] = tmp
+            # _r = native_layer_norm(x) -> (out, mean, rstd); the backward
+            # recomputes the normalization from x's own mean/rstd (_r[1]/_r[2]).
+            fwd = f"{self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps})"
+            bwd = (f"{self._LAYER_NORM_BWD}({u2d}, {x2d}, [{D}], _r[1], _r[2], "
+                   f"{w1d}, {b1d}, [True, True, True])")
+            prelude = f"{tmp} = (lambda _r: {bwd})({fwd}); "
+        nb = node.nb
+        if node.which == 0:  # grad_x: (rows, D) -> (batch..., dim) canonical
+            bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
+            gshape = _tup(bdims + [str(D)])
+        else:  # grad_weight / grad_bias: (D,) -> (dim,)
+            gshape = _tup([str(D)])
         return (f"{prelude}{name} = {tmp}[{node.which}]"
                 f".reshape({gshape}).permute({_tup(map(str, node.res_perm))})")
 

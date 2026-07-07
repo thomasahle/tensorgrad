@@ -27,7 +27,18 @@ from tensorgrad.tensor import (
     Variable,
     Zero,
 )
-from tensorgrad.compiler.ir import Builder, ConstNode, Dim, EinsumNode, GatherNode, Node, SDPABwdNode, SDPAFwdNode
+from tensorgrad.compiler.ir import (
+    Builder,
+    ConstNode,
+    Dim,
+    EinsumNode,
+    GatherNode,
+    LayerNormBwdNode,
+    LayerNormFwdNode,
+    Node,
+    SDPABwdNode,
+    SDPAFwdNode,
+)
 from tensorgrad.compiler.affine import Affine
 
 # Elementwise function signatures with "scalar" shape (edges pass through).
@@ -357,6 +368,38 @@ class Lowerer:
             dims = tuple(t.shape[e] for e in out_order)
             node = self.b.sdpa_bwd(ops, dims, fwd.scale, fwd.has_mask, sig.i,
                                    len(batch), tuple(perms), res_perm)
+            return node, out_order
+
+        if isinstance(sig, F._LayerNormFunction):
+            xn, xo = self.lower(t.inputs[0])
+            wn, wo = self.lower(t.inputs[1])
+            bn, bo = self.lower(t.inputs[2])
+            batch = sorted(sig.batch)
+            x_order = batch + [sig.dim]
+            perms = [tuple(xo.index(e) for e in x_order),
+                     (wo.index(sig.dim),),
+                     (bo.index(sig.dim),)]
+            out_order = tuple(batch + [sig.dim])
+            dims = tuple(t.shape[e] for e in out_order)
+            node = self.b.layer_norm_fwd([xn, wn, bn], dims, sig.eps, len(batch), tuple(perms))
+            return node, out_order
+
+        if isinstance(sig, F._LayerNormVJPSignature):
+            fwd = sig.fwd
+            batch = sorted(fwd.batch)
+            ops, perms = [], []
+            # inputs: x (batch..., dim), weight (dim), bias (dim), u (batch..., dim)
+            specs = [(0, batch + [fwd.dim]), (1, [fwd.dim]), (2, [fwd.dim]),
+                     (3, batch + [fwd.dim])]  # 3 = u (output space)
+            for oi, oedges in specs:
+                n, o = self.lower(t.inputs[oi])
+                ops.append(n); perms.append(tuple(o.index(e) for e in oedges))
+            out_order = tuple(t.edges)
+            grad_canon = (batch + [fwd.dim]) if sig.i == 0 else [fwd.dim]
+            res_perm = tuple(grad_canon.index(e) for e in out_order)
+            dims = tuple(t.shape[e] for e in out_order)
+            node = self.b.layer_norm_bwd(ops, dims, fwd.eps, sig.i,
+                                         len(batch), tuple(perms), res_perm)
             return node, out_order
 
         if isinstance(sig, F._ArgMaxFunction):

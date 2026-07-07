@@ -1377,6 +1377,91 @@ def sdpa(q: Tensor, k: Tensor, v: Tensor, *, seq="seq", key="key", hs="hs", mask
     return Function(sig, tuple(ins), shape_out)
 
 
+# --------------------------------------------------------------------------
+# Fused layer normalization: a technology-mapping primitive.
+#
+# F.layer_norm(x, dim=, weight=, bias=, eps=) IS
+#   weight * (x - mean(x, dim)) / sqrt(var(x, dim) + eps) + bias
+# (biased variance, eps inside the sqrt) -- its VALUE is that composite,
+# machine-verified against the definition by the szfp fingerprints and the
+# evaluate() oracle. But it is an OPAQUE Function, so differentiation does not
+# expand the mean/var/sqrt; the compiler maps both the forward AND the derived
+# backward onto torch's fused native_layer_norm CPU kernels. This is the
+# layernorm analogue of F.sdpa: write layer norm from primitives if you want
+# the derivation, this is the fast path.
+#
+# Edge convention: x (batch..., dim); weight, bias (dim,); out (batch..., dim).
+# The normalized axis is the single `dim` edge; weight/bias broadcast over it.
+# --------------------------------------------------------------------------
+
+
+class _LayerNormFunction(FunctionSignature):
+    def __init__(self, dim, batch, eps):
+        self.dim = dim
+        self.batch = frozenset(batch)
+        self.eps = eps
+        out = self.batch | {dim}
+        # x consumes (batch..., dim); weight, bias consume {dim}. The batch
+        # edges are CONSUMED (normalized/re-emitted), not broadcast, so grad
+        # weight/bias reduce over them, matching native_layer_norm.
+        ins = [self.batch | {dim}, frozenset({dim}), frozenset({dim})]
+        super().__init__(f"layer_norm[d={dim},b={sorted(batch)},eps={eps}]",
+                         frozenset(out), tuple(frozenset(i) for i in ins))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        # layer_norm is fused only in REVERSE mode: reverse.py special-cases
+        # this signature to emit a clean VJP primitive (u as an explicit
+        # input), so the Jacobian is never formed. A lone forward-mode
+        # d/dinput is not fused -- write layer norm from primitives if needed.
+        raise NotImplementedError(
+            "F.layer_norm gradients use reverse mode (compile a gradient FAMILY, as any "
+            "training loop does); a lone forward-mode d/dinput is not fused."
+        )
+
+
+class _LayerNormVJPSignature(FunctionSignature):
+    """The reverse VJP of layer_norm w.r.t. input `i`: inputs (x, weight,
+    bias, u) with u the output cotangent; output edges = input i's edges
+    (grad_x has x's edges; grad_weight/grad_bias have {dim}). Lowers straight
+    to the fused native_layer_norm backward kernel."""
+
+    def __init__(self, fwd: "_LayerNormFunction", i: int, u_edges):
+        self.fwd = fwd
+        self.i = i
+        in_i = list(fwd.inputs[i])
+        # inputs (x, weight, bias, u); u consumes all its (output-space) edges.
+        ins = [fwd.inputs[0], fwd.inputs[1], fwd.inputs[2], frozenset(u_edges)]
+        super().__init__(f"layer_norm_vjp[i={i},d={fwd.dim},b={sorted(fwd.batch)},eps={fwd.eps}]",
+                         frozenset(in_i), tuple(ins))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        raise NotImplementedError("Second-order layer_norm is not fused; write it from primitives.")
+
+
+def layer_norm_vjp(fwd_sig: "_LayerNormFunction", i: int, x, weight, bias, u) -> Tensor:
+    """d(input i) of layer_norm given output cotangent u (reverse mode)."""
+    ins = [x, weight, bias, u]
+    sig = _LayerNormVJPSignature(fwd_sig, i, u.edges)
+    shape_out: dict = dict(x.shape) if i == 0 else {fwd_sig.dim: x.shape[fwd_sig.dim]}
+    return Function(sig, tuple(ins), shape_out)
+
+
+def layer_norm(x: Tensor, *, dim: str, weight: Tensor, bias: Tensor, eps: float = 1e-5) -> Tensor:
+    """Fused layer normalization over the single edge `dim`. weight and bias
+    have edges {dim} and broadcast over it; x has (batch..., dim); output
+    edges = x's edges. See the module comment above for the definition."""
+    if dim not in x.edges:
+        raise ValueError(f"layer_norm dim {dim!r} not in x edges {set(x.edges)}")
+    batch = frozenset(x.edges) - {dim}
+    if set(weight.edges) != {dim}:
+        raise ValueError(f"layer_norm weight edges {set(weight.edges)} != {{{dim}}}")
+    if set(bias.edges) != {dim}:
+        raise ValueError(f"layer_norm bias edges {set(bias.edges)} != {{{dim}}}")
+    sig = _LayerNormFunction(dim, batch, float(eps))
+    shape_out = dict(x.shape)
+    return Function(sig, (x, weight, bias), shape_out)
+
+
 class _MaxGradFunction(FunctionSignature):
     def __init__(self, dims: Iterable[str]):
         self.name = "max-grad"

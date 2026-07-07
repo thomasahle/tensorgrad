@@ -85,6 +85,42 @@ class SDPABwdNode(Node):
 
 
 @dataclass(frozen=True, eq=False)
+class LayerNormFwdNode(Node):
+    """Fused layer-norm forward -> torch native_layer_norm CPU kernel.
+    ops = (x, weight, bias). `perms` gives, per operand, the permutation of
+    its axes into canonical order (x -> (batch..., dim); weight, bias ->
+    (dim,)). `nb` = number of batch axes. Output dims are (batch..., dim) in
+    that canonical order."""
+
+    eps: float = 1e-5
+    nb: int = 0
+    perms: tuple = ()  # (x_perm, weight_perm, bias_perm)
+    ops: tuple = ()
+
+    def operands(self) -> tuple["Node", ...]:
+        return self.ops
+
+
+@dataclass(frozen=True, eq=False)
+class LayerNormBwdNode(Node):
+    """Fused layer-norm backward for input `which` (0=x, 1=weight, 2=bias).
+    Recomputes mean/rstd from x internally (self-contained). ops = (x, weight,
+    bias, u); `perms` per operand into canonical order; `res_perm` maps the
+    kernel's gradient (canonical (batch..., dim) for x, (dim,) for
+    weight/bias) back to this node's dims."""
+
+    eps: float = 1e-5
+    which: int = 0
+    nb: int = 0
+    perms: tuple = ()  # (x_perm, weight_perm, bias_perm, u_perm)
+    res_perm: tuple = ()
+    ops: tuple = ()
+
+    def operands(self) -> tuple["Node", ...]:
+        return self.ops
+
+
+@dataclass(frozen=True, eq=False)
 class ConstNode(Node):
     """A constant tensor that only depends on dimension sizes.
     Built once per shape-specialization and closed over by the generated code.
@@ -363,6 +399,16 @@ class Builder:
         key = ("sdpa_bwd", tuple(id(o) for o in ops), scale, has_mask, which, nb, perms, res_perm)
         return self._intern(
             key, lambda: SDPABwdNode(tuple(dims), scale, has_mask, which, nb, perms, res_perm, tuple(ops))
+        )
+
+    def layer_norm_fwd(self, ops, dims, eps, nb, perms) -> Node:
+        key = ("layer_norm_fwd", tuple(id(o) for o in ops), eps, nb, perms)
+        return self._intern(key, lambda: LayerNormFwdNode(tuple(dims), eps, nb, perms, tuple(ops)))
+
+    def layer_norm_bwd(self, ops, dims, eps, which, nb, perms, res_perm) -> Node:
+        key = ("layer_norm_bwd", tuple(id(o) for o in ops), eps, which, nb, perms, res_perm)
+        return self._intern(
+            key, lambda: LayerNormBwdNode(tuple(dims), eps, which, nb, perms, res_perm, tuple(ops))
         )
 
     def reduce(self, op: str, axes: tuple[int, ...], operand: Node) -> Node:

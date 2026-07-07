@@ -77,6 +77,8 @@ from tensorgrad.compiler.ir import (
     ReduceNode,
     SDPAFwdNode,
     SDPABwdNode,
+    LayerNormFwdNode,
+    LayerNormBwdNode,
     toposort,
 )
 from tensorgrad.compiler.lower import lower_program
@@ -511,6 +513,12 @@ def _eval_node(node: Node, vals, assign, ctx) -> np.ndarray:
     if isinstance(node, (SDPAFwdNode, SDPABwdNode)):
         dims = tuple(_dim(d, assign) for d in node.dims)
         key = ("atom-sdpa", type(node).__name__, node.scale, node.has_mask,
+               getattr(node, "which", -1), node.perms, getattr(node, "res_perm", ()),
+               tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
+        return _rand_tensor(dims, *key)
+    if isinstance(node, (LayerNormFwdNode, LayerNormBwdNode)):
+        dims = tuple(_dim(d, assign) for d in node.dims)
+        key = ("atom-layer_norm", type(node).__name__, node.eps,
                getattr(node, "which", -1), node.perms, getattr(node, "res_perm", ()),
                tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
         return _rand_tensor(dims, *key)

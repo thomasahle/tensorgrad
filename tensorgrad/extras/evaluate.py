@@ -18,6 +18,8 @@ from tensorgrad.functions import (
     _ArgSortFunction,
     _SDPAFunction,
     _SDPAVJPSignature,
+    _LayerNormFunction,
+    _LayerNormVJPSignature,
     _OneHotFunction,
     _MaxGradFunction,
     _MaxFunction,
@@ -415,6 +417,42 @@ def _(func: _SDPAVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
     named = [raws[j].rename(*xs[j].names) for j in range(3)]
     with torch.enable_grad():
         out = _sdpa_forward(fwd, named[0], named[1], named[2], mask)
+        u_al = u.align_to(*out.names).rename(None)
+        (g,) = torch.autograd.grad(out.rename(None), raws[func.i], grad_outputs=u_al)
+    return g.rename(*xs[func.i].names)
+
+
+def _layer_norm_forward(func, x, weight, bias):
+    """The definition: weight*(x-mean)/sqrt(var+eps)+bias over the `dim` axis
+    (biased variance), as plain torch over named tensors. An INDEPENDENT
+    oracle (not torch's fused native_layer_norm kernel). Batch = every edge
+    of x other than dim."""
+    batch = sorted(func.batch)
+    xv = x.align_to(*batch, func.dim).rename(None)
+    w = weight.align_to(func.dim).rename(None)
+    b = bias.align_to(func.dim).rename(None)
+    mean = xv.mean(dim=-1, keepdim=True)
+    var = xv.var(dim=-1, unbiased=False, keepdim=True)
+    normed = (xv - mean) / torch.sqrt(var + func.eps)
+    out = normed * w + b
+    return out.rename(*batch, func.dim)
+
+
+@evaluate_function.register
+def _(func: _LayerNormFunction, *xs: torch.Tensor) -> torch.Tensor:
+    return _layer_norm_forward(func, xs[0], xs[1], xs[2])
+
+
+@evaluate_function.register
+def _(func: _LayerNormVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
+    """The reverse VJP d(input i) given output cotangent u, via autograd on
+    the reference (definition) layer norm. The oracle for the fused backward."""
+    fwd = func.fwd
+    x, weight, bias, u = xs[0], xs[1], xs[2], xs[3]
+    raws = [t.rename(None).detach().clone().requires_grad_(True) for t in (x, weight, bias)]
+    named = [raws[j].rename(*xs[j].names) for j in range(3)]
+    with torch.enable_grad():
+        out = _layer_norm_forward(fwd, named[0], named[1], named[2])
         u_al = u.align_to(*out.names).rename(None)
         (g,) = torch.autograd.grad(out.rename(None), raws[func.i], grad_outputs=u_al)
     return g.rename(*xs[func.i].names)

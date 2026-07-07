@@ -94,6 +94,11 @@ def _function_vjp(t: Function, u: Tensor, inp: Tensor, i: int) -> Tensor:
         mask = t.inputs[3] if t.signature.has_mask else None
         return F.sdpa_vjp(t.signature, i, t.inputs[0], t.inputs[1], t.inputs[2], u, mask)
 
+    if isinstance(t.signature, F._LayerNormFunction) and i in (0, 1, 2):
+        # Fused reverse VJP: bypass the (dense) Jacobian entirely. u is the
+        # output cotangent; layer_norm_vjp lowers to native_layer_norm_backward.
+        return F.layer_norm_vjp(t.signature, i, t.inputs[0], t.inputs[1], t.inputs[2], u)
+
     input_edges = t.signature.inputs[i]
     connection_names = _unused_edge_names(input_edges, t.edges | inp.edges)
     outside = Function(
