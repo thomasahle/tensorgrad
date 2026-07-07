@@ -84,11 +84,11 @@ def render(rows) -> None:
             continue
         try:
             body.append(r"\noindent")
-            body.append(to_book_tikz(tensor, max_width=15))
+            body.append(to_book_tikz(tensor, max_width=15, edge_labels=True))
         except Exception:  # unevaluated contracted derivatives etc.
             try:
                 body.append(r"\noindent")
-                body.append(to_book_tikz(tensor.simplify(), max_width=15))
+                body.append(to_book_tikz(tensor.simplify(), max_width=15, edge_labels=True))
                 body[-3] = body[-3].replace("}}", " (simplified)}}")
             except Exception as e:
                 body.append(rf"\texttt{{\small draw: {type(e).__name__}: {e}}}")

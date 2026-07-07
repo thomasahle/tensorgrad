@@ -653,7 +653,7 @@ def _layout_component(
     def halfwidth(v: int) -> float:
         atom = g.atoms[v]
         if atom.kind == "group":
-            return subs[v].xmax / 2 + 0.36  # parens + symmetric padding
+            return subs[v].xmax / 2 + 0.5  # parens + symmetric padding
         if atom.kind == "copydot":
             return 0.06
         return _label_halfwidth(atom.label)
@@ -893,13 +893,14 @@ def _layout_component(
         ups = [nm for d, nm in assigned if d == "up"]
         ui = 0
         for direction, name in assigned:
-            lab = name if direction in ("up", "down") else ""
+            # store the edge name on every stub; left/right labels are only
+            # DRAWN when edge_labels is on (up/down always draw)
             off = 0.0
             if direction == "up" and len(ups) > 1:
                 off = (ui - (len(ups) - 1) / 2) * 0.26
                 ui += 1
             layout.wires.append(
-                LWire("stub", v, direction=direction, label=lab, x=off))
+                LWire("stub", v, direction=direction, label=name, x=off))
             if direction == "left" and layout.left_edge is None:
                 layout.left_edge = name
             if direction == "right":
@@ -1117,7 +1118,8 @@ def _fmt_weight(w: object) -> tuple[str, str]:
 _AXIS = "inner sep=1pt, text height=1.55ex, text depth=0.35ex"
 
 
-def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -> None:
+def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
+                 edge_labels: bool = False) -> None:
     name = {n.id: f"{prefix}n{n.id}" for n in layout.nodes}
     nodes = {n.id: n for n in layout.nodes}
     group_side: dict[int, tuple[str, str]] = {}
@@ -1137,8 +1139,10 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
             )
             group_side[n.id] = (pl, pr)
             assert n.sub is not None
-            # extra breathing room after the '(' before the first term's stub
-            _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.34)
+            # extra breathing room after the '(' before the first term (which
+            # may be a wide node like pow_{-1}, else the paren jams into it)
+            _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.48,
+                         edge_labels=edge_labels)
         elif n.kind == "sign":
             # a sum operator is enlarged, spaced out (term-gap widened at
             # layout time) AND bold so it reads clearly as an operator, not as
@@ -1153,13 +1157,15 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
                 rf" ({x:.2f},{n.y:.2f}) {{${body}$}};"
             )
         else:
-            rot = "rotate=180, " if n.rotated else ""
-            # _AXIS pins a uniform text height/depth so a subscripted label
-            # (pow_{-1}) centers on the same axis as exp/x -- its subscript no
-            # longer drags the node's centre down out of line with the wire.
+            # a transpose is shown with a ^T superscript (clearer than an
+            # upside-down glyph). _AXIS pins a uniform text height/depth so a
+            # subscripted label centers on the same axis as its neighbours.
+            label = _tex_label(n.label)
+            if n.rotated:  # insert the transpose superscript inside the $...$
+                label = label[:-1] + r"^{\top}$"
             lines.append(
-                rf"\node[{rot}{_AXIS}] ({name[n.id]}) at ({x:.2f},{n.y:.2f})"
-                rf" {{{_tex_label(n.label)}}};"
+                rf"\node[{_AXIS}] ({name[n.id]}) at ({x:.2f},{n.y:.2f})"
+                rf" {{{label}}};"
             )
 
     def endpoint(nid: Optional[int], other: Optional[int]) -> str:
@@ -1251,13 +1257,15 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float) -
                 "up": (f"(0,{MIDSTUB:.2f})", "north"),
                 "down": (f"(0,{-MIDSTUB:.2f})", "south"),
             }[w.direction]
-            if nodes[w.a].rotated:  # 180-degree node: anchors are mirrored
-                anch = {"west": "east", "east": "west",
-                        "north": "south", "south": "north"}[anch]
             lab = ""
-            if w.label:
-                anchor = {"up": "south", "down": "north"}.get(w.direction, "west")
-                lab = rf" node[anchor={anchor}, font=\scriptsize, inner sep=1.5pt] {{${w.label}$}}"
+            # up/down stubs always label their edge; left/right only when
+            # edge_labels is on (keeps simple chains like -A-B- uncluttered)
+            show = w.label and (w.direction in ("up", "down") or edge_labels)
+            if show:
+                anchor = {"up": "south", "down": "north",
+                          "left": "east", "right": "west"}[w.direction]
+                lab = (rf" node[anchor={anchor}, font=\scriptsize,"
+                       rf" inner sep=2pt] {{${_tex_edge(w.label)}$}}")
             src = name[w.a]
             if w.a in group_side:
                 src = group_side[w.a][0 if w.direction == "left" else 1]
@@ -1286,16 +1294,22 @@ def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
         inside = sum(1 for e2, _ in layout.boxes if set(e2) < set(enclosed))
         sep = 3.5 + 4.0 * inside
         bn = f"{prefix}bE{bi}"
+        # an INVISIBLE fit node sizes the brackets; we draw actual [ ] shapes
+        # (a vertical edge with short top/bottom serifs) exactly around the
+        # content -- no full rectangle (redundant), no fixed-size text bracket
         lines.append(
-            rf"\node[draw, rounded corners=1pt, inner sep={sep:.1f}pt, "
-            rf"fit={{{''.join(parts)}}}] ({bn}) {{}};"
-        )
-        # the E[ ] label brackets sit on the box's left and right edges
-        lines.append(
-            rf"\node[anchor=east, inner sep=2pt] at ({bn}.west) {{$\mathbb{{{lbl}}}\big[$}};"
+            rf"\node[inner sep={sep:.1f}pt, fit={{{''.join(parts)}}}] ({bn}) {{}};"
         )
         lines.append(
-            rf"\node[anchor=west, inner sep=2pt] at ({bn}.east) {{$\big]$}};"
+            rf"\draw ([xshift=3pt]{bn}.north west) -- ({bn}.north west)"
+            rf" -- ({bn}.south west) -- ([xshift=3pt]{bn}.south west);"
+        )
+        lines.append(
+            rf"\draw ([xshift=-3pt]{bn}.north east) -- ({bn}.north east)"
+            rf" -- ({bn}.south east) -- ([xshift=-3pt]{bn}.south east);"
+        )
+        lines.append(
+            rf"\node[anchor=east, inner sep=3pt] at ({bn}.west) {{$\mathbb{{{lbl}}}$}};"
         )
 
 
@@ -1364,6 +1378,7 @@ def to_book_tikz(
     baseline: str = "-.25em",
     scale: Optional[float] = None,
     max_width: Optional[float] = None,
+    edge_labels: bool = False,
 ) -> str:
     """Render a tensorgrad Tensor as book-style TikZ (uses tikz-styles.tex).
 
@@ -1374,6 +1389,11 @@ def to_book_tikz(
         max_width: if the laid-out diagram is wider than this (in cm), scale
             it down to fit -- wide gradients/products then stay on the page
             instead of overflowing. Ignored if `scale` is given.
+        edge_labels: also label the left/right free-edge stubs with their
+            index names (mid-spine stubs are always labelled). Useful when
+            the contraction structure/symmetries would otherwise be
+            ambiguous -- e.g. an Isserlis expansion of separate covariance
+            factors. Off by default to keep simple chains uncluttered.
     """
     layout = layout_any(tensor, left, right)
     if scale is None and max_width is not None and layout.xmax > max_width > 0:
@@ -1386,6 +1406,6 @@ def to_book_tikz(
         # shrinks uniformly instead of nodes overlapping at moved coordinates
         opts += f", scale={scale:.3f}, transform shape"
     lines: list[str] = [rf"\begin{{tikzpicture}}[{opts}]"]
-    _emit_layout(layout, lines, prefix="", dx=0.0)
+    _emit_layout(layout, lines, prefix="", dx=0.0, edge_labels=edge_labels)
     lines.append(r"\end{tikzpicture}")
     return "\n".join(lines)
