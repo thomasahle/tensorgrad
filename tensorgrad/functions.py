@@ -882,16 +882,17 @@ class _MatrixInverseDerivative(FunctionSignature):
     def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
         (edges,) = self.inputs
         (inner,) = t.inputs
-        # Inverse: -inv(A)^T dA inv(A)
-        if args["expand_functions"]:
-            inv = inverse(inner, edges)
-            #    -i- A^{-1} -j-j'-
-            # -i'-i- A^{-1} -j-
-            (o1, e1), (o2, e2) = self.new_edges.items()
-            res = -inv.rename(**{o1: e1}) * inv.rename(**{o2: e2})
-            assert res.edges == t.edges
-            return res.simplify(args)
-        return t
+        # Inverse: -inv(A)^T dA inv(A). This expansion IS the derivative
+        # rule (differentiation is rewriting), not an optional decomposition,
+        # so it fires regardless of expand_functions -- an unexpanded
+        # inv_grad has no evaluation and no lowering.
+        inv = inverse(inner, edges)
+        #    -i- A^{-1} -j-j'-
+        # -i'-i- A^{-1} -j-
+        (o1, e1), (o2, e2) = self.new_edges.items()
+        res = -inv.rename(**{o1: e1}) * inv.rename(**{o2: e2})
+        assert res.edges == t.edges
+        return res.simplify(args)
 
 
 def inverse(tensor: Tensor, dims: Optional[AbstractSet[str]] = None) -> Tensor:
@@ -1383,7 +1384,8 @@ def layer_norm(x: Tensor, *, dim: str, weight: Tensor, bias: Tensor, eps: float 
 
 
 def adamw(w: Tensor, g: Tensor, m: Tensor, v: Tensor, c1: Tensor, c2: Tensor, *,
-          beta1: float, beta2: float, lr: float, eps: float, weight_decay: float):
+          beta1: float, beta2: float, lr: float, eps: float,
+          weight_decay: float) -> tuple[Tensor, Tensor, Tensor]:
     """Fused AdamW step -> (w', m', v') from one fused kernel.
 
     A NON-differentiable, MULTI-OUTPUT technology-mapping cell -- the update
@@ -1627,9 +1629,9 @@ class _DeterminantDerivative(FunctionSignature):
     def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
         (dims,) = self.inputs
         (inner,) = t.inputs
-        if args["expand_functions"]:
-            return det(inner, dims) * inverse(inner, dims).rename(**self.new_edges)
-        return t
+        # d det(A) = det(A) A^-T (cookbook 46). Like inv_grad, this IS the
+        # derivative rule, so it fires regardless of expand_functions.
+        return det(inner, dims) * inverse(inner, dims).rename(**self.new_edges)
 
 
 class _DeterminantFunction(FunctionSignature):

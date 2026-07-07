@@ -146,7 +146,7 @@ class Lowerer:
                 e = parent[e]
             return e
 
-        def union(e1: str, e2: str):
+        def union(e1: str, e2: str) -> None:
             parent[find(e2)] = find(e1)
 
         # General affine rows (edge-name form): (coeffs {edge: sympy}, const).
@@ -190,7 +190,7 @@ class Lowerer:
         wire_of: dict[str, int] = {}
         wire_dims: dict[int, Dim] = {}
 
-        def wire(e: str, dim) -> int:
+        def wire(e: str, dim: Any) -> int:
             r = find(e)
             if r not in wire_of:
                 wire_of[r] = len(wire_of)
@@ -331,6 +331,9 @@ class Lowerer:
 
         if isinstance(sig, F._MatrixInverseFunction):
             return CELLS["inverse"].lower_fwd(self, t)
+
+        if isinstance(sig, F._DeterminantFunction):
+            return CELLS["det"].lower_fwd(self, t)
 
         if isinstance(sig, _FusedVJP):
             return CELLS[sig.cell_name].lower_bwd(self, t)

@@ -74,3 +74,37 @@ def test_newton_step_solves():
     torch.testing.assert_close(
         out.rename(None), torch.linalg.solve(Hv, gv), atol=1e-5, rtol=1e-5
     )
+
+
+# --- the determinant cell (same registry, scalar-output flavor) -----------
+
+
+def test_det_matches_torch():
+    K = Variable("K", i=n, j=n)
+    prog = tg.compile(out=F.det(K, {"i", "j"}))
+    Kv = _spd(N, N, seed=5)
+    out = prog(dims={n: N}, K=Kv.rename("i", "j")).out
+    torch.testing.assert_close(out, torch.linalg.det(Kv))
+
+
+def test_det_broadcasts_over_batch():
+    K = Variable("K", b=b, i=n, j=n)
+    prog = tg.compile(out=F.det(K, {"i", "j"}))
+    Kv = _spd(4, N, N, seed=6)
+    out = prog(dims={n: N, b: 4}, K=Kv.rename("b", "i", "j")).out
+    torch.testing.assert_close(out.rename(None), torch.linalg.det(Kv))
+
+
+def test_logdet_gradient_is_cookbook_identity():
+    # d log|K| / dK = K^-T: the identity is DERIVED (det_grad expands to
+    # det * inverse, the log cancels the det) and must compile without any
+    # explicit full_simplify by the caller.
+    K = Variable("K", i=n, j=n)
+    g = F.log(F.det(K, {"i", "j"})).grad(K)
+    prog = tg.compile(out=g)
+    Kv = _spd(N, N, seed=7)
+    out = prog(dims={n: N}, K=Kv.rename("i", "j")).out
+    torch.testing.assert_close(
+        out.align_to("i", "j").rename(None), torch.linalg.inv(Kv).T,
+        atol=1e-4, rtol=1e-4,
+    )

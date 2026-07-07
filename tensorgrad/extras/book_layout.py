@@ -656,16 +656,32 @@ def _layout_component(
             wids = adj[v].get(spine[k + 1], [])
             if wids:
                 re = atom.port_names.get(wids[0])
-        # a group at a spine END will get an outer stub for its free edge;
-        # tell the inner layout which side, or the edge exits LEFT inside
-        # the bracket and RIGHT outside it (reads like a spurious transpose)
+        # The OUTSIDE decides which side each of the group's edges exits;
+        # the inner layout follows. Otherwise an edge exits LEFT inside the
+        # bracket but RIGHT outside it (reads like a spurious transpose).
+        # This mirrors the outer stub logic exactly, including the
+        # single-node solo_side case (a lone group component whose one free
+        # edge points to solo_side).
         frees_v = [nm for _, nm in _atom_free_names(g, v)]
-        if k == 0 and le is None and frees_v:
-            le = left if left in frees_v else frees_v[0]
-        if k == len(spine) - 1 and re is None and frees_v:
-            cand_r = right if right in frees_v else frees_v[-1]
-            if cand_r != le:
-                re = cand_r
+        if len(spine) == 1 and frees_v:
+            if len(frees_v) == 1:
+                if solo_side == "right":
+                    re = frees_v[0]
+                else:
+                    le = frees_v[0]
+            else:
+                le = left if left in frees_v else frees_v[0]
+                cand_r = (right if right in frees_v and right != le
+                          else frees_v[-1])
+                if cand_r != le:
+                    re = cand_r
+        else:
+            if k == 0 and le is None and frees_v:
+                le = left if left in frees_v else frees_v[0]
+            if k == len(spine) - 1 and re is None and frees_v:
+                cand_r = right if right in frees_v else frees_v[-1]
+                if cand_r != le:
+                    re = cand_r
         subs[v] = layout_any(atom.sub, left=le, right=re)
     # group atoms that land OFF the spine (as pendants) still need their
     # inner layout computed, or emission crashes on `assert n.sub is not None`

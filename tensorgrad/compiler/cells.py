@@ -54,14 +54,14 @@ class _FusedFunction(FunctionSignature):
     result of a multi-output kernel (0 for single-output cells -- the name is
     then unchanged, so existing cells are byte-identical)."""
 
-    def __init__(self, cell_name: str, edges, out_edges, params: dict, out_idx: int = 0):
+    def __init__(self, cell_name: str, edges: Any, out_edges: Any, params: dict, out_idx: int = 0):
         self.cell_name = cell_name
         self.params = params
         self.out_idx = out_idx
         suffix = f",out={out_idx}" if out_idx else ""
         super().__init__(f"{cell_name}[{_pkey(params)}{suffix}]", frozenset(edges), out_edges)
 
-    def derivative(self, i: int, new_edges=None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Any = None) -> FunctionSignature:
         raise NotImplementedError(
             f"F.{self.cell_name} (fused) gradients use reverse mode: compile a gradient "
             f"FAMILY, as any training loop does. A lone forward-mode d/dinput is not fused."
@@ -72,7 +72,7 @@ class _FusedVJP(FunctionSignature):
     """Reverse VJP of a fused cell w.r.t. input `which`; inputs are the cell's
     original inputs plus the cotangent u; output has that input's edges."""
 
-    def __init__(self, cell_name: str, which: int, edges, in_edges, params: dict):
+    def __init__(self, cell_name: str, which: int, edges: Any, in_edges: Any, params: dict):
         self.cell_name = cell_name
         self.which = which
         self.params = params
@@ -80,7 +80,7 @@ class _FusedVJP(FunctionSignature):
             f"{cell_name}_vjp[i={which},{_pkey(params)}]", frozenset(edges), in_edges
         )
 
-    def derivative(self, i: int, new_edges=None) -> FunctionSignature:
+    def derivative(self, i: int, new_edges: Any = None) -> FunctionSignature:
         raise NotImplementedError(
             f"Second-order fused {self.cell_name} is not fused; use the composite form."
         )
@@ -127,7 +127,7 @@ class FusedCell:
 CELLS: dict[str, FusedCell] = {}
 
 
-def register(cell_cls):
+def register(cell_cls: type) -> type:
     """Class decorator: register ONE instance of the cell under its name."""
     inst = cell_cls()
     CELLS[inst.name] = inst
@@ -148,23 +148,23 @@ def cell_of(node_or_sig: Any) -> FusedCell:
 class _GeluCell(FusedCell):
     name = "gelu"
 
-    def build(self, inputs, params):
+    def build(self, inputs: Sequence[Tensor], params: dict) -> Any:
         (t,) = inputs
         sig = _FusedFunction(self.name, t.edges, (frozenset(t.edges),), params)
         return Function(sig, (t,), dict(t.shape))
 
-    def vjp(self, inputs, which, u, params):
+    def vjp(self, inputs: Sequence[Tensor], which: int, u: Tensor, params: dict) -> Tensor:
         (x,) = inputs
         sig = _FusedVJP(self.name, 0, x.edges, (frozenset(x.edges), frozenset(x.edges)), params)
         return Function(sig, (x, u), dict(x.shape))
 
-    def lower_fwd(self, lower, t):
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
         params = cast(_FusedFunction, t.signature).params
         n, o = lower.lower(t.inputs[0])
         dims = tuple(t.shape[e] for e in o)
         return lower.b.fused_fwd(self.name, params, [n], dims), o
 
-    def lower_bwd(self, lower, t):
+    def lower_bwd(self, lower: Any, t: Function) -> Any:
         params = cast(_FusedVJP, t.signature).params
         xn, xo = lower.lower(t.inputs[0])
         un, uo = lower.lower(t.inputs[1])
@@ -172,21 +172,21 @@ class _GeluCell(FusedCell):
         dims = tuple(t.shape[e] for e in xo)
         return lower.b.fused_bwd(self.name, 0, params, [xn, u_al], dims), xo
 
-    def emit_fwd(self, cg, node, name, names, dim_of=None):
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         a = node.params_dict()["approximate"]
         return f"{name} = torch.nn.functional.gelu({cg._logical(node.ops[0], names)}, approximate='{a}')"
 
-    def emit_bwd(self, cg, node, name, names, dim_of=None):
+    def emit_bwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         a = node.params_dict()["approximate"]
         return (f"{name} = torch.ops.aten.gelu_backward({cg._logical(node.ops[1], names)}, "
                 f"{cg._logical(node.ops[0], names)}, approximate='{a}')")
 
-    def eval_fwd(self, params, inputs, out_idx=0):
+    def eval_fwd(self, params: dict, inputs: Sequence[torch.Tensor], out_idx: int = 0) -> torch.Tensor:
         (x,) = inputs
         names = x.names
         return torch.nn.functional.gelu(x.rename(None), approximate=params["approximate"]).rename(*names)
 
-    def eval_bwd(self, params, which, inputs):
+    def eval_bwd(self, params: dict, which: int, inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         x, u = inputs[0], inputs[1]
         names = x.names
         u_al = u.align_to(*names).rename(None)
@@ -206,17 +206,17 @@ class _GeluCell(FusedCell):
 # ---------------------------------------------------------------------------
 
 
-def _fmt(x):  # lazy handle to codegen's weight formatter (avoids import cycle)
+def _fmt(x: Any) -> str:  # lazy handle to codegen's weight formatter (avoids import cycle)
     from tensorgrad.compiler.codegen_torch import _fmt_weight
     return _fmt_weight(x)
 
 
-def _tup(xs):
+def _tup(xs: Any) -> str:
     from tensorgrad.compiler.codegen_torch import _tup as t
     return t(xs)
 
 
-def _prod(xs):
+def _prod(xs: Any) -> Any:
     from tensorgrad.compiler.codegen_torch import _prod as p
     return p(xs)
 
@@ -228,7 +228,7 @@ class _SDPACell(FusedCell):
     FWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu"
     BWD = "torch.ops.aten._scaled_dot_product_flash_attention_for_cpu_backward"
 
-    def build(self, inputs, params):
+    def build(self, inputs: Sequence[Tensor], params: dict) -> Any:
         seq, key, hs, batch = params["seq"], params["key"], params["hs"], params["batch"]
         out = batch | {seq, hs}
         ins = [batch | {seq, hs}, batch | {key, hs}, batch | {key, hs}]
@@ -239,7 +239,7 @@ class _SDPACell(FusedCell):
         shape_out = {**{e: q.shape[e] for e in batch}, seq: q.shape[seq], hs: q.shape[hs]}
         return Function(sig, tuple(inputs), shape_out)
 
-    def vjp(self, inputs, which, u, params):
+    def vjp(self, inputs: Sequence[Tensor], which: int, u: Tensor, params: dict) -> Tensor:
         seq, key, hs, batch = params["seq"], params["key"], params["hs"], params["batch"]
         q, k = inputs[0], inputs[1]
         ins = [q, k, inputs[2], u] + ([inputs[3]] if params["has_mask"] else [])
@@ -253,7 +253,7 @@ class _SDPACell(FusedCell):
                      for e in [*sorted(batch), role, hs]}
         return Function(sig, tuple(ins), shape_out)
 
-    def lower_fwd(self, lower, t):
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
         p = cast(_FusedFunction, t.signature).params
         batch = sorted(p["batch"])
         q_order = batch + [p["seq"], p["hs"]]
@@ -270,7 +270,7 @@ class _SDPACell(FusedCell):
         node = lower.b.fused_fwd(self.name, p, ops, dims, layout=(len(batch), tuple(perms)))
         return node, out_order
 
-    def lower_bwd(self, lower, t):
+    def lower_bwd(self, lower: Any, t: Function) -> Any:
         sig = cast(_FusedVJP, t.signature)
         p, which = sig.params, sig.which
         batch = sorted(p["batch"])
@@ -291,7 +291,7 @@ class _SDPACell(FusedCell):
                                  layout=(len(batch), tuple(perms), res_perm))
         return node, out_order
 
-    def _qkv(self, cg, node, names, dim_of):
+    def _qkv(self, cg: Any, node: Any, names: Any, dim_of: Any) -> tuple:
         nb, perms = node.layout[0], node.layout[1]
         p0 = perms[0]
         bsz = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
@@ -302,12 +302,12 @@ class _SDPACell(FusedCell):
             return f"{cg._sdpa_canon(node.ops[i], perms[i], names)}.reshape({bsz}, 1, {seqlen}, {E})"
         return r(0, S), r(1, K), r(2, K), (bsz, S, K, E)
 
-    def _site(self, node, names, mask_idx):
+    def _site(self, node: Any, names: Any, mask_idx: int) -> tuple:
         p = node.params_dict()
         return ("sdpa", names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])],
                 p["scale"], p["has_mask"], names[id(node.ops[mask_idx])] if p["has_mask"] else None)
 
-    def emit_fwd(self, cg, node, name, names, dim_of):
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         p = node.params_dict()
         q4, k4, v4, _ = self._qkv(cg, node, names, dim_of)
         mask = cg._sdpa_canon(node.ops[3], node.layout[1][3], names) if p["has_mask"] else "None"
@@ -317,7 +317,7 @@ class _SDPACell(FusedCell):
         return (f"{tmp} = {self.FWD}({q4}, {k4}, {v4}, 0.0, False, "
                 f"attn_mask={mask}, scale={_fmt(p['scale'])}); {name} = {tmp}[0].reshape({bshape})")
 
-    def emit_bwd(self, cg, node, name, names, dim_of):
+    def emit_bwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         p = node.params_dict()
         nb, perms, res_perm = node.layout
         q4, k4, v4, (bsz, S, K, E) = self._qkv(cg, node, names, dim_of)
@@ -345,11 +345,11 @@ class _SDPACell(FusedCell):
         return (f"{prelude}{name} = {tmp}[{node.which}]"
                 f".reshape({gshape}).permute({_tup(map(str, res_perm))})")
 
-    def eval_fwd(self, params, inputs, out_idx=0):
+    def eval_fwd(self, params: dict, inputs: Sequence[torch.Tensor], out_idx: int = 0) -> torch.Tensor:
         from tensorgrad.extras.evaluate import _eval_sdpa_fwd
         return _eval_sdpa_fwd(params, inputs)
 
-    def eval_bwd(self, params, which, inputs):
+    def eval_bwd(self, params: dict, which: int, inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         from tensorgrad.extras.evaluate import _eval_sdpa_bwd
         return _eval_sdpa_bwd(params, which, inputs)
 
@@ -361,7 +361,7 @@ class _LayerNormCell(FusedCell):
     FWD = "torch.ops.aten.native_layer_norm"
     BWD = "torch.ops.aten.native_layer_norm_backward"
 
-    def build(self, inputs, params):
+    def build(self, inputs: Sequence[Tensor], params: dict) -> Any:
         dim, batch = params["dim"], params["batch"]
         out = batch | {dim}
         ins = [batch | {dim}, frozenset({dim}), frozenset({dim})]
@@ -370,7 +370,7 @@ class _LayerNormCell(FusedCell):
         shape_out = {**{e: x.shape[e] for e in batch}, dim: x.shape[dim]}
         return Function(sig, tuple(inputs), shape_out)
 
-    def vjp(self, inputs, which, u, params):
+    def vjp(self, inputs: Sequence[Tensor], which: int, u: Tensor, params: dict) -> Tensor:
         dim, batch = params["dim"], params["batch"]
         x = inputs[0]
         ins = (x, inputs[1], inputs[2], u)
@@ -383,7 +383,7 @@ class _LayerNormCell(FusedCell):
             shape_out = {dim: x.shape[dim]}
         return Function(sig, ins, shape_out)
 
-    def lower_fwd(self, lower, t):
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
         p = cast(_FusedFunction, t.signature).params
         dim, batch = p["dim"], sorted(p["batch"])
         xn, xo = lower.lower(t.inputs[0])
@@ -395,7 +395,7 @@ class _LayerNormCell(FusedCell):
         node = lower.b.fused_fwd(self.name, p, [xn, wn, bn], dims, layout=(len(batch), tuple(perms)))
         return node, out_order
 
-    def lower_bwd(self, lower, t):
+    def lower_bwd(self, lower: Any, t: Function) -> Any:
         sig = cast(_FusedVJP, t.signature)
         p, which = sig.params, sig.which
         dim, batch = p["dim"], sorted(p["batch"])
@@ -412,7 +412,7 @@ class _LayerNormCell(FusedCell):
                                  layout=(len(batch), tuple(perms), res_perm))
         return node, out_order
 
-    def _xwb(self, cg, node, names, dim_of):
+    def _xwb(self, cg: Any, node: Any, names: Any, dim_of: Any) -> tuple:
         nb, perms = node.layout[0], node.layout[1]
         p0 = perms[0]
         rows = _prod([dim_of(node.ops[0].dims[a]) for a in p0[:nb]]) if nb else 1
@@ -422,11 +422,11 @@ class _LayerNormCell(FusedCell):
         b1d = f"{cg._sdpa_canon(node.ops[2], perms[2], names)}.reshape({D})"
         return x2d, w1d, b1d, (rows, D)
 
-    def _site(self, node, names):
+    def _site(self, node: Any, names: Any) -> tuple:
         return ("layer_norm", names[id(node.ops[0])], names[id(node.ops[1])],
                 names[id(node.ops[2])], node.params_dict()["eps"])
 
-    def emit_fwd(self, cg, node, name, names, dim_of):
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         eps = _fmt(node.params_dict()["eps"])
         x2d, w1d, b1d, (rows, D) = self._xwb(cg, node, names, dim_of)
         bshape = _tup(str(dim_of(d)) for d in node.dims)
@@ -435,7 +435,7 @@ class _LayerNormCell(FusedCell):
         return (f"{tmp} = {self.FWD}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
                 f"{name} = {tmp}[0].reshape({bshape})")
 
-    def emit_bwd(self, cg, node, name, names, dim_of):
+    def emit_bwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         nb, perms, res_perm = node.layout
         eps = _fmt(node.params_dict()["eps"])
         x2d, w1d, b1d, (rows, D) = self._xwb(cg, node, names, dim_of)
@@ -462,11 +462,11 @@ class _LayerNormCell(FusedCell):
         return (f"{prelude}{name} = {tmp}[{node.which}]"
                 f".reshape({gshape}).permute({_tup(map(str, res_perm))})")
 
-    def eval_fwd(self, params, inputs, out_idx=0):
+    def eval_fwd(self, params: dict, inputs: Sequence[torch.Tensor], out_idx: int = 0) -> torch.Tensor:
         from tensorgrad.extras.evaluate import _eval_layer_norm_fwd
         return _eval_layer_norm_fwd(params, inputs)
 
-    def eval_bwd(self, params, which, inputs):
+    def eval_bwd(self, params: dict, which: int, inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         from tensorgrad.extras.evaluate import _eval_layer_norm_bwd
         return _eval_layer_norm_bwd(params, which, inputs)
 
@@ -498,7 +498,7 @@ class _AdamWCell(FusedCell):
     name = "adamw"
     n_diff = 0  # the optimizer update is a leaf; nothing differentiates it
 
-    def build(self, inputs, params):
+    def build(self, inputs: Sequence[Tensor], params: dict) -> Any:
         # inputs: (w, g, m, v, c1, c2); outputs: (w', m', v')
         w = inputs[0]
         in_edges = tuple(frozenset(x.edges) for x in inputs)
@@ -508,7 +508,7 @@ class _AdamWCell(FusedCell):
             outs.append(Function(sig, tuple(inputs), dict(w.shape)))
         return tuple(outs)
 
-    def lower_fwd(self, lower, t):
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
         sig = cast(_FusedFunction, t.signature)
         out = tuple(t.edges)
         ops = []
@@ -520,7 +520,7 @@ class _AdamWCell(FusedCell):
         dims = tuple(t.shape[e] for e in out)
         return lower.b.fused_fwd(self.name, sig.params, ops, dims, which=sig.out_idx), out
 
-    def emit_fwd(self, cg, node, name, names, dim_of):
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         p = node.params_dict()
         w, g, m, v, c1, c2 = [cg._logical(o, names) for o in node.ops]
         site = ("adamw",) + tuple(names[id(o)] for o in node.ops)
@@ -539,7 +539,7 @@ class _AdamWCell(FusedCell):
         sel = ("w", "m", "v")[node.which]
         return f"{prelude}{name} = {tmp}_{sel}"
 
-    def eval_fwd(self, params, inputs, out_idx=0):
+    def eval_fwd(self, params: dict, inputs: Sequence[torch.Tensor], out_idx: int = 0) -> torch.Tensor:
         w, g, m, v, c1, c2 = inputs
         names = w.names
         wv, gv, mv, vv = (x.align_to(*names).rename(None) for x in (w, g, m, v))
@@ -572,7 +572,7 @@ class _InverseCell(FusedCell):
     name = "inverse"
     n_diff = 0  # differentiation happened symbolically, upstream of lowering
 
-    def lower_fwd(self, lower, t):
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
         e1, e2 = sorted(t.signature.edges)
         n, o = lower.lower(t.inputs[0])
         rest = [e for e in o if e not in (e1, e2)]
@@ -583,5 +583,31 @@ class _InverseCell(FusedCell):
         dims = tuple(t.shape[e] for e in out_order)
         return lower.b.fused_fwd(self.name, {}, [n], dims), out_order
 
-    def emit_fwd(self, cg, node, name, names, dim_of=None):
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         return f"{name} = torch.linalg.inv({cg._logical(node.ops[0], names)})"
+
+
+@register
+class _DetCell(FusedCell):
+    """Determinant over two named edges -> torch.linalg.det, broadcasting
+    over the rest. Like the inverse cell, differentiation is symbolic and
+    upstream (the cookbook rule d det(A) = det(A) A^-T lives on the
+    signature), so the cell is a forward mapping only. Orientation-free:
+    det(A^T) = det(A)."""
+    name = "det"
+    n_diff = 0
+
+    def lower_fwd(self, lower: Any, t: Function) -> Any:
+        (edges,) = t.signature.inputs
+        e1, e2 = sorted(edges)
+        n, o = lower.lower(t.inputs[0])
+        rest = [e for e in o if e not in (e1, e2)]
+        want = tuple(rest + [e1, e2])
+        if want != tuple(o):
+            n = lower.b.linear([n], [tuple(o.index(e) for e in want)], [1])
+        out_order = tuple(rest)
+        dims = tuple(t.shape[e] for e in out_order)
+        return lower.b.fused_fwd(self.name, {}, [n], dims), out_order
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        return f"{name} = torch.linalg.det({cg._logical(node.ops[0], names)})"
