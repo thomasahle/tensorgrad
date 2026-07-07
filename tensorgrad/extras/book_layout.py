@@ -1043,12 +1043,121 @@ def layout_tensor(
     return layout
 
 
+# a top-level sum wider than this (cm) is stacked vertically (one term per
+# row) instead of laid out horizontally, so its terms stay full-size and
+# legible instead of shrinking to an illegible thread
+STACK_WIDTH = 13.0
+
+
+def _term_extent(sub: "BookLayout") -> tuple[float, float]:
+    """Approximate (top, bottom) y-extent of a laid-out term, including the
+    room its arcs/loops rise above the spine, pendants drop below it, and any
+    nested group's own inner content extends (recursively)."""
+    tops = [0.0]
+    bots = [0.0]
+    for nd in sub.nodes:
+        tops.append(nd.y)
+        bots.append(nd.y)
+        if nd.kind == "group" and nd.sub is not None:
+            gt, gb = _term_extent(nd.sub)
+            tops.append(nd.y + gt)
+            bots.append(nd.y + gb)
+    top, bot = max(tops), min(bots)
+    if sub.derivs:
+        # a Penrose ellipse extends well above AND below the nodes it wraps,
+        # and nested ones grow with depth (capped -- a pathologically nested
+        # term like a Frobenius-of-2nd-derivative can't be spaced clean anyway)
+        grow = 0.55 + 0.3 * min(len(sub.derivs), 3)
+        top += grow
+        bot -= grow
+    elif any(w.kind in ("arc", "loop") for w in sub.wires):
+        top += 0.75
+    else:
+        top += 0.2
+    if any(w.kind == "stub" and w.direction == "up" for w in sub.wires):
+        top += 0.35
+    bot -= 0.2
+    if any(w.kind == "stub" and w.direction == "down" for w in sub.wires):
+        bot -= 0.35
+    return top, bot
+
+
 def layout_any(
-    tensor: Tensor, left: Optional[str] = None, right: Optional[str] = None
+    tensor: Tensor, left: Optional[str] = None, right: Optional[str] = None,
+    stack: Optional[bool] = None,
 ) -> BookLayout:
-    """Layout for any supported tensor, including a top-level Sum."""
+    """Layout for any supported tensor, including a top-level Sum.
+
+    A wide top-level Sum is stacked vertically (one term per row) so its
+    terms stay legible; `stack` forces this on/off (None = auto by width).
+    """
     if not isinstance(tensor, Sum):
         return layout_tensor(tensor, left, right)
+    horizontal = _layout_sum_horizontal(tensor, left, right)
+    if stack is False or (stack is None and horizontal.xmax <= STACK_WIDTH):
+        return horizontal
+    return _layout_sum_vertical(tensor, left, right)
+
+
+def _layout_sum_vertical(
+    tensor: Sum, left: Optional[str], right: Optional[str]
+) -> BookLayout:
+    """Stack a sum's terms vertically: term k on its own row, the operator in
+    a left column, rows spaced by each term's true vertical extent."""
+    out = BookLayout()
+    sign_id = -1
+    offset = 0
+    ROW_GAP = 0.45
+    SIGN_COL = 0.0     # operators sit here
+    TERM_COL = 0.75    # terms start here (room for the sign)
+    cursor = 0.0       # y of the top of the next row
+    max_x = 0.0
+    for idx, (term, weight) in enumerate(zip(tensor.terms, tensor.weights)):
+        sub = layout_tensor(term, left, right)
+        if left is None and sub.left_edge is not None:
+            left = sub.left_edge
+        if right is None and sub.right_edge is not None:
+            right = sub.right_edge
+        top, bot = _term_extent(sub)
+        row_y = cursor - top
+        sign, coeff = _fmt_weight(weight)
+        if idx > 0 or sign == "-" or coeff:
+            sgn = sign if (idx > 0 or sign == "-") else ""
+            tex = f"{sgn}{coeff}".strip()
+            if tex:
+                out.nodes.append(LNode(sign_id, "sign", tex, SIGN_COL, row_y))
+                sign_id -= 1
+        for nd in sub.nodes:
+            out.nodes.append(
+                LNode(nd.id + offset, nd.kind, nd.label,
+                      nd.x + TERM_COL, nd.y + row_y,
+                      sub=nd.sub, width=nd.width, rotated=nd.rotated)
+            )
+        for w in sub.wires:
+            wx = w.x + TERM_COL if w.kind in ("bare", "ring") else w.x
+            out.wires.append(
+                LWire(w.kind,
+                      None if w.a is None else w.a + offset,
+                      None if w.b is None else w.b + offset,
+                      w.direction, w.label, w.arrow, w.span, w.lane,
+                      wx, w.y + (row_y if w.kind in ("bare", "ring") else 0.0))
+            )
+        for enclosed, names in sub.derivs:
+            out.derivs.append(([a + offset for a in enclosed], names))
+        for enclosed, lbl in sub.boxes:
+            out.boxes.append(([a + offset for a in enclosed], lbl))
+        max_local = max((nd.id for nd in sub.nodes), default=-1)
+        offset += max_local + 1
+        max_x = max(max_x, TERM_COL + sub.xmax)
+        cursor = row_y + bot - ROW_GAP
+    out.xmax = max_x
+    return out
+
+
+def _layout_sum_horizontal(
+    tensor: Sum, left: Optional[str], right: Optional[str]
+) -> BookLayout:
+    """Lay a sum's terms side by side on one line."""
     out = BookLayout()
     x = 0.0
     sign_id = -1  # negative ids never collide with term/atom ids
@@ -1394,6 +1503,7 @@ def to_book_tikz(
     scale: Optional[float] = None,
     max_width: Optional[float] = None,
     edge_labels: bool = False,
+    stack: Optional[bool] = None,
 ) -> str:
     """Render a tensorgrad Tensor as book-style TikZ (uses tikz-styles.tex).
 
@@ -1409,8 +1519,12 @@ def to_book_tikz(
             the contraction structure/symmetries would otherwise be
             ambiguous -- e.g. an Isserlis expansion of separate covariance
             factors. Off by default to keep simple chains uncluttered.
+        stack: stack a top-level Sum's terms vertically (one per row) instead
+            of side by side. None (default) = automatic: stack when the
+            horizontal layout would be wider than STACK_WIDTH cm, so long
+            sums (Taylor series, moment expansions) stay legible.
     """
-    layout = layout_any(tensor, left, right)
+    layout = layout_any(tensor, left, right, stack=stack)
     if scale is None and max_width is not None and layout.xmax > max_width > 0:
         scale = max_width / layout.xmax
     # wires a touch lighter than a font glyph's stroke, so a free-edge stub
