@@ -1306,39 +1306,41 @@ _AXIS = "inner sep=1pt, text height=1.55ex, text depth=0.35ex"
 
 
 def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
-                 edge_labels: bool = False) -> None:
+                 edge_labels: bool = False, dy: float = 0.0) -> None:
     name = {n.id: f"{prefix}n{n.id}" for n in layout.nodes}
     nodes = {n.id: n for n in layout.nodes}
     group_side: dict[int, tuple[str, str]] = {}
     for n in layout.nodes:
         x = n.x + dx
+        y = n.y + dy
         if n.kind == "copydot":
-            lines.append(rf"\node[copydot] ({name[n.id]}) at ({x:.2f},{n.y:.2f}) {{}};")
+            lines.append(rf"\node[copydot] ({name[n.id]}) at ({x:.2f},{y:.2f}) {{}};")
         elif n.kind == "group":
             # parenthesized inner sum: two paren nodes + recursive emission.
             # Parens are sized to the inner content's true height (so a tall
-            # or vertically-stacked inner sum gets big brackets) and centred
-            # on its vertical midline.
+            # or vertically-stacked inner sum gets big brackets). The inner
+            # content is CENTRED on the group's spine line (dy shift), so
+            # external wires attach at the paren horizontally -- no diagonal
+            # into a tall stacked group.
             hw = n.width / 2
             assert n.sub is not None
             _gt, _gb = _term_extent(n.sub)
-            py = n.y + (_gt + _gb) / 2
+            sub_dy = y - (_gt + _gb) / 2  # sub midline -> group spine level
             hex_ = max(1.6, (_gt - _gb + 0.2) * 6.3)  # bracket height in ex
             pl, pr = f"{name[n.id]}L", f"{name[n.id]}R"
             lines.append(
-                rf"\node[inner sep=0.5pt] ({pl}) at ({x - hw + 0.12:.2f},{py:.2f})"
+                rf"\node[inner sep=0.5pt] ({pl}) at ({x - hw + 0.12:.2f},{y:.2f})"
                 rf" {{$\left(\vphantom{{\rule{{0pt}}{{{hex_:.1f}ex}}}}\right.$}};"
             )
             lines.append(
-                rf"\node[inner sep=0.5pt] ({pr}) at ({x + hw - 0.12:.2f},{py:.2f})"
+                rf"\node[inner sep=0.5pt] ({pr}) at ({x + hw - 0.12:.2f},{y:.2f})"
                 rf" {{$\left.\vphantom{{\rule{{0pt}}{{{hex_:.1f}ex}}}}\right)$}};"
             )
             group_side[n.id] = (pl, pr)
-            assert n.sub is not None
             # extra breathing room after the '(' before the first term (which
             # may be a wide node like pow_{-1}, else the paren jams into it)
             _emit_layout(n.sub, lines, prefix=f"{name[n.id]}i", dx=x - hw + 0.48,
-                         edge_labels=edge_labels)
+                         edge_labels=edge_labels, dy=sub_dy)
         elif n.kind == "sign":
             # a sum operator is enlarged, spaced out (term-gap widened at
             # layout time) AND bold so it reads clearly as an operator, not as
@@ -1350,7 +1352,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                     else n.label)
             lines.append(
                 rf"\node[{_AXIS}, scale=1.4] ({name[n.id]}) at"
-                rf" ({x:.2f},{n.y:.2f}) {{${body}$}};"
+                rf" ({x:.2f},{y:.2f}) {{${body}$}};"
             )
         else:
             # a transpose is shown with a ^T superscript (clearer than an
@@ -1360,7 +1362,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             if n.rotated:  # insert the transpose superscript inside the $...$
                 label = label[:-1] + r"^{\top}$"
             lines.append(
-                rf"\node[{_AXIS}] ({name[n.id]}) at ({x:.2f},{n.y:.2f})"
+                rf"\node[{_AXIS}] ({name[n.id]}) at ({x:.2f},{y:.2f})"
                 rf" {{{label}}};"
             )
 
@@ -1443,7 +1445,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             )
         elif w.kind == "ring":
             lines.append(
-                rf"\draw ({w.x + dx:.2f},{w.y:.2f}) circle (0.28);"
+                rf"\draw ({w.x + dx:.2f},{w.y + dy:.2f}) circle (0.28);"
             )
         elif w.kind == "stub":
             assert w.a is not None
@@ -1473,10 +1475,10 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             lines.append(rf"\draw ({shift}{src}.{anch}) -- ++{d}{lab};")
         elif w.kind == "bare":
             lines.append(
-                rf"\draw ({w.x + dx:.2f},{w.y:.2f}) -- ++({1.0:.2f},0);"
+                rf"\draw ({w.x + dx:.2f},{w.y + dy:.2f}) -- ++({1.0:.2f},0);"
             )
     _emit_boxes(layout, lines, prefix, name, group_side)
-    _emit_derivs(layout, lines, prefix, name, group_side)
+    _emit_derivs(layout, lines, prefix, name, group_side, dx, dy)
 
 
 def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
@@ -1514,7 +1516,8 @@ def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
 
 
 def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
-                 name: dict[int, str], group_side: dict[int, tuple[str, str]]) -> None:
+                 name: dict[int, str], group_side: dict[int, tuple[str, str]],
+                 dx: float = 0.0, dy: float = 0.0) -> None:
     """Penrose derivative loops: fit-ellipse + boundary dot + whiskers."""
     nodes = {n.id: n for n in layout.nodes}
     for di, (enclosed, new_names) in enumerate(layout.derivs):
@@ -1533,10 +1536,13 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
             if w.kind == "arc" and w.a in eset and w.b in eset:
                 h = (0.32 + 0.16 * w.span + 0.24 * (w.lane - 1)
                      if w.span <= 3 else 0.35 + 0.08 * w.span)
-                mx = (nodes[w.a].x + nodes[w.b].x) / 2
-                parts.append(f"({mx:.2f},{h + 0.12:.2f})")
+                mx = (nodes[w.a].x + nodes[w.b].x) / 2 + dx
+                my = max(nodes[w.a].y, nodes[w.b].y) + h + 0.12 + dy
+                parts.append(f"({mx:.2f},{my:.2f})")
             elif w.kind == "loop" and w.a in eset:
-                parts.append(f"({nodes[w.a].x:.2f},{0.42 + 0.2 * w.lane:.2f})")
+                lx = nodes[w.a].x + dx
+                ly = nodes[w.a].y + 0.42 + 0.2 * w.lane + dy
+                parts.append(f"({lx:.2f},{ly:.2f})")
         # nesting: an ellipse enclosing another loop's region (equal
         # regions nest by creation order: inner derivatives walk first)
         inside = sum(
