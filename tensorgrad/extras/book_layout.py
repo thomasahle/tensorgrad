@@ -841,6 +841,16 @@ def _layout_component(
         if not kids:
             continue
         ux = node_x[u]
+        if g.atoms[u].kind == "group":
+            # a node contracted with a group sits just OUTSIDE its bracket
+            # with a short labeled wire to the paren -- not under the group's
+            # centre (which drew a long wire crossing the group's content)
+            x = ux + halfwidth(u) + 0.4
+            for k in kids:
+                w = subtree_width(k)
+                place_subtree(k, x + w / 2, -0.75)
+                x += w + PEND_GAP
+            continue
         total = sum(subtree_width(k) for k in kids) + PEND_GAP * (len(kids) - 1)
         x = ux - total / 2
         for k in kids:
