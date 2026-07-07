@@ -88,6 +88,9 @@ def _function_vjp(t: Function, u: Tensor, inp: Tensor, i: int) -> Tensor:
     grad.py's grad_function part for input i)."""
     import tensorgrad.functions as F
 
+    if isinstance(t.signature, F._GeluFunction) and i == 0:
+        return F.gelu_vjp(t.inputs[0], u, t.signature.approximate)
+
     if isinstance(t.signature, F._SDPAFunction) and i in (0, 1, 2):
         # Fused reverse VJP: bypass the (dense) Jacobian entirely. u is the
         # output cotangent; sdpa_vjp lowers to the flash-attention backward.

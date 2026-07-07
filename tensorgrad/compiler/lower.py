@@ -329,6 +329,16 @@ class Lowerer:
             perms = [tuple(o1.index(e) for e in out_order), tuple(o2.index(e) for e in out_order)]
             return self.b.map("equal", (), [n1, n2], perms), out_order
 
+        if isinstance(sig, F._GeluFunction):
+            n, o = self.lower(t.inputs[0])
+            return self.b.gelu_fwd(n, tuple(t.shape[e] for e in o), sig.approximate), o
+
+        if isinstance(sig, F._GeluVJPSignature):
+            xn, xo = self.lower(t.inputs[0])
+            un, uo = self.lower(t.inputs[1])
+            u_al = self.b.linear([un], [tuple(uo.index(e) for e in xo)], [1]) if uo != xo else un
+            return self.b.gelu_bwd(xn, u_al, tuple(t.shape[e] for e in xo), sig.approximate), xo
+
         if isinstance(sig, F._SDPAFunction):
             qn, qo = self.lower(t.inputs[0])
             kn, ko = self.lower(t.inputs[1])

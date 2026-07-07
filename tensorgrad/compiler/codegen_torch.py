@@ -37,6 +37,8 @@ from tensorgrad.compiler.ir import (
     ReduceNode,
     SDPABwdNode,
     SDPAFwdNode,
+    GeluBwdNode,
+    GeluFwdNode,
     to_float,
     toposort,
 )
@@ -340,6 +342,10 @@ class TorchCodegen:
                 lines.append(self._emit_sdpa_fwd(node, name, names, dim_of))
             elif isinstance(node, SDPABwdNode):
                 lines.append(self._emit_sdpa_bwd(node, name, names, dim_of))
+            elif isinstance(node, GeluFwdNode):
+                lines.append(self._emit_gelu_fwd(node, name, names))
+            elif isinstance(node, GeluBwdNode):
+                lines.append(self._emit_gelu_bwd(node, name, names))
             elif isinstance(node, LayerNormFwdNode):
                 lines.append(self._emit_layer_norm_fwd(node, name, names, dim_of))
             elif isinstance(node, LayerNormBwdNode):
@@ -2333,6 +2339,18 @@ class TorchCodegen:
             gshape = _tup([str(D)])
         return (f"{prelude}{name} = {tmp}[{node.which}]"
                 f".reshape({gshape}).permute({_tup(map(str, node.res_perm))})")
+
+    def _logical(self, op, names):
+        phys = self._phys_of(op)
+        return self._perm_str(names[id(op)], tuple(phys.index(a) for a in range(op.order)))
+
+    def _emit_gelu_fwd(self, node, name, names) -> str:
+        return (f"{name} = torch.nn.functional.gelu({self._logical(node.ops[0], names)}, "
+                f"approximate='{node.approximate}')")
+
+    def _emit_gelu_bwd(self, node, name, names) -> str:
+        return (f"{name} = torch.ops.aten.gelu_backward({self._logical(node.ops[1], names)}, "
+                f"{self._logical(node.ops[0], names)}, approximate='{node.approximate}')")
 
     def _emit_reduce(self, node: ReduceNode, name, names) -> str:
         (opnd,) = node.ops

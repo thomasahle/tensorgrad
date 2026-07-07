@@ -1039,12 +1039,51 @@ def erf(t: Tensor) -> Tensor:
     return Function(_SimpleFunction("erf", _ErfGradFunction()), (t,), {})
 
 
-def gelu(t: Tensor, approximate: str = "exact") -> Tensor:
+class _GeluFunction(FunctionSignature):
+    """Fused GELU (technology-mapping primitive): elementwise, opaque to
+    differentiation so the compiler maps forward AND derived reverse backward
+    onto torch gelu / gelu_backward kernels."""
+
+    def __init__(self, edges, approximate):
+        self.approximate = approximate
+        super().__init__(f"gelu[a={approximate}]", frozenset(edges), (frozenset(edges),))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        raise NotImplementedError(
+            "F.gelu(fused=True) gradients use reverse mode (compile a gradient FAMILY); "
+            "a lone forward-mode d/dx is not fused -- use the composite F.gelu."
+        )
+
+
+class _GeluVJPSignature(FunctionSignature):
+    """The reverse VJP of fused gelu: inputs (x, u); output = x's edges."""
+
+    def __init__(self, edges, approximate):
+        self.approximate = approximate
+        super().__init__(f"gelu_vjp[a={approximate}]", frozenset(edges),
+                         (frozenset(edges), frozenset(edges)))
+
+    def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
+        raise NotImplementedError("Second-order fused gelu is not fused; use the composite F.gelu.")
+
+
+def gelu_vjp(x, u, approximate) -> Tensor:
+    return Function(_GeluVJPSignature(x.edges, approximate), (x, u), dict(x.shape))
+
+
+def gelu(t: Tensor, approximate: str = "exact", fused: bool = False) -> Tensor:
     """Gaussian Error Linear Unit, like torch.nn.functional.gelu.
 
     approximate="exact" (torch's "none"): x * Phi(x) = x/2 * (1 + erf(x/sqrt(2)))
     approximate="tanh": the tanh approximation used by GPT-style models.
+
+    fused=True (approximate="tanh" only): compiles to torch's fused gelu /
+    gelu_backward kernels instead of the derived tanh chain. Value-identical.
     """
+    if fused:
+        if approximate != "tanh":
+            raise ValueError("fused gelu supports approximate='tanh' only")
+        return Function(_GeluFunction(t.edges, approximate), (t,), dict(t.shape))
     if approximate in ("exact", "none"):
         return t * (1 + erf(t / math.sqrt(2))) / 2
     if approximate == "tanh":

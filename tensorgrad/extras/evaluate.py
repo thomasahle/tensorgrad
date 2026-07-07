@@ -18,6 +18,8 @@ from tensorgrad.functions import (
     _ArgSortFunction,
     _SDPAFunction,
     _SDPAVJPSignature,
+    _GeluFunction,
+    _GeluVJPSignature,
     _LayerNormFunction,
     _LayerNormVJPSignature,
     _OneHotFunction,
@@ -397,6 +399,21 @@ def _sdpa_forward(func, q, k, v, mask):
     att = torch.softmax(scores, dim=-1)
     out = torch.bmm(att, vb).reshape(*bshape, S, E)
     return out.rename(*batch, func.seq, func.hs)
+
+
+@evaluate_function.register
+def _(func: _GeluFunction, x: torch.Tensor) -> torch.Tensor:
+    names = x.names
+    return torch.nn.functional.gelu(x.rename(None), approximate=func.approximate).rename(*names)
+
+
+@evaluate_function.register
+def _(func: _GeluVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
+    x, u = xs[0], xs[1]
+    names = x.names
+    u_al = u.align_to(*names).rename(None)
+    g = torch.ops.aten.gelu_backward(u_al, x.rename(None), approximate=func.approximate)  # pyright: ignore[reportCallIssue]
+    return g.rename(*names)
 
 
 @evaluate_function.register

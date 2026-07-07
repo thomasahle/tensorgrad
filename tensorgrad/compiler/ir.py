@@ -121,6 +121,22 @@ class LayerNormBwdNode(Node):
 
 
 @dataclass(frozen=True, eq=False)
+class GeluFwdNode(Node):
+    approximate: str = "tanh"
+    ops: tuple = ()
+    def operands(self) -> tuple["Node", ...]:
+        return self.ops
+
+
+@dataclass(frozen=True, eq=False)
+class GeluBwdNode(Node):
+    approximate: str = "tanh"
+    ops: tuple = ()
+    def operands(self) -> tuple["Node", ...]:
+        return self.ops
+
+
+@dataclass(frozen=True, eq=False)
 class ConstNode(Node):
     """A constant tensor that only depends on dimension sizes.
     Built once per shape-specialization and closed over by the generated code.
@@ -390,6 +406,14 @@ class Builder:
         dims = (num_classes,) + idx.dims
         key = ("one_hot", id(idx), num_classes)
         return self._intern(key, lambda: GatherNode(dims, "one_hot", 0, (idx,)))
+
+    def gelu_fwd(self, x, dims, approximate) -> Node:
+        return self._intern(("gelu_fwd", id(x), approximate),
+                            lambda: GeluFwdNode(tuple(dims), approximate, (x,)))
+
+    def gelu_bwd(self, x, u, dims, approximate) -> Node:
+        return self._intern(("gelu_bwd", id(x), id(u), approximate),
+                            lambda: GeluBwdNode(tuple(dims), approximate, (x, u)))
 
     def sdpa_fwd(self, ops, dims, scale, has_mask, nb, perms) -> Node:
         key = ("sdpa_fwd", tuple(id(o) for o in ops), scale, has_mask, nb, perms)
