@@ -1,10 +1,7 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property
-from string import ascii_letters
-from types import ModuleType
 from typing import (
-    TYPE_CHECKING,
     AbstractSet,
     Any,
     Generator,
@@ -17,14 +14,20 @@ from typing import (
     final,
 )
 
-if TYPE_CHECKING:  # type-only: tensor.py imports tensorgrad.structure lazily
-    from tensorgrad.structure import Structure
 from abc import ABC, ABCMeta
 from fractions import Fraction
 from numbers import Number
 
 import networkx as nx
 from sympy import Symbol
+
+# The declarative structural identity machinery (graph and fingerprint folds,
+# isomorphism queries). structure.py is duck-typed and imports nothing back
+# from tensorgrad, so this import is acyclic. The four operation modules
+# (simplify, grad, dependson, substitute) DO import this module back, so their
+# delegates below import them locally at the call site instead.
+import tensorgrad.structure as canon
+from tensorgrad.structure import Structure, size_key
 
 # Plain numeric scalars accepted by Tensor's arithmetic operators and as Sum
 # weights. `numbers.Number` covers numeric types that only register with the
@@ -39,50 +42,8 @@ Scalar = Union[int, float, Fraction, Number]
 # non-scalar branch down to Tensor.
 _SCALAR_TYPES = (int, float, Fraction, Number)
 
-# Lazily imported tensorgrad.structure module (declarative structural
-# identity: the graph and fingerprint folds). Loaded on first use to keep
-# `import tensorgrad` light; always available (stdlib + networkx only).
-_canon_mod: Optional[ModuleType] = None
-
-
-def _get_canon() -> ModuleType:
-    global _canon_mod
-    if _canon_mod is None:
-        import tensorgrad.structure as canon
-
-        _canon_mod = canon
-    return _canon_mod
-
-
-# Lazily imported operation modules (tensor.py defines the data types; the
-# operations over the closed node-type set live in their own modules).
-# tensorgrad.simplify holds the simplification rule catalog + engine and
-# tensorgrad.autodiff the differentiation rules; both import this module, so the
-# back edges here must be lazy.
-_simplify_mod: Optional[ModuleType] = None
-_grad_mod: Optional[ModuleType] = None
-
-
-def _get_simplify() -> ModuleType:
-    global _simplify_mod
-    if _simplify_mod is None:
-        import tensorgrad.simplify as simplify
-
-        _simplify_mod = simplify
-    return _simplify_mod
-
-
-def _get_grad() -> ModuleType:
-    global _grad_mod
-    if _grad_mod is None:
-        import tensorgrad.autodiff as grad
-
-        _grad_mod = grad
-    return _grad_mod
-
-
 class TensorMeta(ABCMeta):
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
         """Calling Tensor(...) is a shortcut to wrapping the argument in a tensor."""
 
         # Since we're hacking the metaclass, we need to check if we're being called on a subclass
@@ -116,7 +77,7 @@ class Tensor(metaclass=TensorMeta):
     _shape: dict[str, Symbol]
     _symmetries: set[frozenset[str]]
 
-    def __class_getitem__(cls, edges) -> Any:
+    def __class_getitem__(cls, edges: Any) -> Any:
         """Tensor["batch", "seq"] — an edge-set annotation (tensorgrad.typing).
 
         Edges are names, not positions, so the annotation is a SET contract:
@@ -130,18 +91,6 @@ class Tensor(metaclass=TensorMeta):
     def edges(self) -> KeysView[str]:
         """Returns an _ordered_ set of edge names"""
         return self.shape.keys()
-
-    def to_book_tikz(self, **kwargs) -> str:
-        """Render this tensor as a book-style tensor diagram (TikZ).
-
-        See :func:`tensorgrad.extras.book_layout.to_book_tikz` for options
-        (``left``/``right`` to fix free-edge sides, ``max_width`` to fit wide
-        diagrams). Call ``.simplify()`` first if the expression still contains
-        derivatives you want evaluated.
-        """
-        from tensorgrad.extras.book_layout import to_book_tikz
-
-        return to_book_tikz(self, **kwargs)
 
     @property
     def shape(self) -> dict[str, Symbol]:
@@ -262,7 +211,9 @@ class Tensor(metaclass=TensorMeta):
         Returns:
             A simplified version of this tensor.
         """
-        return _get_simplify().simplify(self, args)
+        from tensorgrad.simplify import simplify
+
+        return simplify(self, args)
 
     def _simplify(self, args: dict[str, Any]) -> "Tensor":
         # Fallback protocol for types outside the core dispatch table in
@@ -295,18 +246,24 @@ class Tensor(metaclass=TensorMeta):
         # we originally didn't have broadcasting, but we want to add it.
         # Maybe we could even remove broadcasted edges of x as well.
         # The tricky thing is to ensure it doesn't clash with the existing edges.
+        from tensorgrad.substitute import _substitute_memo
+
         return _substitute_memo(self, x, y, {})
 
     def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        """Override this method to implement substitution.
-        Recurse into children via _substitute_memo(child, x, y, memo)."""
+        """The out-of-core `substitute` protocol hook (see tensorgrad.substitute).
+
+        The core node types register their rule in tensorgrad.substitute;
+        types outside that set reach this method via the dispatch default.
+        The base raises: Derivative and the Expectation extra deliberately do
+        not support substitution."""
         raise NotImplementedError
 
     def __hash__(self) -> int:
         # Isomorphism-invariant hash (a == b implies equal hashes), computed
         # compositionally and memoized on the object by structure.canon_info,
         # so shared subexpressions are hashed once.
-        return _get_canon().structural_hash(self)
+        return canon.structural_hash(self)
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Tensor):
@@ -323,14 +280,21 @@ class Tensor(metaclass=TensorMeta):
         and Derivative._simplify queries it per Derivative node. Same disease
         and cure as the memoized Tensor.substitute.
         """
+        from tensorgrad.dependson import _dispatch_depends_on
+
         # (cast: pyright resolves instance `__dict__` through the metaclass as
         # a read-only mappingproxy; instances have a plain mutable dict.)
         cache = cast(dict[str, Any], self.__dict__).setdefault("_depends_on_cache", {})
         if (hit := cache.get(id(x))) is None:
-            cache[id(x)] = hit = (self._depends_on(x), x)  # x ref pins the id
+            cache[id(x)] = hit = (_dispatch_depends_on(self, x), x)  # x ref pins the id
         return hit[0]
 
     def _depends_on(self, x: "Variable") -> bool:
+        """The out-of-core `depends_on` protocol hook (see tensorgrad.dependson).
+
+        The core node types register their rule in tensorgrad.dependson; types
+        outside that set (the Expectation extra) reach this method via the
+        dispatch default and override it. Reaching the base is a bug."""
         raise NotImplementedError
 
     def structure(self) -> "Structure":
@@ -344,46 +308,14 @@ class Tensor(metaclass=TensorMeta):
 
     def edge_structural_graph(
         self, match_edges: bool = True, edge_names: Optional[dict[str, Any]] = None
-    ) -> tuple[nx.MultiDiGraph, list[str]]:
-        """
-        Build a structural graph of the tensor with dummy nodes for outer edges.
-
-        Args:
-            match_edges: If True the names are used to match edges.
-            edge_names: An optional mapping of edge names.
-
-        Returns:
-            A tuple (G, edge_list) where G is the graph and edge_list is the list of edge names.
-        """
-        from tensorgrad.structure import build_graph
-
-        if edge_names is None:
-            edge_names = {}
-
-        G, edges = build_graph(self)
-
-        for e in edges.keys():
-            if e not in edge_names:
-                edge_names[e] = ("Outer Edge", e) if match_edges else ""
-
-        for e, node in edges.items():
-            n = G.number_of_nodes()
-            G.add_node(n, name=edge_names[e])
-            G.add_edge(node, n)
-        return G, list(edges.keys())
+    ) -> "tuple[nx.MultiDiGraph, list[str]]":
+        """Build a structural graph of the tensor with dummy nodes for outer
+        edges (see tensorgrad.structure.edge_structural_graph)."""
+        return canon.edge_structural_graph(self, match_edges, edge_names)
 
     def graph_to_string(self) -> str:
-        """
-        Returns an ASCII tree-like representation of the structural graph.
-
-        Returns:
-            A string showing the graph structure.
-        """
-        G, _ = self.edge_structural_graph(match_edges=True)
-        # (networkx accepts an attribute name for with_labels; the stub says bool)
-        return "\n".join(
-            nx.generate_network_text(G, with_labels="name", sources=[0])  # pyright: ignore[reportArgumentType]
-        )
+        """Returns an ASCII tree-like representation of the structural graph."""
+        return canon.graph_to_string(self)
 
     # Overloaded operators.
     # All binary operators accept a plain numeric scalar (int, float,
@@ -471,7 +403,8 @@ class Tensor(metaclass=TensorMeta):
         self, other: "Tensor", match_edges: bool = False, edge_names: None | dict[str, Any] = None
     ) -> bool:
         """
-        Test whether this tensor is isomorphic to another tensor.
+        Test whether this tensor is isomorphic to another tensor
+        (see tensorgrad.structure.is_isomorphic).
 
         Args:
             other: The tensor to compare with.
@@ -481,68 +414,17 @@ class Tensor(metaclass=TensorMeta):
         Returns:
             True if the tensors are isomorphic; False otherwise.
         """
-        canon = _get_canon()
-        a, b = canon.canon_info(self), canon.canon_info(other)
-        # Sound reject: any isomorphism (with or without edge matching)
-        # implies equal invariant hashes.
-        if a.coarse_fp != b.coarse_fp:
-            return False
-        if a.refined_fp == b.refined_fp:
-            if not match_edges and not edge_names:
-                # Sound accept: equal fingerprints imply isomorphic.
-                return True
-
-            # Name-sensitive accept: by (I1) equal fingerprints yield a
-            # color-preserving isomorphism, and by (I2) any
-            # color-preserving edge permutation is an automorphism, so a
-            # label-preserving isomorphism exists iff the (color, label)
-            # multisets agree. (Labels mirror edge_structural_graph.)
-            def label(e: str):
-                default = ("Outer Edge", e) if match_edges else ""
-                return default if edge_names is None else edge_names.get(e, default)
-
-            if Counter((a.refined_colors[e], label(e)) for e in self.edges) == Counter(
-                (b.refined_colors[e], label(e)) for e in other.edges
-            ):
-                return True
-        # Ambiguous (hash-equal but fingerprint/label-distinct): only now
-        # pay for the exact nx isomorphism test.
-        G1, _ = self.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
-        G2, _ = other.edge_structural_graph(match_edges=match_edges, edge_names=edge_names)
-        return nx.is_isomorphic(G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name"))
-        # return nx.vf2pp_is_isomorphic(G1, G2, node_label="name")
+        return canon.is_isomorphic(self, other, match_edges, edge_names)
 
     def isomorphisms(self, other: "Tensor") -> Generator[dict[str, str], None, None]:
-        """
-        Yield all isomorphisms (edge renamings) between self and other.
-
-        Args:
-            other: The other tensor to compare.
-
-        Yields:
-            Dictionaries mapping edge names in self to edge names in other.
-        """
-        G1, edges1 = self.edge_structural_graph(match_edges=False)
-        G2, edges2 = other.edge_structural_graph(match_edges=False)
-        for matching in nx.algorithms.isomorphism.MultiDiGraphMatcher(
-            G1, G2, node_match=lambda n1, n2: n1.get("name") == n2.get("name")
-        ).isomorphisms_iter():
-            # Matching is a dict {i: j} where i is the node in G1 and j is the node in G2
-            # We are only interested in then `len(self.edges)` last nodes, which correspond to the outer edges
-            start_i = G1.number_of_nodes() - len(self.edges)
-            start_j = G2.number_of_nodes() - len(self.edges)
-            yield {
-                edges1[i - start_i]: edges2[j - start_j]
-                for i, j in matching.items()
-                if i >= start_i and j >= start_j
-            }
+        """Yield all isomorphisms (edge renamings) between self and other
+        (see tensorgrad.structure.isomorphisms)."""
+        return canon.isomorphisms(self, other)
 
     @cached_property
     def symmetries(self) -> set[frozenset[str]]:
         """Return the orbits of the automorphism group of the tensor."""
-        # The orbits are the sets of edges that ever get mapped to each other.
-        G = nx.Graph([(i, j) for mapping in self.isomorphisms(self) for i, j in mapping.items()])
-        symmetries = set(map(frozenset, nx.connected_components(G)))
+        symmetries = canon.symmetry_orbits(self)
         if hasattr(self, "_symmetries"):
             assert symmetries == self._symmetries, f"{symmetries=} {self._symmetries=}"
         return symmetries
@@ -593,7 +475,8 @@ class Tensor(metaclass=TensorMeta):
         """
         shape0 = tuple(shape0)
         if len(shape0) == 1 and isinstance(shape0[0], dict):
-            shape0, shape1 = (), shape0[0] | shape1
+            # mypy can't see that len==1 makes shape0[0] valid here.
+            shape0, shape1 = (), shape0[0] | shape1  # type: ignore[misc]
         syms = tuple(s for s in shape0 if isinstance(s, Symbol))
         if len(syms) != len(shape0):
             raise ValueError("Shape0 must be a tuple of sympy symbols")
@@ -679,7 +562,6 @@ class Variable(Tensor):
 
     @staticmethod
     def _equation_key(lhs: "Tensor", rhs: "Tensor") -> tuple:
-        canon = _get_canon()
         return (
             canon.structural_hash(lhs),
             tuple(sorted(lhs.edges)),
@@ -860,8 +742,6 @@ class Variable(Tensor):
         return f"Variable({', '.join(args)}){symmetries}{constraints}"
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure, size_key
-
         # Constraints are part of the label (like the variable name itself),
         # so a constrained variable is never isomorphic to an unconstrained
         # one, and rename/substitute (which go through isomorphism) keep
@@ -884,17 +764,6 @@ class Variable(Tensor):
         if not kwargs:
             return self
         return Rename(self, kwargs)
-
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        # Name pre-check: Variables with different names are never isomorphic
-        # (the name is part of the structural graph), so the expensive
-        # isomorphism __eq__ only runs on same-named variables.
-        if self is x or (self.name == x.name and x == self):
-            return y
-        return self
-
-    def _depends_on(self, x: "Variable") -> bool:
-        return x == self
 
 
 ################################################################################
@@ -927,9 +796,6 @@ class Rename(Tensor):
         argstring = ", ".join(f'{k}="{v}"' for k, v in self.mapping.items())
         return f"{self.tensor}.rename({argstring})"
 
-    def _depends_on(self, x: "Variable") -> bool:
-        return self.tensor.depends_on(x)
-
     @classmethod
     def merge_renames(cls, *renames: dict[str, str]) -> dict[str, str]:
         """
@@ -956,13 +822,7 @@ class Rename(Tensor):
     def _rename(self, **kwargs: str) -> Tensor:
         return Rename(self.tensor, self.merge_renames(self.mapping, kwargs))
 
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        inner = _substitute_memo(self.tensor, x, y, memo)
-        return self if inner is self.tensor else Rename(inner, self.mapping)
-
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure
-
         # Rename is the only tensor that doesn't exist structurally
         # (transparent=True): the folds splice the inner tensor through and
         # just relocate its free edges.  This allows
@@ -1001,8 +861,6 @@ class Constant(Tensor, ABC):
         return type(self)(_symmetries=symmetries, **self._shape)
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure, size_key
-
         # Like Variable, but orbits are anonymous (no edge names in the
         # port): orbits of equal size are interchangeable as blocks.
         junctions = []
@@ -1012,21 +870,17 @@ class Constant(Tensor, ABC):
             junctions.append(frozenset({port} | {("free", e) for e in orbit}))
         return Structure(("Constant", type(self).__name__), junctions=frozenset(junctions))
 
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        return self
-
     def _rename(self, **kwargs: str) -> Tensor:
         return type(self)(_symmetries=None, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
     def _grad(self, x: Variable, new_names: dict[str, str]) -> Tensor:
-        # Thin delegate to the zero-gradient rule (tensorgrad.autodiff
+        # Thin delegate to the zero-gradient rule (tensorgrad.grad
         # dispatches Delta/Zero there directly; this protocol fallback covers
         # the Constant subclasses outside the core table: Convolution,
         # Reshape, Affine).
-        return _get_grad().grad_constant(self, x, new_names)
+        from tensorgrad.grad import grad_constant
 
-    def _depends_on(self, x: "Variable") -> bool:
-        return False
+        return grad_constant(self, x, new_names)
 
 
 class Delta(Constant):
@@ -1064,8 +918,6 @@ class Delta(Constant):
         return Delta(self.size, *[kwargs.get(e, e) for e in self.edges])
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure, size_key
-
         # ALL edges are the same wire: one junction with one port.  The order
         # of the Delta is implied by the junction's free-edge count.
         sk = size_key(self._size)
@@ -1362,15 +1214,13 @@ class Function(Tensor):
         return res
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure
-
         # Inputs are ordered (slotted roles 0..n-1).  A consumed edge wires
         # its input to an anonymous per-input port (which consumed edges an
         # input provides is distinguished by the input's own structure, not
         # by the edge names); a non-consumed input edge broadcasts through as
         # a free edge; output edges are ports named after the output edge —
         # output NAMES are part of the function's identity.
-        junctions = set()
+        junctions: set[frozenset[tuple[Any, ...]]] = set()
         for k, (t, es) in enumerate(zip(self.inputs, self.signature.inputs)):
             for e in t.edges:
                 if e in es:
@@ -1392,15 +1242,6 @@ class Function(Tensor):
         args.append(f"inputs=[{', '.join(map(repr, self.inputs))}]")
         args.append(f"shape_out={self.shape_out}")
         return f"Function({', '.join(args)})"
-
-    def _depends_on(self, x: "Variable") -> bool:
-        return any(t.depends_on(x) for t in self.inputs)
-
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        inputs = [_substitute_memo(t, x, y, memo) for t in self.inputs]
-        if all(a is b for a, b in zip(inputs, self.inputs)):
-            return self
-        return Function(self.signature, inputs, self.shape_out)
 
 
 class Derivative(Tensor):
@@ -1433,8 +1274,6 @@ class Derivative(Tensor):
         )
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure
-
         # The wrt-variable is a slotted child (its full identity counts); each
         # new_names edge is a free edge on the same wire as the corresponding
         # edge of x (so symmetric x-edges make the new edges interchangeable,
@@ -1445,9 +1284,6 @@ class Derivative(Tensor):
 
     def __repr__(self) -> str:
         return f"Derivative({self.tensor}, {self.x}, {self.new_names})"
-
-    def _depends_on(self, x: "Variable") -> bool:
-        return self.tensor.depends_on(x)
 
 
 ################################################################################
@@ -1516,12 +1352,6 @@ class Product(Tensor):
             used_edges.update(rename.values())  # Later renames should not clash with this one
         return Product(res)
 
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        factors = [_substitute_memo(t, x, y, memo) for t in self.factors]
-        if all(a is b for a, b in zip(factors, self.factors)):
-            return self
-        return Product(factors)
-
     def __repr__(self) -> str:
         if len(self.factors) <= 1:
             return f"Product({self.factors})"
@@ -1551,8 +1381,6 @@ class Product(Tensor):
         return components
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure
-
         # Factors are an interchangeable multiset (all the same role).  An
         # edge name shared by exactly two factors is an inner wire (the name
         # itself is discarded); a single-occurrence edge is free.
@@ -1560,7 +1388,7 @@ class Product(Tensor):
         for i, f in enumerate(self.factors):
             for e in f.edges:
                 owners[e].append(i)
-        junctions = set()
+        junctions: set[frozenset[tuple[Any, ...]]] = set()
         for e, os in owners.items():
             if len(os) == 2:
                 junctions.add(frozenset({("child", os[0], e), ("child", os[1], e)}))
@@ -1569,56 +1397,6 @@ class Product(Tensor):
         return Structure(
             ("Product",), tuple(self.factors), ("factor",) * len(self.factors), frozenset(junctions)
         )
-
-    def _depends_on(self, x: "Variable") -> bool:
-        return any(t.depends_on(x) for t in self.factors)
-
-    def _to_einsum_eq(self) -> tuple[list[Tensor], str]:
-        """
-        Convert the product to an einsum equation.
-
-        The main utility is that Delta tensors are mostly removed in favor of hyper edges, which are more efficient to compute.
-        However, some Deltas are still needed, so we return the list of tensors that should be
-        used with the einsum equation.
-
-        Returns:
-            A tuple (factors, equation) where factors is a list of tensors and
-            equation is the corresponding einsum string.
-
-        Raises:
-            ValueError: If there are too many unique edges.
-        """
-        unique_edges = {e for t in self.factors for e in t.edges}
-        if (n := len(unique_edges)) > 52:
-            raise ValueError(f"Too many unique edges ({n} > 52) to convert to einsum equation")
-        name_to_idx = defaultdict(lambda: ascii_letters[len(name_to_idx)])
-
-        # The main challenge is to convert Delta tensors to hyper edges
-        factors = []
-        for ft in self.factors:
-            if isinstance(ft, Delta) and ft.order >= 1:
-                output_edges = ft.edges & self.edges
-                input_edges = ft.edges - output_edges
-                # However, einsum doesn't support duplicated indices in the output, like i->ii,
-                # So we need to recreate some Delta tensors manually
-                if len(input_edges) >= 1:
-                    e0 = list(input_edges)[0]
-                    if len(output_edges) <= 1:
-                        for e in ft.edges:
-                            name_to_idx[e] = name_to_idx[e0]
-                    if len(output_edges) > 1:
-                        for e in input_edges:
-                            name_to_idx[e] = name_to_idx[e0]
-                        compressed_delta = Delta(ft._size, e0, *output_edges)
-                        factors.append(compressed_delta)
-                else:
-                    factors.append(ft)
-            else:
-                factors.append(ft)
-
-        equation = ",".join("".join(name_to_idx[e] for e in ft.edges) for ft in factors)
-        equation += "->" + "".join(name_to_idx[e] for e in self.edges)
-        return factors, equation
 
 
 ################################################################################
@@ -1667,18 +1445,10 @@ class Sum(Tensor):
     def _rename(self, **kwargs: str) -> Tensor:
         return Sum([t.rename(**kwargs) for t in self.terms], self.weights)
 
-    def _substitute(self, x: "Variable", y: "Tensor", memo: dict) -> "Tensor":
-        terms = [_substitute_memo(t, x, y, memo) for t in self.terms]
-        if all(a is b for a, b in zip(terms, self.terms)):
-            return self
-        return Sum(terms, self.weights)
-
     def __repr__(self) -> str:
         return f"Sum({self.terms}, {self.weights})"
 
     def structure(self) -> "Structure":
-        from tensorgrad.structure import Structure
-
         # Terms with equal weights are interchangeable (roles carry str(w),
         # matching numerically-equal weights of different types the same way
         # the old nx labels f"Weight {w}" did).  Per free edge, one hyper-
@@ -1691,9 +1461,6 @@ class Sum(Tensor):
         return Structure(
             ("Sum",), tuple(self.terms), tuple(("term", str(w)) for w in self.weights), junctions
         )
-
-    def _depends_on(self, x: "Variable") -> bool:
-        return any(t.depends_on(x) for t in self.terms)
 
 
 ################################################################################
@@ -1732,18 +1499,6 @@ def peel_rename(t: Tensor) -> Tensor:
     # (Tensor.rename guarantees this; merged/hand-built mappings may not be).
     mapping = {k: v for k, v in mapping.items() if k in inner.edges and k != v}
     return inner._rename(**mapping) if mapping else inner
-
-
-def _substitute_memo(t: Tensor, x: "Variable", y: Tensor, memo: dict) -> Tensor:
-    """Memoized (by object identity) driver for Tensor.substitute.
-
-    The memo keys are ids of descendants of the substitution root, which stay
-    alive for the duration of the call, so ids cannot be recycled."""
-    res = memo.get(id(t))
-    if res is None:
-        res = t._substitute(x, y, memo)
-        memo[id(t)] = res
-    return res
 
 
 def _group_edges(tensors: Iterable[Tensor]) -> dict[str, list[Tensor]]:

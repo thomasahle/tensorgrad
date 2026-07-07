@@ -53,8 +53,8 @@ A 2-port variable forced into reversed port order (a transpose, e.g. the
 A^T term of a gradient) is drawn rotated 180 degrees, but only when it has
 a free edge -- internal contraction nodes stay upright.
 
-Entry points (all equivalent): ``tensorgrad.to_book_tikz(t, **opts)``,
-``t.to_book_tikz(**opts)``, or this module's ``to_book_tikz``.  Options:
+Entry points: ``tensorgrad.to_book_tikz(t, **opts)`` or this module's
+``to_book_tikz``.  Options:
 ``left=``/``right=`` fix a free edge's side; ``max_width=`` scales a
 too-wide diagram down to fit; ``scale=`` sets an explicit factor.
 
