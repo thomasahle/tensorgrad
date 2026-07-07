@@ -32,11 +32,13 @@ symbolic gradients match finite differences to 1e-10.
   suite's simplest optimizer yet: w - lr*g, no state). A second program
   is the posterior predictive (mean and variance at test points).
 
-* float64: log|K| genuinely underflows float32 (a hundred eigenvalues
-  near sn^2 multiply to ~1e-200), so this example sets the default dtype
-  and the compiled programs follow the inputs. The principled fix -- a
-  stabilize-pass rewrite of log(det(K)) onto torch.linalg.slogdet -- is
-  the same pattern that turns exp/sum-exp into softmax today.
+* This runs in PLAIN FLOAT32 because of two linalg peepholes
+  (tensorgrad/compiler/peepholes.py): log(det(K)) -- whose raw det
+  genuinely underflows float32, a hundred eigenvalues near sn^2 multiply
+  to ~1e-200 -- compiles to torch.linalg.slogdet, and the K^-1 y
+  contraction compiles to torch.linalg.solve without materializing the
+  inverse. Same philosophy as exp/sum-exp -> softmax: write the algebra,
+  the compiler picks the kernel.
 
 The task: 128 noisy samples of sin(2x) + x/2. PASS = the learned GP
 predicts a held-out grid to RMSE < 0.05 (noise is 0.1) and recovers the
@@ -55,7 +57,6 @@ from tensorgrad import Delta, Variable
 
 torch.set_grad_enabled(False)
 torch.set_num_threads(2)
-torch.set_default_dtype(torch.float64)  # log|K| underflows float32; see above
 
 # ----------------------------------------------------------------- config
 

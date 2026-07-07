@@ -611,3 +611,35 @@ class _DetCell(FusedCell):
 
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         return f"{name} = torch.linalg.det({cg._logical(node.ops[0], names)})"
+
+
+@register
+class _SolveCell(FusedCell):
+    """torch.linalg.solve, created ONLY by the linalg peephole
+    (compiler/peepholes.py) from inverse-then-contract patterns -- there is
+    deliberately no F.solve: users write the algebra inverse(A) @ b and the
+    compiler picks the kernel, exactly like exp/sum-exp becomes softmax.
+    ops = (A, b) with A pre-aligned (e1, e2) by the inverse cell's lowering;
+    params carry whether the contraction hit the transposed side."""
+    name = "solve"
+    n_diff = 0
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        A = cg._logical(node.ops[0], names)
+        b = cg._logical(node.ops[1], names)
+        if node.params_dict()["transposed"]:
+            A = f"{A}.transpose(-2, -1)"
+        return f"{name} = torch.linalg.solve({A}, {b})"
+
+
+@register
+class _SlogdetCell(FusedCell):
+    """log|det(A)| via torch.linalg.slogdet, created ONLY by the linalg
+    peephole from log(det(A)). det(K) of a moderate SPD kernel underflows
+    float32 while its log is a perfectly ordinary number; slogdet computes
+    the log directly."""
+    name = "slogdet"
+    n_diff = 0
+
+    def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
+        return f"{name} = torch.linalg.slogdet({cg._logical(node.ops[0], names)})[1]"

@@ -40,6 +40,7 @@ from tensorgrad.compiler.ir import (
 )
 from tensorgrad.compiler.affine import indicator_tensor
 from tensorgrad.compiler.cells import CELLS
+from tensorgrad.compiler.peepholes import linalg_peepholes
 from tensorgrad.compiler.consolidate import consolidate_outputs
 from tensorgrad.compiler.factor import factor_outputs
 from tensorgrad.compiler.layout import assign_layouts, matmul_groups
@@ -211,6 +212,7 @@ class TorchCodegen:
         # Stability pass: re-fuse expanded exp/sum-exp ratios, log-sum-exp and
         # exp-ratio tanh into stable softmax/log_softmax/tanh/logsumexp forms.
         outputs = stabilize_outputs(self.builder, outputs)
+        outputs = linalg_peepholes(self.builder, outputs)
         # Second round: stabilization introduces new Linear structure (the
         # ±tanh splits, softmax/sum-exp nodes) whose like terms only the
         # factoring pass can merge/cancel, and re-factoring in turn co-locates
@@ -230,6 +232,7 @@ class TorchCodegen:
         # once numerator and denominator share one exponent node.
         outputs = consolidate_outputs(self.builder, outputs)
         outputs = stabilize_outputs(self.builder, outputs)
+        outputs = linalg_peepholes(self.builder, outputs)
         outputs = consolidate_outputs(self.builder, outputs)
 
         order = toposort([node for node, _ in outputs])
