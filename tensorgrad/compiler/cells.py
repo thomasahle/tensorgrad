@@ -124,6 +124,16 @@ class FusedCell:
         raise NotImplementedError
 
 
+    # -- mapper side: the cell's IR pattern. EDA cells carry their own
+    # matching pattern; the peephole pass (compiler/peepholes.py) is one
+    # generic engine over the registry, so adding a mapping touches only
+    # the cell. Return the replacement node built through the Builder, or
+    # None when `node` is not an instance of the pattern. Misses degrade
+    # performance, never correctness.
+    def match(self, b: Any, node: Any) -> Any:
+        return None
+
+
 CELLS: dict[str, FusedCell] = {}
 
 
@@ -624,6 +634,39 @@ class _SolveCell(FusedCell):
     name = "solve"
     n_diff = 0
 
+    def match(self, b: Any, node: Any) -> Any:
+        """einsum contracting ONE matrix edge of inverse(A) with a vector
+        rhs -> solve(A, rhs). v1 scope: plain matrix inverse (order 2, no
+        batch), vector right-hand side, no constraints/diagonals/weights."""
+        from tensorgrad.compiler.ir import EinsumNode, FusedFwdNode
+
+        if not isinstance(node, EinsumNode) or len(node.ops) != 2:
+            return None
+        if node.constraints or node.weight != 1:
+            return None
+        for ii in (0, 1):
+            inv = node.ops[ii]
+            if isinstance(inv, FusedFwdNode) and inv.cell_name == "inverse" and inv.order == 2:
+                break
+        else:
+            return None
+        rhs = node.ops[1 - ii]
+        inv_subs, rhs_subs = node.in_subs[ii], node.in_subs[1 - ii]
+        if rhs.order != 1 or len(set(inv_subs)) != 2:
+            return None
+        (rhs_wire,) = rhs_subs
+        if rhs_wire not in inv_subs or rhs_wire in node.out_subs:
+            return None  # the rhs axis must contract with the inverse
+        keep_wire = inv_subs[0] if inv_subs[1] == rhs_wire else inv_subs[1]
+        if node.out_subs != (keep_wire,):
+            return None
+        # Which inverse axis contracted? The inverse cell's convention puts
+        # axes (e2, e1) with inv[e2, e1] = inv(A[e1, e2]): axis 1 -> A^-1 rhs
+        # (plain solve), axis 0 -> A^-T rhs (solve against the transpose).
+        transposed = inv_subs.index(rhs_wire) == 0
+        A = inv.ops[0]  # aligned (e1, e2) by the inverse cell's lowering
+        return b.fused_fwd("solve", {"transposed": transposed}, [A, rhs], node.dims)
+
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         A = cg._logical(node.ops[0], names)
         b = cg._logical(node.ops[1], names)
@@ -640,6 +683,17 @@ class _SlogdetCell(FusedCell):
     the log directly."""
     name = "slogdet"
     n_diff = 0
+
+    def match(self, b: Any, node: Any) -> Any:
+        """log(det(A)) -> slogdet(A)[1] (log|det|; SPD kernels in mind)."""
+        from tensorgrad.compiler.ir import FusedFwdNode, MapNode
+
+        if not (isinstance(node, MapNode) and node.op == "log" and len(node.ops) == 1):
+            return None
+        det = node.ops[0]
+        if isinstance(det, FusedFwdNode) and det.cell_name == "det":
+            return b.fused_fwd("slogdet", {}, list(det.ops), node.dims)
+        return None
 
     def emit_fwd(self, cg: Any, node: Any, name: str, names: Any, dim_of: Any = None) -> str:
         return f"{name} = torch.linalg.slogdet({cg._logical(node.ops[0], names)})[1]"
