@@ -1271,10 +1271,16 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             # edge_labels is on (keeps simple chains like -A-B- uncluttered)
             show = w.label and (w.direction in ("up", "down") or edge_labels)
             if show:
+                # a left/right edge label sits just ABOVE the wire near its
+                # free end (offset to the side, like the cookbook) rather than
+                # inline -- inline labels eat horizontal space and collide with
+                # the neighbouring component's label
+                # extend the label up and back OVER its own wire (toward the
+                # node), so it never reaches into the gap to the next component
                 anchor = {"up": "south", "down": "north",
-                          "left": "east", "right": "west"}[w.direction]
+                          "left": "south west", "right": "south east"}[w.direction]
                 lab = (rf" node[anchor={anchor}, font=\scriptsize,"
-                       rf" inner sep=2pt] {{${_tex_edge(w.label)}$}}")
+                       rf" inner sep=1pt] {{${_tex_edge(w.label)}$}}")
             src = name[w.a]
             if w.a in group_side:
                 src = group_side[w.a][0 if w.direction == "left" else 1]
