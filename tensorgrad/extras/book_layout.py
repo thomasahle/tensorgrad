@@ -91,7 +91,7 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 PITCH = 0.62  # horizontal distance between adjacent spine node centers
-CHAR_W = 0.11  # extra pitch per label character beyond the first
+CHAR_W = 0.14  # extra pitch per label character beyond the first
 STUB = 0.32  # length of a free-edge stub
 PENDANT_DY = 0.55  # vertical drop of a hanging branch level
 MIDSTUB = 0.4  # length of an interior free-edge stub (drawn upward)
