@@ -30,18 +30,33 @@ The output is renderer-neutral geometry (``BookLayout``) plus a TikZ emitter
 (paper/chapters/tikz-styles.tex: ``copydot`` etc.), so generated code can be
 pasted into the book.
 
-Supported today: Variable, Delta (any order), Product, Rename, Sum (top
-level AND as parenthesized product factors), and Function (application
-arrows: solid for consumed edges, densely dotted for elementwise; broadcast
-edges stay on the argument, as the book draws them).  Transposed 2-port
-variables (spine forces reversed port order) are drawn rotated 180 degrees,
-the book's transpose convention.  Unevaluated Derivative nodes render as
-Penrose derivative loops: a fit-ellipse around the differentiated
-subexpression with a dot on the boundary and labeled whiskers for the new
-edges (one whisker bends left; a pair bends left/right, like the book's
-\dloop/\dwhiskers).  Nested derivatives nest their ellipses.  A derivative
-whose new edge is contracted onward still raises NotImplementedError --
-simplify() first.
+The whole tensorgrad language is supported:
+
+* **Variable / Zero** -- labelled nodes (Zero is a ``0`` node).
+* **Delta** (any order) -- order 2 is an identity wire, order 0 a scalar
+  ``|n|``, order >= 3 a copy-dot; a closed ring of identities is a circle.
+* **Product** -- contraction; shared edges become wires, the rest stubs.
+* **Rename** -- re-keys free edges (including swaps).
+* **Sum** -- top level AND as parenthesized product factors (drawn as a
+  bracketed group with wires passing through).
+* **Function** -- application arrows: solid for consumed edges, densely
+  dotted for elementwise; broadcast edges stay on the argument.
+* **Derivative** (unevaluated) -- a Penrose loop: a fit-ellipse around the
+  differentiated subexpression with a boundary dot and labelled whiskers
+  for the new edges (one bends left; a pair bends left/right, like the
+  book's \dloop/\dwhiskers). Nested derivatives nest their ellipses. A
+  derivative whose new edge is contracted onward raises NotImplementedError
+  -- call simplify() first.
+* **Expectation** -- an ``E[.]`` fit-box around the inner subexpression.
+
+A 2-port variable forced into reversed port order (a transpose, e.g. the
+A^T term of a gradient) is drawn rotated 180 degrees, but only when it has
+a free edge -- internal contraction nodes stay upright.
+
+Entry points (all equivalent): ``tensorgrad.to_book_tikz(t, **opts)``,
+``t.to_book_tikz(**opts)``, or this module's ``to_book_tikz``.  Options:
+``left=``/``right=`` fix a free edge's side; ``max_width=`` scales a
+too-wide diagram down to fit; ``scale=`` sets an explicit factor.
 """
 
 from __future__ import annotations
