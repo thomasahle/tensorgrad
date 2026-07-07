@@ -52,12 +52,15 @@ class FusedFwdNode(Node):
     """Forward of a fused technology-mapping cell (tensorgrad/compiler/cells.py).
     `cell_name` selects the cell; `params` is a sorted hashable tuple of its
     scalar + edge-role arguments; `layout` is cell-defined lowering metadata
-    (operand permutations into canonical order, batch-axis count). Opaque to
+    (operand permutations into canonical order, batch-axis count); `which`
+    selects one result of a multi-output kernel (0 for single-output cells;
+    AdamW emits w'/m'/v' as which 0/1/2 sharing one fused call). Opaque to
     differentiation, pinned in layout, an atom in szfp -- the generic node
-    behind sdpa/layer_norm/gelu/... ."""
+    behind sdpa/layer_norm/gelu/adamw/... ."""
     cell_name: str = ""
     params: tuple = ()
     layout: tuple = ()
+    which: int = 0
     ops: tuple = ()
     def operands(self) -> tuple["Node", ...]:
         return self.ops
@@ -350,10 +353,10 @@ class Builder:
         key = ("one_hot", id(idx), num_classes)
         return self._intern(key, lambda: GatherNode(dims, "one_hot", 0, (idx,)))
 
-    def fused_fwd(self, cell_name, params, ops, dims, layout=()) -> Node:
+    def fused_fwd(self, cell_name, params, ops, dims, layout=(), which=0) -> Node:
         pt = tuple(sorted(params.items()))
-        key = ("fused_fwd", cell_name, pt, layout, tuple(id(o) for o in ops))
-        return self._intern(key, lambda: FusedFwdNode(tuple(dims), cell_name, pt, layout, tuple(ops)))
+        key = ("fused_fwd", cell_name, pt, layout, which, tuple(id(o) for o in ops))
+        return self._intern(key, lambda: FusedFwdNode(tuple(dims), cell_name, pt, layout, which, tuple(ops)))
 
     def fused_bwd(self, cell_name, which, params, ops, dims, layout=()) -> Node:
         pt = tuple(sorted(params.items()))

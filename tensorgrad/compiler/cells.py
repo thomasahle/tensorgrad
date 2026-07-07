@@ -49,13 +49,17 @@ def _pkey(params: dict) -> str:
 
 
 class _FusedFunction(FunctionSignature):
-    """Forward of a fused cell. `cell_name` selects the cell; `params`
-    carries its scalar arguments (scale, eps, approximate, ...)."""
+    """Forward of a fused cell. `cell_name` selects the cell; `params` carries
+    its scalar arguments (scale, eps, approximate, ...); `out_idx` selects one
+    result of a multi-output kernel (0 for single-output cells -- the name is
+    then unchanged, so existing cells are byte-identical)."""
 
-    def __init__(self, cell_name: str, edges, out_edges, params: dict):
+    def __init__(self, cell_name: str, edges, out_edges, params: dict, out_idx: int = 0):
         self.cell_name = cell_name
         self.params = params
-        super().__init__(f"{cell_name}[{_pkey(params)}]", frozenset(edges), out_edges)
+        self.out_idx = out_idx
+        suffix = f",out={out_idx}" if out_idx else ""
+        super().__init__(f"{cell_name}[{_pkey(params)}{suffix}]", frozenset(edges), out_edges)
 
     def derivative(self, i: int, new_edges=None) -> FunctionSignature:
         raise NotImplementedError(
@@ -113,7 +117,7 @@ class FusedCell:
     def emit_bwd(self, cg, node, name: str, names, dim_of) -> str:
         raise NotImplementedError
 
-    def eval_fwd(self, params: dict, inputs: tuple[torch.Tensor, ...]) -> torch.Tensor:
+    def eval_fwd(self, params: dict, inputs: tuple[torch.Tensor, ...], out_idx: int = 0) -> torch.Tensor:
         raise NotImplementedError
 
     def eval_bwd(self, params: dict, which: int, inputs: tuple[torch.Tensor, ...]) -> torch.Tensor:
@@ -177,7 +181,7 @@ class _GeluCell(FusedCell):
         return (f"{name} = torch.ops.aten.gelu_backward({cg._logical(node.ops[1], names)}, "
                 f"{cg._logical(node.ops[0], names)}, approximate='{a}')")
 
-    def eval_fwd(self, params, inputs):
+    def eval_fwd(self, params, inputs, out_idx=0):
         (x,) = inputs
         names = x.names
         return torch.nn.functional.gelu(x.rename(None), approximate=params["approximate"]).rename(*names)
@@ -341,7 +345,7 @@ class _SDPACell(FusedCell):
         return (f"{prelude}{name} = {tmp}[{node.which}]"
                 f".reshape({gshape}).permute({_tup(map(str, res_perm))})")
 
-    def eval_fwd(self, params, inputs):
+    def eval_fwd(self, params, inputs, out_idx=0):
         from tensorgrad.extras.evaluate import _eval_sdpa_fwd
         return _eval_sdpa_fwd(params, inputs)
 
@@ -458,10 +462,90 @@ class _LayerNormCell(FusedCell):
         return (f"{prelude}{name} = {tmp}[{node.which}]"
                 f".reshape({gshape}).permute({_tup(map(str, res_perm))})")
 
-    def eval_fwd(self, params, inputs):
+    def eval_fwd(self, params, inputs, out_idx=0):
         from tensorgrad.extras.evaluate import _eval_layer_norm_fwd
         return _eval_layer_norm_fwd(params, inputs)
 
     def eval_bwd(self, params, which, inputs):
         from tensorgrad.extras.evaluate import _eval_layer_norm_bwd
         return _eval_layer_norm_bwd(params, which, inputs)
+
+
+# ---------------------------------------------------------------------------
+# AdamW: the first NON-differentiable, MULTI-OUTPUT cell. It proves the
+# abstraction is "any kernel", not just forward+reverse primitives. The
+# optimizer update is a leaf in the training step (nothing differentiates it:
+# n_diff=0, no VJP), and it returns three results (w', m', v') from ONE fused
+# call, selected by the node's `which`.
+#
+# Crucially it also removes the AdamW gradient-doubling: written as algebra,
+# g = grad(loss, w) is consumed at three spots (m' uses g, v' uses g*g), and
+# simplify duplicates the g-subtree, so the whole backward is computed twice.
+# As this opaque cell, g is a SINGLE operand -- computed once. The doubling
+# cannot occur.
+#
+# Value definition (matches examples/mingpt.py's `adamw`):
+#   m' = b1*m + (1-b1)*g
+#   v' = b2*v + (1-b2)*g*g
+#   w' = w*decay - lr*(c1*m') / (sqrt(c2*v') + eps)
+# where c1, c2 are runtime scalar inputs (1/(1-b^t)); decay is a per-param
+# compile-time constant (1 - lr*wd on matrices, 1 on biases/gains).
+# ---------------------------------------------------------------------------
+
+
+@register
+class _AdamWCell(FusedCell):
+    name = "adamw"
+    n_diff = 0  # the optimizer update is a leaf; nothing differentiates it
+
+    def build(self, inputs, params):
+        # inputs: (w, g, m, v, c1, c2); outputs: (w', m', v')
+        w = inputs[0]
+        in_edges = tuple(frozenset(x.edges) for x in inputs)
+        outs = []
+        for i in range(3):
+            sig = _FusedFunction(self.name, w.edges, in_edges, params, out_idx=i)
+            outs.append(Function(sig, tuple(inputs), dict(w.shape)))
+        return tuple(outs)
+
+    def lower_fwd(self, lower, t):
+        sig = cast(_FusedFunction, t.signature)
+        out = tuple(t.edges)
+        ops = []
+        for inp in t.inputs:
+            n, o = lower.lower(inp)
+            if o and tuple(o) != out:  # bring each operand to the output edge order
+                n = lower.b.linear([n], [tuple(o.index(e) for e in out)], [1])
+            ops.append(n)
+        dims = tuple(t.shape[e] for e in out)
+        return lower.b.fused_fwd(self.name, sig.params, ops, dims, which=sig.out_idx), out
+
+    def emit_fwd(self, cg, node, name, names, dim_of):
+        p = node.params_dict()
+        w, g, m, v, c1, c2 = [cg._logical(o, names) for o in node.ops]
+        site = ("adamw",) + tuple(names[id(o)] for o in node.ops)
+        tmp = cg._fused_fwd_cache.get(site)
+        prelude = ""
+        if tmp is None:
+            # Emit the three results ONCE per site; each which selects its own.
+            tmp = f"_adamw{len(cg._fused_fwd_cache)}"
+            cg._fused_fwd_cache[site] = tmp
+            b1, b2, lr, eps, decay = p["b1"], p["b2"], p["lr"], p["eps"], p["decay"]
+            prelude = (
+                f"{tmp}_m = {b1!r}*{m} + {(1.0 - b1)!r}*{g}; "
+                f"{tmp}_v = {b2!r}*{v} + {(1.0 - b2)!r}*{g}*{g}; "
+                f"{tmp}_w = {w}*{decay!r} - {lr!r}*({c1}*{tmp}_m)/(torch.sqrt({c2}*{tmp}_v) + {eps!r}); "
+            )
+        sel = ("w", "m", "v")[node.which]
+        return f"{prelude}{name} = {tmp}_{sel}"
+
+    def eval_fwd(self, params, inputs, out_idx=0):
+        w, g, m, v, c1, c2 = inputs
+        names = w.names
+        wv, gv, mv, vv = (x.align_to(*names).rename(None) for x in (w, g, m, v))
+        c1v, c2v = c1.rename(None), c2.rename(None)  # 0-d scalars, broadcast
+        b1, b2, lr, eps, decay = params["b1"], params["b2"], params["lr"], params["eps"], params["decay"]
+        m_new = b1 * mv + (1.0 - b1) * gv
+        v_new = b2 * vv + (1.0 - b2) * gv * gv
+        w_new = wv * decay - lr * (c1v * m_new) / (torch.sqrt(c2v * v_new) + eps)
+        return (w_new, m_new, v_new)[out_idx].rename(*names)

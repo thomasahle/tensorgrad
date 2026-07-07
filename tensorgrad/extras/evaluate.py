@@ -399,7 +399,7 @@ def _sdpa_forward(func, q, k, v, mask):
 
 @evaluate_function.register
 def _(func: _FusedFunction, *xs: torch.Tensor) -> torch.Tensor:
-    return CELLS[func.cell_name].eval_fwd(func.params, xs)
+    return CELLS[func.cell_name].eval_fwd(func.params, xs, getattr(func, "out_idx", 0))
 
 
 @evaluate_function.register

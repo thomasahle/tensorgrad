@@ -3,7 +3,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from fractions import Fraction
-from typing import AbstractSet, Any, Collection, Iterable, Iterator, Optional, Sequence, Union, cast
+from typing import AbstractSet, Any, Callable, Collection, Iterable, Iterator, Optional, Sequence, Union, cast
 
 import sympy
 from sympy import Symbol
@@ -879,7 +879,7 @@ class _MatrixInverseDerivative(FunctionSignature):
     def derivative(self, i: int, new_edges: dict[str, str] | None = None) -> FunctionSignature:
         raise NotImplementedError("Please expand with simplify() first")
 
-    def simplify(self, t: Function, args: dict[str, Any]):
+    def simplify(self, t: Function, args: dict[str, Any]) -> Tensor:
         (edges,) = self.inputs
         (inner,) = t.inputs
         # Inverse: -inv(A)^T dA inv(A)
@@ -929,7 +929,7 @@ def exp(t: Tensor) -> Tensor:
 
 
 class _LogFunction(FunctionSignature):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("log", frozenset(), (frozenset(),))
 
     def derivative(self, i: int, new_edges: Optional[dict[str, str]] = None) -> FunctionSignature:
@@ -967,7 +967,12 @@ class _ExprGradFunction(FunctionSignature):
     relu -> gt0 pattern for derivatives of true leaves that are themselves
     compositions (e.g. tanh' = 1 - tanh^2)."""
 
-    def __init__(self, name: str, expr, derivative_factory=None):
+    def __init__(
+        self,
+        name: str,
+        expr: Callable[[Tensor], Tensor],
+        derivative_factory: Optional[Callable[[], FunctionSignature]] = None,
+    ) -> None:
         super().__init__(name, frozenset(), (frozenset(),))
         self._expr = expr
         self._derivative_factory = derivative_factory
@@ -1318,7 +1323,17 @@ class _ArgSortFunction(FunctionSignature):
 # --------------------------------------------------------------------------
 
 
-def sdpa(q: Tensor, k: Tensor, v: Tensor, *, seq="seq", key="key", hs="hs", mask=None, scale) -> Tensor:
+def sdpa(
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    *,
+    seq: str = "seq",
+    key: str = "key",
+    hs: str = "hs",
+    mask: Optional[Tensor] = None,
+    scale: float,
+) -> Tensor:
     batch = frozenset(q.edges) - {seq, hs}
     for name, t, want in [("q", q, batch | {seq, hs}), ("k", k, batch | {key, hs}), ("v", v, batch | {key, hs})]:
         if set(t.edges) != set(want):
@@ -1365,6 +1380,24 @@ def layer_norm(x: Tensor, *, dim: str, weight: Tensor, bias: Tensor, eps: float 
     from tensorgrad.compiler.cells import CELLS
     params = dict(dim=dim, batch=batch, eps=float(eps))
     return CELLS["layer_norm"].build((x, weight, bias), params)
+
+
+def adamw(w: Tensor, g: Tensor, m: Tensor, v: Tensor, c1: Tensor, c2: Tensor, *,
+          beta1: float, beta2: float, lr: float, eps: float, weight_decay: float):
+    """Fused AdamW step -> (w', m', v') from one fused kernel.
+
+    A NON-differentiable, MULTI-OUTPUT technology-mapping cell -- the update
+    is a leaf in the training step, so it has no VJP. `c1`, `c2` are the
+    runtime bias-correction scalars 1/(1-beta^t). Value-identical to the
+    update equations written as tensorgrad algebra (see examples/mingpt.py),
+    but the gradient `g` is consumed ONCE as a single operand, so the
+    reverse pass is never duplicated across m'/v' (unlike the algebra form).
+    Weight decay applies only to matrices (order >= 2), matching the demo."""
+    from tensorgrad.compiler.cells import CELLS
+    decay = 1.0 - lr * weight_decay if w.order >= 2 else 1.0
+    params = dict(b1=float(beta1), b2=float(beta2), lr=float(lr),
+                  eps=float(eps), decay=float(decay))
+    return CELLS["adamw"].build((w, g, m, v, c1, c2), params)
 
 
 class _MaxGradFunction(FunctionSignature):
@@ -1545,7 +1578,7 @@ def concat(*ts: Tensor, dim: str, size: Symbol) -> Tensor:
     return Sum(parts) if len(parts) > 1 else parts[0]
 
 
-def window(*, start=0, **shape1: Symbol) -> Tensor:
+def window(*, start: int = 0, **shape1: Symbol) -> Tensor:
     """The rectangular diagonal W[i, o] = [i == o + start], as a first-class
     structural tensor: contract it to slice.
 
