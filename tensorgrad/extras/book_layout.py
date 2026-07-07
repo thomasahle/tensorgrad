@@ -57,6 +57,16 @@ Entry points (all equivalent): ``tensorgrad.to_book_tikz(t, **opts)``,
 ``t.to_book_tikz(**opts)``, or this module's ``to_book_tikz``.  Options:
 ``left=``/``right=`` fix a free edge's side; ``max_width=`` scales a
 too-wide diagram down to fit; ``scale=`` sets an explicit factor.
+
+Known limitations (both narrow):
+
+* A densely-connected, genuinely 2-D contraction with no clean linear
+  spine -- e.g. an *unsimplified* softmax over a matrix axis times V
+  (attention) -- flattens onto the spine with hanging pendants and can
+  look cramped. Simplify first, or draw such states by hand.
+* An elementwise function of a *closed-ring scalar* (e.g. ``exp(Tr(I))``,
+  a contraction with no atom and no free edge) draws the function glyph
+  separately from the ring circle. Real expressions don't produce this.
 """
 
 from __future__ import annotations
