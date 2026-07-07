@@ -1040,6 +1040,7 @@ def layout_tensor(
     layout.xmax = x - COMPONENT_GAP
     layout.derivs = list(g.derivs)
     layout.boxes = list(g.boxes)
+    _separate_deriv_loops(layout)
     return layout
 
 
@@ -1047,6 +1048,74 @@ def layout_tensor(
 # row) instead of laid out horizontally, so its terms stay full-size and
 # legible instead of shrinking to an illegible thread
 STACK_WIDTH = 13.0
+
+
+def _separate_deriv_loops(layout: "BookLayout") -> None:
+    """Push apart derivative-loop groups whose fit-ellipses would intersect.
+
+    A Penrose ellipse extends well beyond the atoms it wraps, so two loops
+    around vertically-adjacent atom groups (e.g. a spine loop and the loop
+    around the pendant hanging below it, as in a Frobenius-of-2nd-derivative)
+    cross even though their atoms don't. This respects each loop's bounding
+    box: concentric loops (same atom set) are left to the emission's nesting
+    padding, but distinct groups that overlap in x are separated vertically by
+    moving the lower group (and everything below it in that column) down.
+    """
+    if len(layout.derivs) < 2:
+        return
+    nb = {n.id: n for n in layout.nodes}
+
+    # concentric loops share an atom set -> one "group"; depth = loops nested
+    # strictly inside it (each adds ellipse padding, hence a bigger box)
+    depth: dict[frozenset, int] = {}
+    for enc, _ in layout.derivs:
+        key = frozenset(a for a in enc if a in nb)
+        if key:
+            depth[key] = sum(
+                1 for e2, _ in layout.derivs if frozenset(e2) < key
+            )
+    keys = list(depth)
+
+    def ybox(key: frozenset) -> tuple[float, float, float, float]:
+        xs = [nb[a].x for a in key]
+        ys = [nb[a].y for a in key]
+        m = 0.5 + 0.28 * depth[key]  # ellipse reaches ~this far past the atoms
+        return min(xs) - m, max(xs) + m, min(ys) - m, max(ys) + m
+
+    for _ in range(30):
+        moved = False
+        for a in keys:
+            for c in keys:
+                if a is c or a <= c or c <= a:
+                    continue  # same or nested (concentric): emission handles it
+                ax0, ax1, ay0, ay1 = ybox(a)
+                cx0, cx1, cy0, cy1 = ybox(c)
+                if ax1 <= cx0 or cx1 <= ax0:
+                    continue  # no horizontal overlap -> ellipses miss anyway
+                if ay1 <= cy0 or cy1 <= ay0:
+                    continue  # already vertically clear
+                # push the lower group (and its column below) further down
+                low, hi = (c, a) if _cy(c, nb) < _cy(a, nb) else (a, c)
+                lb = ybox(low)
+                hb = ybox(hi)
+                # move `low` down until its box TOP drops below `hi`'s box
+                # BOTTOM, plus a small gap
+                delta = (lb[3] - hb[2]) + 0.2
+                if delta <= 0:
+                    continue
+                x0, x1 = lb[0], lb[1]
+                lowmin = min(nb[i].y for i in low)
+                for n in layout.nodes:
+                    if n.id in low or (n.y <= lowmin and x0 <= n.x <= x1):
+                        n.y -= delta
+                moved = True
+        if not moved:
+            break
+
+
+def _cy(key: frozenset, nb: dict) -> float:
+    ys = [nb[a].y for a in key]
+    return (min(ys) + max(ys)) / 2
 
 
 def _term_extent(sub: "BookLayout") -> tuple[float, float]:
@@ -1380,16 +1449,14 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
             # edge_labels is on (keeps simple chains like -A-B- uncluttered)
             show = w.label and (w.direction in ("up", "down") or edge_labels)
             if show:
-                # a left/right edge label sits just ABOVE the wire near its
-                # free end (offset to the side, like the cookbook) rather than
-                # inline -- inline labels eat horizontal space and collide with
-                # the neighbouring component's label
-                # extend the label up and back OVER its own wire (toward the
-                # node), so it never reaches into the gap to the next component
+                # a left/right edge label sits just ABOVE the free END of its
+                # wire, centred over the tip (like the cookbook) -- above the
+                # wire so it has no inline footprint (no cross-component
+                # collision), and hugging the end symmetrically for both sides
                 anchor = {"up": "south", "down": "north",
-                          "left": "south west", "right": "south east"}[w.direction]
+                          "left": "south", "right": "south"}[w.direction]
                 lab = (rf" node[anchor={anchor}, font=\scriptsize,"
-                       rf" inner sep=1pt] {{${_tex_edge(w.label)}$}}")
+                       rf" inner sep=1.5pt] {{${_tex_edge(w.label)}$}}")
             src = name[w.a]
             if w.a in group_side:
                 src = group_side[w.a][0 if w.direction == "left" else 1]
