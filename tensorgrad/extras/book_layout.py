@@ -1567,7 +1567,7 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                     rf"\draw ({fa}.north) .. controls +(0.2,{h:.2f}) and"
                     rf" +(-0.2,{h:.2f}) .. ({fb}.north){mid};"
                 )
-            elif w.span <= 3:
+            elif abs(nodes[w.a].x - nodes[w.b].x) <= 3.0:
                 na, nb = endpoint(w.a, w.b), endpoint(w.b, w.a)
                 loose = 0.55 + 0.47 * w.span + 0.5 * (w.lane - 1)
                 lines.append(
@@ -1587,6 +1587,31 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
         elif w.kind == "extra":
             a, b = w.a, w.b
             assert a is not None and b is not None
+            # if the straight path would cut through a bracket group, don't
+            # draw it: split into two matching labeled stubs (edge names
+            # connect them, like the book does for far-apart contractions)
+            cut = False
+            for gid in group_side:
+                gn = nodes[gid]
+                if gid in (a, b):
+                    continue
+                hw_ = gn.width / 2
+                if max(nodes[a].x, nodes[b].x) <= gn.x - hw_:
+                    continue
+                if min(nodes[a].x, nodes[b].x) >= gn.x + hw_:
+                    continue
+                cut = True
+                break
+            if cut and w.label:
+                for nid, other in ((a, b), (b, a)):
+                    side = 1 if nodes[other].x >= nodes[nid].x else -1
+                    src_ = endpoint(nid, other)
+                    lines.append(
+                        rf"\draw ({src_}) -- ++({0.3 * side:.2f},0)"
+                        rf" node[anchor=south, font=\scriptsize,"
+                        rf" inner sep=1.5pt] {{${_tex_edge(w.label)}$}};"
+                    )
+                continue
             direction = w.direction  # '->'=head at b, '<-'=head at a (orig order)
             # start from the lower endpoint; bend so the curve bows DOWN,
             # away from the spine and its arcs
@@ -1686,6 +1711,22 @@ def _emit_boxes(layout: BookLayout, lines: list[str], prefix: str,
                 parts.append(f"({name[aid]})")
         if not parts:
             continue
+        eset_b = set(enclosed)
+        nodes_b = {n.id: n for n in layout.nodes}
+        for w in layout.wires:
+            if w.kind == "arc" and w.a in eset_b and w.b in eset_b:
+                na_, nb_ = nodes_b[w.a], nodes_b[w.b]
+                wide_b = abs(na_.x - nb_.x) > 3.0
+                h = (0.35 + 0.08 * w.span if wide_b
+                     else 0.32 + 0.16 * w.span + 0.24 * (w.lane - 1))
+                if na_.kind == "group" or nb_.kind == "group":
+                    h = 0.45 + 0.05 * (abs(na_.x - nb_.x) + na_.width)
+                mx_ = (na_.x + nb_.x) / 2
+                my_ = max(na_.y, nb_.y) + h + 0.15
+                parts.append(f"({mx_:.2f},{my_:.2f})")
+            elif w.kind == "loop" and w.a in eset_b:
+                parts.append(
+                    f"({nodes_b[w.a].x:.2f},{nodes_b[w.a].y + 0.55:.2f})")
         inside = sum(1 for e2, _ in layout.boxes if set(e2) < set(enclosed))
         sep = 3.5 + 4.0 * inside
         bn = f"{prefix}bE{bi}"
@@ -1742,8 +1783,9 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
                         base = max(base, nd_.y + half)
                     my = base + h + 0.15 + dy
                 else:
-                    h = (0.32 + 0.16 * w.span + 0.24 * (w.lane - 1)
-                         if w.span <= 3 else 0.35 + 0.08 * w.span)
+                    wide = abs(na_.x - nb_.x) > 3.0
+                    h = (0.35 + 0.08 * w.span if wide
+                         else 0.32 + 0.16 * w.span + 0.24 * (w.lane - 1))
                     my = max(na_.y, nb_.y) + h + 0.12 + dy
                 mx = (na_.x + nb_.x) / 2 + dx
                 parts.append(f"({mx:.2f},{my:.2f})")
