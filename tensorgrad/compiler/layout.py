@@ -36,8 +36,8 @@ from typing import Sequence, cast
 
 from tensorgrad.compiler.ir import (
     ConstNode,
-    GeluBwdNode,
-    GeluFwdNode,
+    FusedBwdNode,
+    FusedFwdNode,
     LayerNormBwdNode,
     LayerNormFwdNode,
     SDPABwdNode,
@@ -50,6 +50,14 @@ from tensorgrad.compiler.ir import (
     Node,
     ReduceNode,
 )
+
+# Nodes that arrive in canonical (identity) physical order and must NOT be
+# re-permuted by layout voting: program inputs/consts, gather results, and
+# every fused technology-mapping cell (its kernel emits row-major output).
+# ONE source of truth -- the GELU layout bug was a copy-paste that missed
+# one of three separate pin-site tuples this constant replaces.
+_PINNED = (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode,
+           LayerNormFwdNode, LayerNormBwdNode, FusedFwdNode, FusedBwdNode)
 
 
 def matmul_groups(node: Node):
@@ -105,8 +113,7 @@ def _majority(votes: list) -> tuple:
 
 
 def _pinned(op: Node) -> bool:
-    return isinstance(op, (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode,
-                           LayerNormFwdNode, LayerNormBwdNode, GeluFwdNode, GeluBwdNode))
+    return isinstance(op, _PINNED)
 
 
 def _split_blocks(wires, batch, m, n):
@@ -153,8 +160,7 @@ def _cell_feasible(node: EinsumNode, groups, wires) -> bool:
 def _decide(node: Node, votes: list) -> tuple:
     """Pick the physical layout for `node` given its consumers' votes."""
     ident = tuple(range(node.order))
-    if isinstance(node, (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode,
-                         LayerNormFwdNode, LayerNormBwdNode, GeluFwdNode, GeluBwdNode)):
+    if isinstance(node, _PINNED):
         return ident  # pinned: canonical arrival / row-major build
 
     if isinstance(node, EinsumNode):
@@ -401,10 +407,7 @@ def assign_layouts(
         _vote_operands(node, p, votes)
 
     for node in order:  # forward: operands refined before consumers
-        if id(node) in weak and not isinstance(
-            node, (InputNode, ConstNode, GatherNode, SDPAFwdNode, SDPABwdNode,
-                   LayerNormFwdNode, LayerNormBwdNode, GeluFwdNode, GeluBwdNode)
-        ):
+        if id(node) in weak and not isinstance(node, _PINNED):
             p2 = _refine(node, phys)
             if p2 is not None:
                 phys[id(node)] = p2

@@ -18,8 +18,6 @@ from tensorgrad.functions import (
     _ArgSortFunction,
     _SDPAFunction,
     _SDPAVJPSignature,
-    _GeluFunction,
-    _GeluVJPSignature,
     _LayerNormFunction,
     _LayerNormVJPSignature,
     _OneHotFunction,
@@ -30,6 +28,7 @@ from tensorgrad.functions import (
     Reshape,
 )
 from tensorgrad.tensor import Delta, FunctionSignature, Rename, Sum, Zero
+from tensorgrad.compiler.cells import CELLS, _FusedFunction, _FusedVJP
 from tensorgrad.utils import KeyStoringDict
 
 
@@ -402,18 +401,14 @@ def _sdpa_forward(func, q, k, v, mask):
 
 
 @evaluate_function.register
-def _(func: _GeluFunction, x: torch.Tensor) -> torch.Tensor:
-    names = x.names
-    return torch.nn.functional.gelu(x.rename(None), approximate=func.approximate).rename(*names)
+def _(func: _FusedFunction, *xs: torch.Tensor) -> torch.Tensor:
+    return CELLS[func.cell_name].eval_fwd(func.params, xs)
 
 
 @evaluate_function.register
-def _(func: _GeluVJPSignature, *xs: torch.Tensor) -> torch.Tensor:
-    x, u = xs[0], xs[1]
-    names = x.names
-    u_al = u.align_to(*names).rename(None)
-    g = torch.ops.aten.gelu_backward(u_al, x.rename(None), approximate=func.approximate)  # pyright: ignore[reportCallIssue]
-    return g.rename(*names)
+def _(func: _FusedVJP, *xs: torch.Tensor) -> torch.Tensor:
+    # inputs are the cell's original inputs followed by the cotangent u
+    return CELLS[func.cell_name].eval_bwd(func.params, func.which, xs[:-1], xs[-1])
 
 
 @evaluate_function.register

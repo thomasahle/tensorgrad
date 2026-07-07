@@ -37,12 +37,13 @@ from tensorgrad.compiler.ir import (
     ReduceNode,
     SDPABwdNode,
     SDPAFwdNode,
-    GeluBwdNode,
-    GeluFwdNode,
+    FusedBwdNode,
+    FusedFwdNode,
     to_float,
     toposort,
 )
 from tensorgrad.compiler.affine import indicator_tensor
+from tensorgrad.compiler.cells import CELLS
 from tensorgrad.compiler.consolidate import consolidate_outputs
 from tensorgrad.compiler.factor import factor_outputs
 from tensorgrad.compiler.layout import assign_layouts, matmul_groups
@@ -350,10 +351,10 @@ class TorchCodegen:
                 lines.append(self._emit_sdpa_fwd(node, name, names, dim_of))
             elif isinstance(node, SDPABwdNode):
                 lines.append(self._emit_sdpa_bwd(node, name, names, dim_of))
-            elif isinstance(node, GeluFwdNode):
-                lines.append(self._emit_gelu_fwd(node, name, names))
-            elif isinstance(node, GeluBwdNode):
-                lines.append(self._emit_gelu_bwd(node, name, names))
+            elif isinstance(node, FusedFwdNode):
+                lines.append(CELLS[node.cell_name].emit_fwd(self, node, name, names))
+            elif isinstance(node, FusedBwdNode):
+                lines.append(CELLS[node.cell_name].emit_bwd(self, node, name, names))
             elif isinstance(node, LayerNormFwdNode):
                 lines.append(self._emit_layer_norm_fwd(node, name, names, dim_of))
             elif isinstance(node, LayerNormBwdNode):
@@ -2383,14 +2384,6 @@ class TorchCodegen:
     def _logical(self, op, names):
         phys = self._phys_of(op)
         return self._perm_str(names[id(op)], tuple(phys.index(a) for a in range(op.order)))
-
-    def _emit_gelu_fwd(self, node, name, names) -> str:
-        return (f"{name} = torch.nn.functional.gelu({self._logical(node.ops[0], names)}, "
-                f"approximate='{node.approximate}')")
-
-    def _emit_gelu_bwd(self, node, name, names) -> str:
-        return (f"{name} = torch.ops.aten.gelu_backward({self._logical(node.ops[1], names)}, "
-                f"{self._logical(node.ops[0], names)}, approximate='{node.approximate}')")
 
     def _emit_reduce(self, node: ReduceNode, name, names) -> str:
         (opnd,) = node.ops

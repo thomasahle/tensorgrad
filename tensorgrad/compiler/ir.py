@@ -121,19 +121,31 @@ class LayerNormBwdNode(Node):
 
 
 @dataclass(frozen=True, eq=False)
-class GeluFwdNode(Node):
-    approximate: str = "tanh"
+class FusedFwdNode(Node):
+    """Forward of a fused technology-mapping cell (tensorgrad/compiler/cells.py).
+    `cell_name` selects the cell; `params` is a sorted hashable tuple of its
+    scalar arguments. Opaque to differentiation, pinned in layout, an atom in
+    szfp -- the generic node behind sdpa/layer_norm/gelu/... ."""
+    cell_name: str = ""
+    params: tuple = ()
     ops: tuple = ()
     def operands(self) -> tuple["Node", ...]:
         return self.ops
+    def params_dict(self) -> dict:
+        return dict(self.params)
 
 
 @dataclass(frozen=True, eq=False)
-class GeluBwdNode(Node):
-    approximate: str = "tanh"
+class FusedBwdNode(Node):
+    """Reverse VJP of a fused cell w.r.t. input `which`."""
+    cell_name: str = ""
+    which: int = 0
+    params: tuple = ()
     ops: tuple = ()
     def operands(self) -> tuple["Node", ...]:
         return self.ops
+    def params_dict(self) -> dict:
+        return dict(self.params)
 
 
 @dataclass(frozen=True, eq=False)
@@ -407,13 +419,15 @@ class Builder:
         key = ("one_hot", id(idx), num_classes)
         return self._intern(key, lambda: GatherNode(dims, "one_hot", 0, (idx,)))
 
-    def gelu_fwd(self, x, dims, approximate) -> Node:
-        return self._intern(("gelu_fwd", id(x), approximate),
-                            lambda: GeluFwdNode(tuple(dims), approximate, (x,)))
+    def fused_fwd(self, cell_name, params, ops, dims) -> Node:
+        pt = tuple(sorted(params.items()))
+        key = ("fused_fwd", cell_name, pt, tuple(id(o) for o in ops))
+        return self._intern(key, lambda: FusedFwdNode(tuple(dims), cell_name, pt, tuple(ops)))
 
-    def gelu_bwd(self, x, u, dims, approximate) -> Node:
-        return self._intern(("gelu_bwd", id(x), id(u), approximate),
-                            lambda: GeluBwdNode(tuple(dims), approximate, (x, u)))
+    def fused_bwd(self, cell_name, which, params, ops, dims) -> Node:
+        pt = tuple(sorted(params.items()))
+        key = ("fused_bwd", cell_name, which, pt, tuple(id(o) for o in ops))
+        return self._intern(key, lambda: FusedBwdNode(tuple(dims), cell_name, which, pt, tuple(ops)))
 
     def sdpa_fwd(self, ops, dims, scale, has_mask, nb, perms) -> Node:
         key = ("sdpa_fwd", tuple(id(o) for o in ops), scale, has_mask, nb, perms)

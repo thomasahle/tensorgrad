@@ -87,9 +87,10 @@ def _function_vjp(t: Function, u: Tensor, inp: Tensor, i: int) -> Tensor:
     i-th derivative over t's output-only edges (the transpose of
     grad.py's grad_function part for input i)."""
     import tensorgrad.functions as F
+    from tensorgrad.compiler.cells import CELLS, _FusedFunction
 
-    if isinstance(t.signature, F._GeluFunction) and i == 0:
-        return F.gelu_vjp(t.inputs[0], u, t.signature.approximate)
+    if isinstance(t.signature, _FusedFunction):
+        return CELLS[t.signature.cell_name].vjp(t.inputs, i, u, t.signature.params)
 
     if isinstance(t.signature, F._SDPAFunction) and i in (0, 1, 2):
         # Fused reverse VJP: bypass the (dense) Jacobian entirely. u is the
