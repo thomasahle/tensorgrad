@@ -413,6 +413,11 @@ class BookLayout:
     right_edge: Optional[str] = None
     derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
     boxes: list[tuple[list[int], str]] = field(default_factory=list)
+    # exact vertical extent when known (the vertical stacker sets these; the
+    # estimator then uses them instead of re-adding margins, which compounded
+    # per nesting level into oversized brackets)
+    ytop: Optional[float] = None
+    ybot: Optional[float] = None
 
 
 def _label_halfwidth(label: str) -> float:
@@ -1122,15 +1127,20 @@ def _term_extent(sub: "BookLayout") -> tuple[float, float]:
     """Approximate (top, bottom) y-extent of a laid-out term, including the
     room its arcs/loops rise above the spine, pendants drop below it, and any
     nested group's own inner content extends (recursively)."""
+    if sub.ytop is not None and sub.ybot is not None:
+        return sub.ytop, sub.ybot
     tops = [0.0]
     bots = [0.0]
     for nd in sub.nodes:
         tops.append(nd.y)
         bots.append(nd.y)
         if nd.kind == "group" and nd.sub is not None:
+            # emission CENTRES the group's inner content on nd.y, so it
+            # occupies nd.y +- half its height (not nd.y+gb..nd.y+gt)
             gt, gb = _term_extent(nd.sub)
-            tops.append(nd.y + gt)
-            bots.append(nd.y + gb)
+            half = (gt - gb) / 2
+            tops.append(nd.y + half)
+            bots.append(nd.y - half)
     top, bot = max(tops), min(bots)
     if sub.derivs:
         # a Penrose ellipse extends well above AND below the nodes it wraps,
@@ -1220,6 +1230,8 @@ def _layout_sum_vertical(
         max_x = max(max_x, TERM_COL + sub.xmax)
         cursor = row_y + bot - ROW_GAP
     out.xmax = max_x
+    out.ytop = 0.15
+    out.ybot = cursor + ROW_GAP - 0.15
     return out
 
 
@@ -1436,12 +1448,16 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                 # the endpoints swapped, so the arrowhead token must flip too,
                 # or an application arrow points into the argument not the func
                 direction = {"->": "<-", "<-": "->"}.get(direction, direction)
-            bend = "right" if nodes[a].x < nodes[b].x else "left"
+            bend_dir = "right" if nodes[a].x < nodes[b].x else "left"
+            # long connectors sag deeper so they route BELOW tall content
+            # (e.g. a stacked group) instead of striking through it
+            span_x = abs(nodes[a].x - nodes[b].x)
+            bend = min(80, int(30 + 6 * span_x))
             na, nb = endpoint(a, b), endpoint(b, a)
             tip = f"{direction}, " if direction else ""
             dot = "densely dotted, " if w.arrow == "dotted" else ""
             lines.append(
-                rf"\draw[{tip}{dot}] ({na}) to[bend {bend}=45] ({nb});"
+                rf"\draw[{tip}{dot}] ({na}) to[bend {bend_dir}={bend}] ({nb});"
             )
         elif w.kind == "ring":
             lines.append(
