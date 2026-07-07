@@ -72,6 +72,7 @@ Known limitations (both narrow):
 from __future__ import annotations
 
 import itertools
+import re
 from dataclasses import dataclass, field
 from numbers import Number
 from typing import Optional
@@ -149,14 +150,20 @@ def _tex_edge(name: str) -> str:
 
 
 def _pretty_fn(name: str) -> str:
-    """'pow(k=-1)' -> pow_{-1}; 'exp' -> exp."""
-    if "(" in name:
-        base, _, arg = name.partition("(")
-        arg = arg.rstrip(")")
-        if "=" in arg:
-            arg = arg.split("=", 1)[1]
-        return rf"{base}_{{{arg}}}"
-    return name
+    """'pow(k=-1)' -> pow_{-1}; 'pow(k=Fraction(1,2))' -> pow_{1/2}; 'exp' -> exp."""
+    if "(" not in name:
+        return name
+    base, _, arg = name.partition("(")
+    # drop exactly the matching outer ')'
+    if arg.endswith(")"):
+        arg = arg[:-1]
+    if "=" in arg:
+        arg = arg.split("=", 1)[1]
+    # Fraction(a,b) -> a/b (sympy powers use rational exponents)
+    m = re.fullmatch(r"Fraction\((-?\d+),\s*(-?\d+)\)", arg)
+    if m:
+        arg = rf"{m.group(1)}/{m.group(2)}"
+    return rf"{base}_{{{arg}}}"
 
 
 class _UnionFind(dict):

@@ -448,3 +448,12 @@ def test_multi_input_function_arrows_point_into_function():
         if "to[bend" in line:
             assert line.strip().startswith(r"\draw[->"), line
             assert line.rstrip().endswith("(n0);"), line
+
+
+def test_pow_fraction_label():
+    from tensorgrad.extras.book_layout import _pretty_fn
+
+    assert _pretty_fn("pow(k=-1)") == "pow_{-1}"
+    assert _pretty_fn("pow(k=Fraction(1,2))") == "pow_{1/2}"
+    assert _pretty_fn("pow(k=Fraction(-1,2))") == "pow_{-1/2}"
+    assert _pretty_fn("exp") == "exp"
