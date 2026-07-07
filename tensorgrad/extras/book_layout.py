@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import itertools
 import re
+import warnings
 from dataclasses import dataclass, field
 from numbers import Number
 from typing import Optional
@@ -129,8 +130,8 @@ class OpenGraph:
     # function atom (application arrows; dotted = elementwise)
     arrows: dict[str, str] = field(default_factory=dict)
     arrow_heads: dict[str, int] = field(default_factory=dict)  # wire -> fn atom
-    # Penrose derivative loops: (atom ids enclosed, new edge names)
-    derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
+    # Penrose derivative loops: (atom ids enclosed, new edge names, wrt name)
+    derivs: list[tuple[list[int], list[str], str]] = field(default_factory=list)
     deriv_tokens: set = field(default_factory=set)  # wires owned by loops
     # E[.] expectation boxes: (enclosed atom ids, label tex)
     boxes: list[tuple[list[int], str]] = field(default_factory=list)
@@ -300,7 +301,7 @@ def extract_graph(tensor: Tensor) -> OpenGraph:
                 g.deriv_tokens.add(tok)
                 dout[e] = tok
                 names.append(e)
-            g.derivs.append((enclosed, names))
+            g.derivs.append((enclosed, names, t.x.name))
             return dout
         if _Expectation is not None and isinstance(t, _Expectation):
             first_atom = len(g.atoms)
@@ -411,7 +412,7 @@ class BookLayout:
     xmax: float = 0.0
     left_edge: Optional[str] = None  # free edge that exits leftmost
     right_edge: Optional[str] = None
-    derivs: list[tuple[list[int], list[str]]] = field(default_factory=list)
+    derivs: list[tuple[list[int], list[str], str]] = field(default_factory=list)
     boxes: list[tuple[list[int], str]] = field(default_factory=list)
     # exact vertical extent when known (the vertical stacker sets these; the
     # estimator then uses them instead of re-adding margins, which compounded
@@ -586,7 +587,7 @@ def _choose_spine(
             # its Penrose ellipse wraps only its own atoms instead of
             # stretching across foreign ones and crossing other loops
             pos = {v: k for k, v in enumerate(cand)}
-            for enclosed, _ in g.derivs:
+            for enclosed, *_ in g.derivs:
                 idxs = sorted(pos[a] for a in enclosed if a in pos)
                 if len(idxs) >= 2:
                     span = idxs[-1] - idxs[0]
@@ -1124,8 +1125,8 @@ def _reserve_loop_margins(layout: "BookLayout") -> None:
     nb = {n.id: n for n in layout.nodes}
     lo, hi = 0.0, layout.xmax
     regions = [(enc, 0.5 + 0.28 * sum(
-        1 for e2, _ in layout.derivs if set(e2) < set(enc)))
-        for enc, _ in layout.derivs]
+        1 for e2, *_ in layout.derivs if set(e2) < set(enc)))
+        for enc, *_ in layout.derivs]
     regions += [(enc, 0.35) for enc, _ in layout.boxes]
     for enc, m in regions:
         xs = [nb[a].x for a in enc if a in nb]
@@ -1167,18 +1168,18 @@ def _separate_deriv_loops(layout: "BookLayout") -> None:
     # concentric loops share an atom set -> one "group"; depth = loops nested
     # strictly inside it (each adds ellipse padding, hence a bigger box)
     depth: dict[frozenset, int] = {}
-    for enc, _ in layout.derivs:
+    for enc, *_ in layout.derivs:
         key = frozenset(a for a in enc if a in nb)
         if key:
             depth[key] = sum(
-                1 for e2, _ in layout.derivs if frozenset(e2) < key
+                1 for e2, *_ in layout.derivs if frozenset(e2) < key
             )
     keys = list(depth)
 
     def ybox(key: frozenset) -> tuple[float, float, float, float]:
         xs = [nb[a].x for a in key]
         ys = [nb[a].y for a in key]
-        m = 0.5 + 0.28 * depth[key]  # ellipse reaches ~this far past the atoms
+        m = 0.68 + 0.34 * depth[key]  # ellipse reaches ~this far past the atoms
         return min(xs) - m, max(xs) + m, min(ys) - m, max(ys) + m
 
     for _ in range(30):
@@ -1199,7 +1200,7 @@ def _separate_deriv_loops(layout: "BookLayout") -> None:
                 hb = ybox(hi)
                 # move `low` down until its box TOP drops below `hi`'s box
                 # BOTTOM, plus a small gap
-                delta = (lb[3] - hb[2]) + 0.2
+                delta = (lb[3] - hb[2]) + 0.25
                 if delta <= 0:
                     continue
                 x0, x1 = lb[0], lb[1]
@@ -1334,8 +1335,8 @@ def _layout_sum_vertical(
                       w.direction, w.label, w.arrow, w.span, w.lane,
                       wx, w.y + (row_y if w.kind in ("bare", "ring") else 0.0))
             )
-        for enclosed, names in sub.derivs:
-            out.derivs.append(([a + offset for a in enclosed], names))
+        for enclosed, names, wrt in sub.derivs:
+            out.derivs.append(([a + offset for a in enclosed], names, wrt))
         for enclosed, lbl in sub.boxes:
             out.boxes.append(([a + offset for a in enclosed], lbl))
         max_local = max((nd.id for nd in sub.nodes), default=-1)
@@ -1389,8 +1390,8 @@ def _layout_sum_horizontal(
                       w.direction, w.label, w.arrow, w.span, w.lane,
                       wx, w.y)
             )
-        for enclosed, names in sub.derivs:
-            out.derivs.append(([a + offset for a in enclosed], names))
+        for enclosed, names, wrt in sub.derivs:
+            out.derivs.append(([a + offset for a in enclosed], names, wrt))
         for enclosed, lbl in sub.boxes:
             out.boxes.append(([a + offset for a in enclosed], lbl))
         max_local = max((nd.id for nd in sub.nodes), default=-1)
@@ -1654,7 +1655,8 @@ def _emit_layout(layout: BookLayout, lines: list[str], prefix: str, dx: float,
                     # bracket at stacked heights (vertical stubs off a paren
                     # top read as shooting into the air)
                     pr = group_side[w.a][1]
-                    yshift = 0.42 + 0.3 * abs(w.x) / 0.26 if w.x else 0.42
+                    # SIGNED fan offset -> distinct stacked heights
+                    yshift = 0.42 + (w.x / 0.26) * 0.3 if w.x else 0.42
                     if w.direction == "down":
                         yshift = -yshift
                     lines.append(
@@ -1711,7 +1713,7 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
                  dx: float = 0.0, dy: float = 0.0) -> None:
     """Penrose derivative loops: fit-ellipse + boundary dot + whiskers."""
     nodes = {n.id: n for n in layout.nodes}
-    for di, (enclosed, new_names) in enumerate(layout.derivs):
+    for di, (enclosed, new_names, wrt) in enumerate(layout.derivs):
         eset = set(enclosed)
         parts: list[str] = []
         for aid in enclosed:
@@ -1752,7 +1754,7 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
         # nesting: an ellipse enclosing another loop's region (equal
         # regions nest by creation order: inner derivatives walk first)
         inside = sum(
-            1 for dj, (e2, _) in enumerate(layout.derivs)
+            1 for dj, (e2, *_) in enumerate(layout.derivs)
             if dj != di and set(e2) <= eset and (set(e2) < eset or dj < di)
         )
         sep = 2.5 + 4.0 * inside
@@ -1760,6 +1762,12 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
         lines.append(
             rf"\node[ellipse, draw, inner sep={sep:.1f}pt, "
             rf"fit={{{''.join(parts)}}}] ({en}) {{}};"
+        )
+        # the wrt tag names what the derivative is taken with respect to
+        wtex = wrt if len(wrt) <= 1 else rf"\mathit{{{wrt}}}"
+        lines.append(
+            rf"\node[anchor=north west, inner sep=1.5pt] at ({en}.{-35 - 14 * inside})"
+            rf" {{$\partial {wtex}$}};"
         )
         # whisker labels ride BESIDE the wire (midway, offset to the side)
         # -- a label AT the free tip reads as if it were a tensor node
@@ -1782,6 +1790,41 @@ def _emit_derivs(layout: BookLayout, lines: list[str], prefix: str,
                     rf"\draw ({en}.{ang}) .. controls +({ctrl}) .. {end}"
                     rf" node[pos=0.85, {anch}, font=\scriptsize,"
                     rf" inner sep=0.5pt] {{${_tex_edge(nm)}$}};"
+                )
+
+
+def _warn_bracket_cuts(layout: "BookLayout") -> None:
+    """Heuristic self-check: warn when a wire's straight path cuts through a
+    bracketed group it isn't attached to -- the visual reads as the wire
+    entering the group, which is misleading. (Dense diagrams like a Taylor
+    expansion can defeat the router; better to know than to ship silently.)"""
+    groups = [n for n in layout.nodes if n.kind == "group"]
+    if not groups:
+        return
+    nb = {n.id: n for n in layout.nodes}
+    for w in layout.wires:
+        if w.kind not in ("segment", "extra") or w.a is None or w.b is None:
+            continue
+        pa, pb = nb[w.a], nb[w.b]
+        if abs(pb.x - pa.x) < 1e-9:
+            continue
+        for gn in groups:
+            if gn.id in (w.a, w.b):
+                continue
+            hw = gn.width / 2
+            if max(pa.x, pb.x) <= gn.x - hw or min(pa.x, pb.x) >= gn.x + hw:
+                continue
+            gt, gb_ = _term_extent(gn.sub) if gn.sub else (0.3, -0.3)
+            half = (gt - gb_) / 2
+            t = (gn.x - pa.x) / (pb.x - pa.x)
+            t = min(max(t, 0.0), 1.0)
+            ywire = pa.y + t * (pb.y - pa.y)
+            if gn.y - half - 0.1 < ywire < gn.y + half + 0.1:
+                warnings.warn(
+                    f"book_layout: a {w.kind} wire (edge {w.label!r}) cuts "
+                    f"through a bracket group near x={gn.x:.1f}; the layout "
+                    "may be misleading here",
+                    stacklevel=4,
                 )
 
 
@@ -1815,6 +1858,7 @@ def to_book_tikz(
             sums (Taylor series, moment expansions) stay legible.
     """
     layout = layout_any(tensor, left, right, stack=stack)
+    _warn_bracket_cuts(layout)
     if scale is None and max_width is not None and layout.xmax > max_width > 0:
         scale = max_width / layout.xmax
     # wires a touch lighter than a font glyph's stroke, so a free-edge stub
