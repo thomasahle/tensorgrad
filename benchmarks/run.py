@@ -74,6 +74,7 @@ def patch_tg_compile() -> None:
     call tg.compile at import time)."""
     import tensorgrad
 
+    os.environ["TG_BENCH_COMPILED"] = "1"  # gates may loosen tolerances
     orig = tensorgrad.compile
 
     def compile_with_inductor(torch_compile=False, print_info=False, **outputs):

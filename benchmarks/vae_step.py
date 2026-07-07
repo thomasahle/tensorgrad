@@ -254,3 +254,109 @@ def _gate():
 
 _gate()
 print(f"[{BENCH_NAME}] correctness gate passed", file=sys.stderr)
+
+
+def _report_time_to_target():
+    """The honest metric for an algorithm comparison: wall time to reach
+    1.05x the analytic PCA floor. Printed at import so every suite run
+    carries it next to the per-step table."""
+    import time as _time
+
+    Xc = XV - XV.mean(0)
+    U, S, V = torch.linalg.svd(Xc, full_matrices=False)
+    floor = ((Xc - (U[:, :LATENT] * S[:LATENT]) @ V[:LATENT]) ** 2).sum().item() / (N * D_X)
+
+    # tg: steady-state (programs pre-compiled), then timed rounds
+    solvers = {v: tg.compile(o=expr) for v, expr in _NEWTON.items()}
+    score = tg.compile(mse=_recon_mse)
+    st = _tg_state()
+    for v in PARAMS:  # warm: first call pays codegen
+        st[v] = solvers[v](st, dims=DIMS).o
+    st = _tg_state()
+    t0 = _time.perf_counter()
+    rounds = 0
+    for rounds in range(1, 20):
+        for v in PARAMS:
+            st[v] = solvers[v](st, dims=DIMS).o
+        if score(st, dims=DIMS).mse.item() / floor < 1.05:
+            break
+    t_tg = (_time.perf_counter() - t0) * 1e3
+
+    # torch reparam+Adam: steps to the same target
+    params = _torch_params()
+    opt = torch.optim.Adam(params, lr=ADAM_LR)
+    gen = torch.Generator().manual_seed(3)
+
+    def _mse():
+        with torch.no_grad():
+            muv = XV @ params[0]
+            return (((XV - (muv @ params[1] + params[2])) ** 2).sum() / (N * D_X)).item()
+
+    t0 = _time.perf_counter()
+    steps_t = 0
+    for steps_t in range(1, 5001):
+        eps = torch.randn(N, LATENT, generator=gen)
+        with torch.enable_grad():
+            lv = _torch_loss(params, XV, eps)
+            opt.zero_grad(set_to_none=True)
+            lv.backward()
+            opt.step()
+        if steps_t % 100 == 0 and _mse() / floor < 1.05:
+            break
+    t_th = (_time.perf_counter() - t0) * 1e3
+
+    line = (f"[{BENCH_NAME}] time-to-1.05x-floor: tg exact {rounds} rounds / {t_tg:.1f} ms; "
+            f"torch reparam {steps_t} steps / {t_th:.1f} ms")
+    try:
+        import jax
+        import jax.numpy as jnp
+
+        Xj = jnp.asarray(XV.numpy())
+        p0 = {"we": jnp.asarray(WE0.numpy()), "wd": jnp.asarray(WD0.numpy()),
+              "bd": jnp.asarray(BD0.numpy()), "logs": jnp.asarray(LOGS0.numpy())}
+
+        def loss_fn(p, eps):
+            muv = Xj @ p["we"]
+            sv = jnp.exp(p["logs"])
+            zv = muv + sv * eps
+            recon = ((Xj - (zv @ p["wd"] + p["bd"])) ** 2).sum() / (2 * SIGMA_X2)
+            kl = 0.5 * (muv**2 + sv**2 - 2 * p["logs"] - 1).sum()
+            return (recon + kl) / N
+
+        B1, B2, EPS_A = 0.9, 0.999, 1e-8
+
+        @jax.jit
+        def update(p, m, v, t, key):
+            key, sub = jax.random.split(key)
+            eps = jax.random.normal(sub, (N, LATENT))
+            lv, g = jax.value_and_grad(loss_fn)(p, eps)
+            m = jax.tree.map(lambda a, b: B1 * a + (1 - B1) * b, m, g)
+            v = jax.tree.map(lambda a, b: B2 * a + (1 - B2) * b * b, v, g)
+            c1, c2 = 1 / (1 - B1**t), 1 / (1 - B2**t)
+            p = jax.tree.map(lambda w, a, bb: w - ADAM_LR * (c1 * a) / (jnp.sqrt(c2 * bb) + EPS_A), p, m, v)
+            return p, m, v, lv, key
+
+        pj, mj, vj = p0, jax.tree.map(jnp.zeros_like, p0), jax.tree.map(jnp.zeros_like, p0)
+        key = jax.random.PRNGKey(1)
+        pj2, *_ = update(pj, mj, vj, 1, key)  # warm the jit
+        jax.block_until_ready(pj2["we"])
+
+        def _mse_j(p):
+            muv = Xj @ p["we"]
+            return float(((Xj - (muv @ p["wd"] + p["bd"])) ** 2).sum() / (N * D_X))
+
+        t0 = _time.perf_counter()
+        steps_j = 0
+        for steps_j in range(1, 5001):
+            pj, mj, vj, lv, key = update(pj, mj, vj, steps_j, key)
+            if steps_j % 100 == 0 and _mse_j(pj) / floor < 1.05:
+                break
+        jax.block_until_ready(lv)
+        t_jx = (_time.perf_counter() - t0) * 1e3
+        line += f"; jax reparam {steps_j} steps / {t_jx:.1f} ms"
+    except ImportError:
+        pass
+    print(line, file=sys.stderr)
+
+
+_report_time_to_target()
