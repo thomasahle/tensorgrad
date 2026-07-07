@@ -275,6 +275,7 @@ class TorchCodegen:
         step_cache: dict[tuple, str] = {}
         self._sdpa_bwd_cache: dict = {}
         self._sdpa_fwd_cache: dict = {}
+        self._layer_norm_fwd_cache: dict = {}
         self._layer_norm_bwd_cache: dict = {}
 
         def const_name(tensor: torch.Tensor, base: str) -> str:
@@ -2294,12 +2295,15 @@ class TorchCodegen:
             # Reuse the forward's (out, lse) if it was already emitted at this
             # site; else recompute (a backward-only program has no forward).
             fwd_tmp = self._sdpa_fwd_cache.get(self._sdpa_site_key(node, names))
-            if fwd_tmp is not None:
-                prelude = f"{tmp} = {self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, {fwd_tmp}[0], {fwd_tmp}[1], {kw}); "
-            else:
-                fwd = f"{self._SDPA_FWD}({q4}, {k4}, {v4}, {kw})"
-                bwd = f"{self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, _r[0], _r[1], {kw})"
-                prelude = f"{tmp} = (lambda _r: {bwd})({fwd}); "
+            if fwd_tmp is None:
+                # No forward emitted at this site (backward-only program):
+                # recompute it into a temp. NO lambda -- a lambda in the
+                # generated code is a MAKE_FUNCTION bytecode that breaks
+                # torch.compile's fullgraph tracing (and thus all fusion).
+                fwd_tmp = f"_sdpar{len(self._sdpa_fwd_cache)}"
+                self._sdpa_fwd_cache[self._sdpa_site_key(node, names)] = fwd_tmp
+                prelude = f"{fwd_tmp} = {self._SDPA_FWD}({q4}, {k4}, {v4}, {kw}); "
+            prelude += f"{tmp} = {self._SDPA_BWD}({u4}, {q4}, {k4}, {v4}, {fwd_tmp}[0], {fwd_tmp}[1], {kw}); "
         role = S if node.which == 0 else K
         nb = node.nb
         bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
@@ -2323,12 +2327,18 @@ class TorchCodegen:
         b1d = f"{self._sdpa_canon(node.ops[2], node.perms[2], names)}.reshape({D})"
         return x2d, w1d, b1d, (rows, D)
 
+    @staticmethod
+    def _ln_site_key(node, names):
+        return (names[id(node.ops[0])], names[id(node.ops[1])], names[id(node.ops[2])], node.eps)
+
     def _emit_layer_norm_fwd(self, node, name, names, dim_of) -> str:
         x2d, w1d, b1d, (rows, D) = self._layer_norm_xwb(node, names, dim_of)
         bshape = _tup(str(dim_of(d)) for d in node.dims)
         eps = _fmt_weight(node.eps)
-        return (f"{name} = {self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps})"
-                f"[0].reshape({bshape})")
+        tmp = f"_lnf{len(self._layer_norm_fwd_cache)}"
+        self._layer_norm_fwd_cache[self._ln_site_key(node, names)] = tmp
+        return (f"{tmp} = {self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
+                f"{name} = {tmp}[0].reshape({bshape})")
 
     def _emit_layer_norm_bwd(self, node, name, names, dim_of) -> str:
         # grad_x/grad_weight/grad_bias of ONE layer-norm site come from ONE
@@ -2345,12 +2355,16 @@ class TorchCodegen:
         if tmp is None:
             tmp = f"_lnb{len(self._layer_norm_bwd_cache)}"
             self._layer_norm_bwd_cache[gkey] = tmp
-            # _r = native_layer_norm(x) -> (out, mean, rstd); the backward
-            # recomputes the normalization from x's own mean/rstd (_r[1]/_r[2]).
-            fwd = f"{self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps})"
-            bwd = (f"{self._LAYER_NORM_BWD}({u2d}, {x2d}, [{D}], _r[1], _r[2], "
-                   f"{w1d}, {b1d}, [True, True, True])")
-            prelude = f"{tmp} = (lambda _r: {bwd})({fwd}); "
+            # native_layer_norm -> (out, mean, rstd); the backward needs
+            # mean/rstd. Reuse the forward's if emitted, else recompute into a
+            # temp. NO lambda -- a lambda breaks torch.compile fullgraph.
+            fwd_tmp = self._layer_norm_fwd_cache.get(self._ln_site_key(node, names))
+            if fwd_tmp is None:
+                fwd_tmp = f"_lnr{len(self._layer_norm_fwd_cache)}"
+                self._layer_norm_fwd_cache[self._ln_site_key(node, names)] = fwd_tmp
+                prelude = f"{fwd_tmp} = {self._LAYER_NORM}({x2d}, [{D}], {w1d}, {b1d}, {eps}); "
+            prelude += (f"{tmp} = {self._LAYER_NORM_BWD}({u2d}, {x2d}, [{D}], {fwd_tmp}[1], {fwd_tmp}[2], "
+                        f"{w1d}, {b1d}, [True, True, True]); ")
         nb = node.nb
         if node.which == 0:  # grad_x: (rows, D) -> (batch..., dim) canonical
             bdims = [str(dim_of(node.ops[0].dims[a])) for a in node.perms[0][:nb]]
