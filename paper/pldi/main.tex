@@ -780,17 +780,56 @@ straight-line code.
 
 \subsection{What is measured, and what is missing}\label{sec:eval-todo}
 
-The three-framework comparison is now a maintained benchmark suite
-(\texttt{benchmarks/}): nine training-step programs, each with a
+The three-framework comparison is a maintained benchmark suite
+(\texttt{benchmarks/}): eleven training-step programs, each with a
 tensorgrad, a torch, and (where expressible) a JAX side, every module
 gated at import by a cross-framework correctness check on losses and
-gradients. The suite is where the numbers of this section live and
-reproduce, and it is also where the boundary shows: for the VAE the
-frameworks \emph{must} hand-code the reparametrization trick and the
-closed-form KL that tensorgrad derives, and for the Newton--GLM step
-\texttt{jax.hessian} replays $d$ transform passes against our one
-derived GEMM. What remains unmeasured: XLA compile times next to ours,
-and any GPU numbers.
+gradients. Table~\ref{tab:suite} is one run of the compiled mode.
+
+\begin{table}
+\caption{The benchmark suite, compiled mode (tensorgrad programs under
+Inductor; torch steps under \texttt{torch.compile} as written; JAX
+under \texttt{jit}), min-of-15 per row. Ratios ${<}1$ are tensorgrad
+wins. The GPT rows use the suite harness, whose torch step
+graph-breaks on its own \texttt{.item()} logging; the dedicated
+quiet-machine comparison of Table~\ref{tab:e2e} is authoritative
+there. conv's torch step does not compile (dynamo error), so its
+baseline is elided.}
+\label{tab:suite}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+step & tg & torch & jax & tg/torch & tg/jax \\
+\midrule
+conv (MNIST) & 2.4 & -- & -- & -- & -- \\
+diffusion (DDPM, Lion) & 0.73 & 0.75 & -- & $0.97\times$ & -- \\
+embed (word2vec, scatter) & 2.3 & 2.4 & -- & $0.98\times$ & -- \\
+GP marginal likelihood & 0.19 & 0.40 & 0.12 & $\mathbf{0.48\times}$ & $1.6\times$ \\
+GPT (all-derived) & 20.5 & 10.4 & 6.6 & $2.0\times$ & $3.1\times$ \\
+GPT (+cells) & 8.8 & 10.4 & 6.6 & $0.85\times$ & $1.3\times$ \\
+Hessian $x^{\top}Ax$ & 2.1 & 20.3 & 47.0 & $\mathbf{0.10\times}$ & $\mathbf{0.05\times}$ \\
+MLP (residual, AdamW) & 2.7 & 1.8 & -- & $1.5\times$ & -- \\
+Newton--GLM step & 0.55 & 22.0 & 1.25 & $\mathbf{0.02\times}$ & $\mathbf{0.44\times}$ \\
+VAE (exact vs.\ reparam) & 0.38 & 0.32 & 0.12 & $1.2\times$ & $3.1\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The rows sort themselves by the paper's thesis. Where the algebra
+changes the algorithm, tensorgrad wins outright: the Hessian row is the
+closed form of \S\ref{sec:hessian}; the Newton row solves with one
+derived GEMM where \texttt{torch.func} replays $n{+}1$ backward passes
+and \texttt{jax.hessian} a $d$-pass transform loop; the GP row is the
+\texttt{solve}/\texttt{slogdet}/LU cells. Where the program is the
+same algorithm, the rows land at parity (diffusion, embed) or at the
+measured backend gap (MLP, GPT all-derived; the $+$cells delta prices
+the derived elementwise tail, \S\ref{sec:e2e}). The VAE row's
+per-step time is the wrong metric by construction---the exact method
+needs 3 Newton rounds against ${\sim}800$ Adam steps
+(\S\ref{sec:vae})---and it is \emph{in} the table because a suite
+that only showed flattering metrics would defeat its purpose. What
+remains unmeasured: XLA compile times next to ours, and any GPU
+numbers.
 
 \todopaper{\textbf{GPU tier}: either land Triton emission (task \#15) and
 report A100/H100 numbers, or scope all claims to ahead-of-time CPU
