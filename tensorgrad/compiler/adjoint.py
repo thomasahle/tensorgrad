@@ -115,7 +115,13 @@ def splice_child(
 ) -> sympy.Expr:
     """Append `child`'s operands/constraints to einsum parts under
     construction: child's out wires alias the parent wires `child_subs`,
-    its internal wires become fresh parent wires. Returns child.weight."""
+    its internal wires become fresh parent wires. Returns child.weight.
+
+    CALLER CONTRACT: a child out wire carried by no child operand (a pure
+    broadcast) contributes no operand entry here; if the parent contracted
+    that wire and nothing else references it, Builder.einsum will silently
+    drop it and a factor of dim(wire) is lost. Callers must fold such
+    orphans into the weight (see factor._Rewriter._fold_orphans)."""
     base = (max(wire_dims) + 1) if wire_dims else 0
     wmap = {tw: child_subs[a] for a, tw in enumerate(child.out_subs)}
     inner = {w2 for s in child.in_subs for w2 in s}

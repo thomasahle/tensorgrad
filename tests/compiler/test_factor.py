@@ -483,3 +483,40 @@ BATTERY = {
 def test_battery_equivalence(name):
     expr, variables, dims = BATTERY[name]()
     assert_equivalent(expr, variables, dims, seeds=(0, 1, 2))
+
+
+def test_spliced_broadcast_wire_keeps_contraction_multiplicity():
+    """Task #33: splice_child maps a broadcast-only child out wire onto a
+    parent wire that the parent CONTRACTS; with no operand left referencing
+    it, Builder.einsum silently dropped the wire and its dim(w) summation
+    factor. One repro per splice site (_flatten and _make_term)."""
+    import sympy
+    from tensorgrad import Delta, Product, Sum, Variable
+    from tensorgrad.compiler.runtime import compile_to_callable
+    from tensorgrad.extras.evaluate import evaluate
+    from tensorgrad.testutils import assert_close
+    import tensorgrad as tg
+
+    a, b, c = sympy.symbols("a b c")
+    vb = Variable("var_b", b)
+    vc = Variable("var_c", c)
+    vbc = Variable("var_b_c", b, c)
+    g = torch.Generator().manual_seed(0)
+    VB = torch.randn(2, generator=g).rename("b")
+    VC = torch.randn(3, generator=g).rename("c")
+    VBC = torch.randn(2, 3, generator=g).rename("b", "c")
+
+    # _flatten site: 2 * sum_a (vb (x) ones_a) = 2*dim(a)*vb, NOT 2*vb
+    m1 = Product([Sum([Product([vb, Delta(a, "a")])], [2]), Delta(a, "a")])
+    iv = evaluate(m1, {vb: VB}, dims={a: 2})
+    cv = tg.compile(y=m1)(dims={a: 2, b: 2}, var_b=VB).y
+    assert_close(cv, iv, rtol=1e-5, atol=1e-6)
+
+    # _make_term (distribute) site: sum_b (vc (x) ones_b + vbc)
+    #   = dim(b)*vc + sum_b vbc, NOT vc + sum_b vbc
+    m2 = Product([Delta(b, "b"), Sum([Product([vc, Delta(b, "b")]), vbc], [1, 1])])
+    assert_close(
+        compile_to_callable(m2)({vc: VC, vbc: VBC}),
+        evaluate(m2, {vc: VC, vbc: VBC}),
+        rtol=1e-5, atol=1e-6,
+    )

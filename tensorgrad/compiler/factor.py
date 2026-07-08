@@ -505,6 +505,26 @@ class _Rewriter:
     # Einsum-into-einsum splicing is shared with the adjoint pre-pass.
     _splice = staticmethod(splice_child)
 
+    @staticmethod
+    def _fold_orphans(
+        in_subs: list, out_subs: Sequence[int], rows: list, wire_dims: dict,
+        n_parent_wires: int, weight: sympy.Expr,
+    ) -> sympy.Expr:
+        """A spliced child's broadcast-only out wire (carried by no child
+        operand) can leave a contracted parent wire referenced by nothing;
+        Builder.einsum canonicalizes wires by occurrence and would silently
+        DROP it, losing a factor of dim(wire) (task #33). Fold each such
+        orphan into the weight -- the same accounting _absorb does for its
+        own orphaned wire classes. Fresh spliced wires always carry
+        operands, so only original parent wires can orphan."""
+        live = {w for sub in in_subs for w in sub} | set(out_subs)
+        for cs, _ in rows:
+            live |= {w for w, _ in cs}
+        for w in range(n_parent_wires):
+            if w not in live:
+                weight = weight * sympy.sympify(wire_dims[w])
+        return weight
+
     def _flatten(self, n: EinsumNode) -> Node:
         """Fuse a single-consumer EinsumNode operand into its parent when the
         planner's score does not get worse. This undoes contraction boundaries
@@ -532,6 +552,7 @@ class _Rewriter:
             wire_dims = dict(enumerate(n.wire_dims))
             rows = list(n.constraints)
             w = self._splice(ops, in_subs, wire_dims, rows, op, n.in_subs[p])
+            w = self._fold_orphans(in_subs, n.out_subs, rows, wire_dims, len(n.wire_dims), w)
             cand = self.b.einsum(ops, in_subs, n.out_subs, wire_dims, n.weight * w, rows)
             while isinstance(cand, EinsumNode):
                 nxt = self._absorb(cand)
@@ -631,6 +652,7 @@ class _Rewriter:
                 # (cast: build(True) is only reached when can_splice verified
                 # that t is an EinsumNode)
                 weight = weight * self._splice(ops, in_subs, wire_dims, rows, cast(EinsumNode, t), subs_t)
+                weight = self._fold_orphans(in_subs, n.out_subs, rows, wire_dims, len(n.wire_dims), weight)
             else:
                 ops.append(t)
                 in_subs.append(tuple(subs_t))

@@ -231,18 +231,14 @@ def test_random_small(max_depth, max_dim):
                 assert_close(result_code, expected, atol=1e-2, rtol=1e-2)
             except AssertionError:
                 compiler_divergences.append(tag)
-    if compiler_divergences:
-        # compiler-bug: a Product contracting a variable against a
-        # scalar-signature pow() Function of that same variable drops the
-        # contraction sum (power-combining va^-1 * va -> 1 forgets the sum_a).
-        # Minimal repro:
-        #   expr = Product([Function(_PowerFunction(k=-1), inputs=[va],
-        #                            shape_out={}), va])   # = sum_a va^-1*va
-        #   va = [2., 4.] -> evaluate 2.0 (=|a|, correct), compiler 1.0.
-        # Plain .simplify() rewrites these to a Delta(a) form the compiler
-        # handles, which is why only some RAW random exprs diverge here.
-        # Flips to PASS once fixed.
-        pytest.xfail(f"compiler-bug: {len(compiler_divergences)} divergences ({set(compiler_divergences)})")
+    # Historically xfailed on a factoring bug: splice_child orphaned a
+    # broadcast-only child wire that the parent einsum contracted, and
+    # Builder.einsum silently dropped it -- losing a factor of dim(wire)
+    # (task #33; regression-pinned in tests/compiler/test_factor.py).
+    assert not compiler_divergences, (
+        f"compiler diverged from ground truth: {len(compiler_divergences)} "
+        f"({set(compiler_divergences)})"
+    )
 
 
 def test_rand2():
