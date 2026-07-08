@@ -54,16 +54,18 @@ intermediates fall from 11.3\,exabytes to 19.8\,gigabytes (largest node
 Schwartz--Zippel evaluation, and a value-numbering pass merges
 algebraically equal subgraphs that no structural canonicalization can
 identify, guarded by a fresh-seed refusal gate that turns any unsound merge
-into a no-op. Derived backward passes match or beat runtime autograd on
-CPU (layer-norm gradient $3.3\times$ faster, convolutions
-$2.4$--$4.8\times$), the cross-entropy--softmax Hessian simplifies to its
-target-free two-term closed form automatically, and on structured
-second-order workloads the symbolic head start is decisive: the compiled
-Hessian of $x^{\top}Ax$ runs $8\times$ faster than \texttt{torch.func}
-and $20\times$ faster than JAX. A three-block GPT
+into a no-op. Derived backward passes reach the performance of
+hand-written fused kernels on CPU---layer-norm, GELU, and softmax
+gradients all track torch's built-in kernels to within measurement noise
+despite being derived from primitive definitions---the
+cross-entropy--softmax Hessian simplifies to its target-free two-term
+closed form automatically, and on structured second-order workloads the
+symbolic head start is decisive: the compiled Hessian of $x^{\top}Ax$
+runs $8\times$ faster than \texttt{torch.func} and $20\times$ faster than
+JAX. A three-block GPT
 trains to 100\% task accuracy with autograd disabled globally---forward,
 all 53 gradients, and the AdamW optimizer compiled into a single fused
-program.
+program. All measurements are ahead-of-time CPU compilation.
 \end{abstract}
 
 \maketitle
@@ -126,7 +128,7 @@ relation---while the compiler grows ambitious.
   local cost model can find reverse mode (a cost valley: dissolving one
   chain boundary improves the objective by ${<}2\%$ until the entire chain
   collapses), and give a scoring-free structural algorithm. Planned
-  gradient intermediates on transformer graphs drop by up to nine orders
+  gradient intermediates on transformer graphs drop by nearly nine orders
   of magnitude (Table~\ref{tab:adjoint}).
 \item Randomized algebraic verification as compiler infrastructure
   (\S\ref{sec:sz}): IR nodes evaluate exactly over $\mathbb{F}_p$ at
@@ -139,9 +141,9 @@ relation---while the compiler grows ambitious.
   (\S\ref{sec:techmap}): because programs never over-specify layout, the
   compiler assigns physical axis orders globally, reducing every remaining
   transpose to a zero-cost view, and maps contractions onto BLAS cells.
-\item An evaluation (\S\ref{sec:eval}) showing derived backward passes at
-  or beyond runtime-autograd performance on CPU, automatic recovery of
-  hand-derived Hessian structure, and an end-to-end GPT trained with
+\item An evaluation (\S\ref{sec:eval}) showing derived backward passes
+  reaching hand-written fused-kernel performance on CPU, automatic
+  recovery of hand-derived Hessian structure, and an end-to-end GPT trained with
   \texttt{torch.set\_grad\_enabled(False)}: forward, all gradients, and
   AdamW as one compiled program.
 \end{enumerate}
@@ -211,14 +213,17 @@ plus a Weisfeiler--Leman \cite{weisfeiler1968} refinement of the contraction wir
 \item \emph{Exactness on trees}: outside \texttt{Product}, expressions are
   trees, where the fingerprint is the classic AHU canonical code \cite{aho1974}---not a
   heuristic.
-\item \emph{Verified acceptance}: equal fingerprints are confirmed by an
-  exact isomorphism check (VF2 \cite{vf2}; cf.\ nauty \cite{nauty}). Because product vertices arrive heavily
-  colored (names, shapes, child fingerprints), refinement shatters
-  essentially all practical instances: across a full 3-block GPT build
-  (loss + 53 gradients, 1{,}431 pairwise equality queries), the verifier
-  fired \textbf{12 times, each on a 4-node graph}. Graph-isomorphism
-  hardness is not repealed; it is confined to a measured-to-be-tiny
-  verification step.
+\item \emph{Acceptance}: equal refined fingerprints are accepted directly
+  (invariant~I1: an equal refined fingerprint exhibits an edge-preserving
+  isomorphism, sound up to a 64-bit hash collision), with an exact
+  isomorphism check (VF2 \cite{vf2}; cf.\ nauty \cite{nauty}) held in
+  reserve for the coarse-collision case. Because product vertices arrive
+  heavily colored (names, shapes, child fingerprints), refinement
+  shatters essentially all practical instances: across a full 3-block GPT
+  build (loss + 53 gradients, $8{,}736$ equality queries reaching the
+  isomorphism routine), the exact VF2 fallback fired \textbf{zero times}.
+  Graph-isomorphism hardness is not repealed; on real workloads it is
+  never reached.
 \end{itemize}
 
 The fingerprint replaced a networkx-based \cite{networkx} path (rebuild the graph, run WL,
@@ -284,11 +289,11 @@ carrying its own termination order. The same movement recurs in the
 backend, where kernel mappings are cells in a registry rather than
 compiler code (\S\ref{sec:techmap}).
 
-\todopaper{[G] Land the confluence harness: a declared
+\todopaper{\textbf{Confluence harness}: a declared
 termination measure per rule plus randomized local-confluence testing
 (overlapping redexes, both application orders, canonical-equality of
 normal forms, Schwartz--Zippel as the semantic backstop separating
-confluence bugs from soundness bugs); by Newman's lemma this tests exactly
+confluence bugs from soundness bugs); by Newman's lemma \cite{newman1942} this tests exactly
 the property required. Report the number of rule pairs fuzzed and any
 divergences found.}
 
@@ -332,8 +337,8 @@ all structural recursions are memoized per $(\text{node},
 \text{query})$ pair, and renaming is \emph{lazy}: \texttt{Rename} is a
 node, constructed in $O(1)$, lowered by the same simplification pass that
 owns all other rewriting. With these in place, building and normalizing
-the loss and all 53 parameter gradients of a 3-block GPT takes seconds
-(Table~\ref{tab:e2e}).
+the loss and all 53 parameter gradients of a 3-block GPT takes under a
+second (\S\ref{sec:eval} reports the one-time compile cost).
 
 \subsection{Tier 0: what a user must write}\label{sec:tier0}
 
@@ -350,7 +355,7 @@ step = compile_to_callable(loss, loss.grad(x))
 \end{lstlisting}
 
 Measured, from these lines alone: the gradient matches
-\texttt{torch.autograd} to $1.5\times10^{-8}$; the generated kernel
+\texttt{torch.autograd} to $3\times10^{-8}$; the generated kernel
 contains \texttt{torch.softmax} and \emph{no} \texttt{torch.exp}
 (the stabilization pass of \S\ref{sec:stabilize} matches IR shapes, not
 names); the compiled program is finite at $|{\log its}|\approx 600$; and
@@ -358,6 +363,10 @@ $\texttt{loss.grad(x).grad(x)}$---the Hessian that motivated the
 project---derives and compiles in 0.05\,s.
 
 \section{The Compiler}\label{sec:compiler}
+
+The compiler is a fixed pipeline of IR-to-IR passes
+(Figure~\ref{fig:pipeline}); all outputs share one hash-consed DAG, so
+every pass sees the loss and all gradients at once.
 
 \begin{figure}
 \begin{verbatim}
@@ -369,15 +378,15 @@ symbolic tensors
   |             outputs; Deltas become shared wires;
   |             structured tensors -> affine rows
   v
-  adjoint       restore reverse-mode ordering (S5.2)
+  adjoint       restore reverse-mode ordering (S4.2)
   v
   factor        (un)distribute by contraction cost
   v
   stabilize     exp-ratio / logsumexp -> stable kernels
   v
-  consolidate   SZ value numbering mod permutation (S6)
+  consolidate   SZ value numbering mod permutation (S5)
   v
-  layout        global physical axis assignment (S7)
+  layout        global physical axis assignment (S6)
   v
   codegen       BLAS cells, index_select/index_add,
   |             spec-time strides, liveness `del`s
@@ -406,7 +415,7 @@ fallback, so structure is a fast path, never a correctness requirement.
 Symbolic differentiation produces \emph{forward-mode-shaped} gradients:
 the derivative of a deep composition arrives as Jacobian chains that drag
 the parameter's indices through every layer above it. The numbers are
-disqualifying (Table~\ref{tab:adjoint}): one transformer block at GPT-2
+disqualifying (Table~\ref{tab:adjoint}): one transformer block at GPT-2 \cite{gpt2}
 dimensions plans 404{,}597\,GB of intermediates for three gradients; the
 same mathematics, associated cotangent-first, needs megabytes.
 
@@ -451,7 +460,7 @@ program & lowered & final & max node \\
 \end{tabular}
 \end{table}
 
-The 3-block program \emph{runs}: 184\,ms per step eager on two CPU
+The 3-block program \emph{runs}: 185\,ms per step eager on two CPU
 threads, every gradient within $7\times10^{-6}$ relative of
 \texttt{torch.autograd}. One measurement deserves a remark: the
 attention key-bias gradients agree with autograd only under an absolute
@@ -592,7 +601,7 @@ operand feeds two or more of $\{\mathrm{inverse}, \mathrm{solve},
 \log\det\}$, all consumers draw from a single
 \texttt{lu\_factor}---the factorization reuse JAX's
 \texttt{solve}/\texttt{slogdet} adjoints get implicitly---which closed
-the measured GP gap from $1.40\times$ to $1.24\times$ at $n{=}1024$.
+the measured GP gap to JAX from $1.40\times$ to $1.24\times$ at $n{=}1024$.
 Misses degrade performance, never correctness; retargeting is a second
 registry.
 
@@ -617,31 +626,43 @@ gradients for every fused cell.
 \subsection{Derived backward passes vs.\ runtime autograd}
 
 \begin{table}
-\caption{Loss+gradient microbenchmarks at $(256,1024)$, eager CPU.
-tensorgrad kernels are \emph{derived} from primitive definitions; torch
-baselines use built-in fused ops under autograd.}
+\caption{Loss+gradient microbenchmarks at $(256,1024)$, CPU (2 threads,
+min-of-40). The tensorgrad column is a gradient \emph{derived} from a
+three-line primitive definition and compiled; ``torch fused'' is the
+framework's built-in hand-written kernel under autograd
+(\texttt{layer\_norm}/\texttt{gelu}/\texttt{softmax}); ``torch prim.'' is
+autograd through the \emph{same} naive primitive composition tensorgrad
+starts from.}
 \label{tab:micro}
 \small
 \begin{tabular}{lrrr}
 \toprule
-workload & tensorgrad & autograd & ratio \\
+grad workload & tensorgrad & torch fused & torch prim. \\
 \midrule
-layer-norm grad & 0.252\,ms & 0.826\,ms & $\mathbf{3.3\times}$ faster \\
-gelu (tanh) grad & 0.960\,ms & 1.254\,ms & $1.3\times$ faster \\
-softmax grad & 0.449\,ms & 0.495\,ms & parity \\
-conv1d fwd+bwd & \multicolumn{3}{c}{$2.4$--$4.8\times$ faster (3 sizes)} \\
+layer-norm & 0.24\,ms & 0.22\,ms & 0.48\,ms \\
+gelu (tanh) & 1.27\,ms & 1.28\,ms & 1.06\,ms \\
+softmax & 0.45\,ms & 0.47\,ms & 0.34\,ms \\
+conv1d fwd+bwd & \multicolumn{3}{c}{$1.5\times$ over torch (MNIST step, Table~\ref{tab:suite})} \\
 CE--softmax HVP & \multicolumn{3}{c}{parity with double backward} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The layer-norm result is the thesis in miniature: its backward pass was
-never written---three lines of \texttt{mean}/\texttt{sqrt} primitives
-were differentiated, factored, stabilized, and mapped---and the result
-beats the framework's hand-fused runtime path by $3.3\times$. JAX on the
-same kernel: \texttt{jit(grad)} runs it in 0.27\,ms to our 0.33\,ms
----XLA edges the derived kernel while torch's runtime autograd trails
-both.
+The result (Table~\ref{tab:micro}) is the thesis in miniature, and the
+honest reading is a \emph{match}, not a rout: across all three elementwise kernels the
+derived-and-compiled gradient tracks torch's built-in hand-written
+kernel to within measurement noise (layer-norm $0.24$ vs.\ $0.22$\,ms,
+GELU $1.27$ vs.\ $1.28$, softmax $0.45$ vs.\ $0.47$)---having been
+produced from a definition with no backward pass written. Against
+autograd through that same primitive definition, the derived layer-norm
+gradient is $2.0\times$ faster ($0.24$ vs.\ $0.48$\,ms), because
+factoring collapses the mean/variance backward that eager autograd
+leaves separate; for softmax and GELU, torch's eager kernels already
+fuse the primitive backward well and the three land at parity. The claim
+is therefore not a speedup over autograd in general---it is that a kernel
+\emph{nobody wrote} reaches vendor-fused performance, and that where the
+derivative has real structure to exploit (convolutions, and the
+second-order workloads below) the head start becomes decisive.
 
 \subsection{The founding benchmark: Hessians}\label{sec:hessian}
 
@@ -658,7 +679,9 @@ Where the closed form does asymptotically less work, the wall clock
 follows. At $n{=}2048$, $\partial^2(x^{\top}Ax)$ compiles to literally
 $A + A^{\top}$ (the tests pin a two-statement ceiling, $x$ never read)
 and runs in 2.1\,ms, against 17.7\,ms for \texttt{torch.func.hessian} \cite{functorch}
-and 42.7\,ms for \texttt{jax.hessian} ($8\times$ and $20\times$): both
+and 42.7\,ms for \texttt{jax.hessian} ($8\times$ and $20\times$; a direct
+head-to-head---the suite harness of Table~\ref{tab:suite} times the same
+row end-to-end at the same ratios): both
 frameworks replay autodiff at runtime, and no amount of XLA fusion helps
 when the algorithm itself is $n$ backward passes. The pattern holds on a
 real second-order training loop and grows with dimension: assembling the
@@ -693,13 +716,14 @@ derived expectation} yields exact per-block Newton solves (the 4-edge
 Hessian of a matrix block factors as a Kronecker product whose factors
 are recovered from the derived Hessian itself by two Delta
 contractions), and cycling the four blocks reaches the analytic
-optimum---probabilistic PCA \cite{ppca}---in five rounds and 0.2\,s. No step size
-exists anywhere in the file. Head to head on time-to-optimum (reaching
+optimum---probabilistic PCA \cite{ppca}---in five rounds and 0.2\,s wall
+(one-time compile included; the steady-state round is the 10\,ms quoted
+below). No step size exists anywhere in the file. Head to head on time-to-optimum (reaching
 $1.05\times$ the analytic PCA floor): the exact method takes 3 rounds and
 10\,ms; the reparametrization-trick estimator torch and JAX must use
 instead---runtime autodiff cannot differentiate through sampling, and both
 hand-code the closed-form KL that tensorgrad derives---needs ${\sim}800$
-Adam \cite{adam} steps and 160--180\,ms, a $16$--$19\times$ gap, with gradient noise
+Adam \cite{adam} steps and 160--190\,ms, a $16$--$19\times$ gap, with gradient noise
 the exact method simply does not have.
 
 One observation from this exercise generalizes. The compiled Newton
@@ -742,7 +766,7 @@ tensorgrad, all-derived (eager) & 42\,ms \\
 tensorgrad, all-derived ($\times$ Inductor) & 25\,ms \\
 tensorgrad + cells ($\times$ Inductor) & 7.4\,ms \\
 torch autograd + SDPA + fused AdamW (compiled) & 5.2\,ms \\
-JAX \texttt{jit} of the whole step & 4.8\,ms \\
+JAX \texttt{jit} of the whole step & 4.5\,ms \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -752,10 +776,10 @@ Both tensorgrad variants train to 100\% held-out accuracy (peak RSS
 measured rather than conjectured. Between the all-derived and cell
 variants lies the elementwise tail of the derived backward---the price
 of full generality, recoverable kernel by kernel through the cell
-registry. The remaining $1.4\times$ to JAX is \emph{architectural}: we
+registry. The remaining ${\approx}1.5\times$ to JAX is \emph{architectural}: we
 emit into torch's backend, and XLA's whole-program fusion beats
 torch-Inductor on this workload at every scale we measured (jax 4.8 vs.\
-torch 5.2\,ms at $d{=}48$; 40.7 vs.\ 51.7\,ms at $d{=}384$, where both
+torch 5.2\,ms at $d{=}48$; the ratio holds at $d{=}384$, where both
 are firmly compute-bound and tensorgrad+cells sits $1.2\times$ above
 torch). A backend we rent bounds us by its own ceiling; the workloads of
 \S\ref{sec:hessian}, where algebra changes the exponent rather than the
@@ -769,8 +793,9 @@ development this took 44\,s---the hash-consed fingerprints of
 \S\ref{sec:iso} and the memoized structural recursions of
 \S\ref{sec:depth} are what moved it). The adjoint pass runs in
 0.5--6.8\,s at all scales of Table~\ref{tab:adjoint}. Equality
-infrastructure: the exact-verification fallback fired 12 times (4-node
-graphs) across the entire build. One systems footnote: a process that
+infrastructure: the exact-verification fallback fired zero times across
+the loss+53-gradient build ($8{,}736$ queries; \S\ref{sec:iso}). One
+systems footnote: a process that
 compiles many programs (our benchmark suite compiles 15+) trips
 TorchDynamo's per-frame recompile ceiling, which under
 \texttt{fullgraph=True} raises rather than falling back; the runtime
@@ -781,7 +806,8 @@ straight-line code.
 \subsection{What is measured, and what is missing}\label{sec:eval-todo}
 
 The three-framework comparison is a maintained benchmark suite
-(\texttt{benchmarks/}): eleven training-step programs, each with a
+(\texttt{benchmarks/}): ten benchmark rows (nine models; GPT appears
+both all-derived and $+$cells), each with a
 tensorgrad, a torch, and (where expressible) a JAX side, every module
 gated at import by a cross-framework correctness check on losses and
 gradients. Table~\ref{tab:suite} is one run of the compiled mode.
@@ -831,19 +857,15 @@ that only showed flattering metrics would defeat its purpose. What
 remains unmeasured: XLA compile times next to ours, and any GPU
 numbers.
 
-\todopaper{\textbf{GPU tier}: either land Triton emission (task \#15) and
-report A100/H100 numbers, or scope all claims to ahead-of-time CPU
-compilation and say so in the abstract.}
+\todopaper{\textbf{GPU tier} (future work): the evaluation is scoped to
+ahead-of-time CPU compilation (stated in the abstract); Triton emission
+for fused affine regions and A100/H100 numbers are a designed but
+unlanded second cell registry.}
 
 \todopaper{\textbf{Scale}: one training run beyond gpt-nano (12-block
 GPT-2 dims now plans in 19.8\,GB and should execute on a 40\,GB device);
 plus a second task domain (the conv/MNIST pipeline exists).}
 
-\todopaper{\textbf{Confluence harness}: the rule catalog of
-\S\ref{sec:rules-as-data} makes local-confluence fuzzing possible
-(generate critical pairs, join them, flag divergence); it is designed
-but not landed, and the normal-form claim of \S\ref{sec:language} is
-empirical until it is.}
 
 \todopaper{\textbf{Formal statements}: a semantics appendix (expressions
 as multigraphs, evaluation as a functor to multilinear maps; equality =
