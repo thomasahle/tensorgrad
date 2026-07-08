@@ -925,4 +925,555 @@ where its symbolic head start matters, outrun the tape.
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
 
+\appendix
+\theoremstyle{remark}\newtheorem{remark}{Remark}[section]
+
+%% The theorem-like environments (definition, lemma, theorem, proposition,
+%% remark) and the proof environment used below are provided by acmart
+%% (which loads amsthm). If this appendix is compiled outside acmart, add:
+%%   \theoremstyle{definition}\newtheorem{definition}{Definition}[section]
+%%   \theoremstyle{plain}\newtheorem{theorem}{Theorem}[section]
+%%   \newtheorem{lemma}[theorem]{Lemma}\newtheorem{proposition}[theorem]{Proposition}
+%%   \theoremstyle{remark}\newtheorem{remark}[theorem]{Remark}
+\providecommand{\sem}[1]{\left[\!\left[#1\right]\!\right]}
+\newcommand{\Free}{\operatorname{free}}
+\newcommand{\Fp}{\mathbb{F}_{p}}
+\newcommand{\dg}{\mathsf{d}}
+
+\section{Formal Semantics}\label{app:semantics}
+
+This appendix discharges the obligations stated in
+\S\ref{sec:eval-todo}. Part~\ref{app:denot} gives the denotational
+semantics---an expression as a labeled multigraph and the evaluation
+functor $\sem{\cdot}$ into finite-dimensional multilinear maps---and
+proves that isomorphic graphs denote equal maps (Soundness), then
+delimits Completeness for the multilinear fragment.
+Part~\ref{app:term} exhibits the well-founded measure that the
+deterministic language-layer rewrites decrease and proves strong
+normalization. Part~\ref{app:sz} states the Schwartz--Zippel identity-%
+testing bound used by verification and consolidation, the union bound
+over a compilation, and the independence argument that makes the
+fresh-seed refusal gate's undetected-miscompile probability negligible.
+
+Throughout, $\mathrm{Sym}$ is the set of symbolic size names (\texttt{batch},
+\texttt{seq}, $\dots$), a \emph{dimension assignment} is a function
+$\delta:\mathrm{Sym}\to\mathbb{N}_{>0}$, and $R$ is a fixed commutative
+ring (the reals at runtime, $\Fp$ under verification). Every edge $e$
+carries a size symbol $\dim(e)\in\mathrm{Sym}$; under $\delta$ it ranges
+over the index set $I_e^{\delta}=\{0,\dots,\delta(\dim(e))-1\}$.
+
+\subsection{Denotational semantics}\label{app:denot}
+
+\subsubsection*{Expressions as labeled multigraphs}
+
+\begin{definition}[Expression graph]\label{def:graph}
+The \emph{graph} $G(e)$ of an expression $e$ is a finite labeled
+multigraph with half-edges.
+\begin{itemize}
+\item \textbf{Vertices} are the primitive occurrences of the nine node
+  types (\S\ref{sec:language}): \texttt{Variable}, \texttt{Delta},
+  \texttt{Zero}, \texttt{Sum}, \texttt{Product}, \texttt{Function},
+  \texttt{Derivative}, \texttt{Rename}, and scalar constants. Each vertex
+  $v$ carries a \emph{label} $\ell(v)$ recording its type together with
+  all data that participates in identity but is not itself a wire (the
+  variable name, a \texttt{Delta}'s size symbol, \texttt{Sum} weights,
+  a \texttt{Function} signature). This is exactly the $\textit{label}$
+  component of the \textit{structure}() datum of \S\ref{sec:iso}.
+\item \textbf{Edges} (internal) are the \emph{named indices} shared
+  between two endpoints: a contracted edge of a \texttt{Product}, a
+  hyperedge of a \texttt{Delta}, a broadcast wire of a \texttt{Sum}.
+  Formally an edge is a \emph{junction}: an equivalence class of node--%
+  port endpoints identified as one wire. Its interior name is used only
+  to group endpoints and is then discarded, so $\alpha$-renaming of a
+  contracted index is invisible in $G(e)$.
+\item \textbf{Half-edges} (dangling) are the \emph{free} indices
+  $\Free(e)$: endpoints of a junction with a distinguished
+  \texttt{free} port and no matching interior endpoint. These are the
+  expression's output indices; $\sem{e}$ is a tensor over exactly this
+  index set.
+\end{itemize}
+An isomorphism $G(e_1)\cong G(e_2)$ is a bijection of vertices and of
+junctions preserving vertex labels, incidence, and port roles;
+\emph{edge-preserving} isomorphism additionally fixes the naming of the
+half-edges in $\Free$.
+\end{definition}
+
+\begin{definition}[Equality]
+$e_1\equiv e_2$ iff $G(e_1)\cong G(e_2)$ by an edge-preserving
+isomorphism. This is the relation decided by the fingerprint-plus-VF2
+procedure of \S\ref{sec:iso}; commutativity and associativity of
+\texttt{Product}/\texttt{Sum} and $\alpha$-renaming of contracted edges
+are not rewrites but consequences of $\cong$, because \texttt{Product}
+and \texttt{Sum} hold unordered multisets and interior edge names are
+quotiented in Definition~\ref{def:graph}.
+\end{definition}
+
+\subsubsection*{The evaluation functor}
+
+Fix $\delta$ and a \emph{valuation} $\rho$ assigning to each
+\texttt{Variable} $v$ with free edges $\Free(v)$ a tensor
+$\rho(v)\in R^{\prod_{e\in\Free(v)} I_e^{\delta}}$ of matching shape.
+Write $T^{\delta}_{S}=R^{\prod_{e\in S} I_e^{\delta}}$ for the space of
+tensors with free-edge set $S$; an element of $T^{\delta}_S$ is
+equivalently a multilinear map $\prod_{e\in S}(R^{I_e^\delta})^{*}\to R$,
+which is the target category.
+
+\begin{definition}[Evaluation]\label{def:eval}
+$\sem{\cdot}_{\delta,\rho}$ sends an expression $e$ with
+$\Free(e)=S$ to an element $\sem{e}_{\delta,\rho}\in T^{\delta}_{S}$,
+defined by structural recursion. Writing an index tuple as $\vec\imath$
+and $\vec\imath|_A$ for its restriction to edge set $A$:
+\begin{align*}
+\sem{v}_{\vec\imath} &= \rho(v)_{\vec\imath}, \\[-1pt]
+\sem{\texttt{Zero}}_{\vec\imath} &= 0, \\[-1pt]
+\sem{\Delta_n(e_1,\dots,e_k)}_{i_1,\dots,i_k}
+   &= \begin{cases} 1 & i_1=\cdots=i_k,\\ 0 & \text{otherwise,}\end{cases}
+   \qquad (k=0:\ \sem{\Delta_n}=\delta(n)\in R),\\[-1pt]
+\sem{\textstyle\sum_t w_t\, e_t}_{\vec\imath}
+   &= \textstyle\sum_t w_t\,\sem{e_t}_{\vec\imath}
+     \qquad (\text{terms broadcast to a common }S),\\[-1pt]
+\sem{\textstyle\prod_t e_t}_{\vec\imath}
+   &= \sum_{\vec\jmath\in \prod_{c\in C} I_c^{\delta}}\;
+      \prod_t \sem{e_t}_{(\vec\imath,\vec\jmath)\,|_{\Free(e_t)}},\\[-1pt]
+\sem{\mathrm{Rename}_{\pi}(e)}_{\vec\imath}
+   &= \sem{e}_{\vec\imath\circ\pi},\\[-1pt]
+\sem{f(e_1,\dots,e_m)}
+   &= \widehat{f}\big(\sem{e_1},\dots,\sem{e_m}\big),
+\end{align*}
+where $C$ is the set of internal (contracted) edges of the product,
+$\pi$ is the free-edge bijection carried by the \texttt{Rename}, and
+$\widehat f$ is the multilinear (or, in general, analytic) map named by
+the \texttt{Function} signature. \texttt{Derivative} is not given a
+direct clause: it denotes the derivative map of its operand and is
+eliminated by the rewriting of \S\ref{sec:autodiff} before evaluation
+(the eager interpreter refuses to evaluate an unresolved
+\texttt{Derivative}; cf.\ \texttt{extras/evaluate.py}).
+\end{definition}
+
+The two structural clauses are the paper's slogans made precise:
+\emph{contraction is summation over shared edges} (the \texttt{Product}
+clause is exactly a named-index einsum), and \emph{$\Delta$ is the
+identity/diagonal/copy tensor} (order $2$: the identity matrix; order
+$1$: the all-ones vector; order $0$: the scalar $\delta(n)$, the value
+returned by \texttt{evaluate} for an edgeless \texttt{Delta}).
+
+\begin{lemma}[$\Delta$ is the copy tensor]\label{lem:delta}
+For any edge set the family $\{\sem{\Delta_n(\cdots)}\}$ satisfies the
+Frobenius/copy laws: contracting a leg of $\Delta_n(e_1,\dots,e_k)$ with a
+leg of $\Delta_n(e_1',\dots,e_{k'}')$ yields $\Delta_n$ of arity
+$k+k'-2$, and contracting an order-$2$ $\Delta_n$ against a tensor
+renames the touched edge. Hence a \texttt{Delta} vertex acts as a
+hyperedge fusing all its incident junctions into one wire, which is
+precisely the single-junction \textit{structure}() declaration of
+\S\ref{sec:iso}.
+\end{lemma}
+
+\begin{proof}
+Immediate from $\sem{\Delta_n}_{\vec\imath}=[\,\text{all }i\text{ equal}\,]$:
+a contraction $\sum_j [\![i_1{=}\cdots{=}j]\!]\,[\![j{=}\cdots{=}i_{k'}]\!]$
+collapses to $[\![\text{all remaining equal}]\!]$, and
+$\sum_j[\![i{=}j]\!]\,x_{j}=x_i$. Thus every leg indexes the same value,
+so the incidence is a single equivalence class of endpoints, i.e.\ one
+junction.
+\end{proof}
+
+\subsubsection*{Soundness}
+
+\begin{theorem}[Soundness of equality]\label{thm:sound}
+If $e_1\equiv e_2$ then $\sem{e_1}_{\delta,\rho}=\sem{e_2}_{\delta,\rho}$
+for every dimension assignment $\delta$ and valuation $\rho$.
+\end{theorem}
+
+\begin{proof}
+By induction on the structure of the isomorphism
+$\Phi:G(e_1)\xrightarrow{\ \cong\ }G(e_2)$, using that
+Definition~\ref{def:eval} is a fold over the same
+\textit{structure}() data on which $\cong$ is defined
+(\S\ref{sec:iso}: ``one source of structural truth''). $\Phi$ maps the
+root of $e_1$ to a root of $e_2$ of equal label, hence of equal node
+type and equal non-wire data, and restricts to isomorphisms of the
+child subgraphs; the induction hypothesis equates their denotations.
+It remains to check each clause is invariant under the residual freedom
+in $\Phi$:
+\begin{itemize}
+\item \texttt{Product}: $\Phi$ permutes the (unordered) factor multiset
+  and bijects the internal edges $C_1\to C_2$. The clause
+  $\sum_{\vec\jmath}\prod_t(\cdots)$ is invariant under permuting the
+  factors (commutativity of the product in $R$) and under relabeling the
+  bound summation indices $\vec\jmath$ (a change of summation variable),
+  which is exactly the freedom $\Phi$ has on $C$. Associativity is not a
+  separate case: the flattened multiset carries no bracketing.
+\item \texttt{Sum}: $\Phi$ permutes the term multiset while preserving
+  the weight attached to each term (the weight is part of the child
+  role/label), so $\sum_t w_t(\cdots)$ is preserved by commutativity of
+  $+$.
+\item \texttt{Delta}: by Lemma~\ref{lem:delta} the value is a symmetric
+  function of its legs, so any permutation of them induced by $\Phi$
+  fixes it.
+\item \texttt{Rename}: an edge-preserving $\Phi$ carries $\pi$ to the
+  matching free-edge relabeling, and $\sem{\mathrm{Rename}_\pi(e)}$ is
+  $\sem e$ precomposed with that bijection.
+\item \texttt{Variable}, \texttt{Function}, \texttt{Zero}: determined by
+  the label alone (name / signature / type), which $\Phi$ preserves.
+\end{itemize}
+Since every clause is invariant, $\sem{e_1}=\sem{e_2}$.
+\end{proof}
+
+\begin{remark}
+Soundness is what licenses the fingerprint as a decision procedure for
+inequality (unequal denotations $\Rightarrow$ non-isomorphic
+$\Rightarrow$ distinct fingerprints, contrapositive of
+Theorem~\ref{thm:sound} composed with fingerprint completeness on
+$\cong$), and is the property the differential fuzzing harness of
+\S\ref{sec:sz} tests empirically.
+\end{remark}
+
+\subsubsection*{Completeness for the multilinear fragment}
+
+Let the \emph{multilinear fragment} $\mathcal{M}$ be the sublanguage
+built from \texttt{Variable}, \texttt{Delta}, \texttt{Rename},
+\texttt{Sum}, and \texttt{Product} (no opaque \texttt{Function}, no
+\texttt{Derivative}). Every $e\in\mathcal{M}$ denotes, for fixed
+$\delta$, a map $\rho\mapsto\sem{e}_{\delta,\rho}$ that is a
+\emph{multilinear polynomial}: multilinear in the entries of each
+\texttt{Variable} block and of total degree at most the number of
+variable-leaves along any contraction path.
+
+Raw graph isomorphism is \emph{not} complete on $\mathcal{M}$: an
+order-$2$ $\Delta_n$ inserted on an edge, a $\texttt{Zero}$ summand, or a
+folded weight changes $G(e)$ without changing $\sem e$
+(Lemma~\ref{lem:delta}). These are exactly the semantic---not
+syntactic---equalities. The language therefore normalizes: let
+$\mathrm{nf}(e)$ be the normal form produced by the deterministic
+rewrites of Part~\ref{app:term} (identity-$\Delta$ absorption, $\Delta$
+fusion, \texttt{Zero} elimination, weight folding, flattening). We state
+completeness relative to normal forms.
+
+\begin{proposition}[Completeness on normal forms]\label{prop:complete}
+Assume $R$ is an infinite integral domain (or $|R|$ exceeds the degree
+bound). For $e_1,e_2\in\mathcal{M}$ with $\Free(e_1)=\Free(e_2)$:
+\[
+  \big(\forall\rho\ \sem{e_1}_{\delta,\rho}=\sem{e_2}_{\delta,\rho}\big)
+  \iff \mathrm{nf}(e_1)\equiv \mathrm{nf}(e_2).
+\]
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+($\Leftarrow$) is Soundness (Theorem~\ref{thm:sound}) together with the
+semantics-preservation of each normalization rule (each clause of
+Part~\ref{app:term} is an instance of an $R$-algebra identity, checked
+once per rule). ($\Rightarrow$) is coefficient extraction. A
+$\Delta$-reduced $\mathcal M$-normal form is a \texttt{Sum} of
+\texttt{Product} \emph{monomials}, each monomial a contraction pattern
+that pairs specified variable-slots; its denotation is the multilinear
+polynomial whose coefficient tensor records, for each choice of one
+entry per participating variable, which index identifications the pattern
+imposes (a product of $\Delta$'s). Over an infinite domain a multilinear
+polynomial is determined by its coefficient tensor (a polynomial that
+vanishes at all points of an infinite domain is the zero polynomial), and
+the coefficient tensor determines the monomial's contraction pattern up
+to the symmetries already quotiented by $\cong$; distinct monomials are
+linearly independent, so equal polynomials have equal monomial multisets,
+i.e.\ isomorphic normal forms. \qedhere
+\end{proof}
+
+\begin{remark}[Why the field must be large, and the bridge to Part C]
+Proposition~\ref{prop:complete} needs an infinite (or large) domain
+precisely at coefficient extraction. Over a small finite ring two
+distinct multilinear polynomials can agree everywhere, so isomorphism of
+normal forms is \emph{no longer} complete for pointwise equality. This
+is exactly the regime of the compiler's value numbering: after the
+adjoint and factoring passes (\S\ref{sec:adjoint}) many subgraphs denote
+equal maps through non-isomorphic normal forms that the language layer
+does not reach. Part~\ref{app:sz} recovers a probabilistic completeness
+for these by testing the polynomial identity at random points of a large
+finite field $\Fp$---the randomized backstop for the equalities that
+structural $\cong$ cannot see.
+\end{remark}
+
+\subsection{Termination of the rewrite system}\label{app:term}
+
+We show the deterministic language-layer rewrite relation
+$\rightarrow_{\mathcal L}$ (the simplification catalog of
+\S\ref{sec:rules-as-data} together with the constraint engine of
+\S\ref{sec:constraints}) is \emph{strongly normalizing}: no expression
+admits an infinite chain of rewrites. This substantiates the
+``terminating rewriting toward a normal form'' claim of
+\S\ref{sec:language}; confluence (hence uniqueness of normal forms) is
+the separate, empirically tested obligation of the confluence-harness
+\textsc{todo}, discussed in the closing remark.
+
+\subsubsection*{The measure}
+
+For an expression $e$ and a vertex $v\in G(e)$, write $\lvert
+\mathrm{sub}(v)\rvert$ for the number of vertices \emph{strictly below}
+$v$ (its operand subterm size). Define three non-negative integer
+potentials:
+\begin{align*}
+\Phi_\partial(e) &= \!\!\sum_{v:\ \ell(v)=\texttt{Derivative}}\!\!
+   \big(1+\lvert\mathrm{sub}(v)\rvert\big),
+   &\text{(unresolved differentiation)}\\
+\Phi_\rho(e) &= \!\!\sum_{v:\ \ell(v)=\texttt{Rename}}\!\!
+   \big(1+\lvert\mathrm{sub}(v)\rvert\big),
+   &\text{(pending lazy renames)}\\
+N(e) &= \#\{\text{vertices of } G(e)\}.
+   &\text{(node count)}
+\end{align*}
+The \emph{termination measure} is the lexicographic triple
+\[
+  \mu(e)=\big(\Phi_\partial(e),\ \Phi_\rho(e),\ N(e)\big)\in\mathbb{N}^3,
+  \qquad \text{ordered by } <_{\mathrm{lex}}.
+\]
+$(\mathbb{N}^3,<_{\mathrm{lex}})$ is well-founded (a finite lexicographic
+product of well-founded orders), so it suffices to show every rule
+strictly decreases $\mu$.
+
+\subsubsection*{Rule schemata and their effect on $\mu$}
+
+The rules partition into three groups; we exhibit the strict decrease in
+the responsible lexicographic coordinate and non-increase in the higher
+ones.
+
+\emph{(1) Derivative pushing} (\S\ref{sec:autodiff}): linearity over
+\texttt{Sum}, the product rule over \texttt{Product}, the chain rule at
+\texttt{Function}, and the base rules at leaves (a leaf $\Delta$ or a
+signature derivative). A \texttt{Derivative} whose operand $u$ has
+subterm size $s=\lvert\mathrm{sub}(v)\rvert$ is replaced by
+\texttt{Derivative} nodes applied only to \emph{proper} subterms of $u$
+(the summands of a \texttt{Sum}; the factors $t_i$ in
+$\partial\prod_i t_i=\sum_i(\prod_{j\ne i}t_j)\,\partial t_i$; the
+arguments at a \texttt{Function}), whose subterm sizes sum to at most
+$s-1$. Hence the contribution $(1+s)$ of $v$ is replaced by a total
+$\le s$, and every base rule deletes a \texttt{Derivative} outright, so
+$\Phi_\partial$ strictly decreases. These rules introduce no
+\texttt{Derivative} above where one was not already, and although the
+product rule may \emph{increase} $N$, that coordinate is dominated in
+$<_{\mathrm{lex}}$.
+
+\emph{(2) Rename pushing} (\S\ref{sec:depth}, lazy \texttt{Rename}): a
+\texttt{Rename} over a $k$-ary node becomes $\le k$ \texttt{Rename}s over
+its children (each of strictly smaller subterm size), and a
+\texttt{Rename} at a \texttt{Variable}/\texttt{Delta} leaf is absorbed
+into the leaf's edge names. By the same accounting $\Phi_\rho$ strictly
+decreases. These rules create no \texttt{Derivative} node, so
+$\Phi_\partial$ is unchanged.
+
+\emph{(3) Shrinking rules}: identity-$\Delta$ absorption and $\Delta$
+fusion (Lemma~\ref{lem:delta}), \texttt{Zero} elimination, weight and
+constant folding, \texttt{Sum}/\texttt{Product} flattening, and
+duplicate collection. Each strictly reduces $N$ and creates neither a
+\texttt{Derivative} nor a \texttt{Rename}, so $\Phi_\partial,\Phi_\rho$
+are unchanged and $N$ strictly decreases.
+
+\emph{Constraint rewrites} (\S\ref{sec:constraints}) are a distinguished
+family of group~(3). A declared equation replaces a subnetwork
+isomorphic to its left-hand side $L$ by its right-hand side $R$, subject
+to the \emph{declaration-time obligation} $N(R)<N(L)$ (``the right-hand
+side must be strictly smaller (node count) than the left''). Because a
+constraint's $R$ is a value pattern containing no \texttt{Derivative} and
+no \texttt{Rename}, the rewrite leaves $\Phi_\partial,\Phi_\rho$ fixed and
+strictly decreases $N$ by $N(L)-N(R)>0$.
+
+\begin{theorem}[Strong normalization]\label{thm:sn}
+$\rightarrow_{\mathcal L}$ is strongly normalizing: for every rewrite
+$e\rightarrow_{\mathcal L} e'$, $\mu(e')<_{\mathrm{lex}}\mu(e)$; hence no
+infinite rewrite sequence exists and every expression has at least one
+normal form.
+\end{theorem}
+
+\begin{proof}
+By the case analysis above, each rule strictly decreases one coordinate
+of $\mu$ and does not increase any higher coordinate: group~(1) decreases
+$\Phi_\partial$; group~(2) fixes $\Phi_\partial$ and decreases
+$\Phi_\rho$; group~(3), including constraints, fixes
+$(\Phi_\partial,\Phi_\rho)$ and decreases $N$. Thus every step strictly
+decreases $\mu$ in $<_{\mathrm{lex}}$. An infinite rewrite chain would
+induce an infinite strictly-descending sequence in
+$(\mathbb{N}^3,<_{\mathrm{lex}})$, contradicting well-foundedness.
+\end{proof}
+
+\begin{remark}[Termination versus confluence]
+Theorem~\ref{thm:sn} gives \emph{existence} of normal forms. Their
+\emph{uniqueness}---the normal-form claim of \S\ref{sec:language}---is
+confluence, which for a strongly normalizing system reduces by Newman's
+lemma to \emph{local} confluence: joinability of the two reducts of each
+critical pair. That is precisely the property the confluence harness of
+\S\ref{sec:rules-as-data} fuzzes (overlapping redexes, both application
+orders, canonical-equality of the results, with the Schwartz--Zippel test
+of Part~\ref{app:sz} separating a genuine confluence failure from a
+soundness bug). Until that harness is landed the uniqueness claim is
+empirical; termination is unconditional.
+\end{remark}
+
+\subsection{Schwartz--Zippel bounds for verification and consolidation}
+\label{app:sz}
+
+The compiler evaluates every IR node exactly over a finite field
+$\Fp$ at seeded random points (\texttt{compiler/szfp.py}). We record the
+error analysis for the two uses of this machinery: pinning individual
+rewrites (\S\ref{sec:sz}, verification) and merging value-equal subgraphs
+under the fresh-seed refusal gate (\S\ref{sec:sz}, consolidation).
+
+\subsubsection*{The field and the atoms formulation}
+
+The prime is the Mersenne prime
+\[
+   p \;=\; 2^{19}-1 \;=\; 524287
+   \qquad(\texttt{P} \text{ in } \texttt{szfp.py}).
+\]
+It is chosen so pairwise einsum steps stay \emph{exact} in
+\texttt{int64}: residues are $<2^{19}$, so products are $<2^{38}$, and up
+to $2^{24}$ summed terms per output element keep partial sums
+$<2^{62}<2^{63}$ (asserted at runtime). ``Evaluated over $\Fp$'' is
+therefore literal, not floating---no rounding can corrupt the test.
+
+A trial draws (i) a dimension assignment $\delta$ with
+$\delta(n)\in\{2,\dots,5\}$ keyed by symbol \emph{name}, and (ii) for each
+\texttt{Variable} an i.i.d.\ uniform tensor over $\Fp$, keyed by
+$(\text{seed},\text{trial},\text{name},\delta)$ rather than by program
+identity (so separately lowered programs share points). Non-polynomial
+atoms---$\exp,\log,\tanh,\mathrm{erf}$, fractional \texttt{pow},
+$\mathrm{softmax}$, \texttt{gather}, opaque cells---are \emph{not}
+evaluated; each is replaced by a fresh uniform field element keyed by its
+operator and the value-fingerprints of its inputs. Under this
+\emph{atoms formulation}, the polynomial/rational skeleton (einsums,
+linear combinations, integer powers, affine indicators, structural
+constants) is the object of the identity test, with the atoms as
+additional free indeterminates.
+
+\subsubsection*{Per-check bound}
+
+\begin{lemma}[Schwartz--Zippel \cite{schwartz1980,zippel1979,demillo1978}]
+\label{lem:sz}
+Let $Q\in\Fp[X_1,\dots,X_m]$ be a nonzero polynomial of total degree
+$\dg$ and let $\vec X$ be drawn uniformly from $S^m$ with $S\subseteq\Fp$.
+Then $\Pr[Q(\vec X)=0]\le \dg/|S|$. For a rational identity the same
+bound applies to the numerator of the difference over the locus where
+denominators are nonzero.
+\end{lemma}
+
+\begin{theorem}[Per-check false-accept probability]\label{thm:percheck}
+Let $e,e'$ be two IR fragments with the same free-edge set that are
+\emph{unequal} as skeleton rational functions of the atoms and variable
+entries, of combined degree $\le\dg$. A single $k$-trial fingerprint
+check declares them equal with probability at most
+\[
+   \Big(\tfrac{\dg}{p}\Big)^{k}.
+\]
+\end{theorem}
+
+\begin{proof}
+The difference $e-e'$ is a nonzero rational function of degree $\le\dg$.
+Each trial evaluates it at a point whose variable- and atom-coordinates
+are drawn uniformly and independently over $\Fp$ (points that hit a zero
+denominator are resampled with a fresh salt, i.e.\ we condition on the
+evaluation being defined; this only removes a $O(\dg/p)$ fraction of the
+domain and the bound of Lemma~\ref{lem:sz} holds on the conditional to
+first order). By Lemma~\ref{lem:sz} one trial fails to witness the
+inequality with probability $\le\dg/p$. The $k$ trials use independent
+seeds, so the events are independent and the joint probability is
+$(\dg/p)^{k}$.
+\end{proof}
+
+The degrees arising in a lowered program are small---bounded by the
+number of variable-leaves on a contraction path---so in practice
+$\dg/p\approx 10^{-5}$ (the figure cited in \texttt{szfp.py}), and at the
+default $k=3$ a single check has false-accept probability
+$\approx(10^{-5})^{3}=10^{-15}$. The test is \emph{one-sided}: a true
+skeleton identity \emph{always} passes (fingerprints of equal rational
+functions are equal by construction), so the only error is a false
+accept, and \emph{only} for skeleton (not analytic-atom) inequalities;
+an equality that holds only through an analytic identity of the atoms
+(e.g.\ $\exp(x)/\sum\exp(x)$ vs.\ $\mathrm{softmax}(x)$) is a documented
+false-negative, never a false accept.
+
+\subsubsection*{Union bound over a compilation}
+
+\begin{theorem}[Verification of a compile]\label{thm:union}
+Suppose a compilation applies rewrites $r_1,\dots,r_R$, each an equality
+claim pinned by an independent $k$-trial check
+(Theorem~\ref{thm:percheck}), with per-rewrite degree $\le\dg$. The
+probability that \emph{any} unsound rewrite escapes detection is at most
+\[
+   R\,\Big(\tfrac{\dg}{p}\Big)^{k}.
+\]
+\end{theorem}
+
+\begin{proof}
+Let $B_i$ be the event that $r_i$ is unsound yet its check passes. By
+Theorem~\ref{thm:percheck}, $\Pr[B_i]\le(\dg/p)^{k}$ (a sound rewrite
+contributes $0$). The undetected-miscompile event is $\bigcup_i B_i$;
+the union bound gives $\Pr[\bigcup_i B_i]\le\sum_i\Pr[B_i]\le
+R(\dg/p)^{k}$.
+\end{proof}
+
+For a 3-block GPT step the compiler touches on the order of
+$R\sim10^{3.5}$ compute nodes ($2{,}925\to844$; $7{,}127$ emitted
+kernels, \S\ref{sec:sz}); with $\dg/p\approx10^{-5}$ and $k=3$ the whole-%
+compile bound is $R(\dg/p)^{k}\lesssim 10^{4}\cdot10^{-15}=10^{-11}$.
+
+\subsubsection*{The fresh-seed refusal gate}
+
+Consolidation (\S\ref{sec:sz}) merges subgraphs whose evaluations agree
+at the $k$ points of a seed $\sigma$ under one consistent axis
+permutation, rewiring consumers through permuted views. The merge is a
+\emph{proposal}: it can be wrong either through a skeleton collision at
+$\sigma$ or through a bookkeeping bug (a mispermutation, or a dropped
+broadcast wire of the kind that produced the longest-lived value bug in
+the compiler's history, \S\ref{sec:sz}). Any such bug changes the
+program's value as a rational function. The \emph{refusal gate} then
+re-evaluates the original program $O$ and the consolidated program $C$
+side by side at a \emph{fresh} seed $\sigma'$, independent of $\sigma$,
+and rejects the entire rewrite---reverting to $O$---on any mismatch.
+
+\begin{theorem}[Refusal-gate soundness]\label{thm:gate}
+Suppose consolidation produces $C$ from $O$ and that $C$ is a miscompile:
+$\sem{C}\ne\sem{O}$ as skeleton rational functions, of degree $\le\dg$.
+Let the gate use $k'$ trials at a seed $\sigma'$ drawn independently of
+the merge seed $\sigma$. Then the gate fails to refuse with probability
+at most $(\dg/p)^{k'}$, \emph{regardless of how the merge was chosen}.
+Moreover, if the miscompile arose from a skeleton collision that fooled
+the proposal stage at $\sigma$, the probability that the merge is both
+proposed and survives the gate is at most
+\[
+   \Big(\tfrac{\dg}{p}\Big)^{k}\cdot\Big(\tfrac{\dg}{p}\Big)^{k'}
+   \;=\;\Big(\tfrac{\dg}{p}\Big)^{k+k'}.
+\]
+\end{theorem}
+
+\begin{proof}
+$O-C$ is a nonzero degree-$\le\dg$ rational function. The gate's $k'$
+points are drawn i.i.d.\ over $\Fp$ at seed $\sigma'$; by
+Theorem~\ref{thm:percheck} they all fail to witness $O\ne C$ with
+probability $\le(\dg/p)^{k'}$. This bound is unconditional on $\sigma$:
+the gate's randomness is disjoint from the proposal's, so ``$O,C$ agree
+at $\sigma'$'' is independent of everything that happened at $\sigma$.
+For the compounded bound, let $A$ = ``the wrong merge is proposed'' (it
+requires the merged subgraphs to collide at $\sigma$, so
+$\Pr[A]\le(\dg/p)^{k}$ by Lemma~\ref{lem:sz} applied at $\sigma$) and $E$
+= ``the gate accepts'' with $\Pr[E]\le(\dg/p)^{k'}$. Because $\sigma$ and
+$\sigma'$ are independent seeds, $A$ and $E$ are independent, so
+$\Pr[A\cap E]=\Pr[A]\Pr[E]\le(\dg/p)^{k+k'}$.
+\end{proof}
+
+\begin{remark}[Why the seed must be fresh]
+Independence is the whole content of the gate. If the gate reused the
+merge seed $\sigma$, then a skeleton collision that fooled the proposal
+would fool the gate at the \emph{same} points with certainty: the two
+events would be perfectly correlated, $E\supseteq A$, and the gate would
+add \emph{zero} protection. Re-drawing at an independent $\sigma'$
+replaces that correlation with a product, turning the residual error from
+$(\dg/p)^{k}$ into $(\dg/p)^{k+k'}$ for collision-induced bugs and
+bounding \emph{all} value-changing bugs---including deterministic
+bookkeeping bugs, for which $\Pr[A]=1$ but $\sem C\neq\sem O$ still
+holds---by the unconditional $(\dg/p)^{k'}$. At $k'=3$ and
+$\dg/p\approx10^{-5}$ this is $\approx10^{-15}$ per compile, so the gate
+converts any unsound merge into a clean no-op fallback with overwhelming
+probability rather than a miscompile. This is the argument that
+\S\ref{sec:sz} advances for making the gate the default contract between
+\emph{all} passes, not only consolidation: the bound of
+Theorem~\ref{thm:gate} depends on nothing specific to value numbering,
+only on the pass changing the program's value.
+\end{remark}
+
 \end{document}
