@@ -1,0 +1,601 @@
+%% references.bib for tensorgrad PLDI draft (main.tex).
+%% Keys `jax`, `pytorch`, `mathematica`, `sympy`, `namedtensor` match the
+%% \cite commands already present in main.tex.
+%% Entries marked "% VERIFY" have a detail (pages/DOI/venue-year) worth
+%% double-checking against the publisher page before camera-ready.
+
+%% ------------------------------------------------------------------
+%% Autodiff systems and frameworks
+%% ------------------------------------------------------------------
+
+@misc{jax,
+  author       = {James Bradbury and Roy Frostig and Peter Hawkins and
+                  Matthew James Johnson and Chris Leary and Dougal Maclaurin
+                  and George Necula and Adam Paszke and Jake VanderPlas and
+                  Skye Wanderman-Milne and Qiao Zhang},
+  title        = {{JAX}: composable transformations of {Python}+{NumPy} programs},
+  year         = {2018},
+  howpublished = {\url{http://github.com/google/jax}},
+}
+
+@inproceedings{jaxtracing,
+  author    = {Roy Frostig and Matthew James Johnson and Chris Leary},
+  title     = {Compiling machine learning programs via high-level tracing},
+  booktitle = {SysML Conference},
+  year      = {2018},
+}
+
+@inproceedings{pytorch,
+  author    = {Adam Paszke and Sam Gross and Francisco Massa and Adam Lerer
+               and James Bradbury and Gregory Chanan and Trevor Killeen and
+               Zeming Lin and Natalia Gimelshein and Luca Antiga and Alban
+               Desmaison and Andreas K{\"o}pf and Edward Yang and Zachary
+               DeVito and Martin Raison and Alykhan Tejani and Sasank
+               Chilamkurthy and Benoit Steiner and Lu Fang and Junjie Bai and
+               Soumith Chintala},
+  title     = {{PyTorch}: An Imperative Style, High-Performance Deep Learning Library},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {32},
+  pages     = {8024--8035},
+  year      = {2019},
+}
+
+@inproceedings{pytorch2,
+  author    = {Jason Ansel and Edward Yang and Horace He and Natalia
+               Gimelshein and Animesh Jain and Michael Voznesensky and Bin Bao
+               and Peter Bell and David Berard and Evgeni Burovski and Geeta
+               Chauhan and Anjali Chourdia and Will Constable and Alban
+               Desmaison and Zachary DeVito and Elias Ellison and Will Feng
+               and Jiong Gong and Michael Gschwind and Brian Hirsh and Sherlock
+               Huang and others},
+  title     = {{PyTorch} 2: Faster Machine Learning Through Dynamic {Python}
+               Bytecode Transformation and Graph Compilation},
+  booktitle = {Proceedings of the 29th ACM International Conference on
+               Architectural Support for Programming Languages and Operating
+               Systems (ASPLOS)},
+  pages     = {929--947},
+  year      = {2024},
+  doi       = {10.1145/3620665.3640366},
+} % VERIFY page range
+
+@misc{xla,
+  author       = {{OpenXLA Project}},
+  title        = {{XLA}: Optimizing Compiler for Machine Learning},
+  year         = {2017},
+  howpublished = {\url{https://openxla.org/xla}},
+}
+
+@inproceedings{enzyme,
+  author    = {William S. Moses and Valentin Churavy},
+  title     = {Instead of Rewriting Foreign Code for Machine Learning,
+               Automatically Synthesize Fast Gradients},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {33},
+  pages     = {12472--12485},
+  year      = {2020},
+}
+
+@article{dex,
+  author  = {Adam Paszke and Daniel D. Johnson and David Duvenaud and
+             Dimitrios Vytiniotis and Alexey Radul and Matthew J. Johnson and
+             Jonathan Ragan-Kelley and Dougal Maclaurin},
+  title   = {Getting to the Point: Index Sets and Parallelism-Preserving
+             Autodiff for Pointful Array Programming},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {5},
+  number  = {ICFP},
+  year    = {2021},
+  doi     = {10.1145/3473593},
+} % VERIFY article number (88)
+
+@article{namedtensor,
+  author  = {David Chiang and Alexander M. Rush and Boaz Barak},
+  title   = {Named Tensor Notation},
+  journal = {Transactions on Machine Learning Research},
+  year    = {2023},
+  note    = {arXiv:2102.13196},
+}
+
+@inproceedings{einops,
+  author    = {Alex Rogozhnikov},
+  title     = {Einops: Clear and Reliable Tensor Manipulations with
+               Einstein-like Notation},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+}
+
+@book{griewank2008,
+  author    = {Andreas Griewank and Andrea Walther},
+  title     = {Evaluating Derivatives: Principles and Techniques of
+               Algorithmic Differentiation},
+  edition   = {2nd},
+  publisher = {SIAM},
+  year      = {2008},
+}
+
+@article{tapenade,
+  author  = {Laurent Hasco{\"e}t and Val{\'e}rie Pascual},
+  title   = {The {Tapenade} automatic differentiation tool: Principles,
+             model, and specification},
+  journal = {ACM Transactions on Mathematical Software},
+  volume  = {39},
+  number  = {3},
+  pages   = {20:1--20:43},
+  year    = {2013},
+  doi     = {10.1145/2450153.2450158},
+}
+
+@misc{zygote,
+  author       = {Michael Innes},
+  title        = {Don't Unroll Adjoint: Differentiating {SSA}-Form Programs},
+  year         = {2018},
+  howpublished = {arXiv:1810.07951},
+}
+
+@misc{functorch,
+  author       = {Horace He and Richard Zou},
+  title        = {functorch: {JAX}-like composable function transforms for {PyTorch}},
+  year         = {2021},
+  howpublished = {\url{https://github.com/pytorch/functorch}},
+}
+
+%% ------------------------------------------------------------------
+%% Computer algebra
+%% ------------------------------------------------------------------
+
+@misc{mathematica,
+  author       = {{Wolfram Research, Inc.}},
+  title        = {Mathematica},
+  year         = {2024},
+  howpublished = {\url{https://www.wolfram.com/mathematica}},
+  note         = {Champaign, IL},
+}
+
+@article{sympy,
+  author  = {Aaron Meurer and Christopher P. Smith and Mateusz Paprocki and
+             Ond{\v{r}}ej {\v{C}}ert{\'i}k and Sergey B. Kirpichev and
+             Matthew Rocklin and AMiT Kumar and Sergiu Ivanov and Jason K.
+             Moore and Sartaj Singh and Thilina Rathnayake and Sean Vig and
+             Brian E. Granger and Richard P. Muller and Francesco Bonazzi and
+             Harsh Gupta and Shivam Vats and Fredrik Johansson and Fabian
+             Pedregosa and Matthew J. Curry and Andy R. Terrel and
+             {\v{S}}t{\v{e}}p{\'a}n Rou{\v{c}}ka and Ashutosh Saboo and Isuru
+             Fernando and Sumith Kulal and Robert Cimrman and Anthony Scopatz},
+  title   = {{SymPy}: symbolic computing in {Python}},
+  journal = {PeerJ Computer Science},
+  volume  = {3},
+  pages   = {e103},
+  year    = {2017},
+  doi     = {10.7717/peerj-cs.103},
+}
+
+%% ------------------------------------------------------------------
+%% Tensor compilers and program optimization
+%% ------------------------------------------------------------------
+
+@article{taco,
+  author  = {Fredrik Kjolstad and Shoaib Kamil and Stephen Chou and David
+             Lugato and Saman Amarasinghe},
+  title   = {The Tensor Algebra Compiler},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {1},
+  number  = {OOPSLA},
+  pages   = {77:1--77:29},
+  year    = {2017},
+  doi     = {10.1145/3133901},
+}
+
+@inproceedings{tvm,
+  author    = {Tianqi Chen and Thierry Moreau and Ziheng Jiang and Lianmin
+               Zheng and Eddie Yan and Haichen Shen and Meghan Cowan and
+               Leyuan Wang and Yuwei Hu and Luis Ceze and Carlos Guestrin and
+               Arvind Krishnamurthy},
+  title     = {{TVM}: An Automated End-to-End Optimizing Compiler for Deep Learning},
+  booktitle = {13th USENIX Symposium on Operating Systems Design and
+               Implementation (OSDI)},
+  pages     = {578--594},
+  year      = {2018},
+} % VERIFY page range
+
+@misc{tensorcomprehensions,
+  author       = {Nicolas Vasilache and Oleksandr Zinenko and Theodoros
+                  Theodoridis and Priya Goyal and Zachary DeVito and William
+                  S. Moses and Sven Verdoolaege and Andrew Adams and Albert
+                  Cohen},
+  title        = {Tensor Comprehensions: Framework-Agnostic High-Performance
+                  Machine Learning Abstractions},
+  year         = {2018},
+  howpublished = {arXiv:1802.04730},
+}
+
+@inproceedings{taso,
+  author    = {Zhihao Jia and Oded Padon and James Thomas and Todd Warszawski
+               and Matei Zaharia and Alex Aiken},
+  title     = {{TASO}: Optimizing Deep Learning Computation with Automatic
+               Generation of Graph Substitutions},
+  booktitle = {Proceedings of the 27th ACM Symposium on Operating Systems
+               Principles (SOSP)},
+  pages     = {47--62},
+  year      = {2019},
+  doi       = {10.1145/3341301.3359630},
+}
+
+@inproceedings{halide,
+  author    = {Jonathan Ragan-Kelley and Connelly Barnes and Andrew Adams and
+               Sylvain Paris and Fr{\'e}do Durand and Saman Amarasinghe},
+  title     = {Halide: A Language and Compiler for Optimizing Parallelism,
+               Locality, and Recomputation in Image Processing Pipelines},
+  booktitle = {Proceedings of the 34th ACM SIGPLAN Conference on Programming
+               Language Design and Implementation (PLDI)},
+  pages     = {519--530},
+  year      = {2013},
+  doi       = {10.1145/2491956.2462176},
+}
+
+@inproceedings{triton,
+  author    = {Philippe Tillet and Hsiang-Tsung Kung and David Cox},
+  title     = {Triton: An Intermediate Language and Compiler for Tiled Neural
+               Network Computations},
+  booktitle = {Proceedings of the 3rd ACM SIGPLAN International Workshop on
+               Machine Learning and Programming Languages (MAPL)},
+  pages     = {10--19},
+  year      = {2019},
+  doi       = {10.1145/3315508.3329973},
+}
+
+%% ------------------------------------------------------------------
+%% Equality saturation
+%% ------------------------------------------------------------------
+
+@inproceedings{eqsat,
+  author    = {Ross Tate and Michael Stepp and Zachary Tatlock and Sorin Lerner},
+  title     = {Equality Saturation: A New Approach to Optimization},
+  booktitle = {Proceedings of the 36th ACM SIGPLAN-SIGACT Symposium on
+               Principles of Programming Languages (POPL)},
+  pages     = {264--276},
+  year      = {2009},
+  doi       = {10.1145/1480881.1480915},
+}
+
+@article{egg,
+  author  = {Max Willsey and Chandrakana Nandi and Yisu Remy Wang and Oliver
+             Flatt and Zachary Tatlock and Pavel Panchekha},
+  title   = {egg: Fast and Extensible Equality Saturation},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {5},
+  number  = {POPL},
+  pages   = {23:1--23:29},
+  year    = {2021},
+  doi     = {10.1145/3434304},
+}
+
+@inproceedings{tensat,
+  author    = {Yichen Yang and Phitchaya Mangpo Phothilimthana and Yisu Remy
+               Wang and Max Willsey and Sudip Roy and Jacques Pienaar},
+  title     = {Equality Saturation for Tensor Graph Superoptimization},
+  booktitle = {Proceedings of Machine Learning and Systems (MLSys)},
+  volume    = {3},
+  year      = {2021},
+}
+
+%% ------------------------------------------------------------------
+%% Tensor networks, contraction ordering, notation
+%% ------------------------------------------------------------------
+
+@incollection{penrose1971,
+  author    = {Roger Penrose},
+  title     = {Applications of Negative Dimensional Tensors},
+  booktitle = {Combinatorial Mathematics and its Applications},
+  editor    = {D. J. A. Welsh},
+  publisher = {Academic Press},
+  pages     = {221--244},
+  year      = {1971},
+}
+
+@article{opteinsum,
+  author  = {Daniel G. A. Smith and Johnnie Gray},
+  title   = {opt\_einsum---A {P}ython package for optimizing contraction
+             order for einsum-like expressions},
+  journal = {Journal of Open Source Software},
+  volume  = {3},
+  number  = {26},
+  pages   = {753},
+  year    = {2018},
+  doi     = {10.21105/joss.00753},
+}
+
+@article{cotengra,
+  author  = {Johnnie Gray and Stefanos Kourtis},
+  title   = {Hyper-optimized tensor network contraction},
+  journal = {Quantum},
+  volume  = {5},
+  pages   = {410},
+  year    = {2021},
+  doi     = {10.22331/q-2021-03-15-410},
+}
+
+@article{lam1997np,
+  author  = {Chi-Chung Lam and P. Sadayappan and Rephael Wenger},
+  title   = {On optimizing a class of multi-dimensional loops with reduction
+             for parallel execution},
+  journal = {Parallel Processing Letters},
+  volume  = {7},
+  number  = {2},
+  pages   = {157--168},
+  year    = {1997},
+}
+
+@misc{matrixcookbook,
+  author       = {Kaare Brandt Petersen and Michael Syskind Pedersen},
+  title        = {The Matrix Cookbook},
+  year         = {2012},
+  howpublished = {Technical University of Denmark},
+  note         = {Version November 15, 2012},
+}
+
+@misc{tensorcookbook,
+  author       = {Thomas Dybdahl Ahle},
+  title        = {The Tensor Cookbook},
+  year         = {2025},
+  howpublished = {\url{https://tensorcookbook.com}},
+  note         = {Manuscript},
+}
+
+@misc{rakhshan2026cookbook,
+  author       = {Beheshteh T. Rakhshan and Guillaume Rabusseau},
+  title        = {Tensor Cookbook: Mastering Tensors through Diagrams},
+  year         = {2026},
+  howpublished = {arXiv:2605.16610},
+}
+
+%% ------------------------------------------------------------------
+%% Graph isomorphism and canonical forms
+%% ------------------------------------------------------------------
+
+@book{aho1974,
+  author    = {Alfred V. Aho and John E. Hopcroft and Jeffrey D. Ullman},
+  title     = {The Design and Analysis of Computer Algorithms},
+  publisher = {Addison-Wesley},
+  year      = {1974},
+}
+
+@article{weisfeiler1968,
+  author  = {Boris Weisfeiler and Andrei A. Leman},
+  title   = {A reduction of a graph to a canonical form and an algebra
+             arising during this reduction},
+  journal = {Nauchno-Technicheskaya Informatsia, Series 2},
+  volume  = {9},
+  pages   = {12--16},
+  year    = {1968},
+  note    = {In Russian},
+}
+
+@article{vf2,
+  author  = {Luigi P. Cordella and Pasquale Foggia and Carlo Sansone and
+             Mario Vento},
+  title   = {A (Sub)Graph Isomorphism Algorithm for Matching Large Graphs},
+  journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  volume  = {26},
+  number  = {10},
+  pages   = {1367--1372},
+  year    = {2004},
+  doi     = {10.1109/TPAMI.2004.75},
+}
+
+@article{nauty,
+  author  = {Brendan D. McKay and Adolfo Piperno},
+  title   = {Practical graph isomorphism, {II}},
+  journal = {Journal of Symbolic Computation},
+  volume  = {60},
+  pages   = {94--112},
+  year    = {2014},
+  doi     = {10.1016/j.jsc.2013.09.003},
+}
+
+@inproceedings{networkx,
+  author    = {Aric A. Hagberg and Daniel A. Schult and Pieter J. Swart},
+  title     = {Exploring Network Structure, Dynamics, and Function using {NetworkX}},
+  booktitle = {Proceedings of the 7th Python in Science Conference (SciPy)},
+  pages     = {11--15},
+  year      = {2008},
+}
+
+%% ------------------------------------------------------------------
+%% Randomized identity testing and value numbering
+%% ------------------------------------------------------------------
+
+@article{schwartz1980,
+  author  = {Jacob T. Schwartz},
+  title   = {Fast Probabilistic Algorithms for Verification of Polynomial Identities},
+  journal = {Journal of the ACM},
+  volume  = {27},
+  number  = {4},
+  pages   = {701--717},
+  year    = {1980},
+  doi     = {10.1145/322217.322225},
+}
+
+@inproceedings{zippel1979,
+  author    = {Richard Zippel},
+  title     = {Probabilistic Algorithms for Sparse Polynomials},
+  booktitle = {Symbolic and Algebraic Computation (EUROSAM '79)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {72},
+  pages     = {216--226},
+  publisher = {Springer},
+  year      = {1979},
+}
+
+@article{demillo1978,
+  author  = {Richard A. DeMillo and Richard J. Lipton},
+  title   = {A Probabilistic Remark on Algebraic Program Testing},
+  journal = {Information Processing Letters},
+  volume  = {7},
+  number  = {4},
+  pages   = {193--195},
+  year    = {1978},
+}
+
+@inproceedings{gulwani2004gvn,
+  author    = {Sumit Gulwani and George C. Necula},
+  title     = {Global Value Numbering using Random Interpretation},
+  booktitle = {Proceedings of the 31st ACM SIGPLAN-SIGACT Symposium on
+               Principles of Programming Languages (POPL)},
+  pages     = {342--352},
+  year      = {2004},
+} % VERIFY page range
+
+%% ------------------------------------------------------------------
+%% EDA: technology mapping, logic synthesis, Boolean matching
+%% ------------------------------------------------------------------
+
+@inproceedings{dagon,
+  author    = {Kurt Keutzer},
+  title     = {{DAGON}: Technology Binding and Local Optimization by {DAG} Matching},
+  booktitle = {Proceedings of the 24th ACM/IEEE Design Automation Conference (DAC)},
+  pages     = {341--347},
+  year      = {1987},
+} % VERIFY page range
+
+@inproceedings{abc,
+  author    = {Robert Brayton and Alan Mishchenko},
+  title     = {{ABC}: An Academic Industrial-Strength Verification Tool},
+  booktitle = {Computer Aided Verification (CAV)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {6174},
+  pages     = {24--40},
+  publisher = {Springer},
+  year      = {2010},
+}
+
+@article{booleanmatching,
+  author  = {Luca Benini and Giovanni De Micheli},
+  title   = {A survey of {Boolean} matching techniques for library binding},
+  journal = {ACM Transactions on Design Automation of Electronic Systems},
+  volume  = {2},
+  number  = {3},
+  pages   = {193--226},
+  year    = {1997},
+}
+
+%% ------------------------------------------------------------------
+%% Rewriting, numerics, ML background
+%% ------------------------------------------------------------------
+
+@article{newman1942,
+  author  = {Maxwell H. A. Newman},
+  title   = {On Theories with a Combinatorial Definition of ``Equivalence''},
+  journal = {Annals of Mathematics},
+  volume  = {43},
+  number  = {2},
+  pages   = {223--243},
+  year    = {1942},
+}
+
+@article{blas,
+  author  = {Charles L. Lawson and Richard J. Hanson and David R. Kincaid and
+             Fred T. Krogh},
+  title   = {Basic Linear Algebra Subprograms for {Fortran} Usage},
+  journal = {ACM Transactions on Mathematical Software},
+  volume  = {5},
+  number  = {3},
+  pages   = {308--323},
+  year    = {1979},
+}
+
+@article{stein1981,
+  author  = {Charles M. Stein},
+  title   = {Estimation of the Mean of a Multivariate Normal Distribution},
+  journal = {The Annals of Statistics},
+  volume  = {9},
+  number  = {6},
+  pages   = {1135--1151},
+  year    = {1981},
+}
+
+@inproceedings{vae,
+  author    = {Diederik P. Kingma and Max Welling},
+  title     = {Auto-Encoding Variational {Bayes}},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2014},
+}
+
+@inproceedings{ddpm,
+  author    = {Jonathan Ho and Ajay Jain and Pieter Abbeel},
+  title     = {Denoising Diffusion Probabilistic Models},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {33},
+  pages     = {6840--6851},
+  year      = {2020},
+}
+
+@inproceedings{adam,
+  author    = {Diederik P. Kingma and Jimmy Ba},
+  title     = {Adam: A Method for Stochastic Optimization},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2015},
+}
+
+@inproceedings{adamw,
+  author    = {Ilya Loshchilov and Frank Hutter},
+  title     = {Decoupled Weight Decay Regularization},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019},
+}
+
+@article{ppca,
+  author  = {Michael E. Tipping and Christopher M. Bishop},
+  title   = {Probabilistic Principal Component Analysis},
+  journal = {Journal of the Royal Statistical Society: Series B},
+  volume  = {61},
+  number  = {3},
+  pages   = {611--622},
+  year    = {1999},
+}
+
+@book{gp,
+  author    = {Carl Edward Rasmussen and Christopher K. I. Williams},
+  title     = {Gaussian Processes for Machine Learning},
+  publisher = {MIT Press},
+  year      = {2006},
+}
+
+@inproceedings{attention,
+  author    = {Ashish Vaswani and Noam Shazeer and Niki Parmar and Jakob
+               Uszkoreit and Llion Jones and Aidan N. Gomez and {\L}ukasz
+               Kaiser and Illia Polosukhin},
+  title     = {Attention Is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {30},
+  pages     = {5998--6008},
+  year      = {2017},
+}
+
+@misc{layernorm,
+  author       = {Jimmy Lei Ba and Jamie Ryan Kiros and Geoffrey E. Hinton},
+  title        = {Layer Normalization},
+  year         = {2016},
+  howpublished = {arXiv:1607.06450},
+}
+
+@misc{gelu,
+  author       = {Dan Hendrycks and Kevin Gimpel},
+  title        = {Gaussian Error Linear Units ({GELUs})},
+  year         = {2016},
+  howpublished = {arXiv:1606.08415},
+}
+
+@misc{gpt2,
+  author       = {Alec Radford and Jeffrey Wu and Rewon Child and David Luan
+                  and Dario Amodei and Ilya Sutskever},
+  title        = {Language Models are Unsupervised Multitask Learners},
+  year         = {2019},
+  howpublished = {OpenAI Technical Report},
+}
+
+@misc{mingpt,
+  author       = {Andrej Karpathy},
+  title        = {{minGPT}: A minimal {PyTorch} re-implementation of {GPT}},
+  year         = {2020},
+  howpublished = {\url{https://github.com/karpathy/minGPT}},
+}

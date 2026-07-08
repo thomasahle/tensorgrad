@@ -100,7 +100,7 @@ is the right division of labor for symbolic tensor computation:
 Mainstream systems blur these layers: \texttt{sympy}'s
 \texttt{simplify} is a heuristic search with a complexity objective;
 Mathematica's \texttt{FullSimplify} explores rule sequences under a time
-budget; XLA and TorchInductor optimize numerics with no algebraic layer
+budget; XLA \cite{xla} and TorchInductor \cite{pytorch2} optimize numerics with no algebraic layer
 above them. Keeping the layers separate is what lets the language stay
 small---the entire user-facing kernel is nine node types and one equality
 relation---while the compiler grows ambitious.
@@ -130,12 +130,12 @@ relation---while the compiler grows ambitious.
   of magnitude (Table~\ref{tab:adjoint}).
 \item Randomized algebraic verification as compiler infrastructure
   (\S\ref{sec:sz}): every rewrite class is checked by exact evaluation
-  over $\mathbb{F}_p$ at random points (Schwartz--Zippel), and a
+  over $\mathbb{F}_p$ at random points (Schwartz--Zippel \cite{schwartz1980,zippel1979,demillo1978}), and a
   consolidation pass merges value-equal subgraphs modulo axis permutation
   under a \emph{fresh-seed refusal gate} that converts any unsound merge
   into a clean fallback. On a 3-block GPT training step this removes 71\%
   of compute nodes and $4.5\times$ of runtime.
-\item Technology mapping for a language without axis order
+\item Technology mapping \cite{dagon} for a language without axis order
   (\S\ref{sec:techmap}): because programs never over-specify layout, the
   compiler assigns physical axis orders globally, reducing every remaining
   transpose to a zero-cost view, and maps contractions onto BLAS cells.
@@ -158,7 +158,7 @@ structural zeros, and the $8$--$20\times$ second-order wins of
 
 \subsection{Named edges and tensor networks}
 
-A \textsc{tensorgrad} expression is a tensor network: a multigraph whose
+A \textsc{tensorgrad} expression is a tensor network \cite{penrose1971,tensorcookbook}: a multigraph whose
 vertices are tensors and whose edges are named indices. A variable
 declares its edges and their (symbolic) sizes:
 
@@ -201,7 +201,7 @@ Deciding isomorphism is, of course, not free. We use a compositional
 canonical fingerprint, computed bottom-up and cached on immutable nodes:
 a node's fingerprint hashes its label and its children's fingerprints
 (sorted where children are interchangeable, slotted where they are not),
-plus a Weisfeiler--Leman refinement of the contraction wiring for
+plus a Weisfeiler--Leman \cite{weisfeiler1968} refinement of the contraction wiring for
 \texttt{Product} multigraphs. Three properties matter:
 
 \begin{itemize}
@@ -209,10 +209,10 @@ plus a Weisfeiler--Leman refinement of the contraction wiring for
   fingerprints, so unequal fingerprints prove inequality. Real workloads
   are rejection-dominated (hash-consing, memoization, term collection).
 \item \emph{Exactness on trees}: outside \texttt{Product}, expressions are
-  trees, where the fingerprint is the classic AHU canonical code---not a
+  trees, where the fingerprint is the classic AHU canonical code \cite{aho1974}---not a
   heuristic.
 \item \emph{Verified acceptance}: equal fingerprints are confirmed by an
-  exact isomorphism check (VF2). Because product vertices arrive heavily
+  exact isomorphism check (VF2 \cite{vf2}; cf.\ nauty \cite{nauty}). Because product vertices arrive heavily
   colored (names, shapes, child fingerprints), refinement shatters
   essentially all practical instances: across a full 3-block GPT build
   (loss + 53 gradients, 1{,}431 pairwise equality queries), the verifier
@@ -221,7 +221,7 @@ plus a Weisfeiler--Leman refinement of the contraction wiring for
   verification step.
 \end{itemize}
 
-The fingerprint replaced a networkx-based path (rebuild the graph, run WL,
+The fingerprint replaced a networkx-based \cite{networkx} path (rebuild the graph, run WL,
 per query, per node) that spent its time constructing graphs; the
 compositional design is what makes hashing $O(\text{degree})$ per new node
 rather than $\Omega(\text{subtree})$, a distinction that decides whether
@@ -428,7 +428,7 @@ inflated operand's chain; (M)~cotangents reading the same inflated node
 accumulate: per-node adjoint accumulation across sums, across gradient
 outputs, program-wide. Rule M's globality is what carries the pass across
 arbitrary depth: contributions from different stacked blocks meet at the
-shared node exactly as in classical reverse-mode AD, but discovered as an
+shared node exactly as in classical reverse-mode AD \cite{griewank2008}, but discovered as an
 IR transformation over symbolically derived algebra. Every rewrite is
 einsum reassociation or distribution, pinned by the verification of
 \S\ref{sec:sz}.
@@ -502,8 +502,8 @@ equals $\log$. This machinery serves twice:
 \begin{itemize}
 \item \emph{Rewrite verification}: every optimization pass's rewrite
   classes are pinned by fingerprint equality before/after (a
-  Schwartz--Zippel bound quantifies the error probability).
-\item \emph{Consolidation}: value numbering modulo axis permutation
+  Schwartz--Zippel bound \cite{schwartz1980,zippel1979} quantifies the error probability).
+\item \emph{Consolidation}: value numbering \cite{gulwani2004gvn} modulo axis permutation
   merges nodes whose evaluations agree at every trial under one
   consistent permutation; consumers are rewired through zero-cost
   permuted views. A \emph{fresh-seed refusal gate} then re-evaluates the
@@ -523,7 +523,7 @@ not just a proof technique.
 
 The analogy that organizes the backend is physical design in EDA: a
 technology-independent netlist (the einsum DAG) is mapped onto a
-characterized cell library (BLAS and fused kernels), and placement
+characterized cell library (BLAS \cite{blas} and fused kernels) \cite{dagon}, and placement
 (layout) is a global optimization variable.
 
 \paragraph{Global layout assignment.} Because the language never fixes an
@@ -561,9 +561,9 @@ different relationships to differentiation: \emph{differentiable leaves}
 (matrix inverse and determinant, whose cookbook derivative rules expand
 symbolically upstream, the cell mapping only surviving forward
 applications onto \texttt{torch.linalg}); \emph{opaque forward+reverse
-pairs} (attention, layer norm, GELU: a reverse-VJP hook emits a fused
+pairs} (attention, layer norm, GELU \cite{attention,layernorm,gelu}: a reverse-VJP hook emits a fused
 backward cell, machine-verified against the derived gradient);
-a \emph{multi-output, non-differentiable} optimizer update (AdamW:
+a \emph{multi-output, non-differentiable} optimizer update (AdamW \cite{adamw}:
 $w',m',v'$ from one call, no VJP -- making it opaque also removed a
 duplicated backward that value numbering could not see through, a
 $1.5\times$ step improvement); and \emph{rewrite patterns carried by the
@@ -581,7 +581,7 @@ Misses degrade performance, never correctness; retargeting is a second
 registry.
 
 \todopaper{Tech-mapping phase 2 (DP covering over the cell library,
-using per-cell cost) and a GPU tier (Triton emission for fused affine
+using per-cell cost) and a GPU tier (Triton \cite{triton} emission for fused affine
 regions; a second cell registry) are designed but not landed; the
 evaluation marks where they matter.}
 
@@ -637,7 +637,7 @@ could do not compile it.
 Where the closed form does asymptotically less work, the wall clock
 follows. At $n{=}2048$, $\partial^2(x^{\top}Ax)$ compiles to literally
 $A + A^{\top}$ (the tests pin a two-statement ceiling, $x$ never read)
-and runs in 2.1\,ms, against 17.7\,ms for \texttt{torch.func.hessian}
+and runs in 2.1\,ms, against 17.7\,ms for \texttt{torch.func.hessian} \cite{functorch}
 and 42.7\,ms for \texttt{jax.hessian} ($8\times$ and $20\times$): both
 frameworks replay autodiff at runtime, and no amount of XLA fusion helps
 when the algorithm itself is $n$ backward passes. The pattern holds on a
@@ -657,9 +657,9 @@ unavoidably quadratic, the win reverts from asymptotic to constant.
 \label{sec:vae}
 
 An \texttt{Expectation} node resolves Gaussian expectations by Stein's
-lemma during simplification, and composing it with derived derivatives
+lemma \cite{stein1981} during simplification, and composing it with derived derivatives
 yields a model no runtime-AD framework can express
-(\texttt{examples/vae.py}): a VAE whose ELBO is written as its
+(\texttt{examples/vae.py}): a VAE \cite{vae} whose ELBO is written as its
 definition, $\mathbb{E}_z[\log p(x|z)] - \mathbb{E}_z[\log q(z|x) -
 \log p(z)]$ with $z \sim \mathcal{N}(\mu(x), \mathrm{diag}\,\sigma^2)$,
 and resolves entirely to closed form. The textbook Gaussian KL,
@@ -673,13 +673,13 @@ derived expectation} yields exact per-block Newton solves (the 4-edge
 Hessian of a matrix block factors as a Kronecker product whose factors
 are recovered from the derived Hessian itself by two Delta
 contractions), and cycling the four blocks reaches the analytic
-optimum---probabilistic PCA---in five rounds and 0.2\,s. No step size
+optimum---probabilistic PCA \cite{ppca}---in five rounds and 0.2\,s. No step size
 exists anywhere in the file. Head to head on time-to-optimum (reaching
 $1.05\times$ the analytic PCA floor): the exact method takes 3 rounds and
 10\,ms; the reparametrization-trick estimator torch and JAX must use
 instead---runtime autodiff cannot differentiate through sampling, and both
 hand-code the closed-form KL that tensorgrad derives---needs ${\sim}800$
-Adam steps and 160--180\,ms, a $16$--$19\times$ gap, with gradient noise
+Adam \cite{adam} steps and 160--180\,ms, a $16$--$19\times$ gap, with gradient noise
 the exact method simply does not have.
 
 One observation from this exercise generalizes. The compiled Newton
@@ -694,19 +694,19 @@ pattern emerges that we did not design for: \emph{the input set of a
 compiled program is a machine-derived statement of conditional
 independence}, visible before a single number is computed. Runtime
 autodiff cannot make such statements; it evaluates at a point. The same
-discipline powers the rest of the example suite: a Gaussian process
-whose marginal-likelihood gradients derive the cookbook identities
+discipline powers the rest of the example suite: a Gaussian process \cite{gp}
+whose marginal-likelihood gradients derive the cookbook identities \cite{matrixcookbook}
 $\partial \log|K| = \mathrm{tr}(K^{-1}\,\partial K)$ and
 $\partial(K^{-1}) = -K^{-1}(\partial K)K^{-1}$ from the \texttt{det} and
 \texttt{inverse} rewrite rules (matching finite differences to
 $10^{-10}$), a Newton optimizer that is a single compiled expression
-with quadratic convergence to $|g|^2 \approx 10^{-13}$, and a DDPM whose
+with quadratic convergence to $|g|^2 \approx 10^{-13}$, and a DDPM \cite{ddpm} whose
 forward corruption process is algebra inside the training step.
 
 \subsection{End-to-end: a GPT with no autograd}\label{sec:e2e}
 
 \begin{table}
-\caption{minGPT (3 blocks, $d{=}48$) on the sorting task; 2-thread CPU,
+\caption{minGPT \cite{mingpt} (3 blocks, $d{=}48$) on the sorting task; 2-thread CPU,
 min-of-$N$ on a quiet machine. The tensorgrad step program computes loss,
 all 53 gradients, and the full AdamW update (160 outputs) as one compiled
 function; \texttt{torch.set\_grad\_enabled(False)} is global. ``+
@@ -796,24 +796,26 @@ gate's independence argument).}
 \section{Related Work}\label{sec:related}
 
 \paragraph{Autodiff systems.} JAX \cite{jax}, PyTorch \cite{pytorch}, and
-Enzyme differentiate programs at runtime or at the IR of a general
-language; derivatives are computed, not simplified. Dex and named-tensor
-proposals \cite{namedtensor} share our index discipline without the
+Enzyme \cite{enzyme} differentiate programs at runtime or at the IR of a
+general language \cite{griewank2008}; Tapenade \cite{tapenade} and Zygote
+\cite{zygote} likewise transform source or SSA; derivatives are computed, not simplified. Dex \cite{dex} and named-tensor
+proposals \cite{namedtensor,einops} share our index discipline without the
 algebraic layer. Our adjoint pass can be read as: reverse mode is a
 \emph{theorem about contraction orderings} that survives being forgotten
 and rediscovered by a compiler.
 
-\paragraph{Computer algebra.} Mathematica and \texttt{sympy} rewrite
+\paragraph{Computer algebra.} Mathematica \cite{mathematica} and \texttt{sympy} \cite{sympy} rewrite
 expression trees with AC-matching and search;
 \S\ref{sec:language} argues for quotient-by-representation instead.
 Mathematica's \texttt{PossibleZeroQ} anticipates our use of randomized
-identity testing; we push it from a predicate to load-bearing compiler
+identity testing \cite{schwartz1980}; we push it from a predicate to load-bearing compiler
 verification.
 
-\paragraph{Tensor compilers.} TACO, TVM, Tensor Comprehensions, and
-XLA/Inductor optimize loop nests or kernel graphs below the level of
-algebra; we sit above them and, on CPU, emit into one of them
-(Inductor) as our kernel generator. Equality saturation (egg; Tensat)
+\paragraph{Tensor compilers.} TACO \cite{taco}, TVM \cite{tvm}, Tensor Comprehensions
+\cite{tensorcomprehensions}, and XLA/Inductor \cite{xla,pytorch2}
+optimize loop nests or kernel graphs below the level of algebra, in the
+scheduling-language lineage of Halide \cite{halide}; we sit above them and, on CPU, emit into one of them
+(Inductor) as our kernel generator. Equality saturation \cite{eqsat} (egg \cite{egg}; Tensat \cite{tensat})
 offers globally optimal rewriting at memory cost; our design keeps the
 language layer deterministic and search-free and quarantines
 cost-directed transformation in compiler passes---the adjoint pass shows
@@ -821,8 +823,8 @@ a case where the winning transformation is found structurally, with no
 search at all.
 
 \paragraph{EDA.} Layout assignment and cell selection are deliberate
-transplants of placement and technology mapping; functional (rather than
-structural) matching via value fingerprints mirrors Boolean matching in
+transplants of placement and technology mapping \cite{dagon,abc}; functional (rather than
+structural) matching via value fingerprints mirrors Boolean matching \cite{booleanmatching} in
 logic synthesis.
 
 \todopaper{Flesh out citations (bibliography is skeletal), including
@@ -838,15 +840,7 @@ and kernel selection as recoverable \emph{properties of algebra} can
 train a real model with autograd switched off---and, on the workloads
 where its symbolic head start matters, outrun the tape.
 
-\begin{thebibliography}{9}
-\bibitem{jax} Bradbury et al. JAX: composable transformations of
-Python+NumPy programs. 2018.
-\bibitem{pytorch} Paszke et al. PyTorch: an imperative style,
-high-performance deep learning library. NeurIPS 2019.
-\bibitem{mathematica} Wolfram Research. Mathematica.
-\bibitem{sympy} Meurer et al. SymPy: symbolic computing in Python.
-PeerJ CS 2017.
-\bibitem{namedtensor} Chiang, Rush, Barak. Named Tensor Notation. 2021.
-\end{thebibliography}
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
 
 \end{document}
