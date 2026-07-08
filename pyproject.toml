@@ -1,26 +1,17 @@
 [project]
 name = "tensorgrad"
-version = "0.2.1"
+version = "0.3.0"
+# Runtime deps of the library itself. Everything the tensorgrad package
+# actually imports -- nothing more. (The web server declares its own deps in
+# server/pyproject.toml; examples/tests deps live in the extra and dev group
+# below.)
 dependencies = [
    "networkx==3.2.1",
    "numpy",
    "torch",
-   "nbval",
-   "pytest",
-   "einops",
-   "pdf2image",
    "sympy",
-   "sparse",
    "opt_einsum",
-   "scipy",
-   "requests>=2.32.3",
-   "pydantic>=2.11.5",
-   "fastapi>=0.115.12",
-   "mangum>=0.19.0",
-   "boto3>=1.38.23",
-   "torchvision>=0.22.0",
-   "tqdm>=4.67.1",
-   "scikit-learn>=1.7.2",
+   "pdf2image",  # diagram rendering (tensorgrad.imgtools); needs system poppler
 ]
 requires-python = ">=3.10"
 authors = [
@@ -35,6 +26,13 @@ classifiers = [
   "Programming Language :: Python"
 ]
 
+[project.optional-dependencies]
+# `pip install tensorgrad[examples]` to run examples/.
+examples = [
+   "torchvision>=0.22.0",
+   "tqdm>=4.67.1",
+   "scikit-learn>=1.7.2",
+]
 
 [project.urls]
 Homepage = "https://tensorcookbook.com"
@@ -49,8 +47,11 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 
-[tool.setuptools.packages]
-find = {}
+[tool.setuptools.packages.find]
+# Only ship the library itself. Without this, discovery sweeps in the
+# repo's top-level tests/examples/server/paper/benchmarks/scripts dirs as
+# importable packages (they polluted the 0.2.1 wheel).
+include = ["tensorgrad*"]
 
 [tool.ruff]
 line-length = 110
@@ -69,7 +70,7 @@ exclude = "tests/"
 
 # Third-party libraries that ship no type stubs / py.typed marker.
 [[tool.mypy.overrides]]
-module = ["networkx.*", "sympy.*", "opt_einsum.*"]
+module = ["networkx.*", "sympy.*", "opt_einsum.*", "manim.*"]
 ignore_missing_imports = true
 
 # Remaining typing debt, exempted so `mypy tensorgrad/` gates everything else
@@ -80,11 +81,18 @@ ignore_errors = true
 
 
 [tool.pytest.ini_options]
+# Put the repo root on sys.path so tests can cross-import helpers
+# (`from tests.compiler.test_compiler import ...`). Previously this worked
+# only because packaging accidentally installed `tests` as a top-level
+# package; it no longer ships, so make the test path explicit here instead.
+pythonpath = ["."]
 # addopts = "-s"
 # addopts = "--nbval"
 
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
+    "pytest",
+    "einops",  # used only by tests/extras
 ]
 
