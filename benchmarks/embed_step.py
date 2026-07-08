@@ -141,3 +141,33 @@ if __name__ == "__main__":
     t_tg = _bench(make_tg_step())
     t_torch = _bench(make_torch_step())
     print(f"{BENCH_NAME}: tg {t_tg:.1f}ms torch {t_torch:.1f}ms")
+
+
+def make_jax_step(seed=DATA_SEED):
+    """Architecture parity: same two 50k x 64 tables, dot-product score,
+    mean softplus(-label*score) loss, plain SGD. jit end-to-end."""
+    import jax
+    import jax.numpy as jnp
+
+    u0, v0 = init_tables()
+    st = {"U": jnp.asarray(u0.numpy()), "V": jnp.asarray(v0.numpy())}
+
+    def loss_fn(U, V, i, j, lab):
+        s = (U[i] * V[j]).sum(-1)
+        return jax.nn.softplus(-lab * s).mean()
+
+    @jax.jit
+    def update(U, V, i, j, lab):
+        lv, (gU, gV) = jax.value_and_grad(loss_fn, argnums=(0, 1))(U, V, i, j, lab)
+        return U - LR * gU, V - LR * gV, lv
+
+    gen = torch.Generator().manual_seed(seed)
+
+    def step_fn() -> float:
+        iv, jv, lab = draw_batch(gen)
+        out = update(st["U"], st["V"], jnp.asarray(iv.numpy()), jnp.asarray(jv.numpy()),
+                     jnp.asarray(lab.numpy()))
+        st["U"], st["V"], lv = out
+        return float(lv)
+
+    return step_fn

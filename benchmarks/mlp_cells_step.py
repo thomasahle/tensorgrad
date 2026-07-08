@@ -85,3 +85,7 @@ def _gate():
 
 _gate()
 print(f"[{BENCH_NAME}] correctness gate passed", file=sys.stderr)
+
+
+def make_jax_step(seed=0):
+    return _M.make_jax_step(seed)

@@ -259,3 +259,56 @@ if __name__ == "__main__":
     t_tg = _bench(make_tg_step())
     t_torch = _bench(make_torch_step())
     print(f"{BENCH_NAME}: tg {t_tg:.1f}ms torch {t_torch:.1f}ms")
+
+
+def make_jax_step(seed=NOISE_SEED):
+    """Architecture parity: (T,dim) time-embedding table, 3 residual tanh
+    blocks, linear readout, forward-corruption in-graph, MSE-to-noise loss,
+    decoupled AdamW (decay on dim>=2). Random init (timing). jit end-to-end."""
+    import jax
+    import jax.numpy as jnp
+
+    g = torch.Generator().manual_seed(INIT_SEED)
+    P = {"temb": jnp.asarray((0.02 * torch.randn(T, DIM, generator=g)).numpy())}
+    for i in range(N_BLOCKS):
+        P[f"w{i}"] = jnp.asarray((torch.randn(DIM, DIM, generator=g) / math.sqrt(DIM)).numpy())
+        P[f"b{i}"] = jnp.zeros(DIM)
+    P["w_out"] = jnp.asarray((torch.randn(DIM, DIM, generator=g) / math.sqrt(DIM)).numpy())
+    P["b_out"] = jnp.zeros(DIM)
+
+    x0, t = _fixed_data()
+    x0j, tj, abarj = jnp.asarray(x0.numpy()), jnp.asarray(t.numpy()), jnp.asarray(ABAR.numpy())
+
+    def loss_fn(P, eps):
+        abar_t = abarj[tj]
+        x_t = jnp.sqrt(abar_t)[:, None] * x0j + jnp.sqrt(1 - abar_t)[:, None] * eps
+        h = x_t + P["temb"][tj]
+        for i in range(N_BLOCKS):
+            h = h + jnp.tanh(h @ P[f"w{i}"] + P[f"b{i}"])
+        return ((h @ P["w_out"] + P["b_out"] - eps) ** 2).mean()
+
+    @jax.jit
+    def update(P, m, v, t_, eps):
+        lv, gr = jax.value_and_grad(loss_fn)(P, eps)
+        m = jax.tree.map(lambda a, b: B1 * a + (1 - B1) * b, m, gr)
+        v = jax.tree.map(lambda a, b: B2 * a + (1 - B2) * b * b, v, gr)
+        c1, c2 = 1 / (1 - B1**t_), 1 / (1 - B2**t_)
+
+        def upd(w, mm, vv):
+            decay = 1 - LR * WD if w.ndim >= 2 else 1.0
+            return w * decay - LR * (c1 * mm) / (jnp.sqrt(c2 * vv) + EPS)
+
+        return jax.tree.map(upd, P, m, v), m, v, lv
+
+    st = {"P": P, "m": jax.tree.map(jnp.zeros_like, P),
+          "v": jax.tree.map(jnp.zeros_like, P), "t": 0}
+    gen = torch.Generator().manual_seed(NOISE_SEED)
+
+    def step_fn() -> float:
+        eps = torch.randn(BATCH, DIM, generator=gen)
+        st["t"] += 1
+        st["P"], st["m"], st["v"], lv = update(
+            st["P"], st["m"], st["v"], st["t"], jnp.asarray(eps.numpy()))
+        return float(lv)
+
+    return step_fn

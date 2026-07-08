@@ -206,3 +206,43 @@ if __name__ == "__main__":
     t_tg = _bench(make_tg_step())
     t_torch = _bench(make_torch_step())
     print(f"{BENCH_NAME}: tg {t_tg:.1f}ms torch {t_torch:.1f}ms")
+
+
+def make_jax_step():
+    """Architecture parity: conv(1->8,5x5) relu avgpool2 conv(8->16,5x5) relu
+    globalmeanpool linear cross-entropy, plain SGD. Torch-layout weights, jit
+    end-to-end."""
+    import jax
+    import jax.numpy as jnp
+    from jax import lax
+
+    P = {k: jnp.asarray(v.numpy()) for k, v in torch_init().items()}
+    imgj, labj = jnp.asarray(IMG.numpy()), jnp.asarray(LABELS.numpy())
+
+    def conv(x, w, b):  # x:(N,Cin,H,W), w:(Cout,Cin,kh,kw) torch/OIHW layout
+        y = lax.conv_general_dilated(x, w, (1, 1), "VALID",
+                                     dimension_numbers=("NCHW", "OIHW", "NCHW"))
+        return y + b[None, :, None, None]
+
+    def loss_fn(P):
+        x = jax.nn.relu(conv(imgj, P["conv1.w"], P["conv1.b"]))
+        n, c, h, w = x.shape
+        x = x.reshape(n, c, h // 2, 2, w // 2, 2).mean((3, 5))  # avg-pool 2x2
+        x = jax.nn.relu(conv(x, P["conv2.w"], P["conv2.b"]))
+        x = x.mean((2, 3))  # global mean pool
+        logits = x @ P["fc.w"].T + P["fc.b"]
+        logp = jax.nn.log_softmax(logits, -1)
+        return -jnp.take_along_axis(logp, labj[:, None], -1).mean()
+
+    @jax.jit
+    def update(P):
+        lv, gr = jax.value_and_grad(loss_fn)(P)
+        return jax.tree.map(lambda w, gw: w - LR * gw, P, gr), lv
+
+    st = {"P": P}
+
+    def step_fn() -> float:
+        st["P"], lv = update(st["P"])
+        return float(lv)
+
+    return step_fn
