@@ -214,22 +214,23 @@
 </span><span id="L-155"><a href="#L-155"><span class="linenos">155</span></a>    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">res</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 </span><span id="L-156"><a href="#L-156"><span class="linenos">156</span></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
 </span><span id="L-157"><a href="#L-157"><span class="linenos">157</span></a>            <span class="c1"># Convert scalar to Tensor with empty shape</span>
-</span><span id="L-158"><a href="#L-158"><span class="linenos">158</span></a>            <span class="n">v</span> <span class="o">=</span> <span class="n">TensorClass</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>  <span class="c1"># pyright: ignore[reportCallIssue]  # TensorMeta.__call__ shortcut wraps numbers</span>
-</span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a>        <span class="n">result</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">Expectation</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">wrt</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">covar</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">covar_names</span><span class="p">)</span>
-</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a>
-</span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a>    <span class="k">return</span> <span class="n">result</span>
-</span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a>
+</span><span id="L-158"><a href="#L-158"><span class="linenos">158</span></a>            <span class="c1"># (ignores: TensorMeta.__call__ number-wrapping shortcut, invisible to type checkers)</span>
+</span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a>            <span class="n">v</span> <span class="o">=</span> <span class="n">TensorClass</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>  <span class="c1"># type: ignore[call-arg]  # pyright: ignore[reportCallIssue]</span>
+</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a>        <span class="n">result</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">Expectation</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">wrt</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">covar</span><span class="p">,</span> <span class="n">expr</span><span class="o">.</span><span class="n">covar_names</span><span class="p">)</span>
+</span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a>
+</span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a>    <span class="k">return</span> <span class="n">result</span>
 </span><span id="L-163"><a href="#L-163"><span class="linenos">163</span></a>
-</span><span id="L-164"><a href="#L-164"><span class="linenos">164</span></a><span class="c1"># Helper function to normalize tensor representation</span>
-</span><span id="L-165"><a href="#L-165"><span class="linenos">165</span></a><span class="k">def</span><span class="w"> </span><span class="nf">_normalize_tensor</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
-</span><span id="L-166"><a href="#L-166"><span class="linenos">166</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-167"><a href="#L-167"><span class="linenos">167</span></a><span class="sd">    Normalize tensor representation for comparison purposes.</span>
-</span><span id="L-168"><a href="#L-168"><span class="linenos">168</span></a><span class="sd">    Converts Sum/Product representations of scalars to simple values.</span>
-</span><span id="L-169"><a href="#L-169"><span class="linenos">169</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="L-170"><a href="#L-170"><span class="linenos">170</span></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
-</span><span id="L-171"><a href="#L-171"><span class="linenos">171</span></a>        <span class="k">return</span> <span class="n">tensor</span>
-</span><span id="L-172"><a href="#L-172"><span class="linenos">172</span></a>    <span class="c1"># Add more normalization as needed</span>
-</span><span id="L-173"><a href="#L-173"><span class="linenos">173</span></a>    <span class="k">return</span> <span class="n">tensor</span>
+</span><span id="L-164"><a href="#L-164"><span class="linenos">164</span></a>
+</span><span id="L-165"><a href="#L-165"><span class="linenos">165</span></a><span class="c1"># Helper function to normalize tensor representation</span>
+</span><span id="L-166"><a href="#L-166"><span class="linenos">166</span></a><span class="k">def</span><span class="w"> </span><span class="nf">_normalize_tensor</span><span class="p">(</span><span class="n">tensor</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+</span><span id="L-167"><a href="#L-167"><span class="linenos">167</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-168"><a href="#L-168"><span class="linenos">168</span></a><span class="sd">    Normalize tensor representation for comparison purposes.</span>
+</span><span id="L-169"><a href="#L-169"><span class="linenos">169</span></a><span class="sd">    Converts Sum/Product representations of scalars to simple values.</span>
+</span><span id="L-170"><a href="#L-170"><span class="linenos">170</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-171"><a href="#L-171"><span class="linenos">171</span></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+</span><span id="L-172"><a href="#L-172"><span class="linenos">172</span></a>        <span class="k">return</span> <span class="n">tensor</span>
+</span><span id="L-173"><a href="#L-173"><span class="linenos">173</span></a>    <span class="c1"># Add more normalization as needed</span>
+</span><span id="L-174"><a href="#L-174"><span class="linenos">174</span></a>    <span class="k">return</span> <span class="n">tensor</span>
 </span></pre></div>
 
 
