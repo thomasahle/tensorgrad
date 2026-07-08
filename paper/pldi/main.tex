@@ -104,7 +104,7 @@ Mainstream systems blur these layers: \texttt{sympy}'s
 Mathematica's \texttt{FullSimplify} explores rule sequences under a time
 budget; XLA \cite{xla} and TorchInductor \cite{pytorch2} optimize numerics with no algebraic layer
 above them. Keeping the layers separate is what lets the language stay
-small---the entire user-facing kernel is nine node types and one equality
+small---the entire user-facing kernel is eight node types and one equality
 relation---while the compiler grows ambitious.
 
 \paragraph{Contributions.}
@@ -180,12 +180,15 @@ Order-dependence is unexpressible, which has a consequence we exploit in
 \S\ref{sec:techmap}: the compiler owns physical layout globally, because
 the program never gave that freedom away.
 
-The language kernel has nine node types: \texttt{Variable},
-\texttt{Delta} (Kronecker/copy tensors, which also serve as hyperedges),
-\texttt{Zero}, \texttt{Sum} (weighted, unordered), \texttt{Product}
-(unordered), \texttt{Function} (opaque signatures over inputs),
-\texttt{Derivative}, \texttt{Rename}, and constants. The type set is
-closed by design; operations over it grow (\S\ref{sec:rules-as-data}).
+The language kernel has eight node types: \texttt{Variable},
+\texttt{Delta} (Kronecker/copy tensors, which also serve as hyperedges)
+and \texttt{Zero} (the two abstract-\texttt{Constant} instances),
+\texttt{Sum} (weighted, unordered), \texttt{Product} (unordered),
+\texttt{Function} (opaque signatures over inputs), \texttt{Derivative},
+and \texttt{Rename}; the structured-tensor library adds further
+\texttt{Constant} subclasses (\texttt{Convolution}, \texttt{Reshape}).
+The type set is closed by design; operations over it grow
+(\S\ref{sec:rules-as-data}).
 
 \subsection{Equality is isomorphism}\label{sec:iso}
 
@@ -282,7 +285,7 @@ simplify to a target-free closed form.
 \subsection{Rules as code, becoming rules as data}\label{sec:rules-as-data}
 
 The expression-problem split is in place: the data-type module holds
-nine node types and their structural declarations, while simplification
+eight node types and their structural declarations, while simplification
 lives in an enumerable rule catalog with a single engine; the equation
 engine of \S\ref{sec:constraints} was its first rules-as-data component,
 carrying its own termination order. The same movement recurs in the
@@ -949,8 +952,9 @@ where its symbolic head start matters, outrun the tape.
 This appendix discharges the obligations stated in
 \S\ref{sec:eval-todo}. Part~\ref{app:denot} gives the denotational
 semantics---an expression as a labeled multigraph and the evaluation
-functor $\sem{\cdot}$ into finite-dimensional multilinear maps---and
-proves that isomorphic graphs denote equal maps (Soundness), then
+map $\sem{\cdot}$ into finite-dimensional multilinear maps---and
+proves that \emph{edge-preserving} isomorphic graphs denote equal maps
+(Soundness), then
 delimits Completeness for the multilinear fragment.
 Part~\ref{app:term} exhibits the well-founded measure that the
 deterministic language-layer rewrites decrease and proves strong
@@ -974,22 +978,25 @@ over the index set $I_e^{\delta}=\{0,\dots,\delta(\dim(e))-1\}$.
 The \emph{graph} $G(e)$ of an expression $e$ is a finite labeled
 multigraph with half-edges.
 \begin{itemize}
-\item \textbf{Vertices} are the primitive occurrences of the nine node
-  types (\S\ref{sec:language}): \texttt{Variable}, \texttt{Delta},
-  \texttt{Zero}, \texttt{Sum}, \texttt{Product}, \texttt{Function},
-  \texttt{Derivative}, \texttt{Rename}, and scalar constants. Each vertex
+\item \textbf{Vertices} are the primitive occurrences of the eight
+  concrete node types (\S\ref{sec:language}): \texttt{Variable},
+  \texttt{Delta}, \texttt{Zero} (the two \texttt{Constant}s),
+  \texttt{Sum}, \texttt{Product}, \texttt{Function},
+  \texttt{Derivative}, and \texttt{Rename} (scalars appear only as
+  \texttt{Sum} weights, never as vertices). Each vertex
   $v$ carries a \emph{label} $\ell(v)$ recording its type together with
   all data that participates in identity but is not itself a wire (the
   variable name, a \texttt{Delta}'s size symbol, \texttt{Sum} weights,
   a \texttt{Function} signature). This is exactly the $\textit{label}$
   component of the \textit{structure}() datum of \S\ref{sec:iso}.
-\item \textbf{Edges} (internal) are the \emph{named indices} shared
-  between two endpoints: a contracted edge of a \texttt{Product}, a
-  hyperedge of a \texttt{Delta}, a broadcast wire of a \texttt{Sum}.
-  Formally an edge is a \emph{junction}: an equivalence class of node--%
-  port endpoints identified as one wire. Its interior name is used only
-  to group endpoints and is then discarded, so $\alpha$-renaming of a
-  contracted index is invisible in $G(e)$.
+\item \textbf{Junctions} are equivalence classes of node--port
+  endpoints identified as one wire (the \emph{named indices}). A
+  junction is \emph{internal} when all its endpoints are interior---a
+  \texttt{Product} contraction---and \emph{exposed} otherwise
+  (\texttt{Delta} legs, a \texttt{Sum}'s shared output wire, a
+  top-level free index). An interior name only groups endpoints and is
+  then discarded, so $\alpha$-renaming of a contracted index is
+  invisible in $G(e)$.
 \item \textbf{Half-edges} (dangling) are the \emph{free} indices
   $\Free(e)$: endpoints of a junction with a distinguished
   \texttt{free} port and no matching interior endpoint. These are the
@@ -1004,15 +1011,20 @@ half-edges in $\Free$.
 
 \begin{definition}[Equality]
 $e_1\equiv e_2$ iff $G(e_1)\cong G(e_2)$ by an edge-preserving
-isomorphism. This is the relation decided by the fingerprint-plus-VF2
-procedure of \S\ref{sec:iso}; commutativity and associativity of
+isomorphism. This is the \texttt{match\_edges} variant of the
+fingerprint-plus-VF2 procedure of \S\ref{sec:iso}; the pervasive
+\texttt{==}/\texttt{\_\_hash\_\_} decide the \emph{weaker} relation
+``isomorphic up to a free-edge relabeling'' (so a matrix equals its
+transpose under \texttt{==}), and \texttt{evaluate} realigns via the
+recovered relabeling before comparing tensors, so the system stays
+sound. Soundness below is stated for $\equiv$; commutativity and associativity of
 \texttt{Product}/\texttt{Sum} and $\alpha$-renaming of contracted edges
 are not rewrites but consequences of $\cong$, because \texttt{Product}
 and \texttt{Sum} hold unordered multisets and interior edge names are
 quotiented in Definition~\ref{def:graph}.
 \end{definition}
 
-\subsubsection*{The evaluation functor}
+\subsubsection*{The evaluation map}
 
 Fix $\delta$ and a \emph{valuation} $\rho$ assigning to each
 \texttt{Variable} $v$ with free edges $\Free(v)$ a tensor
@@ -1046,8 +1058,9 @@ and $\vec\imath|_A$ for its restriction to edge set $A$:
 \end{align*}
 where $C$ is the set of internal (contracted) edges of the product,
 $\pi$ is the free-edge bijection carried by the \texttt{Rename}, and
-$\widehat f$ is the multilinear (or, in general, analytic) map named by
-the \texttt{Function} signature. \texttt{Derivative} is not given a
+$\widehat f$ is the (possibly nonlinear, not-necessarily-smooth) map
+named by the \texttt{Function} signature (e.g.\ $\exp$, $\tanh$, but
+also \texttt{relu}, \texttt{sign}, \texttt{argmax}). \texttt{Derivative} is not given a
 direct clause: it denotes the derivative map of its operand and is
 eliminated by the rewriting of \S\ref{sec:autodiff} before evaluation
 (the eager interpreter refuses to evaluate an unresolved
@@ -1124,12 +1137,16 @@ Since every clause is invariant, $\sem{e_1}=\sem{e_2}$.
 \end{proof}
 
 \begin{remark}
-Soundness is what licenses the fingerprint as a decision procedure for
-inequality (unequal denotations $\Rightarrow$ non-isomorphic
-$\Rightarrow$ distinct fingerprints, contrapositive of
-Theorem~\ref{thm:sound} composed with fingerprint completeness on
-$\cong$), and is the property the differential fuzzing harness of
-\S\ref{sec:sz} tests empirically.
+Soundness underwrites the rejection direction of \S\ref{sec:iso}: unequal
+denotations $\Rightarrow$ non-isomorphic $\Rightarrow$ (by the invariant
+of the coarse hash) unequal coarse hashes, so a hash mismatch proves
+inequality. Acceptance runs the other way and uses the \emph{refined}
+fingerprint, whose contract is one-directional (equal refined fingerprint
+$\Rightarrow$ edge-preserving isomorphism, invariant~I1); the refined
+fingerprint is a sound iso-certificate, not a complete invariant (two
+isomorphic symmetric graphs may receive different refined fingerprints,
+whence the VF2 fallback of \S\ref{sec:iso}). The differential fuzzing
+harness of \S\ref{sec:sz} tests the whole procedure empirically.
 \end{remark}
 
 \subsubsection*{Completeness for the multilinear fragment}
@@ -1139,9 +1156,10 @@ built from \texttt{Variable}, \texttt{Delta}, \texttt{Rename},
 \texttt{Sum}, and \texttt{Product} (no opaque \texttt{Function}, no
 \texttt{Derivative}). Every $e\in\mathcal{M}$ denotes, for fixed
 $\delta$, a map $\rho\mapsto\sem{e}_{\delta,\rho}$ that is a
-\emph{multilinear polynomial}: multilinear in the entries of each
-\texttt{Variable} block and of total degree at most the number of
-variable-leaves along any contraction path.
+\emph{multilinear polynomial}: linear in the entries of each
+\texttt{Variable} \emph{leaf} (a variable occurring at $k$ leaves
+enters with degree $k$), of total degree the number of variable-leaves
+along a contraction path.
 
 Raw graph isomorphism is \emph{not} complete on $\mathcal{M}$: an
 order-$2$ $\Delta_n$ inserted on an edge, a $\texttt{Zero}$ summand, or a
@@ -1197,15 +1215,22 @@ structural $\cong$ cannot see.
 
 \subsection{Termination of the rewrite system}\label{app:term}
 
-We show the deterministic language-layer rewrite relation
-$\rightarrow_{\mathcal L}$ (the simplification catalog of
-\S\ref{sec:rules-as-data} together with the constraint engine of
-\S\ref{sec:constraints}) is \emph{strongly normalizing}: no expression
-admits an infinite chain of rewrites. This substantiates the
-``terminating rewriting toward a normal form'' claim of
-\S\ref{sec:language}; confluence (hence uniqueness of normal forms) is
-the separate, empirically tested obligation of the confluence-harness
-\textsc{todo}, discussed in the closing remark.
+We show the \emph{normalizing core} $\rightarrow_{\mathcal L}$ of the
+language layer is \emph{strongly normalizing}: no expression admits an
+infinite chain of these rewrites. The core comprises derivative
+resolution (\S\ref{sec:autodiff}), lazy-\texttt{Rename} normalization
+(\S\ref{sec:depth}), the shrinking rules (identity-$\Delta$/\texttt{Zero}/%
+weight/flatten), and constraint application (\S\ref{sec:constraints}).
+The catalog also contains \emph{directional expansion} rewrites that
+\emph{increase} node count---product-over-sum distribution and
+\texttt{Function}/\texttt{pow} expansion---which are applied under
+separate operational control (opt-in flags, one-directional) and are
+\emph{not} in $\rightarrow_{\mathcal L}$; scoping them out is what makes
+the measure below monotone. This substantiates the ``terminating
+rewriting toward a normal form'' claim of \S\ref{sec:language} for the
+core; global confluence over the full catalog (hence uniqueness of
+normal forms) is the separate, empirically tested obligation of the
+confluence-harness \textsc{todo}, discussed in the closing remark.
 
 \subsubsection*{The measure}
 
@@ -1247,20 +1272,28 @@ subterm size $s=\lvert\mathrm{sub}(v)\rvert$ is replaced by
 (the summands of a \texttt{Sum}; the factors $t_i$ in
 $\partial\prod_i t_i=\sum_i(\prod_{j\ne i}t_j)\,\partial t_i$; the
 arguments at a \texttt{Function}), whose subterm sizes sum to at most
-$s-1$. Hence the contribution $(1+s)$ of $v$ is replaced by a total
-$\le s$, and every base rule deletes a \texttt{Derivative} outright, so
-$\Phi_\partial$ strictly decreases. These rules introduce no
-\texttt{Derivative} above where one was not already, and although the
-product rule may \emph{increase} $N$, that coordinate is dominated in
-$<_{\mathrm{lex}}$.
+$s-1$. Resolution is \emph{innermost}: the operand is fully simplified
+before the enclosing rule fires (\texttt{step\_derivative}), so the
+product and chain rules---which copy sibling operands---never duplicate
+an \emph{unresolved} \texttt{Derivative}; the nested case
+$\partial_x(\partial_y f)$ (\texttt{grad\_derivative}) resolves the
+inner one first and so is covered by the same accounting. Hence the
+contribution $(1+s)$ of $v$ is replaced by a total $\le s$, and every
+base rule deletes a \texttt{Derivative} outright, so $\Phi_\partial$
+strictly decreases. Although the product rule may \emph{increase} $N$,
+that coordinate is dominated in $<_{\mathrm{lex}}$.
 
-\emph{(2) Rename pushing} (\S\ref{sec:depth}, lazy \texttt{Rename}): a
-\texttt{Rename} over a $k$-ary node becomes $\le k$ \texttt{Rename}s over
-its children (each of strictly smaller subterm size), and a
-\texttt{Rename} at a \texttt{Variable}/\texttt{Delta} leaf is absorbed
-into the leaf's edge names. By the same accounting $\Phi_\rho$ strictly
-decreases. These rules create no \texttt{Derivative} node, so
-$\Phi_\partial$ is unchanged.
+\emph{(2) Rename normalization} (\S\ref{sec:depth}, lazy
+\texttt{Rename}, \texttt{push\_rename\_down}): adjacent
+\texttt{Rename}s are chain-merged into one, an identity \texttt{Rename}
+is dropped, and a \texttt{Rename} at a \texttt{Variable}/\texttt{Delta}
+leaf is absorbed into the leaf's edge names---each strictly reduces
+$\Phi_\rho$. A \texttt{Rename} over a \emph{composite}
+(\texttt{Sum}/\texttt{Product}/\texttt{Function}) is deliberately
+\emph{not} pushed through---it is a normal form, a single idempotent
+wrapper that preserves edge identity---so normalization cannot loop on
+it. These rules create no \texttt{Derivative}, so $\Phi_\partial$ is
+unchanged.
 
 \emph{(3) Shrinking rules}: identity-$\Delta$ absorption and $\Delta$
 fusion (Lemma~\ref{lem:delta}), \texttt{Zero} elimination, weight and
@@ -1273,10 +1306,12 @@ are unchanged and $N$ strictly decreases.
 family of group~(3). A declared equation replaces a subnetwork
 isomorphic to its left-hand side $L$ by its right-hand side $R$, subject
 to the \emph{declaration-time obligation} $N(R)<N(L)$ (``the right-hand
-side must be strictly smaller (node count) than the left''). Because a
-constraint's $R$ is a value pattern containing no \texttt{Derivative} and
-no \texttt{Rename}, the rewrite leaves $\Phi_\partial,\Phi_\rho$ fixed and
-strictly decreases $N$ by $N(L)-N(R)>0$.
+side must be strictly smaller (node count) than the left''). A constraint's $R$ is a value pattern containing no \texttt{Derivative};
+it is instantiated by renaming to the matched edges, so the rewrite is
+taken together with the group-(2) normalization of the \texttt{Rename}s
+it introduces (which restores $\Phi_\rho$ to its prior value). The net
+macro-step leaves $\Phi_\partial$ fixed, returns $\Phi_\rho$ to its
+starting value, and strictly decreases $N$ by $N(L)-N(R)>0$.
 
 \begin{theorem}[Strong normalization]\label{thm:sn}
 $\rightarrow_{\mathcal L}$ is strongly normalizing: for every rewrite
@@ -1305,8 +1340,9 @@ critical pair. That is precisely the property the confluence harness of
 \S\ref{sec:rules-as-data} fuzzes (overlapping redexes, both application
 orders, canonical-equality of the results, with the Schwartz--Zippel test
 of Part~\ref{app:sz} separating a genuine confluence failure from a
-soundness bug). Until that harness is landed the uniqueness claim is
-empirical; termination is unconditional.
+soundness bug). Until that harness is landed the uniqueness claim---and
+the interaction of the core with the directional expansion rules scoped
+out above---is empirical; termination of the core is unconditional.
 \end{remark}
 
 \subsection{Schwartz--Zippel bounds for verification and consolidation}
@@ -1332,10 +1368,14 @@ $<2^{62}<2^{63}$ (asserted at runtime). ``Evaluated over $\Fp$'' is
 therefore literal, not floating---no rounding can corrupt the test.
 
 A trial draws (i) a dimension assignment $\delta$ with
-$\delta(n)\in\{2,\dots,5\}$ keyed by symbol \emph{name}, and (ii) for each
-\texttt{Variable} an i.i.d.\ uniform tensor over $\Fp$, keyed by
-$(\text{seed},\text{trial},\text{name},\delta)$ rather than by program
-identity (so separately lowered programs share points). Non-polynomial
+$\delta(n)\in\{2,\dots,5\}$ by default (lifted above $5$ only where an
+affine constraint row would otherwise be unsatisfiable) keyed by symbol
+\emph{name}, and (ii) for each
+\texttt{Variable} a tensor over $\Fp$ whose entries are
+blake2b($\text{seed},\text{trial},\text{name},\delta,\dots$) --- a
+random oracle keyed by name rather than program identity (so separately
+lowered programs share points), marginally uniform and independent of
+the polynomial indeterminates. Non-polynomial
 atoms---$\exp,\log,\tanh,\mathrm{erf}$, fractional \texttt{pow},
 $\mathrm{softmax}$, \texttt{gather}, opaque cells---are \emph{not}
 evaluated; each is replaced by a fresh uniform field element keyed by its
@@ -1369,7 +1409,9 @@ check declares them equal with probability at most
 \begin{proof}
 The difference $e-e'$ is a nonzero rational function of degree $\le\dg$.
 Each trial evaluates it at a point whose variable- and atom-coordinates
-are drawn uniformly and independently over $\Fp$ (points that hit a zero
+are drawn (as blake2b outputs, modelled as a random oracle: marginally
+uniform, mutually independent, and independent of the skeleton) over
+$\Fp$ (points that hit a zero
 denominator are resampled with a fresh salt, i.e.\ we condition on the
 evaluation being defined; this only removes a $O(\dg/p)$ fraction of the
 domain and the bound of Lemma~\ref{lem:sz} holds on the conditional to
@@ -1379,11 +1421,14 @@ seeds, so the events are independent and the joint probability is
 $(\dg/p)^{k}$.
 \end{proof}
 
-The degrees arising in a lowered program are small---bounded by the
-number of variable-leaves on a contraction path---so in practice
-$\dg/p\approx 10^{-5}$ (the figure cited in \texttt{szfp.py}), and at the
-default $k=3$ a single check has false-accept probability
-$\approx(10^{-5})^{3}=10^{-15}$. The test is \emph{one-sided}: a true
+For a \emph{local} rewrite the skeleton degree is small---bounded by the
+number of variable-leaves on a contraction path, single digits---so
+$\dg/p\approx 10^{-5}$ and at the default $k=3$ a single check has
+false-accept probability $\approx(10^{-5})^{3}=10^{-15}$. (The
+consolidation gate compares the full loss+53-gradient skeleton, whose
+degree is larger and whose $\dg/p$ is correspondingly looser; the
+exact-over-$\Fp$ evaluation and the fresh-seed re-draw below are what
+keep it sound regardless.) The test is \emph{one-sided}: a true
 skeleton identity \emph{always} passes (fingerprints of equal rational
 functions are equal by construction), so the only error is a false
 accept, and \emph{only} for skeleton (not analytic-atom) inequalities;
@@ -1411,10 +1456,13 @@ the union bound gives $\Pr[\bigcup_i B_i]\le\sum_i\Pr[B_i]\le
 R(\dg/p)^{k}$.
 \end{proof}
 
-For a 3-block GPT step the compiler touches on the order of
-$R\sim10^{3.5}$ compute nodes ($2{,}925\to844$; $7{,}127$ emitted
-kernels, \S\ref{sec:sz}); with $\dg/p\approx10^{-5}$ and $k=3$ the whole-%
-compile bound is $R(\dg/p)^{k}\lesssim 10^{4}\cdot10^{-15}=10^{-11}$.
+This bound governs the \emph{test-suite} regime, where each rewrite
+\emph{class} is pinned by an independent check (\S\ref{sec:sz}); a live
+compile does not re-run a per-rewrite check, relying instead on the
+once-per-class pins and the consolidation gate below. Taking $R\sim
+10^{3.5}$ rewrite instances as an upper bound, $\dg/p\approx10^{-5}$ and
+$k=3$ give a whole-suite bound $R(\dg/p)^{k}\lesssim
+10^{4}\cdot10^{-15}=10^{-11}$.
 
 \subsubsection*{The fresh-seed refusal gate}
 
@@ -1452,12 +1500,13 @@ Theorem~\ref{thm:percheck} they all fail to witness $O\ne C$ with
 probability $\le(\dg/p)^{k'}$. This bound is unconditional on $\sigma$:
 the gate's randomness is disjoint from the proposal's, so ``$O,C$ agree
 at $\sigma'$'' is independent of everything that happened at $\sigma$.
-For the compounded bound, let $A$ = ``the wrong merge is proposed'' (it
-requires the merged subgraphs to collide at $\sigma$, so
-$\Pr[A]\le(\dg/p)^{k}$ by Lemma~\ref{lem:sz} applied at $\sigma$) and $E$
+For the compounded bound, let $A$ = ``the wrong merge is proposed'' (the proposal searches up to
+$n_{\mathrm{perms}}$ axis permutations, so by a union bound over them and
+Lemma~\ref{lem:sz} at $\sigma$, $\Pr[A]\le(n_{\mathrm{perms}}\dg/p)^{k}$)
+and $E$
 = ``the gate accepts'' with $\Pr[E]\le(\dg/p)^{k'}$. Because $\sigma$ and
 $\sigma'$ are independent seeds, $A$ and $E$ are independent, so
-$\Pr[A\cap E]=\Pr[A]\Pr[E]\le(\dg/p)^{k+k'}$.
+$\Pr[A\cap E]=\Pr[A]\Pr[E]\le(n_{\mathrm{perms}}\dg/p)^{k}(\dg/p)^{k'}$.
 \end{proof}
 
 \begin{remark}[Why the seed must be fresh]
@@ -1470,8 +1519,9 @@ replaces that correlation with a product, turning the residual error from
 $(\dg/p)^{k}$ into $(\dg/p)^{k+k'}$ for collision-induced bugs and
 bounding \emph{all} value-changing bugs---including deterministic
 bookkeeping bugs, for which $\Pr[A]=1$ but $\sem C\neq\sem O$ still
-holds---by the unconditional $(\dg/p)^{k'}$. At $k'=3$ and
-$\dg/p\approx10^{-5}$ this is $\approx10^{-15}$ per compile, so the gate
+holds---by the unconditional $(\dg/p)^{k'}$. At the implemented $k'=2$ (\texttt{GATE\_TRIALS} in
+\texttt{consolidate.py}) and $\dg/p\approx10^{-5}$ this is
+$\approx10^{-10}$ per compile, so the gate
 converts any unsound merge into a clean no-op fallback with overwhelming
 probability rather than a miscompile. This is the argument that
 \S\ref{sec:sz} advances for making the gate the default contract between
