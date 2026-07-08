@@ -129,8 +129,8 @@ relation---while the compiler grows ambitious.
   gradient intermediates on transformer graphs drop by up to nine orders
   of magnitude (Table~\ref{tab:adjoint}).
 \item Randomized algebraic verification as compiler infrastructure
-  (\S\ref{sec:sz}): every rewrite class is checked by exact evaluation
-  over $\mathbb{F}_p$ at random points (Schwartz--Zippel \cite{schwartz1980,zippel1979,demillo1978}), and a
+  (\S\ref{sec:sz}): IR nodes evaluate exactly over $\mathbb{F}_p$ at
+  random points (Schwartz--Zippel \cite{schwartz1980,zippel1979,demillo1978}), and a
   consolidation pass merges value-equal subgraphs modulo axis permutation
   under a \emph{fresh-seed refusal gate} that converts any unsound merge
   into a clean fallback. On a 3-block GPT training step this removes 71\%
@@ -500,9 +500,12 @@ $\tanh(x^{\top})$ collide, as they must, while $\exp$ never accidentally
 equals $\log$. This machinery serves twice:
 
 \begin{itemize}
-\item \emph{Rewrite verification}: every optimization pass's rewrite
-  classes are pinned by fingerprint equality before/after (a
-  Schwartz--Zippel bound \cite{schwartz1980,zippel1979} quantifies the error probability).
+\item \emph{Rewrite verification}: rewrite classes are pinned by
+  fingerprint equality before/after in the test suite (a
+  Schwartz--Zippel bound \cite{schwartz1980,zippel1979} quantifies the
+  error probability), alongside a differential property harness that
+  compares the compiler against a deliberately simple interpreter on
+  hundreds of random expressions.
 \item \emph{Consolidation}: value numbering \cite{gulwani2004gvn} modulo axis permutation
   merges nodes whose evaluations agree at every trial under one
   consistent permutation; consumers are rewired through zero-cost
@@ -511,6 +514,19 @@ equals $\log$. This machinery serves twice:
   rejects the entire rewrite on any mismatch: a bookkeeping bug becomes a
   no-op, never a miscompile.
 \end{itemize}
+
+A postmortem argues this gate should guard \emph{every} pass, not just
+consolidation. The longest-lived wrong-value bug in the compiler's
+history was in factoring: splicing a child einsum whose broadcast-only
+output wire the parent contracts left that wire referenced by nothing,
+and the einsum constructor silently dropped it---losing an exact factor
+of $\dim(w)$, i.e.\ compiling $\sum_a (x \otimes \mathbf{1}_a)$ to
+$x$ instead of $|a|\,x$. The differential harness caught it; the
+refusal gate would have refused it \emph{at compile time}, but
+factoring ran outside the gate. The fix is the same accounting the
+pass's own absorption step already did for its orphan wires---and the
+lesson is that randomized verification is cheap enough to be the
+default contract between passes, not a special feature of one.
 
 On the 3-block GPT training step, consolidation removes
 $2{,}925 \rightarrow 844$ compute nodes ($7{,}127 \rightarrow 2{,}052$
@@ -592,7 +608,11 @@ baselines are CPU \texttt{jit} with the same thread pinning, timed
 min-of-$N$ with \texttt{block\_until\_ready}. Gradients
 are verified against \texttt{torch.autograd} (typically
 $\le 10^{-6}$ relative) and against an interpreter oracle; program
-rewrites additionally against exact $\mathbb{F}_p$ fingerprints.
+rewrites additionally against exact $\mathbb{F}_p$ fingerprints. The
+project's 900-test suite includes a differential fuzzing harness
+(480 random expressions per run, compiler vs.\ interpreter vs.\
+ground truth, compared under name alignment) and machine-verified
+gradients for every fused cell.
 
 \subsection{Derived backward passes vs.\ runtime autograd}
 
