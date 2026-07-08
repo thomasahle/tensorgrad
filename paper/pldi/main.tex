@@ -827,10 +827,11 @@ transplants of placement and technology mapping \cite{dagon,abc}; functional (ra
 structural) matching via value fingerprints mirrors Boolean matching \cite{booleanmatching} in
 logic synthesis.
 
-\todopaper{Flesh out citations (bibliography is skeletal), including
-tensor-network contraction-ordering literature (opt\_einsum,
-cotengra), AHU/WL/nauty for \S\ref{sec:iso}, and the Tensor Cookbook as
-the notation companion.}
+\paragraph{Contraction ordering.} Planning inside our einsum nodes
+follows the \texttt{opt\_einsum} lineage \cite{opteinsum,cotengra};
+optimal ordering is NP-hard in general \cite{lam1997np}. Our adjoint
+pass is complementary: it fixes the \emph{global} orientation of a
+gradient graph, after which per-node planning is local.
 
 \section{Conclusion}
 
