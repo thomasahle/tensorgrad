@@ -467,7 +467,15 @@ these shapes---including inside gradients and Hessians, and including
 numerator/denominator pairs that factoring has separated---and emits
 fused stable kernels (\texttt{softmax}, \texttt{log\_softmax},
 \texttt{logsumexp}). The pass matches shapes, not names, which is what
-makes \S\ref{sec:tier0} work for user-defined functions. Boundary,
+makes \S\ref{sec:tier0} work for user-defined functions. The same
+contract covers rational shapes: $\log(1+e^{x})$ maps to
+\texttt{softplus}, and its \emph{derivative}---which arrives as
+$e^{x}/(1+e^{x})$ with the $e^{x}$ smeared through the derivative's
+diagonal einsum---is matched through that einsum and maps to
+\texttt{sigmoid}, so softplus training is exact at $x{=}100$ where the
+literal composition returns \texttt{inf} forward and \texttt{nan}
+backward. Differentiation happened symbolically upstream, so the
+rewrite only ever touches surviving forward compositions. Boundary,
 measured: a shift-invariant softmax variant
 ($1/\sum_j e^{x_j - x_i}$) is \emph{not} matched---and compiles to its
 literal (correct, and in this case self-stabilizing) algebra. Misses
@@ -538,6 +546,14 @@ straight-line, with spec-time integer strides (it traces as a single
 dynamo graph, so \texttt{torch.compile(fullgraph=True)} succeeds and
 Inductor serves as a whole-program kernel generator), and liveness
 \texttt{del}s that cut peak memory by up to $3\times$.
+Not every EDA transplant survives measurement: a shared-operand GEMM
+batching pass (the $q/k/v$ projections read the same activation; stack
+the weights, run one GEMM, hand out views) is value-exact but
+\emph{regresses the GPT step by $69\%$ on CPU}---\texttt{stack} is a
+per-step copy because weights are step inputs, and a batched small GEMM
+lowers to a slice loop rather than one BLAS call. It ships default-off.
+We report this because the methodology is the point: every pass here is
+gated on measured wall clock, not on launch-count intuition.
 
 \paragraph{The cell library is data.} Every fused kernel is one object
 in one registry (\texttt{compiler/cells.py}), and the registry spans four
@@ -555,8 +571,14 @@ cells themselves}, applied by one generic engine:
 $\mathrm{inverse}(A)\,b$ becomes \texttt{linalg.solve}, and
 $\log\det A$ becomes \texttt{slogdet} -- the Gaussian-process example
 runs in plain float32 because the latter rescues a determinant that
-underflows to exactly $0$. Misses degrade performance, never
-correctness; retargeting is a second registry.
+underflows to exactly $0$. The cells also \emph{share work}: when one
+operand feeds two or more of $\{\mathrm{inverse}, \mathrm{solve},
+\log\det\}$, all consumers draw from a single
+\texttt{lu\_factor}---the factorization reuse JAX's
+\texttt{solve}/\texttt{slogdet} adjoints get implicitly---which closed
+the measured GP gap from $1.40\times$ to $1.24\times$ at $n{=}1024$.
+Misses degrade performance, never correctness; retargeting is a second
+registry.
 
 \todopaper{Tech-mapping phase 2 (DP covering over the cell library,
 using per-cell cost) and a GPU tier (Triton emission for fused affine
@@ -728,17 +750,27 @@ development this took 44\,s---the hash-consed fingerprints of
 \S\ref{sec:depth} are what moved it). The adjoint pass runs in
 0.5--6.8\,s at all scales of Table~\ref{tab:adjoint}. Equality
 infrastructure: the exact-verification fallback fired 12 times (4-node
-graphs) across the entire build.
+graphs) across the entire build. One systems footnote: a process that
+compiles many programs (our benchmark suite compiles 15+) trips
+TorchDynamo's per-frame recompile ceiling, which under
+\texttt{fullgraph=True} raises rather than falling back; the runtime
+raises the ceiling and keeps a per-program graceful fallback.
+Everything in this paragraph is one-time cost; steady-state steps run
+straight-line code.
 
-\subsection{What is missing}\label{sec:eval-todo}
+\subsection{What is measured, and what is missing}\label{sec:eval-todo}
 
-\todopaper{\textbf{JAX baselines, remaining}: the training step, the
-layer-norm gradient, and both Hessians are now measured
-(Table~\ref{tab:e2e}, \S\ref{sec:hessian}); still to do are JAX and
-torch versions of the full example suite (diffusion, Newton--GLM,
-sample-free VAE, GP)---where the frameworks must hand-code what
-tensorgrad derives (reparametrization trick, closed-form KL, cookbook
-gradients)---plus XLA compile times next to ours.}
+The three-framework comparison is now a maintained benchmark suite
+(\texttt{benchmarks/}): nine training-step programs, each with a
+tensorgrad, a torch, and (where expressible) a JAX side, every module
+gated at import by a cross-framework correctness check on losses and
+gradients. The suite is where the numbers of this section live and
+reproduce, and it is also where the boundary shows: for the VAE the
+frameworks \emph{must} hand-code the reparametrization trick and the
+closed-form KL that tensorgrad derives, and for the Newton--GLM step
+\texttt{jax.hessian} replays $d$ transform passes against our one
+derived GEMM. What remains unmeasured: XLA compile times next to ours,
+and any GPU numbers.
 
 \todopaper{\textbf{GPU tier}: either land Triton emission (task \#15) and
 report A100/H100 numbers, or scope all claims to ahead-of-time CPU
@@ -748,10 +780,11 @@ compilation and say so in the abstract.}
 GPT-2 dims now plans in 19.8\,GB and should execute on a 40\,GB device);
 plus a second task domain (the conv/MNIST pipeline exists).}
 
-\todopaper{\textbf{Cleanup program}: [A] wrapper-tier deletion, [C]
-structure declarations, [F] rule catalog and [B] lazy-rename default
-have all landed (the claims of \S\ref{sec:language} now hold
-``exactly''); [G] the confluence harness remains.}
+\todopaper{\textbf{Confluence harness}: the rule catalog of
+\S\ref{sec:rules-as-data} makes local-confluence fuzzing possible
+(generate critical pairs, join them, flag divergence); it is designed
+but not landed, and the normal-form claim of \S\ref{sec:language} is
+empirical until it is.}
 
 \todopaper{\textbf{Formal statements}: a semantics appendix (expressions
 as multigraphs, evaluation as a functor to multilinear maps; equality =
