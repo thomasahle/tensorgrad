@@ -45,7 +45,7 @@ from tensorgrad.extras.expectation import Expectation
 
 torch.set_num_threads(2)
 
-BENCH_NAME = "vae (exact vs reparam)"
+BENCH_NAME = "vae (time-to-optimum)"
 
 N, D_X, LATENT = 1024, 16, 2
 NOISE = 0.1
@@ -120,19 +120,41 @@ def _tg_state():
     return {x: XV, We: WE0.clone(), Wd: WD0.clone(), bd: BD0.clone(), logs: LOGS0.clone()}
 
 
-def make_tg_step():
-    # Four programs, cycled Gauss-Seidel. Audited alternatives, both worse:
-    # Jacobi (all four updates from ONE program) diverges on this bilinear
-    # objective, and symbolic Gauss-Seidel (substituting each update into
-    # the next before compiling) converges identically (3 rounds) but runs
-    # 0.65 ms vs 0.49 -- the substitution duplicates work that CSE does not
-    # fully recover, which costs more than the ~0.1 ms of saved dispatch.
-    solvers = {v: tg.compile(o=expr) for v, expr in _NEWTON.items()}
-    st = _tg_state()
+def _pca_floor():
+    """Analytic optimum: the PCA reconstruction floor both methods descend to."""
+    Xc = XV - XV.mean(0)
+    U, S, V = torch.linalg.svd(Xc, full_matrices=False)
+    return ((Xc - (U[:, :LATENT] * S[:LATENT]) @ V[:LATENT]) ** 2).sum().item() / (N * D_X)
 
-    def step():  # one Gauss-Seidel block-Newton round
+
+def make_tg_step():
+    # THE UNIT OF WORK IS A FULL SOLVE, NOT ONE ITERATION. tensorgrad runs
+    # exact block-Newton; torch runs the reparametrization-trick estimator
+    # with Adam. Comparing their per-ITERATION cost is meaningless (a 3-step
+    # Newton method against an 800-step gradient method), so the benchmark
+    # times what actually matters for two different algorithms reaching the
+    # same optimum: wall time to descend to 1.05x the analytic PCA floor.
+    #
+    # Four Newton programs, cycled Gauss-Seidel (Jacobi diverges on this
+    # bilinear objective; symbolic composition converges identically but is
+    # slower -- audited).
+    solvers = {v: tg.compile(o=expr) for v, expr in _NEWTON.items()}
+    score = tg.compile(mse=_recon_mse)
+    floor = _pca_floor()
+    for v in PARAMS:  # warm the codegen once, outside the timed region
+        _tg_state()
+    warm = _tg_state()
+    for _ in range(3):
         for v in PARAMS:
-            st[v] = solvers[v](st, dims=DIMS).o
+            warm[v] = solvers[v](warm, dims=DIMS).o
+
+    def step():  # ONE full solve to the target, from scratch
+        st = _tg_state()
+        for _ in range(20):
+            for v in PARAMS:
+                st[v] = solvers[v](st, dims=DIMS).o
+            if score(st, dims=DIMS).mse.item() / floor < 1.05:
+                break
 
     return step
 
@@ -154,17 +176,27 @@ def _torch_loss(params, xv, eps):
 
 
 def make_torch_step():
-    params = _torch_params()
-    opt = torch.optim.Adam(params, lr=ADAM_LR)
+    # Same unit of work as make_tg_step: ONE full solve to the target.
+    floor = _pca_floor()
     gen = torch.Generator().manual_seed(1)
 
-    def step():
-        eps = torch.randn(N, LATENT, generator=gen)
-        with torch.enable_grad():
-            lv = _torch_loss(params, XV, eps)
-            opt.zero_grad(set_to_none=True)
-            lv.backward()
-            opt.step()
+    def _mse(params):
+        with torch.no_grad():
+            muv = XV @ params[0]
+            return (((XV - (muv @ params[1] + params[2])) ** 2).sum() / (N * D_X)).item()
+
+    def step():  # reparam + Adam to the same target, from scratch
+        params = _torch_params()
+        opt = torch.optim.Adam(params, lr=ADAM_LR)
+        for k in range(1, 5001):
+            eps = torch.randn(N, LATENT, generator=gen)
+            with torch.enable_grad():
+                lv = _torch_loss(params, XV, eps)
+                opt.zero_grad(set_to_none=True)
+                lv.backward()
+                opt.step()
+            if k % 50 == 0 and _mse(params) / floor < 1.05:
+                break
 
     return step
 
@@ -199,14 +231,23 @@ def make_jax_step():
         p = jax.tree.map(lambda w, a, bb: w - ADAM_LR * (c1 * a) / (jnp.sqrt(c2 * bb) + EPS_A), p, m, v)
         return p, m, v, lv, key
 
-    state = {"p": p0, "m": jax.tree.map(jnp.zeros_like, p0),
-             "v": jax.tree.map(jnp.zeros_like, p0), "t": 0, "key": jax.random.PRNGKey(1)}
+    floor = _pca_floor()
 
-    def step():
-        state["t"] += 1
-        state["p"], state["m"], state["v"], lv, state["key"] = update(
-            state["p"], state["m"], state["v"], state["t"], state["key"]
-        )
+    def _mse(p):
+        muv = Xj @ p["we"]
+        return float(((Xj - (muv @ p["wd"] + p["bd"])) ** 2).sum() / (N * D_X))
+
+    def step():  # same unit of work: one full solve to the target
+        p = p0
+        m = jax.tree.map(jnp.zeros_like, p0)
+        v = jax.tree.map(jnp.zeros_like, p0)
+        key = jax.random.PRNGKey(1)
+        for t in range(1, 5001):
+            p, m, v, lv, key = update(p, m, v, t, key)
+            if t % 50 == 0:
+                lv.block_until_ready()
+                if _mse(p) / floor < 1.05:
+                    break
         lv.block_until_ready()
 
     return step
