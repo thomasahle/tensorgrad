@@ -156,24 +156,40 @@ def make_tg_step():
     return step_fn
 
 
+class _ConvNet(torch.nn.Module):
+    """The torch reference as an nn.Module, matching the suite's convention
+    (mlp/gpt torch sides): under --torch-compile the harness compiles the
+    MODULE forward and leaves backward to autograd and the update eager.
+    (The previous purely-functional step -- backward + in-place SGD inside
+    one function -- crashed dynamo's whole-function trace on this torch
+    version, leaving the row unmeasurable.)"""
+
+    def __init__(self, w: dict):
+        super().__init__()
+        self.p = torch.nn.ParameterDict(
+            {k.replace(".", "_"): torch.nn.Parameter(v.clone()) for k, v in w.items()}
+        )
+
+    def forward(self, img):
+        x = torch.nn.functional.conv2d(img, self.p["conv1_w"], self.p["conv1_b"])
+        x = torch.relu(x)
+        x = torch.nn.functional.avg_pool2d(x, 2)
+        x = torch.nn.functional.conv2d(x, self.p["conv2_w"], self.p["conv2_b"])
+        x = torch.relu(x)
+        x = x.mean(dim=(2, 3))
+        return torch.nn.functional.linear(x, self.p["fc_w"], self.p["fc_b"])
+
+
 def make_torch_step():
-    w = {k: v.clone().requires_grad_(True) for k, v in torch_init().items()}
+    model = _ConvNet(torch_init())
+    opt = torch.optim.SGD(model.parameters(), lr=LR)  # plain p -= LR * grad
 
     def step_fn():
+        opt.zero_grad(set_to_none=True)
         with torch.enable_grad():
-            x = torch.nn.functional.conv2d(IMG, w["conv1.w"], w["conv1.b"])
-            x = torch.relu(x)
-            x = torch.nn.functional.avg_pool2d(x, 2)
-            x = torch.nn.functional.conv2d(x, w["conv2.w"], w["conv2.b"])
-            x = torch.relu(x)
-            x = x.mean(dim=(2, 3))
-            logits_ = torch.nn.functional.linear(x, w["fc.w"], w["fc.b"])
-            loss_ = torch.nn.functional.cross_entropy(logits_, LABELS)
+            loss_ = torch.nn.functional.cross_entropy(model(IMG), LABELS)
             loss_.backward()
-        with torch.no_grad():
-            for p in w.values():
-                p -= LR * p.grad
-                p.grad = None
+        opt.step()
         return loss_.item()
 
     return step_fn
