@@ -57,9 +57,13 @@ def _pipeline(prog, dims):
 
 
 def test_consolidation_shrinks_multi_gradient_program():
+    # fold=False: this test pins consolidation's effect on DERIVED cotangent
+    # strands. Definition folding rewrites the gelus to fused cells whose
+    # VJPs are deduped by construction, leaving consolidation little to
+    # merge -- a different (and fine) regime, but not this test's subject.
     loss, params, inputs, dims = _build_resmlp(3)
     grads = [loss.grad(p) for p in params.values()]
-    prog = compile_to_callable(loss, *grads)
+    prog = compile_to_callable(loss, *grads, fold=False)
     fouts = _pipeline(prog, dims)
     before = _ncompute(fouts)
     couts = consolidate_outputs(prog.builder, fouts)

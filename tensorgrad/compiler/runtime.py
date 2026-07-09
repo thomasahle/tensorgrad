@@ -52,6 +52,7 @@ class CompiledProgram:
         verbose: bool = False,
         torch_compile: bool = False,
         simplify: bool = True,
+        fold: bool = True,
     ):
         # Normalization is the compiler's first stage: resolve Derivative nodes
         # and derivative-signature Functions (which lowering cannot handle),
@@ -64,7 +65,18 @@ class CompiledProgram:
         # hash-cons table is process-global), so record the declared orders
         # before simplifying.
         self._declared_edges = [tuple(t.edges) for t in tensors]
+        self.fold_fires: dict[str, int] = {}
         if simplify:
+            # Definition folding runs FIRST, on the pristine trees: it needs
+            # the un-normalized compositions (normalization flattens e.g. the
+            # softmax@v boundary), and it must precede gradient resolution so
+            # the reverse sweep differentiates THROUGH the fused cells' VJPs.
+            # Value-gated with fallback; see compiler/fold.py.
+            originals = tensors
+            if fold:
+                from tensorgrad.compiler.fold import fold_program
+
+                tensors, self.fold_fires = fold_program(tensors, verbose=verbose)
             # Joint reverse-mode resolution: a family of Derivative outputs
             # sharing one scalar base resolves through ONE cotangent sweep,
             # so all gradients reference the same interned subexpressions
@@ -72,9 +84,21 @@ class CompiledProgram:
             # the independent chain-rule path below.
             from tensorgrad.compiler.reverse import resolve_shared_gradients
 
-            tensors = resolve_shared_gradients(tensors)
-            shared_args = normalize_args()
-            tensors = tuple(t.simplify(shared_args) for t in tensors)
+            try:
+                tensors = resolve_shared_gradients(tensors)
+                shared_args = normalize_args()
+                tensors = tuple(t.simplify(shared_args) for t in tensors)
+            except Exception:
+                # Fused cells are reverse-mode only; if a gradient escaped
+                # the reverse sweep into forward-mode resolution (fold's
+                # preflight is a heuristic), retry the whole normalization
+                # from the UN-folded originals -- never fail a compile that
+                # worked before folding existed.
+                if not self.fold_fires:
+                    raise
+                self.fold_fires = {"skipped:gradient-resolution-fallback": 1}
+                tensors = resolve_shared_gradients(originals)
+                tensors = tuple(t.simplify(normalize_args()) for t in tensors)
         self.tensors = tensors
         self.verbose = verbose
         self.torch_compile = torch_compile
@@ -251,6 +275,7 @@ def compile_to_callable(
     verbose: bool = False,
     torch_compile: bool = False,
     simplify: bool = True,
+    fold: bool = True,
     print_info: bool = False,
 ) -> CompiledProgram:
     """Compile one or more tensorgrad tensors into a fast callable.
@@ -265,7 +290,9 @@ def compile_to_callable(
     -> named torch.Tensor or tuple of them (one per input tensor).
     """
     t0 = time.perf_counter()
-    program = CompiledProgram(tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify)
+    program = CompiledProgram(
+        tuple(tensors), verbose=verbose, torch_compile=torch_compile, simplify=simplify, fold=fold
+    )
     if print_info:
         # Just some stats: how many tensor ops in the compiled program?
         from tensorgrad.compiler.ir import ConstNode, InputNode, toposort
@@ -277,6 +304,8 @@ def compile_to_callable(
             f"compiled {len(program.outputs)} outputs into one program of "
             f"{n_ops} tensor ops ({time.perf_counter() - t0:.1f}s)"
         )
+        if program.fold_fires:
+            print("folded: " + ", ".join(f"{k} x{v}" for k, v in sorted(program.fold_fires.items())))
     return program
 
 # ---------------------------------------------------------------------------
@@ -359,7 +388,9 @@ class Output:
 
 
 class CompiledStep:
-    def __init__(self, outputs: dict[str, Pytree], torch_compile: bool, print_info: bool = False):
+    def __init__(
+        self, outputs: dict[str, Pytree], torch_compile: bool, print_info: bool = False, fold: bool = True
+    ):
         self._out_trees = dict(outputs)
         flat: list[Tensor] = []
         self._out_slices: dict[str, tuple[int, int]] = {}
@@ -370,7 +401,7 @@ class CompiledStep:
                     raise TypeError(f"compile: output {name!r} contains {type(t).__name__}, expected Tensor")
             self._out_slices[name] = (len(flat), len(flat) + len(leaves))
             flat.extend(leaves)
-        self._fn = compile_to_callable(*flat, torch_compile=torch_compile, print_info=print_info)
+        self._fn = compile_to_callable(*flat, torch_compile=torch_compile, print_info=print_info, fold=fold)
         self._by_name = {v.name: v for v in self._fn.vars}
 
     @property
@@ -420,6 +451,7 @@ class CompiledStep:
 def compile(
     torch_compile: bool = False,
     print_info: bool = False,
+    fold: bool = True,
     **outputs: Pytree,
 ) -> CompiledStep:
     """Compile named outputs (Tensors or pytrees of Tensors) into one fused
@@ -430,8 +462,10 @@ def compile(
     state pytree KEYED BY VARIABLE NAMES round-trips with no declarations:
     `out = step(out.state, dims=DIMS, raw=batch)` — no order bookkeeping.
 
-    (`torch_compile` and `print_info` are reserved keywords; every other
-    keyword names an output.)"""
+    (`torch_compile`, `print_info` and `fold` are reserved keywords; every
+    other keyword names an output. `fold=False` disables definition folding
+    — the value-gated rewrite of derived gelu/layer-norm/attention
+    compositions onto the fused cells; see compiler/fold.py.)"""
     if not outputs:
         raise ValueError("compile needs at least one named output")
-    return CompiledStep(outputs, torch_compile, print_info)
+    return CompiledStep(outputs, torch_compile, print_info, fold)

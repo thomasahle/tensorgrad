@@ -29,14 +29,46 @@ Contracts a cell must honor:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Sequence, cast
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Optional, Sequence, cast
 
 import torch
 
-from tensorgrad.tensor import Function, FunctionSignature, Tensor
+from tensorgrad.tensor import Delta, Function, FunctionSignature, Product, Rename, Sum, Tensor
 
 if TYPE_CHECKING:  # runtime imports of ir stay function-local (import cycle)
     from tensorgrad.compiler.ir import MapNode
+
+
+# ---------------------------------------------------------------------------
+# Definitions: the derived composition each cell is a fusion OF, as data.
+#
+# tensorgrad unfolds composites at construction (F.softmax IS exp/Σexp); a
+# Definition is the inverse direction packaged as a rule: how to RECOGNIZE
+# an instance of the derived composition in a user tree and rebuild it as
+# the fused cell (Burstall-Darlington fold). Consumed by the definition-
+# folding pass (compiler/fold.py) today and, unchanged, by a future
+# saturation engine where `derived == fused` is just an equality rule.
+#
+# `candidates` proposes (inputs, params) assignments for an anchor node; it
+# never decides correctness -- the engine value-gates every proposal and
+# falls back to the derived form, so a wrong proposal costs a missed fold,
+# never a wrong program. The `site` argument is the engine's capability
+# object (fold.FoldSite): per-node feature bits, cached fp64 values, and
+# DAG-deduped subtree iteration -- cells declare, the engine provides.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Definition:
+    cell: str  # CELLS registry key
+    root_types: tuple[type, ...]  # tensor classes a match root may have
+    features: frozenset[str]  # feature bits required somewhere under the root
+    feature_preds: Mapping[str, Callable[[str], bool]]  # bit -> predicate on signature.name
+    derived: Callable[[Sequence[Tensor], dict], Tensor]  # the composition, from primitives
+    fused: Callable[[Sequence[Tensor], dict], Tensor]  # thin wrapper over the cell's build
+    candidates: Callable[[Tensor, Any], Iterator[tuple[tuple[Tensor, ...], dict]]]
+    priority: int = 0  # overlap tiebreak (larger regions should also win by size)
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +168,12 @@ class FusedCell:
     def match(self, b: Any, node: Any) -> Any:
         return None
 
+    # -- language side: the derived composition this cell fuses, as a rule.
+    # Consumed by the definition-folding pass (compiler/fold.py); cells
+    # without one simply never fold. See the Definition docstring above.
+    def definition(self) -> Optional[Definition]:
+        return None
+
 
 CELLS: dict[str, FusedCell] = {}
 
@@ -205,6 +243,50 @@ class _GeluCell(FusedCell):
         u_al = u.align_to(*names).rename(None)
         g = torch.ops.aten.gelu_backward(u_al, x.rename(None), approximate=params["approximate"])  # pyright: ignore[reportCallIssue]
         return g.rename(*names)
+
+    def definition(self) -> Definition:
+        # gelu(x, "tanh") constructs as Sum(w=[1/2], [Product[x', 1+tanh(...)',
+        # Delta]]): the Hadamard multiply is a Delta join over renamed copies
+        # of the operands. The argument is the non-tanh-carrying operand.
+        def derived(ins: Sequence[Tensor], params: dict) -> Tensor:
+            import tensorgrad.functions as F
+            return F.gelu(ins[0], approximate=params["approximate"], fused=False)
+
+        def fused(ins: Sequence[Tensor], params: dict) -> Tensor:
+            return self.build(tuple(ins), dict(params))
+
+        def candidates(anchor: Tensor, site: Any) -> Any:
+            if not (isinstance(anchor, Sum) and len(anchor.terms) == 1):
+                return
+            if [float(w) for w in anchor.weights] != [0.5]:
+                return
+            (prod,) = anchor.terms
+            if not isinstance(prod, Product):
+                return
+            ops = [f for f in prod.factors if not isinstance(f, Delta)]
+            if len(ops) != 2:
+                return
+            # The argument is the non-tanh-chain operand -- but at depth BOTH
+            # operands can carry the tanh feature (the argument of a later
+            # gelu contains earlier gelus), so order by preference and let
+            # the value gate arbitrate.
+            ordered = sorted(ops, key=lambda o: site.has_feature(o, "tanh"))
+            for cand in ordered:
+                arg = cand
+                while isinstance(arg, Rename):  # the Delta join renames the operand copy
+                    arg = arg.tensor
+                yield (arg,), {"approximate": "tanh"}
+
+        return Definition(
+            cell=self.name,
+            root_types=(Sum,),
+            features=frozenset({"tanh"}),
+            feature_preds={"tanh": lambda n: n == "tanh"},
+            derived=derived,
+            fused=fused,
+            candidates=candidates,
+            priority=0,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +463,191 @@ class _SDPACell(FusedCell):
         from tensorgrad.extras.evaluate import _eval_sdpa_bwd
         return _eval_sdpa_bwd(params, which, inputs)
 
+    def definition(self) -> Definition:
+        # Attention constructs as dot(softmax(scale*dot(q,k,hs) + mask, key), v)
+        # whose softmax has already unfolded to exp/Σexp: the anchor Product
+        # contains exactly ONE exp whose argument splits into a scores term
+        # (it contracts the feature edge) and a mask term. Extraction is EDGE
+        # ALGEBRA, never name matching -- F.dot renames its contraction edge
+        # internally, so hs is recovered as (q.edges ∩ k.edges) - scores.edges
+        # from candidate projections. scale is inferred numerically from the
+        # labeling values. Every proposal is value-gated against F.sdpa.
+        def derived(ins: Sequence[Tensor], params: dict) -> Tensor:
+            import tensorgrad.functions as F
+            q, k, v, *rest = ins
+            seq, key, hs = params["seq"], params["key"], params["hs"]
+            scores = F.dot(q, k, dim=hs) * params["scale"]
+            if rest:
+                scores = scores + rest[0]
+            att = F.softmax(scores, dim=key)
+            return F.dot(att, v, dim=key)
+
+        def fused(ins: Sequence[Tensor], params: dict) -> Tensor:
+            import tensorgrad.functions as F
+            q, k, v, *rest = ins
+            return F.sdpa(
+                q, k, v,
+                seq=params["seq"], key=params["key"], hs=params["hs"],
+                mask=rest[0] if rest else None, scale=params["scale"],
+            )
+
+        def candidates(anchor: Tensor, site: Any) -> Any:
+            import tensorgrad.functions as F
+            from tensorgrad.compiler.fold import _kids
+            if not isinstance(anchor, Product):
+                return
+            nodes = list(site.subtrees(anchor))
+            exps = [
+                t for t in nodes
+                if isinstance(t, Function) and getattr(t.signature, "name", "") == "exp"
+            ]
+            if not exps:
+                return
+            # At depth the anchor's subtree contains EARLIER layers' exps
+            # (they ride in through the activations). The anchor's own
+            # softmax exp is the OUTERMOST one -- subtrees() is postorder,
+            # so try from the back; wrong exps die at the keyset/ratio/gate
+            # checks. Cap at 3 to bound the work.
+            splits: list[tuple[Tensor, Optional[Tensor], set[int]]] = []
+            for e in reversed(exps[-3:]):
+                # Nodes containing THIS exp are downstream of its softmax and
+                # can never be its q/k/v (deep layers' true projections DO
+                # contain EARLIER exps, so a blanket no-exp filter is wrong).
+                contains = {id(e)}
+                for t in nodes:  # postorder: children decided first
+                    if any(id(c) in contains for c in _kids(t)):
+                        contains.add(id(t))
+                arg = e.inputs[0]
+                if isinstance(arg, Sum) and len(arg.terms) == 2:
+                    splits += [(arg.terms[0], arg.terms[1], contains),
+                               (arg.terms[1], arg.terms[0], contains)]
+                else:
+                    splits.append((arg, None, contains))
+            aedges = set(anchor.edges)
+            # Subtree sizes order the pool LARGEST-FIRST: the true q/k/v are
+            # the dot's full operands; bias/projection sub-pieces are smaller
+            # lookalikes that would otherwise burn the try cap (measured: a
+            # biased block puts ~10 same-signature handles in the pool).
+            size = {id(t): 0 for t in nodes}
+            for t in nodes:  # postorder: children before parents
+                size[id(t)] = 1 + sum(size.get(id(c), 0) for c in _kids(t))
+
+            for scores, mask, contains in splits:
+                sc = set(scores.edges)
+                # key = the scores edge the anchor contracts away (softmax@v)
+                keyset = sc - aedges
+                if len(keyset) != 1:
+                    continue
+                (key,) = keyset
+                sv = site.pvalue(scores)
+                if sv is None:
+                    continue
+                # Operand handles that survive in the tree: DIRECT nodes
+                # already carrying `key` (bare k/v Variables stay visible
+                # inside dot's Rename wrappers), and CLEAN pre-rename
+                # composites (dot freshens the in-tree operands' batch/head
+                # edges, so k/v are re-derived as t.rename(seq->key),
+                # inverting the construction). Every proposal value-gates.
+                pool: list[Tensor] = []
+                direct: list[Tensor] = []
+                for t in nodes:
+                    if isinstance(t, Delta) or not 3 <= len(t.edges) <= 4:
+                        continue
+                    if id(t) in contains:
+                        continue  # downstream of this softmax: not q/k/v
+                    if isinstance(t, Function) and getattr(
+                        t.signature, "name", ""
+                    ).startswith("pow"):
+                        continue
+                    if len(set(t.edges) - sc) != 1:
+                        continue
+                    (direct if key in t.edges else pool).append(t)
+                pool.sort(key=lambda t: -size[id(t)])
+                direct.sort(key=lambda t: -size[id(t)])
+
+                # For masked attention the mask core {seq,key} PINS seq --
+                # no guessing (each wrong guess costs a full k sweep).
+                pinned_seqs = None
+                if mask is not None:
+                    pinned_seqs = sorted(
+                        {e for t in site.subtrees(mask) if len(t.edges) == 2
+                         and key in t.edges for e in t.edges if e != key}
+                    )
+
+                tried = 0
+                for q in pool:
+                    (hs,) = set(q.edges) - sc
+                    if hs not in aedges:
+                        continue  # sdpa's output carries hs: junk extras fail
+                    seqs = pinned_seqs if pinned_seqs else sorted(set(q.edges) & sc)
+                    for seq in seqs:
+                        if seq not in q.edges:
+                            continue
+                        ks = [t for t in direct if hs in t.edges]
+                        for k0 in pool:
+                            if seq in k0.edges and hs in k0.edges:
+                                try:
+                                    ks.append(k0.rename(**{seq: key}))
+                                except Exception:
+                                    pass
+                        for k in ks:
+                            if k is q:
+                                continue
+                            tried += 1
+                            if tried > 96:
+                                return
+                            # scale: value(scores)/value(dot(q,k)) constant
+                            dv = site.pvalue(F.dot(q, k, dim=hs))
+                            if dv is None:
+                                continue
+                            try:
+                                ratio = sv.rename(None) / dv.align_to(*sv.names).rename(None)
+                            except Exception:
+                                continue
+                            scale = float(ratio.flatten()[0])
+                            if not torch.allclose(
+                                ratio, torch.full_like(ratio, scale), rtol=1e-6, atol=1e-9
+                            ):
+                                continue
+                            params = {
+                                "seq": seq, "key": key, "hs": hs,
+                                "batch": frozenset(q.edges) - {seq, hs},
+                                "scale": scale, "has_mask": mask is not None,
+                            }
+                            vs = [t for t in direct if hs in t.edges]
+                            for v0 in pool:
+                                if seq in v0.edges and hs in v0.edges:
+                                    try:
+                                        vs.append(v0.rename(**{seq: key}))
+                                    except Exception:
+                                        pass
+                            for v in vs:
+                                if key not in v.edges or hs not in v.edges:
+                                    continue
+                                if mask is None:
+                                    yield (q, k, v), dict(params)
+                                    continue
+                                # mask is broadcast over batch/head; its
+                                # {seq,key} core is what F.sdpa consumes;
+                                # outermost candidates first (weights kept)
+                                cores = [
+                                    t for t in site.subtrees(mask)
+                                    if set(t.edges) == {seq, key}
+                                ]
+                                for mc in reversed(cores[-4:]):
+                                    yield (q, k, v, mc), dict(params)
+
+        return Definition(
+            cell=self.name,
+            root_types=(Product,),
+            features=frozenset({"exp"}),
+            feature_preds={"exp": lambda n: n == "exp"},
+            derived=derived,
+            fused=fused,
+            candidates=candidates,
+            priority=2,
+        )
+
 
 @register
 class _LayerNormCell(FusedCell):
@@ -498,6 +765,106 @@ class _LayerNormCell(FusedCell):
         from tensorgrad.extras.evaluate import _eval_layer_norm_bwd
         return _eval_layer_norm_bwd(params, which, inputs)
 
+    def definition(self) -> Definition:
+        # Hand-written layer norm constructs as
+        #   Sum(w=[1,1], [Product[Rename(norm), Rename(g), Delta], bias-term])
+        # where norm = (x - mean)/sqrt(var + eps) carries the pow(1/2) anchor
+        # and the bias term is the bare Variable or its broadcast Product
+        # b ⊗ ones (order-1 Delta caps). g and b are extracted LOCALLY from
+        # the anchor's top two levels; only x (the centering Sum's +1 term),
+        # and eps (tiny Sum weights under the sqrt, plus fallbacks) are
+        # searched -- every proposal is value-gated by the engine.
+        def derived(ins: Sequence[Tensor], params: dict) -> Tensor:
+            import tensorgrad.functions as F
+            x, g, b = ins
+            dim, eps = params["dim"], params["eps"]
+            xc = x - F.mean(x, dim=dim, keepdims=True)
+            var = F.mean(xc * xc, dim=dim, keepdims=True)
+            return xc / F.sqrt(var + eps) * g + b
+
+        def fused(ins: Sequence[Tensor], params: dict) -> Tensor:
+            import tensorgrad.functions as F
+            x, g, b = ins
+            return F.layer_norm(x, dim=params["dim"], weight=g, bias=b, eps=params["eps"])
+
+        def _ones(t: Tensor) -> bool:
+            """All-ones broadcast caps: order-1 Deltas, possibly nested in
+            Products/Renames (broadcasting builds Product[Delta(seq)] etc.)."""
+            if isinstance(t, Delta):
+                return t.order == 1
+            if isinstance(t, Rename):
+                return _ones(t.tensor)
+            if isinstance(t, Product):
+                return bool(t.factors) and all(_ones(f) for f in t.factors)
+            return False
+
+        def _core(t: Tensor) -> Tensor:
+            """Unwrap Renames and broadcast Products (b ⊗ ones-caps)."""
+            while True:
+                if isinstance(t, Rename):
+                    t = t.tensor
+                    continue
+                if isinstance(t, Product):
+                    real = [f for f in t.factors if not _ones(f)]
+                    if len(real) == 1:
+                        t = real[0]
+                        continue
+                return t
+
+        def candidates(anchor: Tensor, site: Any) -> Any:
+            if not (isinstance(anchor, Sum) and len(anchor.terms) == 2):
+                return
+            if [float(w) for w in anchor.weights] != [1.0, 1.0]:
+                return
+            with_sqrt = [t for t in anchor.terms if site.has_feature(t, "sqrt")]
+            if len(with_sqrt) != 1:
+                return
+            prod = with_sqrt[0]
+            (bias_term,) = [t for t in anchor.terms if t is not prod]
+            b = _core(bias_term)
+            if not isinstance(prod, Product):
+                return
+            ops = [f for f in prod.factors if not isinstance(f, Delta)]
+            if len(ops) != 2:
+                return
+            norm_ops = [o for o in ops if site.has_feature(o, "sqrt")]
+            if len(norm_ops) != 1:
+                return
+            norm = norm_ops[0]
+            g = _core([o for o in ops if o is not norm_ops[0]][0])
+            if len(g.edges) != 1 or set(g.edges) != set(b.edges):
+                return
+            (dim,) = g.edges
+            batch = frozenset(anchor.edges) - {dim}
+            # x: the +1 term of a centering Sum in the norm subtree, with the
+            # anchor's full edge set. subtrees() is postorder, so a DEEP site
+            # (whose x contains earlier layers) lists earlier layers'
+            # centerings first -- the site's own is the LAST/outermost; try
+            # from the back. eps: tiny positive Sum weights under the sqrt
+            # (the `var + eps` shift), then standard fallbacks.
+            xs, epss = [], []
+            for s in site.subtrees(norm):
+                if isinstance(s, Sum):
+                    ws = [float(w) for w in s.weights]
+                    if len(s.terms) == 2 and ws == [1.0, -1.0]:
+                        if set(s.terms[0].edges) == set(anchor.edges):
+                            xs.append(s.terms[0])
+                    epss += [w for w in ws if 0 < w < 1e-2]
+            for eps in dict.fromkeys(epss + [1e-5, 1e-6]):  # ordered dedup
+                for x in reversed(xs[-3:]):
+                    yield (x, g, b), {"dim": dim, "batch": batch, "eps": eps}
+
+        return Definition(
+            cell=self.name,
+            root_types=(Sum,),
+            features=frozenset({"sqrt"}),
+            feature_preds={"sqrt": lambda n: n.startswith("pow(k=Fraction(1, 2")},
+            derived=derived,
+            fused=fused,
+            candidates=candidates,
+            priority=1,
+        )
+
 
 # ---------------------------------------------------------------------------
 # AdamW: the first NON-differentiable, MULTI-OUTPUT cell. It proves the
@@ -577,6 +944,169 @@ class _AdamWCell(FusedCell):
         v_new = b2 * vv + (1.0 - b2) * gv * gv
         w_new = wv * decay - lr * (c1v * m_new) / (torch.sqrt(c2v * v_new) + eps)
         return (w_new, m_new, v_new)[out_idx].rename(*names)
+
+    def definition(self) -> Definition:
+        # AdamW-as-algebra (examples/mingpt.py):
+        #   m' = b1*m + (1-b1)*g
+        #   v' = b2*v + (1-b2)*g*g
+        #   w' = w*decay - lr*(c1*m')/(sqrt(c2*v') + eps)
+        # The anchor is w' -- Sum(2 terms, weights [decay, -lr]) with a sqrt
+        # below -- and the m'/v' Sums are id-shared subtrees of it, matched
+        # as ALIASES: one cell call replaces all three roots (the gradient g
+        # is consumed once, so the backward is never duplicated). g is an
+        # unresolved Derivative at fold time; the engine's labeling treats
+        # it as an opaque random atom, keeping the value gate sound.
+        def derived(ins: Sequence[Tensor], params: dict) -> Tensor:
+            import tensorgrad.functions as F
+            w, g, m, v, c1, c2 = ins
+            b1, b2 = params["b1"], params["b2"]
+            m2 = b1 * m + (1 - b1) * g
+            v2 = b2 * v + (1 - b2) * g * g
+            return w * params["decay"] - params["lr"] * (c1 * m2) / (
+                F.sqrt(c2 * v2) + params["eps"]
+            )
+
+        def fused(ins: Sequence[Tensor], params: dict) -> Any:
+            return self.build(tuple(ins), dict(params))  # (w', m', v')
+
+        def _core(t: Tensor) -> Tensor:
+            while isinstance(t, Rename):
+                t = t.tensor
+            return t
+
+        def _shallow(t: Tensor, max_depth: int = 8) -> Any:
+            """Bounded-depth walk: the optimizer algebra is shallow; the
+            gradient subtree below it is arbitrarily deep and must not be
+            searched (or even walked -- it can be the whole backward)."""
+            from tensorgrad.compiler.fold import _kids
+            stack = [(t, 0)]
+            seen: set[int] = set()
+            while stack:
+                n, dep = stack.pop()
+                if id(n) in seen or dep > max_depth:
+                    continue
+                seen.add(id(n))
+                yield n
+                for k in _kids(n):
+                    stack.append((k, dep + 1))
+
+        def _unweight(t: Tensor) -> tuple[float, Tensor]:
+            """Peel singleton weighted Sums: scalar multiplication constructs
+            `c * t` as Sum([t],[c]), so compile-time constants (decay, lr,
+            beta) live one level inside the terms they scale."""
+            scale = 1.0
+            while isinstance(t, Sum) and len(t.terms) == 1:
+                scale *= float(t.weights[0])
+                t = t.terms[0]
+            return scale, t
+
+        def _moment(s: Tensor) -> Any:
+            """Recognize b*prev + (...)*g-ish 2-term Sums. Compile-time
+            scalars fold at INCONSISTENT depths (singleton-Sum wrappers,
+            weights inside Hadamard products), so only the prev-side weight
+            b is read syntactically; the other side's scalar is wherever
+            construction put it -- the value gate arbitrates. Returns
+            (b, prev_core, other_core) or None."""
+            if not (isinstance(s, Sum) and len(s.terms) == 2):
+                return None
+            w0, t0 = _unweight(s.terms[0])
+            b0 = float(s.weights[0]) * w0
+            if not 0 < b0 < 1:
+                return None
+            _, t1 = _unweight(s.terms[1])
+            return b0, _core(t0), _core(t1)
+
+        def candidates(anchor: Tensor, site: Any) -> Any:
+            import tensorgrad.functions as F
+            from tensorgrad.tensor import Variable
+            if not (isinstance(anchor, Sum) and len(anchor.terms) == 2):
+                return
+            ws = [float(w) for w in anchor.weights]
+            for wi, ui in ((0, 1), (1, 0)):
+                w_scale, w = _unweight(anchor.terms[wi])
+                u_scale, uterm = _unweight(anchor.terms[ui])
+                decay = ws[wi] * w_scale
+                if not 0.5 < decay <= 1.0 + 1e-12:
+                    continue
+                w = _core(w)
+                # moment Sums sit shallow in the update term
+                moments = []
+                for s in _shallow(uterm):
+                    mo = _moment(s)
+                    if mo is not None:
+                        moments.append((s, mo))
+                # c1/c2: order-0 Variables in the (shallow) update term
+                cs = [n for n in _shallow(uterm) if isinstance(n, Variable) and not n.edges]
+                cs = list(dict.fromkeys(cs))
+                epss = []
+                for s in _shallow(uterm):
+                    if isinstance(s, Sum):
+                        epss += [x for x in ([float(y) for y in s.weights]) if 0 < x < 1e-2]
+                epss = list(dict.fromkeys(epss + [1e-8]))[:3]
+                uv = site.pvalue(uterm)
+                if uv is None:
+                    continue
+                tried = 0
+                for m_node, (b1, m, g) in moments:
+                    for v_node, (b2, v, _gv) in moments:
+                        if v_node is m_node:
+                            continue
+                        for c1 in cs:
+                            for c2 in cs:
+                                if c2 is c1:
+                                    continue
+                                for eps in epss:
+                                    tried += 1
+                                    if tried > 48:
+                                        return
+                                    # lr hides wherever construction folded
+                                    # it; read it off the constant ratio of
+                                    # the update term to a probe built from
+                                    # the FOUND nodes (sdpa's scale trick).
+                                    try:
+                                        probe = (c1 * m_node) / (F.sqrt(c2 * v_node) + eps)
+                                        pv = site.pvalue(probe)
+                                        if pv is None:
+                                            continue
+                                        ratio = uv.rename(None) / pv.align_to(*uv.names).rename(None)
+                                        # sqrt(c2*v') is NaN where the random
+                                        # draws make v' negative -- on BOTH
+                                        # sides identically; read the hidden
+                                        # scalar off the finite entries.
+                                        finite = ratio[torch.isfinite(ratio)]
+                                        if finite.numel() < max(4, ratio.numel() // 4):
+                                            continue
+                                        hidden = float(finite[0])
+                                        if not torch.allclose(
+                                            finite, torch.full_like(finite, hidden),
+                                            rtol=1e-6, atol=1e-9,
+                                        ):
+                                            continue
+                                    except Exception:
+                                        continue
+                                    lr = -(ws[ui] * u_scale * hidden)
+                                    if not 0 < lr < 1:
+                                        continue
+                                    params = {
+                                        "b1": b1, "b2": b2, "lr": lr,
+                                        "eps": eps, "decay": decay,
+                                    }
+                                    yield (
+                                        (w, g, m, v, c1, c2),
+                                        params,
+                                        {1: m_node, 2: v_node},
+                                    )
+
+        return Definition(
+            cell=self.name,
+            root_types=(Sum,),
+            features=frozenset({"sqrt"}),
+            feature_preds={"sqrt": lambda n: n.startswith("pow(k=Fraction(1, 2")},
+            derived=derived,
+            fused=fused,
+            candidates=candidates,
+            priority=3,
+        )
 
 
 # ---------------------------------------------------------------------------
