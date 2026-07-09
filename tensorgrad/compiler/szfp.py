@@ -132,6 +132,26 @@ def _vhash(arr: np.ndarray) -> int:
     return _h(arr.shape, np.ascontiguousarray(arr).tobytes())
 
 
+_FN_TABLES: dict[tuple, np.ndarray] = {}
+
+
+def _fn_table(*key: Any) -> np.ndarray:
+    """A seeded random function F_P -> F_P as a lookup table (4MB int64,
+    cached per key -- the op vocabulary is a few dozen, so the cache stays
+    small). Modeling a non-polynomial elementwise op as a random POINTWISE
+    function, rather than one random tensor keyed by the whole input's
+    value hash, makes the atom commute with every structural rewrite:
+    pow(broadcast(x)) == broadcast(pow(x)) holds by construction, so the
+    pass gates verify factor's broadcast-sinking instead of falsely
+    refusing it. Distinct ops/params draw independent tables, so distinct
+    atoms still agree only with birthday-negligible probability."""
+    tab = _FN_TABLES.get(key)
+    if tab is None:
+        tab = _rng(*key).integers(0, P, size=P, dtype=np.int64)
+        _FN_TABLES[key] = tab
+    return tab
+
+
 # ---------------------------------------------------------------------------
 # Exact scalars mod P
 # ---------------------------------------------------------------------------
@@ -168,7 +188,21 @@ def _scalar_residue(w: Any, assign: dict, ctx: Any) -> int:
         return _fraction_residue(Fraction(int(e.p), int(e.q)))
     if e.is_Float:
         return _fraction_residue(Fraction(float(e)))
-    # Irrational scalar (e.g. sqrt(2), pi): treat as a transcendental atom.
+    # Irrational NUMBER (e.g. sqrt(2), 1/sqrt(5) after dim substitution):
+    # fingerprint as its BINARY64 IMAGE (the exact Fraction of the
+    # correctly-rounded float). A syntactic atom (srepr) here caused FALSE
+    # REFUSALS in pass gates: with concrete dims, passes fold symbolic
+    # weights into float64 constants -- an equal value in a different
+    # representation. The float64 image is exactly what that folding
+    # produces, so both sides agree. (Compositions folded in a different
+    # ORDER can still differ by ulps -- the pass gate runs in audit mode
+    # until that class is measured absent.)
+    if e.is_number and e.is_real:
+        try:
+            return _fraction_residue(Fraction(float(e.evalf(30))))
+        except (ValueError, TypeError, OverflowError):
+            pass
+    # Non-numeric leftovers (free symbols the assignment missed): atom.
     return _h(ctx, "scalar-atom", sympy.srepr(e)) % P
 
 
@@ -482,10 +516,15 @@ def _eval_map(node: MapNode, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
         if k is not None:
             return _eval_pow_int(aligned[0], k)
     # Non-polynomial elementwise op (exp/log/relu/tanh/erf/gt0/sign/abs/
-    # equal/fractional pow): a seeded random atom keyed by the op and the
-    # numeric fingerprints of its (aligned) inputs. Recursive consistency.
-    key = ("atom-map", node.op, repr(node.params), tuple(_vhash(a) for a in aligned))
-    return _rand_tensor(aligned[0].shape, *key)
+    # equal/fractional pow): a seeded random FUNCTION F_P -> F_P applied
+    # pointwise (see _fn_table), so the atom commutes with broadcast /
+    # transpose / factoring. Multi-operand maps chain the table over an
+    # order-sensitive mix of the residues (numpy % is non-negative).
+    tab = _fn_table("atom-map", node.op, repr(node.params))
+    acc = tab[aligned[0] % P]
+    for a in aligned[1:]:
+        acc = tab[(acc + (a % P) * 494967) % P]
+    return acc
 
 
 def _eval_node(node: Node, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
@@ -514,6 +553,15 @@ def _eval_node(node: Node, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
         dims = tuple(_dim(d, assign) for d in node.dims)
         key = ("atom-reduce", node.op, node.axes, tuple(_vhash(vals[id(o)]) for o in node.ops), dims)
         return _rand_tensor(dims, *key)
+    if isinstance(node, FusedFwdNode) and node.cell_name == "stack":
+        # Structural cell with exact semantics: concatenation along a new
+        # leading axis. Evaluated exactly (not as an opaque atom) so that
+        # the gemm-batching pass is szfp-gateable -- the batched einsum +
+        # select must reproduce the un-batched values on the nose.
+        return np.stack([vals[id(o)] for o in node.ops])
+    if isinstance(node, FusedFwdNode) and node.cell_name == "select":
+        # Structural cell with exact semantics: index the leading axis.
+        return vals[id(node.ops[0])][node.params_dict()["index"]]
     if isinstance(node, (FusedFwdNode, FusedBwdNode)):
         # Opaque fused cell: a seeded-random field element keyed by cell,
         # params, VJP index, and the value-fingerprints of the operands, so
@@ -621,3 +669,36 @@ def verify_rewrite(before: Any, after: Any, k: int = 3, seed: int = 0) -> bool:
     a False from a rewrite that folds atoms (e.g. exp/sum -> softmax) is
     the documented false-negative class and needs a whitelisted rule."""
     return equal_szfp(before, after, k=k, seed=seed)
+
+
+def outputs_equal(before: list, after: list, k: int = 2, seed: int = 0) -> bool:
+    """The PASS-GATE primitive: exact mod-P equality of two IR output lists
+    (as produced/consumed by the codegen passes: [(node, edge_order), ...])
+    at k seeded points. Atoms are keyed by op params and operand value-
+    fingerprints -- program-independent -- so a correct rewrite evaluates
+    identically on both sides even where it restructured the graph. The
+    documented false-negative class: rewrites that FOLD non-polynomial
+    atoms (exp/sum -> softmax stabilization, transcendental cell formation)
+    legitimately change atom keys; gates around such passes must run in
+    audit mode or whitelist them. Structural cells (stack/select) are the
+    exception: _eval_node gives them exact semantics, so passes that form
+    only those (gemm batching) remain exactly gateable. Raises
+    RuntimeError on persistent _Retry (the caller
+    decides whether unverifiable means accept-and-count or refuse)."""
+    if len(before) != len(after):
+        return False
+    for trial in range(k):
+        for salt in range(_MAX_RETRIES):
+            ctx = ("passgate", seed, trial, salt)
+            try:
+                ea = _eval_trial(list(before), ctx)
+                eb = _eval_trial(list(after), ctx)
+                break
+            except _Retry:
+                continue
+        else:
+            raise RuntimeError(f"szfp.outputs_equal: trial {trial} exceeded retries")
+        for (edg_a, dim_a, arr_a), (edg_b, dim_b, arr_b) in zip(ea, eb):
+            if edg_a != edg_b or dim_a != dim_b or not np.array_equal(arr_a, arr_b):
+                return False
+    return True

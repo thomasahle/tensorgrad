@@ -114,6 +114,18 @@ FOREACH_MIN = 4
 # _foreach_pow(xs, 2.0)). relu/gt0/equal have no exact foreach twin.
 _FOREACH_MAP_OPS = frozenset({"exp", "log", "tanh", "abs", "sign", "erf"})
 
+# Schwartz-Zippel refusal gates around the PURE-ALGEBRA rewrite passes
+# (factor, gemm batching): the pass's outputs must evaluate exactly equal
+# (mod P, seeded points) to its inputs, or the whole pass is REFUSED and
+# the pre-pass program kept -- a wrong rewrite becomes a missed
+# optimization, never a miscompile (this is where the task-#33 class of
+# bug lived). Not applied to stabilize/peepholes (they FOLD non-polynomial
+# atoms -- exp/sum -> softmax, cell formation -- szfp's documented
+# false-negative class, so an exact gate would refuse correct rewrites) or
+# consolidate (it carries its own fresh-seed gate). Refusals/unverifiable
+# passes are counted in TorchCodegen.gate_stats.
+GATE_PASSES = True
+
 
 def _fmt_weight(w: float) -> str:
     return repr(w)
@@ -186,6 +198,9 @@ class TorchCodegen:
         self.outputs = outputs
         # Deterministic input order (sorted by variable name).
         self.input_names = sorted(builder.input_vars)
+        # Pass-gate outcomes ("<pass>:refused" / "<pass>:unverified" counts);
+        # empty means every gated pass verified clean. See GATE_PASSES.
+        self.gate_stats: dict[str, int] = {}
 
     def specialize(
         self, dims: dict[sympy.Symbol, int], verbose: bool = False,
@@ -207,9 +222,33 @@ class TorchCodegen:
                 raise ValueError(f"Dimension {expr} did not resolve to an integer (got {v})")
             return int(v)
 
+        def gated(name: str, before: list, after: list) -> list:
+            """szfp refusal gate for pure-algebra passes: keep `after` only
+            if it evaluates exactly equal to `before` (see GATE_PASSES)."""
+            if not GATE_PASSES or after is before:
+                return after
+            from tensorgrad.compiler import szfp as _szfp
+
+            try:
+                ok = _szfp.outputs_equal(before, after)
+            except Exception:
+                self.gate_stats[f"{name}:unverified"] = (
+                    self.gate_stats.get(f"{name}:unverified", 0) + 1
+                )
+                return after
+            if not ok:
+                self.gate_stats[f"{name}:refused"] = (
+                    self.gate_stats.get(f"{name}:refused", 0) + 1
+                )
+                return before
+            self.gate_stats[f"{name}:verified"] = (
+                self.gate_stats.get(f"{name}:verified", 0) + 1
+            )
+            return after
+
         # Factoring pass: per-shape rewrite of the DAG (un-distribution /
         # distribution / delta absorption) before any emission planning.
-        outputs = factor_outputs(self.builder, self.outputs, dims)
+        outputs = gated("factor", self.outputs, factor_outputs(self.builder, self.outputs, dims))
         # Stability pass: re-fuse expanded exp/sum-exp ratios, log-sum-exp and
         # exp-ratio tanh into stable softmax/log_softmax/tanh/logsumexp forms.
         outputs = stabilize_outputs(self.builder, outputs)
@@ -221,7 +260,9 @@ class TorchCodegen:
         # collapse=False: the adjoint chain collapse is one-shot — re-running
         # it here re-splices shared cotangent segments into their consumers
         # (measured: +850 distinct values / +25% final kernels on gpt-nano).
-        outputs = factor_outputs(self.builder, outputs, dims, collapse=False)
+        outputs = gated(
+            "factor2", outputs, factor_outputs(self.builder, outputs, dims, collapse=False)
+        )
         # Consolidation: Schwartz-Zippel value numbering merges nodes that
         # compute the same tensor (up to an axis permutation) through
         # different groupings — chiefly the per-gradient-output cotangent
@@ -232,7 +273,7 @@ class TorchCodegen:
         # see through — e.g. the gelu-grad sinh/cosh ratio only fuses to tanh
         # once numerator and denominator share one exponent node.
         outputs = consolidate_outputs(self.builder, outputs)
-        outputs = batch_shared_gemms(self.builder, outputs, dims)
+        outputs = gated("gemm_batch", outputs, batch_shared_gemms(self.builder, outputs, dims))
         outputs = stabilize_outputs(self.builder, outputs)
         outputs = linalg_peepholes(self.builder, outputs)
         outputs = consolidate_outputs(self.builder, outputs)
