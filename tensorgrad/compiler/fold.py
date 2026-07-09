@@ -117,26 +117,30 @@ class _FoldContext(Context):
 
     def _derivative_atom(self, tensor: Tensor) -> torch.Tensor:
         """Unresolved gradients are OPAQUE RANDOM ATOMS (szfp's move for
-        transcendentals). Keyed by (structural hash, size symbols), NOT by
-        object id: Hadamard construction RENAMES operand copies, and
-        Derivative._rename rebuilds a fresh object -- isomorphic twins must
-        share one draw or the two sides of a gate see different gradients.
-        The base is indexed by size SYMBOL and mapped through each twin's
-        edge->symbol correspondence."""
-        from tensorgrad.structure import structural_hash
+        transcendentals). Keyed by structure, NOT by object id: Hadamard
+        construction RENAMES operand copies, and Derivative._rename rebuilds
+        a fresh object -- isomorphic twins must share one draw or the two
+        sides of a gate see different gradients. The twin correspondence
+        comes from canon's refined EDGE COLORS (iso-invariant and
+        name-insensitive, so corresponding edges of twins agree even when
+        size symbols repeat, e.g. a square d,d weight); the base is indexed
+        in color order and mapped through each twin's own color order."""
+        from tensorgrad.structure import canon_info
 
-        items = sorted((str(s), e) for e, s in tensor.shape.items())
-        symnames = [sy for sy, _ in items]
-        if len(set(symnames)) == len(symnames):
-            key = (structural_hash(tensor), tuple(symnames))
+        info = canon_info(tensor)
+        items = sorted((info.refined_colors[e], e) for e in tensor.shape)
+        cols = [c for c, _ in items]
+        if len(set(cols)) == len(cols):
+            key = (info.coarse_fp, tuple(cols))
             base = self._atoms.get(key)
             if base is None:
                 sizes = [int(tensor.shape[e].subs(self.dims)) for _, e in items]
                 base = torch.randn(sizes, generator=self._gen, dtype=torch.float64)
                 self._atoms[key] = base
             return base.rename(*[e for _, e in items]).align_to(*tensor.edges)
-        # Repeated size symbols make the twin correspondence ambiguous:
-        # per-id draw (twins then mismatch and the gate refuses -- safe).
+        # Automorphic edges (repeated colors) make the correspondence
+        # ambiguous: per-id draw (twins then mismatch and the gate refuses
+        # the fold -- safe, never wrong).
         edges = list(tensor.shape.keys())
         sizes = [int(tensor.shape[e].subs(self.dims)) for e in edges]
         return torch.randn(sizes, generator=self._gen, dtype=torch.float64).rename(*edges)
