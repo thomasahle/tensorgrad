@@ -68,7 +68,7 @@ from collections import Counter
 from functools import singledispatch
 from typing import Any, Optional, cast
 
-from tensorgrad.structure import refined_sort_key
+from tensorgrad.structure import _children, refined_sort_key
 from tensorgrad.tensor import (
     Delta,
     Derivative,
@@ -280,6 +280,40 @@ def remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tens
     return None
 
 
+_CVARS_ATTR = "_has_cvars_v1"
+
+
+def _has_constrained_vars(t: Tensor) -> bool:
+    """Memoized: does a Variable with declared equations occur anywhere under t?
+
+    Cheap gate for apply_variable_equation, which otherwise re-walks the same
+    subtrees once per delta-pair probe per sweep (the single hottest call in
+    compiler-normalize profiles — ~7.7k bounded walks on constraint-free
+    programs). Tensors are immutable, so the cached bit never invalidates;
+    a miss costs one bottom-up DAG sweep shared by all later probes."""
+    hit = t.__dict__.get(_CVARS_ATTR)
+    if hit is not None:
+        return hit
+    stack = [t]
+    while stack:
+        node = stack[-1]
+        if _CVARS_ATTR in node.__dict__:
+            stack.pop()
+            continue
+        kids = _children(node)
+        pending = [k for k in kids if _CVARS_ATTR not in k.__dict__]
+        if pending:
+            stack.extend(pending)
+            continue
+        if isinstance(node, Variable):
+            bit = bool(node._constraints)
+        else:
+            bit = any(k.__dict__[_CVARS_ATTR] for k in kids)
+        cast(dict, node.__dict__)[_CVARS_ATTR] = bit
+        stack.pop()
+    return t.__dict__[_CVARS_ATTR]
+
+
 def apply_variable_equation(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
     """General constraint-equation rewriting (see Variable.with_eq_constraint).
 
@@ -296,6 +330,8 @@ def apply_variable_equation(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Ten
     """
     from itertools import permutations
 
+    if not (_has_constrained_vars(t1) or _has_constrained_vars(t2)):
+        return None
     cvars = [v for t in (t1, t2) for v in Variable._find_variables(t) if v._constraints]
     if not cvars:
         return None
