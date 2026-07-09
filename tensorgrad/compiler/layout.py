@@ -163,6 +163,14 @@ def _decide(node: Node, votes: list) -> tuple:
         if groups is not None:
             batch, m, k, n = groups
             out = node.out_subs
+            # Prefer batch-major (m-block leads n-block) output when the cell
+            # can produce it for free: it keeps activation-major residual
+            # chains permute-free, which is what lets Inductor fuse them
+            # (a feature-major matmul output forces a .permute on every
+            # residual add, breaking fusion -- the MLP compile pathology).
+            _bm = tuple(out.index(w) for w in batch + m + n)
+            if _cell_feasible(node, groups, [out[j] for j in _bm]):
+                return _bm
             # A cell can only produce block layouts for free, and only with
             # intra-block orders its operands deliver. Priority:
             #   1. block-form votes not permuting a pinned operand;
