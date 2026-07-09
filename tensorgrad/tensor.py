@@ -1098,18 +1098,26 @@ class Function(Tensor):
         used = self.edges | set(kwargs.values())
         for t in self.inputs:
             used |= t.edges
+        # Only rename external (broadcast) edges of input tensors.
+        renames = [
+            {e: v for e, v in kwargs.items() if e in t.edges and e not in es}
+            for t, es in zip(self.inputs, self.signature.inputs)
+        ]
+        # A rename target may collide with an edge that survives the per-input
+        # renames -- typically an edge consumed by the function (e.g. renaming
+        # broadcast edge 's' -> 't' while the function consumes t's edge 't').
+        # The surviving edge may live on ANY input, not just the renamed one
+        # (the rebuilt Function forbids shared broadcast edges across inputs),
+        # so the collision basis is the union over all inputs. Route such
+        # renames through fresh middle names and fix them up with a final
+        # Rename, mirroring the middle-name routing in Rename._grad.
+        survivors: set[str] = set()
+        for t, rename in zip(self.inputs, renames):
+            survivors |= t.edges - rename.keys()
         renamed_inputs = []
         final_rename = {}  # applied on top of the rebuilt Function at the end
-        for t, es in zip(self.inputs, self.signature.inputs):
-            # Only rename external (broadcast) edges of input tensors.
-            rename = {e: v for e, v in kwargs.items() if e in t.edges and e not in es}
-            # A rename target may collide with an edge of t that we are not renaming,
-            # typically an edge consumed by the function (e.g. renaming broadcast edge
-            # 's' -> 't' while the function consumes t's edge 't'). Route such renames
-            # through fresh middle names and fix them up with a final Rename,
-            # mirroring the middle-name routing in Rename._grad.
-            remaining = t.edges - rename.keys()
-            colliding = {e: v for e, v in rename.items() if v in remaining}
+        for t, rename in zip(self.inputs, renames):
+            colliding = {e: v for e, v in rename.items() if v in survivors}
             if colliding:
                 middle = _unused_edge_names(colliding.values(), used)
                 used |= set(middle.values())

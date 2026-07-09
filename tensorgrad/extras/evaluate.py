@@ -500,8 +500,11 @@ def _(func: _MaxFunction, x: torch.Tensor) -> torch.Tensor:
 
 @evaluate_function.register
 def _(func: _PowerFunction, x: torch.Tensor) -> torch.Tensor:
-    if func.k < 0:
-        x = x.to(torch.float)
+    if func.k < 0 and not x.is_floating_point():
+        # Integer tensors cannot take negative powers; float tensors keep
+        # their dtype (hardcoding float32 here silently downcast float64
+        # evaluations, poisoning mixed-dtype einsums downstream).
+        x = x.to(torch.get_default_dtype())
     return torch.pow(x, float(func.k))
 
 
@@ -541,7 +544,9 @@ def _(func: _OneHotFunction, idx: torch.Tensor, size_carrier: torch.Tensor) -> t
     input only carries the number of classes (its single edge's size)."""
     num_classes = size_carrier.size(func.dim)  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType, reportCallIssue]  # named dim
     flat = idx.rename(None).long().reshape(1, -1)
-    onehot = (flat == torch.arange(num_classes).unsqueeze(1)).to(torch.float32)
+    # default dtype, not float32: a hardcoded dtype poisons float64
+    # evaluations downstream (mixed-dtype einsum/mm errors).
+    onehot = (flat == torch.arange(num_classes).unsqueeze(1)).to(torch.get_default_dtype())
     return onehot.reshape((num_classes,) + tuple(idx.shape)).rename(func.eq_edge, *idx.names)
 
 
