@@ -20,8 +20,16 @@ No new calculus: the per-node vector-Jacobian contributions below are the
 transposes of grad.py's one-step rules, built from the same signature-level
 leaf derivatives (the no-composite-Jacobians law is untouched — this is the
 same chain rule in a different evaluation order). Anything the sweep does
-not recognize (nested Derivatives, non-scalar bases, Expectation, singleton
-families) falls back to the independent path unchanged.
+not recognize (non-scalar bases, Expectation, singleton families in flat
+programs) falls back to the independent path unchanged.
+
+Nested chains (HVPs: grad of <grad(loss), v>) resolve innermost-first over
+several rounds — reverse-over-reverse. Each round sweeps the families whose
+base is Derivative-free and rebuilds; the round after that sees the outer
+Derivative's base as plain algebra and sweeps it too. In nested programs
+singleton families ARE swept: one HVP is exactly the case where grad.py's
+chain-rule stepping explodes (measured ~10x compile time per stacked
+softmax block), while flat singletons keep the classic path unchanged.
 """
 
 from collections import defaultdict
@@ -57,6 +65,8 @@ def _children(t: Tensor) -> list[Tensor]:
         return [t.tensor]
     if isinstance(t, Function):
         return list(t.inputs)
+    if isinstance(t, Derivative):
+        return [t.tensor]
     return []
 
 
@@ -168,7 +178,8 @@ def _collect_derivatives(t: Tensor, found: dict[int, Derivative], seen: set[int]
     if type(t) is Derivative:
         if isinstance(t.x, Variable) and t.tensor.order == 0:
             found[id(t)] = t
-        return  # do not descend: nested derivatives resolve independently
+        # fall through: nested chains (HVPs) carry inner Derivatives in the
+        # base; resolve_shared_gradients' rounds resolve them innermost-first
     for c in _children(t):
         _collect_derivatives(c, found, seen)
 
@@ -195,19 +206,50 @@ def _rebuild(t: Tensor, repl: dict[int, Tensor], memo: dict[int, Tensor]) -> Ten
         out = Rename(new_kids[0], dict(t.mapping))
     elif isinstance(t, Function):
         out = Function(t.signature, new_kids, t.shape_out)
+    elif isinstance(t, Derivative):
+        out = Derivative(new_kids[0], t.x, dict(t.new_names))
     else:
         raise TypeError(f"cannot rebuild through {type(t).__name__}")
     memo[id(t)] = out
     return out
 
 
+def _contains_derivative(t: Tensor) -> bool:
+    seen: set[int] = set()
+    stack = [t]
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, Derivative):
+            return True
+        stack.extend(_children(node))
+    return False
+
+
 def resolve_shared_gradients(tensors: tuple) -> tuple:
-    """Resolve Derivative families (>= 2 gradients of one scalar base w.r.t.
-    Variables) jointly, wherever the Derivative nodes sit inside the output
-    expressions (optimizer algebra like AdamW wraps them). Anything
-    unrecognized is returned unchanged; any failure falls back per family."""
+    """Resolve Derivative families jointly, wherever the Derivative nodes sit
+    inside the output expressions (optimizer algebra like AdamW wraps them).
+    Flat programs resolve families of >= 2 gradients in one round; programs
+    with nested chains (HVPs) run innermost-first rounds with singletons
+    allowed (see module docstring). Anything unrecognized is returned
+    unchanged; any failure falls back per family."""
     if not REVERSE_GRADS:
         return tensors
+    found: dict[int, Derivative] = {}
+    seen: set[int] = set()
+    for t in tensors:
+        _collect_derivatives(t, found, seen)
+    nested = any(_contains_derivative(d.tensor) for d in found.values())
+    for _ in range(4 if nested else 1):  # rounds = nesting depth (HVP: 2)
+        tensors, progress = _resolve_round(tensors, allow_singletons=nested)
+        if not progress:
+            break
+    return tensors
+
+
+def _resolve_round(tensors: tuple, allow_singletons: bool) -> tuple[tuple, bool]:
     found: dict[int, Derivative] = {}
     seen: set[int] = set()
     for t in tensors:
@@ -218,9 +260,11 @@ def resolve_shared_gradients(tensors: tuple) -> tuple:
 
     repl: dict[int, Tensor] = {}
     for _, family in groups.items():
-        if len(family) < 2:
+        if len(family) < (1 if allow_singletons else 2):
             continue
         base = family[0].tensor
+        if _contains_derivative(base):
+            continue  # inner families first; eligible again next round
         targets = [d.x for d in family]
         try:
             occ = _sweep(base, targets)
@@ -251,7 +295,7 @@ def resolve_shared_gradients(tensors: tuple) -> tuple:
         repl.update(family_repl)
 
     if not repl:
-        return tensors
+        return tensors, False
     out = []
     memo: dict[int, Tensor] = {}
     for t in tensors:
@@ -259,4 +303,4 @@ def resolve_shared_gradients(tensors: tuple) -> tuple:
             out.append(_rebuild(t, repl, memo))
         except TypeError:
             out.append(t)
-    return tuple(out)
+    return tuple(out), True
