@@ -211,11 +211,14 @@ def test_sdpa_no_batch_2d():
     )
 
 
-def test_sdpa_fuses_when_softmax_shared():
+def test_sdpa_declines_when_softmax_shared():
     # The attention weights are also a program output: the softmax has a
-    # second consumer, so it cannot be SUPPRESSED — but the AV einsum still
-    # fuses (the SDPA call recomputes the softmax internally) while the
-    # shared softmax keeps being emitted for its other consumer.
+    # second consumer, so the chain cannot be suppressed. Fusing anyway
+    # would make the SDPA call RECOMPUTE the qk GEMM + softmax the program
+    # still emits — measured as a pure loss where sharing is pervasive
+    # (second-order programs: 11 shared-site fires cost +40% eager on the
+    # 12-block softmax-stack HVP, task #63). The cost gate declines; both
+    # outputs come off the plain einsum path, still correct.
     q, k, v, m = _sdpa_vars()
     vals = _sdpa_vals(q, k, v, m)
     att = F.softmax(F.graph("q -d- k", q=q, k=k) * 0.125, dim="s2")
@@ -224,8 +227,8 @@ def test_sdpa_fuses_when_softmax_shared():
     f = compile_to_callable(expr, att_s)
     out, att_out = f(dict(vals), dict(SDPA_DIMS))
     src = _source(f, SDPA_DIMS)
-    assert "scaled_dot_product_attention" in src
-    assert "softmax" in src  # the shared softmax is still emitted
+    assert "scaled_dot_product_attention" not in src
+    assert "softmax" in src  # the shared softmax is emitted once, reused
     for t, o in [(expr, out), (att_s, att_out)]:
         ref = evaluate(t, dict(vals), dict(SDPA_DIMS))
         torch.testing.assert_close(

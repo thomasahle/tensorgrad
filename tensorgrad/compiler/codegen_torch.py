@@ -2072,6 +2072,17 @@ class TorchCodegen:
                 if consumers.get(nid) != 1 or nid in output_ids:
                     break
                 suppress.add(nid)
+            if id(e1) not in suppress:
+                # Cost gate (#63): a shared node in the chain means the fused
+                # call RECOMPUTES stages the program still emits for the other
+                # consumers (qk GEMM + softmax twice). Second-order programs
+                # hit this everywhere — the cotangent algebra reads every
+                # softmax — and the recompute measured as a pure loss on the
+                # 12-block softmax-stack HVP (B64 D256: 4.13 vs 2.94ms eager,
+                # 3.49 vs 2.73ms Inductor for 11 shared-site fires). Fuse only
+                # when flash REPLACES the whole chain; shared sites keep the
+                # plain einsum path.
+                continue
             plan: dict[str, Any] = {
                 "q": e1.ops[qi],
                 "k": e1.ops[1 - qi],
