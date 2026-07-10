@@ -168,7 +168,12 @@ def _rand_tensor(shape: tuple, *key: Any) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+_PROBE_BUMPS: dict = {}
+
+
 def _small_dim(name: str, trial: int) -> int:
+    if name in _PROBE_BUMPS:
+        return _PROBE_BUMPS[name]
     lo = max(_DIM_LO, _FLOORS.get(name, 0))
     span = max(_DIM_HI, lo + 3) - lo + 1
     v = lo + _h(SEED, trial, "dim", name, lo) % span
@@ -334,6 +339,56 @@ def _compute(t: Tensor, kv: list) -> tuple:
     return tuple(out)
 
 
+def _constrained_draw(t: Variable, edges: tuple, arr: Any, j: int) -> Any:
+    """Draw from the declared variety: constraints (lhs == rhs) hold for the
+    intended inputs, so the fingerprint must draw values satisfying them mod
+    P — the same principle as the symmetric-orbit draws. Strategy per trial:
+    try a basis vector (satisfies the one-hot family), else project each
+    linear sum-constraint; then CHECK every constraint by evaluating both
+    sides at the candidate. The check makes any strategy sound: on failure
+    fall back to the unconstrained draw (identities that need the
+    constraint simply stay unverified — the status quo)."""
+    candidates = [arr]
+    if arr.ndim >= 1:
+        # basis-vector candidate along the LAST axis (one-hot family)
+        b = np.zeros_like(arr)
+        pos = _h(SEED, j, "onehot", t.name, arr.shape) % arr.shape[-1]
+        b[..., pos] = 1
+        candidates.insert(0, b)
+    for cand in candidates:
+        ok = True
+        for lhs, rhs in t._constraints:
+            try:
+                lv = _eval_expr(lhs, t, cand, edges, j)
+                rv = _eval_expr(rhs, t, cand, edges, j) if isinstance(rhs, Tensor) else (
+                    np.full_like(lv, int(rhs) % P) if float(rhs).is_integer() else None
+                )
+                if rv is None or lv.shape != rv.shape or not (lv % P == rv % P).all():
+                    ok = False
+                    break
+            except Exception:
+                ok = False
+                break
+        if ok:
+            return cand
+    return arr  # unconstrained fallback: sound, less complete
+
+
+def _eval_expr(expr: Tensor, var: Variable, val: Any, var_edges: tuple, j: int) -> Any:
+    """Evaluate a small constraint expression at a CANDIDATE value for
+    `var` (other leaves draw normally). Recursive: constraint sides are
+    tiny by contract (shrinking rewrites)."""
+    if isinstance(expr, Variable) and expr.name == var.name:
+        return _align(var_edges, val, tuple(expr.shape.keys()))
+    kids = _children(expr)
+    kv = []
+    for c in kids:
+        sub = _eval_expr(c, var, val, var_edges, j)
+        kv.append(tuple((tuple(c.shape.keys()), sub) if k == j else (tuple(c.shape.keys()), sub) for k in range(K_TRIALS)))
+    vals = _compute(expr, kv)
+    return vals[j][1]
+
+
 @_compute.register
 def _var(t: Variable, kv: list) -> tuple:
     edges = tuple(t.shape.keys())
@@ -366,6 +421,8 @@ def _var(t: Variable, kv: list) -> tuple:
                     order[src] = dst
                 acc = (acc + np.transpose(arr, order)) % P
             arr = acc
+        if getattr(t, "_constraints", ()):
+            arr = _constrained_draw(t, edges, arr, j)
         out.append((edges, arr))
     return tuple(out)
 
@@ -419,14 +476,52 @@ def _sum(t: Sum, kv: list) -> tuple:
         arr = (acc if acc is not None else np.zeros((), dtype=np.int64)) % P
         zeroish = zeroish or (arr.size > 0 and not arr.any())
         out.append((edges, arr))
-    if zeroish and len({frozenset().union(*_syms(term)) for term in t.terms}) > 1:
-        # An all-zero combination of terms over DIFFERENT symbol sets
-        # (e.g. Tr(I_n)*x - Tr(I_m)*x) can be a dim-draw coincidence, not an
-        # identity — the small domain cannot certify it. Zeros across terms
-        # with the same symbols (x - x regrouped, scale factors classified
-        # differently per term) are the feature and stay.
-        raise _Abstain("zero sum over mixed symbol sets")
+    if zeroish and not _PROBE_BUMPS and len({frozenset().union(*_syms(term)) for term in t.terms}) > 1:
+        # An all-zero combination of terms over DIFFERENT symbol sets can be
+        # a dim-draw coincidence (Tr(I_n)*x - Tr(I_m)*x when n, m drew
+        # alike) — or a legitimate constraint identity (sum(p) - 1 for a
+        # declared-simplex p: symbol sets {n} vs {}). Distinguish by
+        # re-evaluating ONCE at per-symbol DISTINCT dims: coincidence zeros
+        # break deterministically; identity zeros hold at every size.
+        if not _probe_zero(t):
+            raise _Abstain("zero sum over mixed symbol sets broke at probe dims")
     return tuple(out)
+
+
+def _probe_zero(t: Tensor) -> bool:
+    """Uncached re-evaluation of `t` (trial 0) at dims bumped DISTINCTLY per
+    symbol (16 + 2*rank by sorted name), so no two shape symbols — and no
+    symbol/constant pair — can coincide. Local verification only: the values
+    never enter any cache or comparison, so cross-program draw agreement is
+    not required and the per-program bump assignment is sound."""
+    global _PROBE_BUMPS
+    names = sorted(frozenset().union(*_syms(t)))
+    _PROBE_BUMPS = {nm: _small_dim(nm, 0) + 16 + 2 * r for r, nm in enumerate(names)}
+    try:
+        memo: dict = {}
+        stack = [t]
+        while stack:
+            node = stack[-1]
+            if id(node) in memo:
+                stack.pop()
+                continue
+            if _compute.dispatch(type(node)) is _compute.dispatch(Tensor):
+                stack.pop()
+                memo[id(node)] = _compute(node, [])
+                continue
+            kids = _children(node)
+            missing = [c for c in kids if id(c) not in memo]
+            if missing:
+                stack.extend(missing)
+                continue
+            stack.pop()
+            memo[id(node)] = _compute(node, [memo[id(c)] for c in kids])
+        arr = memo[id(t)][0][1]
+        return bool(arr.size == 0 or not arr.any())
+    except Exception:
+        return False
+    finally:
+        _PROBE_BUMPS = {}
 
 
 @_compute.register
@@ -485,6 +580,29 @@ def _function(t: Function, kv: list) -> tuple:
     from tensorgrad.functions import _PowerFunction
 
     sig = t.signature
+    if type(sig).__name__ == "_OneHotFunction" and kv:
+        # Exact op semantics (not an atom): the output IS the indicator
+        # [class == idx]. The index channel maps the input's mod-P residues
+        # onto [0, size) — a deterministic function of the VALUE, so
+        # separately built one_hots of equal indices agree, and the
+        # partition-of-unity / idempotence / gather identities become
+        # fingerprint-visible (sum_class one_hot == 1 exactly).
+        out_edges = tuple(t.shape.keys())
+        out = []
+        for j in range(K_TRIALS):
+            idx_edges, idx_arr = kv[0][j]
+            dims = _guard_size(tuple(_dim_of(t.shape[e], t, j) for e in out_edges))
+            class_pos = [i for i, e in enumerate(out_edges) if e not in idx_edges]
+            if len(class_pos) != 1:
+                raise _Abstain("one_hot: ambiguous class edge")
+            cp = class_pos[0]
+            size = dims[cp]
+            rest = tuple(e for e in out_edges if e != out_edges[cp])
+            aligned = _align(idx_edges, idx_arr, rest)
+            grid = np.arange(size).reshape([-1 if i == cp else 1 for i in range(len(out_edges))])
+            idx_b = np.expand_dims(aligned % size, cp)
+            out.append((out_edges, (grid == idx_b).astype(np.int64)))
+        return tuple(out)
     if isinstance(sig, _PowerFunction) and isinstance(sig.k, int) and kv:
         # Integer powers are rational functions: evaluate exactly. Binary
         # exponentiation on the TRUE exponent (no Fermat reduction mod P-1,
