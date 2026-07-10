@@ -222,12 +222,7 @@ def _delta_pair_step(tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
         # means isomorphic, so it might remove too many unintended tensors.
         other = [t for t in tensors if t is not t1 and t is not t2]
 
-        for simplification in [
-            merge_copy_tensors,
-            remove_identity_matrix,
-            apply_variable_equation,
-            sum_one_hot,
-        ]:
+        for simplification in PAIR_RULES:
             if (new := simplification(t1, t2, e)) is not None:
                 return other + new, False
 
@@ -395,6 +390,19 @@ def apply_variable_equation(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Ten
 ################################################################################
 # Function resolution
 ################################################################################
+
+
+
+# The pairwise product-rule catalog, tried in order by _delta_pair_step.
+# Types outside the core set append their rules on import (the same
+# convention as _dispatch_simplify.register): tensorgrad/compiler/affine.py
+# appends contract_affines, the structural-tensor contraction closure.
+PAIR_RULES: list = [
+    merge_copy_tensors,
+    remove_identity_matrix,
+    apply_variable_equation,
+    sum_one_hot,
+]
 
 
 @_dispatch_simplify.register
