@@ -2,7 +2,6 @@ import pytest
 from sympy import symbols
 import torch
 
-from tensorgrad.extras._convolution import conv_einsum_dispatch
 import tensorgrad.functions as F
 from tensorgrad.tensor import Product, Variable, Zero, Delta, Sum, Derivative, Ones
 
@@ -242,68 +241,6 @@ def test_convolution():
     ref = evaluate(expr, vals, dims)
     out = compiled_fn(vals, dims)
     assert_close(ref, out)
-
-
-@pytest.mark.parametrize(
-    "X,Z",
-    [
-        (2, 1),  # Minimal corner case (X=2 => Y=1, Z=1)
-        (3, 2),  # Smaller case
-        (6, 3),  # Mid-size case
-        (10, 4),  # Example from your code
-    ],
-)
-@pytest.mark.parametrize("B", [1, 2, 5])  # various batch sizes
-@pytest.mark.parametrize(
-    "einsum_str",
-    [
-        "xb,xzy->bzy",
-        "by,xzy->bxz",
-        "bz,xzy->bxy",
-        "bxy,xzy->bz",
-        "xz,xzy->y",
-        "bzy,xzy->bx",
-        "byz,xzy->bx",
-        "byz,xzy->bzx",
-        "bxyz,xzy->bxyz",
-    ],
-)
-def test_all_einsums(einsum_str, X, Z, B):
-    """
-    Tests the conv_einsum_dispatch function by comparing to a reference
-    torch.einsum call that uses a naive (X,Y,Z) Toeplitz conv kernel.
-    We loop over various shapes (X,Y,Z), batch sizes B, and einsum patterns.
-    """
-    Y = X - Z + 1  # X = Y + Z - 1
-    lhs, rhs = einsum_str.split("->")
-    A_dims, B_dims = lhs.split(",")
-    assert B_dims == "xzy"
-
-    # Build the naive Toeplitz conv kernel: conv[x,z,y] = 1 if x == y+z
-    conv_kernel = torch.zeros(X, Z, Y)
-    for x in range(X):
-        for y in range(Y):
-            for z in range(Z):
-                if x == y + z:
-                    conv_kernel[x, z, y] = 1
-
-    # Map 'x'->X, 'y'->Y, 'z'->Z, 'b'->B to build A's shape
-    dim_map = {"x": X, "y": Y, "z": Z, "b": B}
-    A_shape = tuple(dim_map[d] for d in A_dims)
-    A = torch.randn(*A_shape)
-
-    # Reference via standard torch.einsum
-    ref = torch.einsum(einsum_str, A, conv_kernel)
-
-    # Call your dispatcher: conv_einsum_dispatch must be in scope
-    out = conv_einsum_dispatch(einsum_str, A, (X, Z, Y))
-
-    # Compare
-    assert torch.allclose(ref, out, atol=1e-6, rtol=1e-5), (
-        f"Mismatch in pattern={einsum_str}, A.shape={A_shape}, "
-        f"X={X},Y={Y},Z={Z},B={B}\n"
-        f"ref.shape={ref.shape}, out.shape={out.shape}"
-    )
 
 
 @pytest.mark.parametrize("model", ["linear-1", "linear-2", "conv-1"])

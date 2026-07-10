@@ -573,3 +573,11 @@ def _(func: _DeterminantFunction, x: torch.Tensor) -> torch.Tensor:
     (dims,) = func.inputs
     new_names = [n for n in x.names if n not in dims]  # Names after the determinant
     return torch.linalg.det(x.rename(None)).rename(*new_names)
+
+
+# Affine (compiler) registers its evaluate oracle HERE rather than at its own
+# import time: affine importing evaluate would cycle, since evaluate imports the
+# compiler. Safe now -- Context and every registration above are defined.
+from tensorgrad.compiler.affine import _register_evaluate_oracle  # noqa: E402
+
+_register_evaluate_oracle()

@@ -241,29 +241,35 @@ def indicator_tensor(sizes: list[int], rows: Sequence) -> torch.Tensor:
 
 
 # ---- evaluate() oracle support ---------------------------------------------
+# affine must NOT import extras.evaluate at module load: evaluate imports the
+# compiler (compiler.cells), so a top-level import here forms a cycle
+#   evaluate -> compiler(pkg) -> runtime -> lower -> affine -> evaluate .
+# Instead the Affine oracle is registered by a hook that extras.evaluate calls
+# at the END of its own init, once Context and its dispatch table exist.
 
-from tensorgrad.extras.evaluate import Context  # noqa: E402
 
+def _register_evaluate_oracle() -> None:
+    from tensorgrad.extras.evaluate import Context
 
-# (explicit register(Affine): with `self` annotated, the bare decorator would
-# infer the dispatch class from the FIRST annotation, i.e. Context)
-@Context._evaluate.register(Affine)  # type: ignore[attr-defined]  # singledispatchmethod stub loses .register
-def _evaluate_affine(self: Context, affine: Affine) -> torch.Tensor:
-    edges = list(affine.edges)
-    missing = {s for s in affine.shape.values() if s not in self.dims}
-    if missing:
-        raise ValueError(f"Dims {missing} not supplied to Affine")
-    sizes = [self.dims[affine.shape[e]] for e in edges]
+    # (explicit register(Affine): with `self` annotated, the bare decorator
+    # would infer the dispatch class from the FIRST annotation, i.e. Context)
+    @Context._evaluate.register(Affine)  # type: ignore[attr-defined]  # singledispatchmethod stub loses .register
+    def _evaluate_affine(self: "Context", affine: Affine) -> torch.Tensor:
+        edges = list(affine.edges)
+        missing = {s for s in affine.shape.values() if s not in self.dims}
+        if missing:
+            raise ValueError(f"Dims {missing} not supplied to Affine")
+        sizes = [self.dims[affine.shape[e]] for e in edges]
 
-    def sub(x: Any) -> int:
-        return int(sympy.sympify(x).subs(self.dims))
+        def sub(x: Any) -> int:
+            return int(sympy.sympify(x).subs(self.dims))
 
-    rows: list[tuple] = []
-    for coeffs, const in affine.rows:
-        rows.append(({edges.index(e): sub(c) for e, c in coeffs.items()}, sub(const)))
-    for coeffs, k, X in affine.range_rows:
-        rows.append(("range", {edges.index(e): sub(c) for e, c in coeffs.items()}, sub(k), sub(X)))
-    return indicator_tensor(sizes, rows).refine_names(*edges)
+        rows: list[tuple] = []
+        for coeffs, const in affine.rows:
+            rows.append(({edges.index(e): sub(c) for e, c in coeffs.items()}, sub(const)))
+        for coeffs, k, X in affine.range_rows:
+            rows.append(("range", {edges.index(e): sub(c) for e, c in coeffs.items()}, sub(k), sub(X)))
+        return indicator_tensor(sizes, rows).refine_names(*edges)
 
 
 # ---- contraction closure (#46): one pairwise rule for structural algebra ---
