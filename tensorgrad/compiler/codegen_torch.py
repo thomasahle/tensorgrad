@@ -1548,6 +1548,18 @@ class TorchCodegen:
             if half * half != total:
                 raise ValueError(f"Reshape constant is not a perfect square: {total}")
             return torch.eye(half, dtype=self._dtype).reshape(sizes)
+        if kind == "affine":
+            # Affine with range rows (#44): dense 0/1 indicator, hoisted
+            # once per specialization. Row constants may be symbolic dims.
+            from tensorgrad.compiler.affine import indicator_tensor
+
+            (rows_param,) = node.params
+            sizes = [dim_of(d) for d in node.dims]
+            rows = [
+                (r[0], {a: dim_of(c) for a, c in r[1]}, *(dim_of(x) for x in r[2:]))
+                for r in rows_param
+            ]
+            return indicator_tensor(sizes, rows).to(self._dtype)
         raise NotImplementedError(f"const kind {kind}")
 
     def _emit_einsum(self, node: EinsumNode, name, names, dim_of, dims, step_cache, const_name) -> list[str]:

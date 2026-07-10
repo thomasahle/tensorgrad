@@ -474,6 +474,23 @@ def _eval_const(node: ConstNode, assign: dict, ctx: Any) -> np.ndarray:
             # consistent; retry until the assignment satisfies it.
             raise _Retry(f"reshape total {total} not a perfect square")
         return np.eye(half, dtype=np.int64).reshape(sizes)
+    if kind == "affine":
+        # Affine with range rows (#44): the dense 0/1 indicator is exact
+        # over the field, so it is a polynomial constant, not an atom. An
+        # all-zero indicator at the drawn dims is a legitimate value.
+        from tensorgrad.compiler.affine import indicator_tensor
+
+        (rows_param,) = node.params
+        sizes = [_dim(d, assign) for d in node.dims]
+
+        def sub(x: Any) -> int:
+            e = sympy.sympify(x).subs(assign)
+            if not e.is_Integer:
+                raise _Retry(f"affine row constant {x} unresolved at draw")
+            return int(e)
+
+        rows = [(r[0], {a: sub(c) for a, c in r[1]}, *(sub(x) for x in r[2:])) for r in rows_param]
+        return np.asarray(indicator_tensor(sizes, rows).numpy(), dtype=np.int64)
     raise NotImplementedError(f"szfp: const kind {kind!r}")
 
 

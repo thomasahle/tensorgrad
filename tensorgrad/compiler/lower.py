@@ -82,6 +82,12 @@ class Lowerer:
             return self.b.const("zero", (), tuple(t.shape.values())), tuple(t.edges)
         if isinstance(t, Delta):
             return self._lower_delta(t)
+        if isinstance(t, Affine) and t.range_rows:
+            # Range rows (inequality indicators, #44 stage 1) are not in the
+            # einsum-constraint vocabulary: the whole Affine lowers as one
+            # hoisted dense indicator constant (built once per specialization
+            # by codegen, evaluated exactly mod P by szfp).
+            return self._lower_affine_const(t)
         if isinstance(t, (F.Convolution, Affine)):
             # A standalone structured tensor is just a one-factor product; its
             # constraint rows become the einsum node's constraints and codegen
@@ -102,6 +108,20 @@ class Lowerer:
                 "Cannot compile a Derivative node. Call .simplify() or .full_simplify() first."
             )
         raise NotImplementedError(f"No lowering for {type(t).__name__}: {t}")
+
+    # ---- Affine with range rows (dense indicator constant) -------------
+
+    def _lower_affine_const(self, t: Affine) -> tuple[Node, tuple[str, ...]]:
+        edges = tuple(t.edges)
+        rows_param = tuple(
+            ("eq", tuple(sorted((edges.index(e), c) for e, c in coeffs.items())), const)
+            for coeffs, const in t.rows
+        ) + tuple(
+            ("range", tuple(sorted((edges.index(e), c) for e, c in coeffs.items())), k, X)
+            for coeffs, k, X in t.range_rows
+        )
+        dims = tuple(t.shape[e] for e in edges)
+        return self.b.const("affine", (rows_param,), dims), edges
 
     # ---- Delta --------------------------------------------------------
 
@@ -164,12 +184,14 @@ class Lowerer:
                 )
                 for e in ft.edges:
                     edge_dims.setdefault(e, ft.shape[e])
-            elif isinstance(ft, Affine):
+            elif isinstance(ft, Affine) and not ft.range_rows:
                 for coeffs, const in ft.rows:
                     raw_rows.append((dict(coeffs), const))
                 for e in ft.edges:
                     edge_dims.setdefault(e, ft.shape[e])
             else:
+                # (an Affine WITH range rows lands here too: it lowers as a
+                # dense indicator operand — see _lower_affine_const)
                 operands_t.append(ft)
 
         # Wire = union-find class. Assign wire ids.

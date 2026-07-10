@@ -25,13 +25,28 @@ import torch
 from tensorgrad.structure import Structure
 from tensorgrad.tensor import Constant, Tensor  # noqa: F401  (Tensor for docs/typing)
 
-# Coefficient rows: {edge: coeff} == const. Mapping/Sequence (not dict/list)
-# so callers may pass narrower value types (dict is invariant in its values).
-Rows = Sequence[tuple[Mapping[str, Union[int, Symbol, sympy.Expr]], Union[int, Symbol, sympy.Expr]]]
+# Coefficient rows. Accepted forms:
+#   ({edge: coeff}, const)             equality  [sum c_i*e_i == const]
+#   ("eq", {edge: coeff}, const)       equality, tagged
+#   ("range", {edge: coeff}, k, X)     inequality [0 <= sum c_i*e_i + k <= X-1]
+# Mapping/Sequence (not dict/list) so callers may pass narrower value types.
+Rows = Sequence[tuple]
+_Num = Union[int, Symbol, sympy.Expr]
+_Coeffs = Mapping[str, _Num]
 
 
 class Affine(Constant):
-    """A constant 0/1 tensor defined by integer-affine equalities on its indices."""
+    """A constant 0/1 tensor defined by integer-affine relations on its indices.
+
+    Rows come in two kinds. Equality rows (`self.rows`, the original
+    vocabulary) are `(coeffs, const)` meaning [sum c_i*e_i == const]; the
+    compiler threads them into einsum constraints and eliminates them into
+    strided views. Range rows (`self.range_rows`, task #44) are
+    `(coeffs, k, X)` meaning [0 <= sum c_i*e_i + k <= X-1] — inequality
+    indicators (tril/triu/causal masks). Stage 1: an Affine with any range
+    row lowers as a hoisted dense indicator constant (correct, one
+    materialization per specialization); native IR range constraints are
+    the follow-up (#46 era)."""
 
     def __init__(
         self, rows: Rows, *shape0: Symbol,
@@ -40,36 +55,64 @@ class Affine(Constant):
         shape = self._check_shape(shape0, shape1)
         super().__init__(_symmetries=_symmetries, **shape)
         norm: list[tuple[dict[str, sympy.Expr], sympy.Expr]] = []
-        for coeffs, const in rows:
-            coeffs = {e: sympy.sympify(c) for e, c in coeffs.items()}
-            coeffs = {e: c for e, c in coeffs.items() if c != 0}
-            for e in coeffs:
+        ranges: list[tuple[dict[str, sympy.Expr], sympy.Expr, sympy.Expr]] = []
+
+        def _coeffs(coeffs: Mapping) -> dict[str, sympy.Expr]:
+            out = {e: sympy.sympify(c) for e, c in coeffs.items()}
+            out = {e: c for e, c in out.items() if c != 0}
+            for e in out:
                 if e not in shape:
                     raise ValueError(f"Row references edge {e!r} not in shape {set(shape)}")
-            norm.append((coeffs, sympy.sympify(const)))
+            return out
+
+        for row in rows:
+            if len(row) == 2:  # legacy bare equality
+                coeffs, const = row
+                norm.append((_coeffs(coeffs), sympy.sympify(const)))
+            elif row[0] == "eq":
+                norm.append((_coeffs(row[1]), sympy.sympify(row[2])))
+            elif row[0] == "range":
+                ranges.append((_coeffs(row[1]), sympy.sympify(row[2]), sympy.sympify(row[3])))
+            else:
+                raise ValueError(f"Unknown Affine row kind {row[0]!r}")
         self.rows = norm
+        self.range_rows = ranges
 
     def _canonical_rows(self) -> tuple:
-        return tuple(
+        eqs = tuple(
             sorted(
                 (tuple(sorted((e, str(c)) for e, c in coeffs.items())), str(const))
                 for coeffs, const in self.rows
             )
         )
+        rngs = tuple(
+            sorted(
+                (tuple(sorted((e, str(c)) for e, c in coeffs.items())), str(k), str(X))
+                for coeffs, k, X in self.range_rows
+            )
+        )
+        return eqs + (("__ranges__",) + rngs if rngs else ())
 
     def __repr__(self) -> str:
-        rows = "; ".join(
+        parts = [
             " + ".join(f"{c}*{e}" for e, c in sorted(coeffs.items())) + f" = {const}"
             for coeffs, const in self.rows
-        )
-        return f"Affine({rows}; shape={dict(self.shape)})"
+        ] + [
+            "0 <= " + " + ".join(f"{c}*{e}" for e, c in sorted(coeffs.items())) + f" + {k} <= {X}-1"
+            for coeffs, k, X in self.range_rows
+        ]
+        return f"Affine({'; '.join(parts)}; shape={dict(self.shape)})"
 
     def __hash__(self) -> int:
         return hash((type(self).__name__, tuple(self.shape.items()), self._canonical_rows()))
 
     def _rename(self, **kwargs: str) -> "Affine":
-        rows = [
-            ({kwargs.get(e, e): c for e, c in coeffs.items()}, const) for coeffs, const in self.rows
+        rows: list = [
+            ("eq", {kwargs.get(e, e): c for e, c in coeffs.items()}, const)
+            for coeffs, const in self.rows
+        ] + [
+            ("range", {kwargs.get(e, e): c for e, c in coeffs.items()}, k, X)
+            for coeffs, k, X in self.range_rows
         ]
         return Affine(rows, **{kwargs.get(e, e): s for e, s in self.shape.items()})
 
@@ -133,6 +176,31 @@ def affine_basis(index: int, **shape1: Symbol) -> Affine:
     return Affine([({e: 1}, index)], **shape)
 
 
+def affine_ineq(coeffs: _Coeffs, lo: _Num, hi: _Num, **shape1: Symbol) -> Affine:
+    """Inequality indicator: T[e...] = 1 iff lo <= sum c_i*e_i <= hi."""
+    lo, hi = sympy.sympify(lo), sympy.sympify(hi)
+    return Affine([("range", coeffs, -lo, hi - lo + 1)], **shape1)
+
+
+def affine_tril(*, strict: bool = False, **shape1: Symbol) -> Affine:
+    """Lower-triangle indicator over (row, col) — edge ORDER carries the
+    roles: T[r, c] = 1 iff r >= c (strict: r > c). The causal attention
+    mask [key <= seq] is affine_tril(seq=n, key=n)."""
+    shape = Tensor._check_shape((), shape1)
+    assert len(shape) == 2, "tril needs exactly 2 edges: row, col"
+    (r, sr), (c, _) = shape.items()
+    return affine_ineq({r: 1, c: -1}, 1 if strict else 0, sr - 1, **shape1)
+
+
+def affine_triu(*, strict: bool = False, **shape1: Symbol) -> Affine:
+    """Upper-triangle indicator over (row, col): T[r, c] = 1 iff r <= c
+    (strict: r < c)."""
+    shape = Tensor._check_shape((), shape1)
+    assert len(shape) == 2, "triu needs exactly 2 edges: row, col"
+    (r, _), (c, sc) = shape.items()
+    return affine_ineq({c: 1, r: -1}, 1 if strict else 0, sc - 1, **shape1)
+
+
 # ---- dense indicator materialization (fallback + oracle) -------------------
 
 
@@ -186,12 +254,13 @@ def _evaluate_affine(self: Context, affine: Affine) -> torch.Tensor:
     if missing:
         raise ValueError(f"Dims {missing} not supplied to Affine")
     sizes = [self.dims[affine.shape[e]] for e in edges]
-    rows = []
+
+    def sub(x: Any) -> int:
+        return int(sympy.sympify(x).subs(self.dims))
+
+    rows: list[tuple] = []
     for coeffs, const in affine.rows:
-        rows.append(
-            (
-                {edges.index(e): int(sympy.sympify(c).subs(self.dims)) for e, c in coeffs.items()},
-                int(sympy.sympify(const).subs(self.dims)),
-            )
-        )
+        rows.append(({edges.index(e): sub(c) for e, c in coeffs.items()}, sub(const)))
+    for coeffs, k, X in affine.range_rows:
+        rows.append(("range", {edges.index(e): sub(c) for e, c in coeffs.items()}, sub(k), sub(X)))
     return indicator_tensor(sizes, rows).refine_names(*edges)
