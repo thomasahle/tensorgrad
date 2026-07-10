@@ -43,6 +43,7 @@ from tensorgrad.compiler.cells import CELLS
 from tensorgrad.compiler.peepholes import linalg_peepholes
 from tensorgrad.compiler.consolidate import consolidate_outputs
 from tensorgrad.compiler.factor import factor_outputs
+from tensorgrad.compiler.gather import form_gathers
 from tensorgrad.compiler.gemm_batch import batch_shared_gemms
 from tensorgrad.compiler.layout import assign_layouts, matmul_groups
 from tensorgrad.compiler.stabilize import stabilize_outputs
@@ -246,9 +247,15 @@ class TorchCodegen:
             )
             return after
 
+        # Gather formation (index_select): a cost decision, so it is a pass
+        # here rather than part of lowering (the #43 law); same pipeline
+        # point as before (post-lowering, pre-factoring), so programs are
+        # unchanged. Not szfp-gated: forming a GatherNode changes the atom
+        # vocabulary (the documented false-negative class).
+        outputs = form_gathers(self.builder, self.outputs)
         # Factoring pass: per-shape rewrite of the DAG (un-distribution /
         # distribution / delta absorption) before any emission planning.
-        outputs = gated("factor", self.outputs, factor_outputs(self.builder, self.outputs, dims))
+        outputs = gated("factor", outputs, factor_outputs(self.builder, outputs, dims))
         # Stability pass: re-fuse expanded exp/sum-exp ratios, log-sum-exp and
         # exp-ratio tanh into stable softmax/log_softmax/tanh/logsumexp forms.
         outputs = stabilize_outputs(self.builder, outputs)

@@ -257,61 +257,12 @@ class Lowerer:
         if not ops and not out_subs and not constraints:
             return self.b.scalar(weight), ()
 
-        self._fuse_gathers(ops, in_subs, out_subs, constraints)
+        # Gather formation (index_select) is a COST decision and lives in
+        # compiler/gather.py as the first pass of specialize() — the law:
+        # lowering makes no cost decisions (task #43).
 
         node = self.b.einsum(ops, in_subs, tuple(out_subs), wire_dims, weight, constraints)
         return node, out_order
-
-    def _fuse_gathers(self, ops: list, in_subs: list, out_subs: list, constraints: list) -> None:
-        """index_select peephole (in place): a one_hot indicator whose class
-        wire is contracted against exactly one co-operand is an integer table
-        lookup — sum_v [idx == v] * T[..., v, ...] == T[..., idx, ...] — so the
-        pair is replaced by a GatherNode, which codegen emits as
-        torch.index_select instead of a dense one-hot contraction.
-
-        The mirrored gradient pattern (class wire free, idx wires contracted)
-        is deliberately left as an einsum: codegen's scatter peephole
-        (_try_scatter) turns it into zeros().index_add_.
-
-        A carrier that is purely STRUCTURAL — an einsum of delta/ones
-        constants, e.g. the gradient's Delta(v,v')xDelta(d,d') jacobian —
-        is never fused into: gathering would materialize the dense structure
-        (vocab^2 * d^2 for an embedding-table gradient) that the factoring
-        pass exists to dissolve. Left as an einsum, factoring aliases the
-        delta wires, the class wire comes out free, and the scatter peephole
-        gets its pattern."""
-
-        def structural(op: Node) -> bool:
-            if isinstance(op, ConstNode):
-                return True
-            if isinstance(op, EinsumNode):
-                return all(structural(o) for o in op.ops)
-            return False
-
-        constrained = {w for row, _ in constraints for w, _ in row}
-        changed = True
-        while changed:
-            changed = False
-            for i, (op, subs) in enumerate(zip(ops, in_subs)):
-                if not (isinstance(op, GatherNode) and op.op == "one_hot"):
-                    continue
-                if len(set(subs)) != len(subs):
-                    continue  # diagonal one-hot: keep the dense fallback
-                wc = subs[0]  # the class wire (one_hot's axis 0 is the class axis)
-                if wc in out_subs or wc in constrained:
-                    continue  # class wire free: scatter/jacobian territory
-                carriers = [j for j in range(len(ops)) if j != i and wc in in_subs[j]]
-                if len(carriers) != 1 or in_subs[carriers[0]].count(wc) != 1:
-                    continue  # not a plain table contraction over the class wire
-                if structural(ops[carriers[0]]):
-                    continue  # delta-built jacobian: factoring dissolves it
-                j = carriers[0]
-                axis = in_subs[j].index(wc)
-                ops[j] = self.b.gather(ops[j], op.ops[0], axis)
-                in_subs[j] = in_subs[j][:axis] + tuple(subs[1:]) + in_subs[j][axis + 1 :]
-                del ops[i], in_subs[i]
-                changed = True
-                break
 
     # ---- Function -----------------------------------------------------
 
