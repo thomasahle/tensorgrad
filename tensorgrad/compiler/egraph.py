@@ -669,8 +669,10 @@ def _saturate_extract(builder: Builder, outputs: list, dims: dict) -> Optional[l
     new_outputs = []
     changed = False
     for (node, order), lroot, want in zip(outputs, let_roots, expected_roles):
+        from egglog import expr_parts
+
         best = egraph.extract(lroot)
-        out_node, roles, scale = dec._walk(_expr_decl(best))
+        out_node, roles, scale = dec._walk(expr_parts(best).expr)
         out_node = _restore_axis_order(builder, out_node, roles, want)
         if out_node is None or tuple(out_node.dims) != tuple(node.dims):
             return None  # decode must reproduce dims exactly
@@ -682,12 +684,6 @@ def _saturate_extract(builder: Builder, outputs: list, dims: dict) -> Optional[l
         changed |= out_node is not node
         new_outputs.append((out_node, order))
     return new_outputs if changed else None
-
-
-def _expr_decl(expr: Any) -> Any:
-    from egglog import expr_parts
-
-    return expr_parts(expr).expr
 
 
 def _restore_axis_order(builder: Builder, node: Node, roles: tuple, want: tuple) -> Optional[Node]:
