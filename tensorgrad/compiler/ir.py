@@ -371,6 +371,38 @@ class Builder:
         key = ("fused_bwd", cell_name, which, pt, layout, tuple(id(o) for o in ops))
         return self._intern(key, lambda: FusedBwdNode(tuple(dims), cell_name, which, pt, layout, tuple(ops)))
 
+    def with_ops(self, nd: Node, ops: list[Node]) -> Node:
+        """Reconstruct `nd` with replaced operands through the interning
+        constructors (hash-consing returns the identical node when nothing
+        changed). THE one rebuild vocabulary: every IR-to-IR pass uses this
+        instead of a private copy, so a new Node type is added HERE once —
+        the previous five per-pass copies each covered a different subset,
+        and three silently kept STALE operands for fused-cell nodes (a
+        latent miscompile class the szfp gates were quietly absorbing).
+        Unknown compute nodes RAISE rather than silently self-return."""
+        if not ops or all(o is p for o, p in zip(ops, nd.operands())):
+            return nd
+        if isinstance(nd, EinsumNode):
+            return self.einsum(
+                ops, [tuple(s) for s in nd.in_subs], tuple(nd.out_subs),
+                dict(enumerate(nd.wire_dims)), nd.weight, list(nd.constraints),
+            )
+        if isinstance(nd, LinearNode):
+            return self.linear(ops, [tuple(p) for p in nd.perms], list(nd.weights))
+        if isinstance(nd, MapNode):
+            return self.map(nd.op, nd.params, ops, [tuple(p) for p in nd.perms])
+        if isinstance(nd, GatherNode):
+            if nd.op == "gather":
+                return self.gather(ops[0], ops[1], nd.axis)
+            return self.one_hot(ops[0], nd.dims[0])
+        if isinstance(nd, ReduceNode):
+            return self.reduce(nd.op, nd.axes, ops[0])
+        if isinstance(nd, FusedFwdNode):
+            return self.fused_fwd(nd.cell_name, nd.params_dict(), ops, nd.dims, nd.layout, nd.which)
+        if isinstance(nd, FusedBwdNode):
+            return self.fused_bwd(nd.cell_name, nd.which, nd.params_dict(), ops, nd.dims, nd.layout)
+        raise NotImplementedError(f"with_ops: cannot rebuild {type(nd).__name__}")
+
     def reduce(self, op: str, axes: tuple[int, ...], operand: Node) -> Node:
         axes = tuple(sorted(axes))
         if op in ("softmax", "log_softmax", "argsort"):

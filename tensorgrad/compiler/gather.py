@@ -86,27 +86,6 @@ def _fuse_in_einsum(b: Builder, node: EinsumNode) -> Node:
     )
 
 
-def _with_ops(b: Builder, nd: Node, ops: list[Node]) -> Node:
-    """Rebuild `nd` with replaced operands through the builder (interned)."""
-    if isinstance(nd, EinsumNode):
-        return b.einsum(
-            ops, [tuple(s) for s in nd.in_subs], tuple(nd.out_subs),
-            dict(enumerate(nd.wire_dims)), nd.weight, list(nd.constraints),
-        )
-    if isinstance(nd, LinearNode):
-        return b.linear(ops, [tuple(p) for p in nd.perms], list(nd.weights))
-    if isinstance(nd, MapNode):
-        return b.map(nd.op, nd.params, ops, [tuple(p) for p in nd.perms])
-    if isinstance(nd, GatherNode):
-        return b.gather(ops[0], ops[1], nd.axis) if nd.op == "gather" else b.one_hot(ops[0], nd.dims[0])
-    if isinstance(nd, ReduceNode):
-        return b.reduce(nd.op, nd.axes, ops[0])
-    if isinstance(nd, FusedFwdNode):
-        return b.fused_fwd(nd.cell_name, dict(nd.params), ops, nd.dims, nd.layout, nd.which)
-    if isinstance(nd, FusedBwdNode):
-        return b.fused_bwd(nd.cell_name, nd.which, dict(nd.params), ops, nd.dims, nd.layout)
-    raise NotImplementedError(f"form_gathers: cannot rebuild {type(nd).__name__}")
-
 
 def form_gathers(b: Builder, outputs: list) -> list:
     """Rewrite every einsum in the program, bottom-up with identity-preserving
@@ -119,7 +98,7 @@ def form_gathers(b: Builder, outputs: list) -> list:
     for node in order:
         kids = node.operands()
         new_kids = [memo.get(id(k), k) for k in kids]
-        cur = node if all(a is c for a, c in zip(kids, new_kids)) else _with_ops(b, node, new_kids)
+        cur = node if all(a is c for a, c in zip(kids, new_kids)) else b.with_ops(node, new_kids)
         if isinstance(cur, EinsumNode):
             cur = _fuse_in_einsum(b, cur)
         memo[id(node)] = cur

@@ -445,7 +445,7 @@ class _Collapser:
                 return list(outputs)
             for nd in order:
                 ops = [memo[id(op)] for op in nd.operands()]
-                cur = _rebuild(self.b, nd, ops)
+                cur = self.b.with_ops(nd, ops)
                 if isinstance(cur, EinsumNode) and not self.inflated(cur):
                     cur = self._step_head(cur)
                 elif isinstance(cur, LinearNode) and not self.inflated(cur):
@@ -984,7 +984,7 @@ class _Accumulate(_Collapser):
         memo: dict[int, Node] = {}
         for nd in order0:
             ops = [memo[id(op)] for op in nd.operands()]
-            cur = _rebuild(self.b, nd, ops)
+            cur = self.b.with_ops(nd, ops)
             deferred_tower = (
                 defer_towers
                 and id(nd) in S
@@ -1025,27 +1025,6 @@ class _Accumulate(_Collapser):
             memo[id(nd)] = cur
         return [(memo[id(n)], edge_order) for n, (_, edge_order) in zip(nodes, outputs)]
 
-
-def _rebuild(b: Builder, nd: Node, ops: list[Node]) -> Node:
-    """Reconstruct `nd` with rewritten operands (hash-consing returns the
-    identical node when nothing changed). Mirrors factor._Rewriter._rebuild."""
-    if not ops:
-        return nd
-    if isinstance(nd, EinsumNode):
-        return b.einsum(
-            ops, list(nd.in_subs), nd.out_subs, dict(enumerate(nd.wire_dims)), nd.weight, nd.constraints
-        )
-    if isinstance(nd, LinearNode):
-        return b.linear(ops, list(nd.perms), list(nd.weights))
-    if isinstance(nd, MapNode):
-        return b.map(nd.op, nd.params, ops, list(nd.perms))
-    if isinstance(nd, GatherNode):
-        if nd.op == "gather":
-            return b.gather(ops[0], ops[1], nd.axis)
-        return b.one_hot(ops[0], nd.dims[0])
-    if isinstance(nd, ReduceNode):
-        return b.reduce(nd.op, nd.axes, ops[0])
-    return nd
 
 
 def collapse_chains(builder: Builder, outputs: list, dims: dict) -> list:

@@ -212,7 +212,7 @@ class _Rewriter:
         memo: dict[int, Node] = {}
         for nd in order:
             new_ops = [memo[id(op)] for op in nd.operands()]
-            cur = self._rebuild(nd, new_ops)
+            cur = self.b.with_ops(nd, new_ops)
             for _ in range(16):
                 # New nodes inherit the old node's consumer count (heuristic;
                 # exact counts are recomputed at the start of every sweep).
@@ -224,27 +224,6 @@ class _Rewriter:
             self.counts.setdefault(id(cur), self.counts.get(id(nd), 1))
             memo[id(nd)] = cur
         return [memo[id(r)] for r in roots]
-
-    def _rebuild(self, nd: Node, ops: list[Node]) -> Node:
-        """Reconstruct `nd` with rewritten operands (hash-consing returns the
-        identical node when nothing changed)."""
-        if not ops:
-            return nd
-        if isinstance(nd, EinsumNode):
-            return self.b.einsum(
-                ops, list(nd.in_subs), nd.out_subs, dict(enumerate(nd.wire_dims)), nd.weight, nd.constraints
-            )
-        if isinstance(nd, LinearNode):
-            return self.b.linear(ops, list(nd.perms), list(nd.weights))
-        if isinstance(nd, MapNode):
-            return self.b.map(nd.op, nd.params, ops, list(nd.perms))
-        if isinstance(nd, GatherNode):
-            if nd.op == "gather":
-                return self.b.gather(ops[0], ops[1], nd.axis)
-            return self.b.one_hot(ops[0], nd.dims[0])
-        if isinstance(nd, ReduceNode):
-            return self.b.reduce(nd.op, nd.axes, ops[0])
-        return nd
 
     def _local(self, nd: Node) -> Node:
         if isinstance(nd, EinsumNode):

@@ -24,7 +24,6 @@ from typing import Any, TypeGuard
 import sympy
 
 from tensorgrad.compiler.ir import Builder, EinsumNode, Node, toposort
-from tensorgrad.compiler.peepholes import _rebuild
 
 # The trade is fewer launches for k-times-larger transients, which is only
 # a good deal while the transients stay cache-sized. Ceiling on BOTH the
@@ -144,6 +143,6 @@ def batch_shared_gemms(builder: Builder, outputs: list, dims: dict) -> list:
     memo: dict[int, Node] = {}
     for nd in order:
         ops = [memo.get(id(op), op) for op in nd.operands()]
-        cur = rep.get(id(nd)) or _rebuild(builder, nd, ops)
+        cur = rep.get(id(nd)) or builder.with_ops(nd, ops)
         memo[id(nd)] = cur
     return [(memo[id(n)], o) for n, o in outputs]
