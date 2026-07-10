@@ -1150,8 +1150,13 @@ class Function(Tensor):
                     junctions.add(frozenset({("child", k, e), ("port", ("in", k))}))
                 else:
                     junctions.add(frozenset({("child", k, e), ("free", e)}))
-        for e in self.shape_out:
-            junctions.add(frozenset({("port", ("out", e)), ("free", e)}))
+        for e, sz in self.shape_out.items():
+            # The output SIZE is part of the function's identity: without
+            # size_key here, f(x) with output size alpha and f(x) with
+            # output size beta are structurally equal, and the Sum merge
+            # combines genuinely different tensors (found by fingerprint-v2
+            # review; the fingerprint tier was not even involved).
+            junctions.add(frozenset({("port", ("out", e, size_key(sz))), ("free", e)}))
         return Structure(
             ("Function", self.signature.name, self.signature.param_key()),
             tuple(self.inputs),

@@ -139,6 +139,82 @@ def test_offset_window_term_not_dropped():
     assert len(_unwrap(out).terms) == 2
 
 
+def test_saturated_window_rows_do_not_collide():
+    """Regression (v2 review): a range row WIDER than the drawn dims
+    excludes nothing, so differently-sized windows (0<=q-k<=6 vs <=8) were
+    bit-identical at every trial and cancelled. Every row must bite."""
+    from tensorgrad.compiler.affine import affine_ineq
+
+    n, w1, w2 = symbols("n w1 w2")
+    a7 = affine_ineq({"q": 1, "k": -1}, 0, 6, q=n, k=n)
+    a9 = affine_ineq({"q": 1, "k": -1}, 0, 8, q=n, k=n)
+    out = Sum([a7, a9], [1, -1]).simplify(normalize_args())
+    assert not isinstance(_unwrap(out), Zero), "different windows collapsed"
+    # symbolic window sizes: row-constant symbols must draw small (shape
+    # class), and saturation must abstain — never collide
+    s1 = affine_ineq({"q": 1, "k": -1}, 0, w1, q=n, k=n)
+    s2 = affine_ineq({"q": 1, "k": -1}, 0, w2, q=n, k=n)
+    out2 = Sum([s1, s2], [1, -1]).simplify(normalize_args())
+    assert not isinstance(_unwrap(out2), Zero), "symbolic windows collapsed"
+
+
+def test_vanishing_weight_polynomial_does_not_cancel():
+    """Regression (v2 review): shape symbols draw from a 4-point domain, so
+    a weight divisible by (n-2)(n-3)(n-4)(n-5) is 0 at every trial while
+    nonzero for all real n >= 6. A nonzero weight with 0 residue abstains."""
+    n = symbols("n")
+    x = Variable("X", i=n)
+    y = Variable("Y", i=n)
+    w = (n - 2) * (n - 3) * (n - 4) * (n - 5)
+    out = Sum([x, y], [w, w]).simplify(normalize_args())
+    assert not isinstance(_unwrap(out), Zero), "vanishing weight collapsed sum"
+
+
+def test_variable_kwargs_order_is_not_identity():
+    """Regression (v2 review): Variable('x', i=n, j=m) and
+    Variable('x', j=m, i=n) are the same tensor and must fingerprint equal
+    (draws keyed by sorted edges, not kwargs order)."""
+    n, m = symbols("n m")
+    a = Variable("x", i=n, j=m)
+    b = Variable("x", j=m, i=n)
+    assert a == b
+    assert fp.szfp(a) == fp.szfp(b)
+    out = Sum([a, b], [1, -1]).simplify(normalize_args())
+    assert isinstance(_unwrap(out), Zero)
+
+
+def test_function_output_size_is_identity():
+    """Regression (v2 review, core structure() bug): f(x) with output size
+    alpha and f(x) with output size beta were STRUCTURALLY equal (the
+    output-port junction omitted size_key), so the plain structural merge
+    combined genuinely different tensors — no fingerprints involved."""
+    from tensorgrad.tensor import function
+
+    n, alpha, beta = symbols("n alpha beta")
+    x = Variable("x", i=n)
+    fa = function("f", {"o": alpha}, (x, "i"))
+    fb = function("f", {"o": beta}, (x, "i"))
+    assert fa != fb, "different output sizes must not be structurally equal"
+    assert fp.szfp(fa) != fp.szfp(fb)
+
+
+def test_function_consumed_edge_names_are_anonymous():
+    """Regression (v2 review): structure() quotients consumed input edge
+    names to anonymous ports, so the fingerprint atom key must not leak
+    them — name-fixed-isomorphic function applications fingerprint equal."""
+    from tensorgrad.tensor import function
+
+    n = symbols("n")
+    xa = Variable("x", i=n).rename(i="a")
+    xb = Variable("x", i=n).rename(i="b")
+    fa = function("f", {"o": n}, (xa, "a"))
+    fb = function("f", {"o": n}, (xb, "b"))
+    assert fa == fb, "consumed-edge names are not identity"
+    assert fp.szfp(fa) == fp.szfp(fb), "atom key leaks consumed-edge names"
+    out = Sum([fa, fb], [1, -1]).simplify(normalize_args())
+    assert isinstance(_unwrap(out), Zero)
+
+
 def test_default_interactive_simplify_unaffected():
     """The knob is off by default: interactive simplify keeps its exact
     current behavior (no fingerprint work on plain .simplify())."""
@@ -149,4 +225,4 @@ def test_default_interactive_simplify_unaffected():
     diff = Sum([(x + y) @ w, Sum([x @ w, y @ w])], [1, -1])
     diff.simplify()  # default preset: knob off
     # no fingerprint work may happen on the default path (spot-check root)
-    assert "_szfp_v1" not in diff.__dict__
+    assert "_szfp_v2" not in diff.__dict__
