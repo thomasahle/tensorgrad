@@ -41,7 +41,12 @@ def _attention_loss():
     return F.sum(F.dot(att, v, dim="key")), q, bk, bq, (n, d)
 
 
-def test_shift_invariant_bias_gradient_prunes_to_zero():
+def test_shift_invariant_bias_gradient_prunes_to_zero(monkeypatch):
+    """The pass is default-OFF (the sz_cancel tier proves these zeros in
+    plain normalize now); force it on to test the machinery itself."""
+    from tensorgrad.compiler import zerograd
+
+    monkeypatch.setattr(zerograd, "ZERO_PRUNE", True)
     loss, q, bk, bq, _ = _attention_loss()
     g_bk = loss.grad(bk)
     g_bq = loss.grad(bq)

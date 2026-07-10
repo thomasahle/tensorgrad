@@ -107,6 +107,36 @@ _ARRAYS_BYTES = 0
 _ARRAYS_CAP_BYTES = 256 << 20
 _PIN_CAP = 150_000
 
+# Dim floors (the IR tier's mechanism, adapted to incrementality): an
+# affine row whose constant cannot be exercised at dims 2..5 (a window
+# offset or width) RAISES the floor of the participating axis symbols and
+# bumps the EPOCH, which invalidates every cached array and digest; the
+# fingerprint retries under the lifted floors. Floors are global and
+# monotone, so this converges in a few rounds (one per distinct offset
+# scale), and every comparison ever made sees one consistent draw family
+# per epoch. Decisions made in earlier epochs remain sound: dormant-but-
+# real bounds abstained there, so nothing false was merged.
+_FLOORS: dict = {}
+_EPOCH = 0
+_FLOOR_CAP = 64
+
+
+class _FloorRaised(Exception):
+    """A dim floor rose mid-walk: restart the evaluation under the new
+    epoch (NOT an abstention)."""
+
+
+def _raise_floor(name: str, need: int) -> None:
+    global _EPOCH, _ARRAYS_BYTES
+    if need > _FLOOR_CAP:
+        raise _Abstain(f"floor {need} over cap for {name}")
+    if _FLOORS.get(name, 0) >= need:
+        return
+    _FLOORS[name] = need
+    _EPOCH += 1
+    _ARRAYS.clear()
+    _ARRAYS_BYTES = 0
+
 _LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
@@ -139,14 +169,15 @@ def _rand_tensor(shape: tuple, *key: Any) -> np.ndarray:
 
 
 def _small_dim(name: str, trial: int) -> int:
-    span = _DIM_HI - _DIM_LO + 1
-    v = _DIM_LO + _h(SEED, trial, "dim", name) % span
+    lo = max(_DIM_LO, _FLOORS.get(name, 0))
+    span = max(_DIM_HI, lo + 3) - lo + 1
+    v = lo + _h(SEED, trial, "dim", name, lo) % span
     if trial:
         # Anti-constant guarantee: never repeat the trial-0 value, so a
         # shape symbol cannot equal one constant across ALL trials.
-        base = _DIM_LO + _h(SEED, 0, "dim", name) % span
+        base = lo + _h(SEED, 0, "dim", name, lo) % span
         if v == base:
-            v = _DIM_LO + (v - _DIM_LO + 1) % span
+            v = lo + (v - lo + 1) % span
     return v
 
 
@@ -388,12 +419,13 @@ def _sum(t: Sum, kv: list) -> tuple:
         arr = (acc if acc is not None else np.zeros((), dtype=np.int64)) % P
         zeroish = zeroish or (arr.size > 0 and not arr.any())
         out.append((edges, arr))
-    if zeroish and len({_syms(term) for term in t.terms}) > 1:
-        # An all-zero combination of terms with DIFFERENT symbol profiles
+    if zeroish and len({frozenset().union(*_syms(term)) for term in t.terms}) > 1:
+        # An all-zero combination of terms over DIFFERENT symbol sets
         # (e.g. Tr(I_n)*x - Tr(I_m)*x) can be a dim-draw coincidence, not an
-        # identity — the small domain cannot certify it. Same-profile zeros
-        # (x - x regrouped) are the feature and stay.
-        raise _Abstain("zero sum over mixed symbol profiles")
+        # identity — the small domain cannot certify it. Zeros across terms
+        # with the same symbols (x - x regrouped, scale factors classified
+        # differently per term) are the feature and stay.
+        raise _Abstain("zero sum over mixed symbol sets")
     return tuple(out)
 
 
@@ -567,6 +599,7 @@ def _compute_affine(t: Any, kv: list) -> tuple:
         pdims = tuple(sub(t.shape[e], 16) for e in edges)  # activity probe size
         grids, pgrids = np.indices(dims), np.indices(pdims)
         rows: list[tuple] = []
+        row_meta: list[tuple] = []
         for kind, coeffs, *consts in [("eq", c, k) for c, k in t.rows] + [
             ("range", c, k, x) for c, k, x in t.range_rows
         ]:
@@ -585,7 +618,9 @@ def _compute_affine(t: Any, kv: list) -> tuple:
                 dormant_bad = (not (acc == kd).any() and (pacc == kp).any()) or (
                     not (acc != kd).any() and (pacc != kp).any()
                 )
+                need = abs(kd) + 2
                 rows.append(("eq", cmap, kd))
+                row_meta.append((need, {str(f) for f in sympy.sympify(consts[0]).free_symbols}, set(cmap)))
             else:
                 kd, xd = sub(consts[0]), sub(consts[1])
                 kp, xp = sub(consts[0], 16), sub(consts[1], 16)
@@ -593,14 +628,49 @@ def _compute_affine(t: Any, kv: list) -> tuple:
                 dormant_bad = (not (ed < 0).any() and (ep < 0).any()) or (
                     not (ed > xd - 1).any() and (ep > xp - 1).any()
                 )
+                need = max(abs(kd), xd) + 2
                 rows.append(("range", cmap, kd, xd))
+                row_meta.append((need, {str(f) for c in consts for f in sympy.sympify(c).free_symbols}, set(cmap)))
             if dormant_bad:
-                raise _Abstain("affine bound dormant at drawn dims but active at real sizes")
+                # A bound the drawn sizes cannot exercise: LIFT the
+                # participating axis symbols' floors (the IR tier's floors
+                # mechanism) and retry the walk under the new epoch. Only
+                # if the floors are already there — the bound is
+                # unexercisable, not just unexercised — abstain for real.
+                const_syms = {str(f) for c in consts for f in sympy.sympify(c).free_symbols}
+                raised = False
+                for a in cmap:
+                    for f in sympy.sympify(t.shape[edges[a]]).free_symbols:
+                        if f.name not in const_syms and _FLOORS.get(f.name, 0) < need:
+                            _raise_floor(f.name, need)
+                            raised = True
+                if raised:
+                    raise _FloorRaised()
+                raise _Abstain("affine bound unexercisable under floors")
         arr = np.asarray(indicator_tensor(list(dims), rows).numpy(), dtype=np.int64)
         if arr.size and not arr.any():
             # Empty at the drawn sizes but (typically) nonzero at real
             # sizes: a degenerate zero that collides unequal programs.
-            raise _Abstain("affine indicator empty at drawn dims")
+            # Lift ALL participating axis floors (a joint system can be
+            # empty because one axis lags the others — e.g. seq floored to
+            # 12 while its window buffer still draws 2..5) and retry; if
+            # the floors are already there, the system is unsatisfiable at
+            # any reasonable size: abstain.
+            raised = False
+            for need, const_syms, axes in row_meta:
+                # Symbolic constants are RELATIONS ([l == b - length] needs
+                # buf > length at the drawn values): lift only the axis
+                # symbols that do not feed the constant, so the target
+                # stays put and the raise converges instead of chasing its
+                # own tail to the cap.
+                for a in axes:
+                    for f in sympy.sympify(t.shape[edges[a]]).free_symbols:
+                        if f.name not in const_syms and _FLOORS.get(f.name, 0) < min(need, _FLOOR_CAP):
+                            _raise_floor(f.name, min(need, _FLOOR_CAP))
+                            raised = True
+            if raised:
+                raise _FloorRaised()
+            raise _Abstain("affine indicator empty under floors")
         out.append((edges, arr))
     return tuple(out)
 
@@ -630,7 +700,13 @@ def _ensure_extras() -> None:
 
 
 def _abstained(t: Tensor) -> bool:
-    return _FP_ATTR in t.__dict__ and t.__dict__[_FP_ATTR] is None
+    hit = t.__dict__.get(_FP_ATTR)
+    return hit is not None and hit[0] == _EPOCH and hit[1] is None
+
+
+def _mark(t: Tensor, fp: Any) -> Any:
+    t.__dict__[_FP_ATTR] = (_EPOCH, fp)
+    return fp
 
 
 def _nbytes(vals: tuple) -> int:
@@ -663,7 +739,7 @@ def _vals(t: Tensor) -> Optional[tuple]:
             stack.pop()
             continue
         if len(pins) > _PIN_CAP:
-            t.__dict__[_FP_ATTR] = None
+            _mark(t, None)
             return None
         if _compute.dispatch(type(node)) is _compute.dispatch(Tensor):
             # Default (structure-keyed atom): needs no children — compute
@@ -672,8 +748,10 @@ def _vals(t: Tensor) -> Optional[tuple]:
             stack.pop()
             try:
                 pins[id(node)] = (node, _compute(node, []))
+            except _FloorRaised:
+                raise
             except Exception:
-                node.__dict__[_FP_ATTR] = None
+                _mark(node, None)
             continue
         kids = _children(node)
         missing = [c for c in kids if id(c) not in pins and id(c) not in _ARRAYS and not _abstained(c)]
@@ -685,14 +763,16 @@ def _vals(t: Tensor) -> Optional[tuple]:
         for c in kids:
             v = _lru_get(c, pins)
             if v is None:  # child abstained
-                node.__dict__[_FP_ATTR] = None
+                _mark(node, None)
                 break
             kid_vals.append(v)
         else:
             try:
                 vals = _compute(node, kid_vals)
+            except _FloorRaised:
+                raise
             except Exception:
-                node.__dict__[_FP_ATTR] = None
+                _mark(node, None)
             else:
                 pins[id(node)] = (node, vals)
     result = _lru_get(t, pins)
@@ -730,16 +810,22 @@ def szfp(t: Tensor) -> Optional[tuple]:
     """Cached value fingerprint of `t` — (weight-symbol support, digest,
     is-zero) — or None when `t` abstains (which opts it out of semantic
     rewrites; the Sum merge falls back to the structural key)."""
-    hit = t.__dict__.get(_FP_ATTR, _FP_ATTR)
-    if hit is not _FP_ATTR:
-        return hit
-    try:
-        vals = _vals(t)
-    except Exception:
-        vals = None
+    hit = t.__dict__.get(_FP_ATTR)
+    if hit is not None and hit[0] == _EPOCH:
+        return hit[1]
+    vals = None
+    for _ in range(6):  # floor raises are monotone: converges in a few rounds
+        epoch = _EPOCH
+        try:
+            vals = _vals(t)
+            break
+        except _FloorRaised:
+            if _EPOCH == epoch:
+                return _mark(t, None)
+        except Exception:
+            return _mark(t, None)
     if vals is None:
-        t.__dict__[_FP_ATTR] = None
-        return None
+        return _mark(t, None)
     parts = []
     zero = True
     for edges, arr in vals:
@@ -747,9 +833,7 @@ def szfp(t: Tensor) -> Optional[tuple]:
         aligned = _align(edges, arr, order)
         parts += [order, aligned.shape, np.ascontiguousarray(aligned).tobytes()]
         zero = zero and not arr.any()
-    fp = (_syms(t)[1], _h("szfp2", K_TRIALS, SEED, *parts), zero)
-    t.__dict__[_FP_ATTR] = fp
-    return fp
+    return _mark(t, (_syms(t)[1], _h("szfp2", K_TRIALS, SEED, *parts), zero))
 
 
 def is_zero(t: Tensor) -> Optional[bool]:

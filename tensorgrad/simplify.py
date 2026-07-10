@@ -122,6 +122,17 @@ def simplify(tensor: Tensor, args: Optional[dict[str, Any]] = None) -> Tensor:
 
     result = _dispatch_simplify(tensor, args)
 
+    # Semantic zero (sz_cancel, the compiler preset): a node whose VALUE is
+    # provably zero rewrites to Zero regardless of its TYPE — the reverse
+    # sweep hands us zero gradients as Products, not Sums, so the check
+    # belongs to the engine, not to one rule. Fingerprints are cached and
+    # incremental (fingerprint.py), so this is one dict hit per node.
+    if args.get("sz_cancel") and not isinstance(result, Zero):
+        from tensorgrad import fingerprint as _fp
+
+        if _fp.is_zero(result):
+            result = Zero(_symmetries=None, **result.shape)
+
     # Check that the shape is preserved
     assert result.shape == tensor.shape
     _record_simplify_provenance(args, tensor, result)

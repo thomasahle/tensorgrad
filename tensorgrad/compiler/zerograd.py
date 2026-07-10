@@ -39,7 +39,13 @@ from tensorgrad.compiler.reverse import (
     _sweep,
 )
 
-ZERO_PRUNE = True
+# Default OFF since fingerprint v2: the sz_cancel tier in plain normalize
+# proves the same zeros at the tensor level (verified on the real minGPT:
+# all three bk gradients reduce to Zero with this pass disabled), so the
+# compile path no longer needs an IR-backed pre-pass. Kept as an opt-in
+# belt for programs where the tensor tier abstains (floor-cap masks,
+# >64-factor products).
+ZERO_PRUNE = False
 MAX_TESTS = 128  # szfp evaluations per program (compile-time budget)
 
 
