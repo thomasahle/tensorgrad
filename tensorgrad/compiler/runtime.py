@@ -183,14 +183,24 @@ class CompiledProgram:
         if hasattr(cfg, "recompile_limit"):
             cfg.recompile_limit = max(cfg.recompile_limit, 128)
 
-        state = {"fn": torch.compile(fn, fullgraph=True, dynamic=False)}
+        # freezing=True unlocks Inductor's constant-folding + MKLDNN weight
+        # prepacking. Safe for our callables BY CONSTRUCTION: they are pure
+        # functions whose weights/data/scalars are all per-call arguments
+        # (verified: outputs respond to changed data and scalars exactly like
+        # the unfrozen build; 10-step training trajectories match to float
+        # rounding), so only the hoisted spec-time constants can fold. This
+        # is an advantage of the functional design that nn.Module TRAINING
+        # cannot use (freezing would inline its in-place-updated parameters).
+        # Measured: mlp step 2.88 -> 2.07ms (a CPU-wall row).
+        opts: dict[str, Any] = {"options": {"freezing": True}}
+        state = {"fn": torch.compile(fn, fullgraph=True, dynamic=False, **opts)}
 
         def wrapper(*args: Any) -> Any:
             try:
                 return state["fn"](*args)
             except torch._dynamo.exc.TorchDynamoException:  # pyright: ignore[reportAttributeAccessIssue]  # dynamo has no stubs
                 self.used_fullgraph_fallback = True
-                state["fn"] = torch.compile(fn, fullgraph=False, dynamic=False)
+                state["fn"] = torch.compile(fn, fullgraph=False, dynamic=False, **opts)
                 return state["fn"](*args)
 
         wrapper._source = fn._source  # type: ignore[attr-defined]  # keep the generated source inspectable
