@@ -83,7 +83,7 @@ from tensorgrad.tensor import (
     _unused_edge_names,
     peel_rename,
 )
-from tensorgrad.utils import _MatchEdgesKey, merge_renames
+from tensorgrad.utils import _MatchEdgesKey, _ValueKey, merge_renames
 
 # The Derivative-resolution rule lives with the other differentiation logic.
 from tensorgrad.grad import step_derivative
@@ -577,24 +577,70 @@ def simplify_sum(t: Sum, args: dict[str, Any]) -> Tensor:
     canonicalizes."""
     terms = [term.simplify(args=args) for term in t.terms]
 
-    # Merge isomorphic terms by accumulating their weights. _MatchEdgesKey
-    # matches edge names, so isomorphic terms with different outer edge labels
-    # don't get combined: (o-i o-<jk) is isomorphic with (o-j o-<ik), but they
-    # must stay separate. This example comes up in the Hessian of softmax.
-    term_counter: Counter[_MatchEdgesKey] = Counter()
+    # Merge terms by accumulating their weights. The default merge quotient
+    # is name-fixed isomorphism (_MatchEdgesKey): outer edge labels must
+    # correspond, so (o-i o-<jk) stays separate from its (o-j o-<ik)
+    # isomorph — the softmax-Hessian case. Under the sz_cancel knob (the
+    # compiler's normalize preset) the quotient COARSENS to value identity
+    # (fingerprint.py, exact evaluation mod P): value-equal terms share a
+    # Counter slot regardless of structure, so the ordinary `w != 0` filter
+    # below performs semantic cancellation — cancellations that would need
+    # "expanding just the right factors", found without expansion. This is
+    # sound as a coarsening because name-fixed-isomorphic terms always
+    # fingerprint equal (szfp draws declared-symmetric variables from the
+    # symmetric subspace), and unlowerable terms (fp None) keep the
+    # structural key. Merging value-equal but float-DIFFERENT groupings is
+    # the compiler preset's accepted trade — the IR consolidation pass makes
+    # the same one — which is why the default preset keeps the purely
+    # structural quotient.
+    from tensorgrad import fingerprint as _fp
+
+    def _key(u: Tensor) -> Any:
+        if args.get("sz_cancel"):
+            f = _fp.szfp(u)
+            if f is not None:
+                return _ValueKey(f, u)
+        return _MatchEdgesKey(u)
+
+    term_counter: Counter = Counter()
+    reps: dict = {}
     for w, term in zip(t.weights, terms):
         # Flatten nested sums, unconditionally (the old associative_sums knob
         # had no callers; see the flag audit in the module docstring).
-        if isinstance(term, Sum):
-            for w1, t1 in zip(term.weights, term.terms):
-                term_counter[_MatchEdgesKey(t1)] += w * w1
-        else:
-            term_counter[_MatchEdgesKey(term)] += w
+        for w1, t1 in zip(term.weights, term.terms) if isinstance(term, Sum) else [(1, term)]:
+            key = _key(t1)
+            term_counter[key] += w * w1
+            # Deterministic representative per merge class: keep the
+            # refined_sort_key minimum, not the first-seen (construction
+            # order must not leak into the simplified result).
+            prev = reps.get(key)
+            if prev is None or refined_sort_key(t1) < refined_sort_key(prev):
+                reps[key] = t1
 
     # Remove zero tensors or zero weights.
     # Note: This won't change the shape of the tensor, since all summands have been broadcasted.
-    ws_tensors = [(w, key.value) for key, w in term_counter.items()]
+    ws_tensors = [(w, reps[key]) for key, w in term_counter.items()]
     ws_tensors = [(w, u) for w, u in ws_tensors if w != 0 and not isinstance(u, Zero)]
+
+    if args.get("sz_cancel") and ws_tensors:
+        # Value-zero terms contribute nothing at any weight, and a sum whose
+        # TOTAL value is zero (cross-slot relations: A - B - C with
+        # A == B + C) collapses whole. Partial subset relations among
+        # survivors are subset-sum territory — the e-graph's job, not a
+        # filter's. The whole-sum test only runs when every term carries the
+        # SAME weight-symbol support: a full cancellation must hold for all
+        # dims, so mismatched supports (x/n vs x/5) cannot legitimately
+        # cancel — and skipping them is what keeps a small-dim draw
+        # coincidence from collapsing them wrongly.
+        ws_tensors = [(w, u) for w, u in ws_tensors if not _fp.is_zero(u)]
+        supports = {(f := _fp.szfp(u)) and f[0] for _, u in ws_tensors}
+        if (
+            len(ws_tensors) >= 2
+            and len(supports) == 1
+            and None not in supports
+            and _fp.is_zero(Sum([u for _, u in ws_tensors], [w for w, _ in ws_tensors]))
+        ):
+            ws_tensors = []
     # Base case. Here we can't just return Zero([]), since that would change the signature of the tensor.
     if not ws_tensors:
         return Zero(_symmetries=None, **t.shape)

@@ -60,6 +60,7 @@ Public API:
 """
 
 import hashlib
+import itertools
 import string
 from fractions import Fraction
 from typing import Any, Optional, Sequence
@@ -288,20 +289,43 @@ def _contract(
     return res % P, out
 
 
+def _affine_const_rows(n: Any) -> Any:
+    """The affine rows of a ConstNode('affine') in the same (coeffs, const,
+    dim-exprs) vocabulary as EinsumNode.constraints: yields (kind, coeffs,
+    const, X, axis_dims) with X=None for eq rows. Both row sources need the
+    same dim-floor treatment — an offset row is only satisfiable when the
+    participating dims exceed the offset."""
+    if not (isinstance(n, ConstNode) and n.kind == "affine"):
+        return
+    (rows_param,) = n.params
+    for row in rows_param:
+        kind, coeffs, *rest = row
+        x = rest[1] if kind == "range" else None
+        yield kind, coeffs, rest[0], x, [n.dims[a] for a, _ in coeffs]
+
+
 def _row_const_floors(nodes: Sequence[Any]) -> dict:
     """Per-symbol-name dim floor: |concrete row constant| + 2 for every
     symbol sizing a wire of that row (offset rows like [i = o + 5] need the
     participating dims to exceed the offset to have any solution)."""
     floors: dict[str, int] = {}
+
+    def lift(const: Any, dim_exprs: list, extra: Any = None) -> None:
+        c = sympy.sympify(const)
+        if not c.free_symbols and abs(int(c)) > 0:
+            need = abs(int(c)) + 2
+            for d in dim_exprs:
+                for s in sympy.sympify(d).free_symbols:
+                    floors[s.name] = max(floors.get(s.name, 0), need)
+            if extra is not None:  # range rows: the bound X must exceed +k
+                for s in sympy.sympify(extra).free_symbols:
+                    floors[s.name] = max(floors.get(s.name, 0), need)
+
     for n in nodes:
         for coeffs, const in getattr(n, "constraints", ()) or ():
-            c = sympy.sympify(const)
-            if not c.free_symbols and abs(int(c)) > 0:
-                need = abs(int(c)) + 2
-                for w, _ in coeffs:
-                    d = sympy.sympify(n.wire_dims[w])
-                    for s in d.free_symbols:
-                        floors[s.name] = max(floors.get(s.name, 0), need)
+            lift(const, [n.wire_dims[w] for w, _ in coeffs])
+        for _kind, _coeffs, const, x, axis_dims in _affine_const_rows(n):
+            lift(const, axis_dims, extra=x)
     return floors
 
 
@@ -337,22 +361,110 @@ def _row_deficits(nodes: Sequence[Any], assign: dict) -> dict:
                 for s in sympy.sympify(n.wire_dims[w]).free_symbols:
                     if s.name not in const_syms:
                         need[s.name] = max(need.get(s.name, 0), abs(target) + 2)
+        # ConstNode('affine') rows: same satisfiability logic over axis dims.
+        # eq rows need const in the reachable interval; range rows
+        # [0 <= sum + k <= X-1] need [lo+k, hi+k] to intersect [0, X-1].
+        for kind, coeffs, const, x, axis_dims in _affine_const_rows(n):
+            kv = sympy.sympify(const).subs(assign)
+            if not kv.is_number or not kv.is_integer:
+                continue
+            k = int(kv)
+            lo, hi, symbolic = 0, 0, False
+            for (_, cf), d in zip(coeffs, axis_dims):
+                cfv = sympy.sympify(cf).subs(assign)
+                dv = sympy.sympify(d).subs(assign)
+                if not cfv.is_number or not dv.is_number:
+                    symbolic = True
+                    break
+                span = int(cfv) * (int(dv) - 1)
+                lo, hi = lo + min(0, span), hi + max(0, span)
+            if symbolic:
+                continue
+            if kind == "eq":
+                ok = lo <= k <= hi
+            else:
+                xv = sympy.sympify(x).subs(assign)
+                if not xv.is_number:
+                    continue
+                ok = hi + k >= 0 and lo + k <= int(xv) - 1
+            if ok:
+                continue
+            const_syms = {s.name for s in sympy.sympify(const).free_symbols}
+            lift_exprs = list(axis_dims) + ([x] if kind == "range" else [])
+            for d in lift_exprs:
+                for s in sympy.sympify(d).free_symbols:
+                    if s.name not in const_syms:
+                        need[s.name] = max(need.get(s.name, 0), abs(k) + 2)
     return need
+
+
+def _shape_syms(nodes: Sequence[Any]) -> set[str]:
+    """Names of the symbols that participate in SHAPES: node dims, einsum
+    wire dims, constraint/affine rows, structural-constant size params.
+    These must stay small — they size materialized arrays and must leave
+    affine rows satisfiable. Everything else appears only in scalar weights
+    (Delta(n) traces, 1/n normalizers) and never touches an array extent."""
+    out: set[str] = set()
+
+    def add(expr: Any) -> None:
+        if isinstance(expr, (tuple, list)):
+            for e in expr:
+                add(e)
+        elif not isinstance(expr, str):
+            out.update(s.name for s in sympy.sympify(expr).free_symbols)
+
+    for n in nodes:
+        add(n.dims)
+        if isinstance(n, EinsumNode):
+            add(n.wire_dims)
+            add(n.constraints)
+        if isinstance(n, ConstNode) and n.kind != "scalar":
+            add(n.params)
+    return out
 
 
 def _draw_assign(nodes: Sequence[Node], syms: set, ctx: Any) -> dict:
     """Random dims per symbol (keyed by NAME, independent of the program, so
     separately lowered expressions over the same symbols agree), redrawn
     with lifted floors until every affine row is interval-satisfiable. The
-    empty-indicator retry in _eval_einsum remains the exactness backstop."""
+    empty-indicator retry in _eval_einsum remains the exactness backstop.
+
+    Shape symbols draw SMALL (2..5 — they size materialized arrays), which
+    leaves only ~2 bits of entropy per trial: two symbol NAMES collide in
+    all k trials with probability (1/4)^k, deterministically per name pair
+    (fixed seed). That is harmless for shapes (a shape coincidence still
+    evaluates both structures over independent variable entries) but fatal
+    for symbols whose ONLY effect is a scalar weight: Delta(h) - Delta(v)
+    would fingerprint zero whenever h and v draw alike. Weight-only symbols
+    therefore draw from a ~2^40 range — they never size an array, so the
+    cost is nil and the collision probability drops below the variable-
+    entry SZ bound."""
     floors = _row_const_floors(nodes)
-    assign: dict = {}
+    shape_syms = _shape_syms(nodes)
+    assign: dict = {
+        s: 2 + _h(ctx, "dim-wide", s.name) % (1 << 40) for s in syms if s.name not in shape_syms
+    }
+    small = [s for s in syms if s.name in shape_syms]
+    # The reference draw: same ctx family at (trial 0, salt 0). ctx is
+    # (seed, trial, salt) or ("passgate", seed, trial, salt) — trial and
+    # salt are always the last two parts.
+    base_ctx = tuple(ctx[:-2]) + (0, 0)
     for _ in range(4):
-        assign = {
-            s: (lo := max(_DIM_LO, floors.get(s.name, 0)))
-            + _h(ctx, "dim", s.name, floors.get(s.name, 0)) % (max(_DIM_HI, lo + 3) - lo + 1)
-            for s in syms
-        }
+        for s in small:
+            lo = max(_DIM_LO, floors.get(s.name, 0))
+            span = max(_DIM_HI, lo + 3) - lo + 1
+            v = lo + _h(ctx, "dim", s.name, floors.get(s.name, 0)) % span
+            if ctx != base_ctx:
+                # Anti-constant guarantee: later trials never repeat the
+                # trial-0 value, so a shape symbol cannot draw one constant
+                # across ALL trials — which would make (n - c) * x
+                # fingerprint as zero deterministically for the unlucky c.
+                # Pure function of (seed, name, floors): cross-program
+                # agreement is preserved.
+                base = lo + _h(base_ctx, "dim", s.name, floors.get(s.name, 0)) % span
+                if v == base:
+                    v = lo + (v - lo + 1) % span
+            assign[s] = v
         deficits = _row_deficits(nodes, assign)
         if not deficits:
             break
@@ -487,8 +599,7 @@ def _eval_const(node: ConstNode, assign: dict, ctx: Any) -> np.ndarray:
         return np.eye(half, dtype=np.int64).reshape(sizes)
     if kind == "affine":
         # Affine with range rows (#44): the dense 0/1 indicator is exact
-        # over the field, so it is a polynomial constant, not an atom. An
-        # all-zero indicator at the drawn dims is a legitimate value.
+        # over the field, so it is a polynomial constant, not an atom.
         from tensorgrad.compiler.affine import indicator_tensor
 
         (rows_param,) = node.params
@@ -501,7 +612,18 @@ def _eval_const(node: ConstNode, assign: dict, ctx: Any) -> np.ndarray:
             return int(e)
 
         rows = [(r[0], {a: sub(c) for a, c in r[1]}, *(sub(x) for x in r[2:])) for r in rows_param]
-        return np.asarray(indicator_tensor(sizes, rows).numpy(), dtype=np.int64)
+        arr = np.asarray(indicator_tensor(sizes, rows).numpy(), dtype=np.int64)
+        if sizes and not arr.any():
+            # Same degenerate-value class as the EinsumNode.constraints
+            # guard above: an indicator that is empty at the DRAWN dims but
+            # nonzero at real dims (offset row larger than the random
+            # buffer) zeroes everything downstream and collides unequal
+            # programs — under a value-keyed merge that is a silent
+            # miscompile, not a missed optimization. Real dims satisfy the
+            # row (the floors machinery lifts them); truly contradictory
+            # rows exhaust the retries and opt the tensor out of szfp.
+            raise _Retry("empty affine ConstNode indicator at random dims")
+        return arr
     raise NotImplementedError(f"szfp: const kind {kind!r}")
 
 
@@ -558,7 +680,28 @@ def _eval_map(node: MapNode, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
 def _eval_node(node: Node, vals: dict, assign: dict, ctx: Any) -> np.ndarray:
     if isinstance(node, InputNode):
         dims = tuple(_dim(d, assign) for d in node.dims)
-        return _rand_tensor(dims, ctx, "var", node.var_name, dims)
+        arr = _rand_tensor(dims, ctx, "var", node.var_name, dims)
+        for group in node.sym:
+            # Declared-symmetric axes: replace the draw by its orbit sum — a
+            # uniform random point of the SYMMETRIC subspace mod P, which is
+            # the correct Schwartz-Zippel domain for a variable whose
+            # declaration constrains it there. Identities that hold only by
+            # symmetry (x == x.T) become fingerprint-visible; testing over
+            # the full space instead would only ever REJECT such rewrites.
+            if len(group) > 6:
+                # orbit > 720 perms: skip. Sound (identities that need the
+                # symmetry just stop fp-verifying) but it un-merges what the
+                # structural key merges, so the cap is set above any
+                # realistic declaration.
+                continue
+            acc = np.zeros_like(arr)
+            for perm in itertools.permutations(group):
+                order = list(range(arr.ndim))
+                for src, dst in zip(group, perm):
+                    order[src] = dst
+                acc = (acc + np.transpose(arr, order)) % P
+            arr = acc
+        return arr
     if isinstance(node, ConstNode):
         return _eval_const(node, assign, ctx)
     if isinstance(node, EinsumNode):
@@ -670,6 +813,55 @@ def numeric_fingerprint(tensors: Sequence, k: int = 3, seed: int = 0) -> list[in
             parts += [edges, dims, arr.tobytes()]
         fps.append(_h("szfp", k, seed, *parts))
     return fps
+
+
+def fingerprint_with_support(tensors: Sequence, k: int = 3, seed: int = 0) -> list[tuple]:
+    """(weight-symbol support, digest, is-zero) per output, all from ONE
+    lowering + evaluation — the tensor-level semantic tier's whole vocabulary
+    in a single pass.
+
+    Support: the names of dim symbols reaching the output through the
+    scalar-weight channel (LinearNode weights, einsum weights, scalar
+    consts). Two terms with different supports scale by syntactically
+    different dim polynomials — a value key that bundles the support refuses
+    to merge n*x with m*x (or x/n with x/5) even when the small dim draws
+    coincide, closing the shape-symbol collision channel deterministically.
+    Value-equal terms can differ in support only through a dim polynomial
+    that cancels exactly, which sympy weight canonicalization already folds;
+    anything it misses is an under-merge, never a miscompile.
+
+    Is-zero: all trial arrays identically 0 mod P — free once the trials
+    exist (a separate is_zero_szfp call would re-lower and re-evaluate)."""
+    _, outs = lower_program(list(tensors))
+    trials = _evaluate(tensors, k, seed)
+    results = []
+    for i, (node, _order) in enumerate(outs):
+        support: set[str] = set()
+        seen: set[int] = set()
+        stack = [node]
+        while stack:
+            nd = stack.pop()
+            if id(nd) in seen:
+                continue
+            seen.add(id(nd))
+            weights: list = []
+            if isinstance(nd, LinearNode):
+                weights += list(nd.weights)
+            if isinstance(nd, EinsumNode):
+                weights.append(nd.weight)
+            if isinstance(nd, ConstNode) and nd.kind == "scalar":
+                weights.append(nd.params[0])
+            for w in weights:
+                support.update(s.name for s in sympy.sympify(w).free_symbols)
+            stack.extend(nd.operands())
+        parts = []
+        zero = True
+        for tvals in trials:
+            edges, dims, arr = tvals[i]
+            parts += [edges, dims, arr.tobytes()]
+            zero = zero and not arr.any()
+        results.append((frozenset(support), _h("szfp", k, seed, *parts), zero))
+    return results
 
 
 def equal_szfp(a: Any, b: Any, k: int = 3, seed: int = 0) -> bool:

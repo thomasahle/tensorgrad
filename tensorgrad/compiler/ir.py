@@ -44,9 +44,13 @@ class Node:
 @dataclass(frozen=True, eq=False)
 class InputNode(Node):
     """A user-supplied Variable. `axes` names are the Variable's canonical
-    edge order; the runtime aligns the provided torch tensor to this order."""
+    edge order; the runtime aligns the provided torch tensor to this order.
+    `sym` lists groups of axis positions the Variable declares interchangeable
+    (Variable symmetries); szfp draws values symmetric under them, making
+    symmetry-using identities (x == x.T) fingerprint-visible."""
 
     var_name: str = ""
+    sym: tuple[tuple[int, ...], ...] = ()
 
 
 @dataclass(frozen=True, eq=False)
@@ -231,7 +235,15 @@ class Builder:
             if not self.input_vars[name] == var:
                 raise ValueError(f"Two different Variables share the name {name!r}")
         self.input_vars[name] = var
-        return self._intern(("in", name, dims), lambda: InputNode(dims, name))
+        edges = list(var.shape.keys())
+        sym = tuple(
+            sorted(
+                tuple(sorted(edges.index(e) for e in group))
+                for group in (getattr(var, "symmetries", None) or set())
+                if len(group) > 1
+            )
+        )
+        return self._intern(("in", name, dims, sym), lambda: InputNode(dims, name, sym))
 
     def const(self, kind: str, params: tuple, dims: tuple) -> ConstNode:
         params = tuple(params)

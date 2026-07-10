@@ -42,6 +42,13 @@ def normalize_args() -> dict:
         "combine_products": False,
         "factor_components": False,
         "memoize": True,
+        # Semantic cancellation: simplify_sum merges terms by VALUE
+        # fingerprint instead of structure (utils._ValueKey), so weights of
+        # value-equal terms accumulate and cancellations fall out of the
+        # ordinary zero-weight filter. The compile path runs with the heavy
+        # syntactic passes OFF, so the cancellations they would have proven
+        # are recovered semantically instead — exact mod P, no expansion.
+        "sz_cancel": True,
     }
 
 

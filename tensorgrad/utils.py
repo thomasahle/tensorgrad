@@ -46,6 +46,29 @@ class _MatchEdgesKey:
         return self.hash
 
 
+class _ValueKey:
+    """Sum-merge key by VALUE: hash/eq delegate to the tensor's mod-P
+    fingerprint (tensorgrad/fingerprint.py), so the term Counter accumulates
+    weights across value-equal terms regardless of structure. The
+    first-inserted key survives in the dict, so the first-seen term is the
+    representative of its value class. Only used under the sz_cancel knob —
+    value identity deliberately never feeds Tensor.__eq__/__hash__ (which
+    quotient outer edge names, so a name-sensitive fingerprint would break
+    the hash/eq contract, besides identifying float-different groupings)."""
+
+    __slots__ = ("fp", "value")
+
+    def __init__(self, fp: tuple, value: Any):
+        self.fp = fp
+        self.value = value
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, _ValueKey) and self.fp == other.fp
+
+    def __hash__(self) -> int:
+        return hash(self.fp)
+
+
 K = TypeVar("K")  # Key type
 V = TypeVar("V")  # Value type
 
