@@ -108,6 +108,8 @@ def _lang() -> dict[str, Any]:
     @function
     def Leaf(idx: i64Like) -> T: ...  # type: ignore[empty-body]
     @function
+    def BLeaf(idx: i64Like, batch_pos: i64Like) -> T: ...  # type: ignore[empty-body]
+    @function
     def Tr(x: T) -> T: ...  # type: ignore[empty-body]
     @function
     def Scale(num: i64Like, den: i64Like, x: T) -> T: ...  # type: ignore[empty-body]
@@ -115,6 +117,8 @@ def _lang() -> dict[str, Any]:
     def rows(x: T) -> i64: ...  # type: ignore[empty-body]
     @function
     def cols(x: T) -> i64: ...  # type: ignore[empty-body]
+    @function
+    def bat(x: T) -> i64: ...  # type: ignore[empty-body]
 
     @ruleset
     def rules(a: T, b: T, c: T, r: i64, k: i64, n: i64, p: i64, q: i64, s: i64, t: i64):  # type: ignore[no-untyped-def]
@@ -131,18 +135,28 @@ def _lang() -> dict[str, Any]:
         yield rule(eq(c).to(Scale(p, q, a)), eq(rows(a)).to(r), eq(cols(a)).to(n)).then(
             set_(rows(c)).to(r), set_(cols(c)).to(n)
         )
+        # ---- batch propagation: the batch of a product/sum is the larger
+        #      side (unbatched operands broadcast, encoded as bat = 1) ----
+        yield rule(eq(c).to(a @ b), eq(bat(a)).to(p), eq(bat(b)).to(i64(1))).then(set_(bat(c)).to(p))
+        yield rule(eq(c).to(a @ b), eq(bat(a)).to(i64(1)), eq(bat(b)).to(p)).then(set_(bat(c)).to(p))
+        yield rule(eq(c).to(a @ b), eq(bat(a)).to(p), eq(bat(b)).to(p)).then(set_(bat(c)).to(p))
+        yield rule(eq(c).to(a + b), eq(bat(a)).to(p)).then(set_(bat(c)).to(p))
+        yield rule(eq(c).to(Tr(a)), eq(bat(a)).to(p)).then(set_(bat(c)).to(p))
+        yield rule(eq(c).to(Scale(p, q, a)), eq(bat(a)).to(s)).then(set_(bat(c)).to(s))
         # ---- costs (mirror factor._program_score's flops + MEM model) ----
         yield rule(
-            eq(c).to(a @ b), eq(rows(a)).to(r), eq(cols(a)).to(k), eq(cols(b)).to(n)
-        ).then(set_cost(a @ b, r * k * n + MEM_WEIGHT * r * n))
-        yield rule(eq(c).to(a + b), eq(rows(a)).to(r), eq(cols(a)).to(n)).then(
-            set_cost(a + b, (2 + MEM_WEIGHT) * r * n)
-        )
-        yield rule(eq(c).to(Scale(p, q, a)), eq(rows(a)).to(r), eq(cols(a)).to(n)).then(
-            set_cost(Scale(p, q, a), (1 + MEM_WEIGHT) * r * n)
-        )
+            eq(c).to(a @ b), eq(rows(a)).to(r), eq(cols(a)).to(k), eq(cols(b)).to(n),
+            eq(bat(a @ b)).to(p),
+        ).then(set_cost(a @ b, p * (r * k * n + MEM_WEIGHT * r * n)))
+        yield rule(
+            eq(c).to(a + b), eq(rows(a)).to(r), eq(cols(a)).to(n), eq(bat(a + b)).to(p)
+        ).then(set_cost(a + b, p * (2 + MEM_WEIGHT) * r * n))
+        yield rule(
+            eq(c).to(Scale(p, q, a)), eq(rows(a)).to(r), eq(cols(a)).to(n), eq(bat(a)).to(s)
+        ).then(set_cost(Scale(p, q, a), s * (1 + MEM_WEIGHT) * r * n))
         yield rule(eq(c).to(Tr(a))).then(set_cost(Tr(a), 0))
         yield rule(eq(c).to(Leaf(p))).then(set_cost(Leaf(p), 0))
+        yield rule(eq(c).to(BLeaf(p, q))).then(set_cost(BLeaf(p, q), 0))
         # ---- matmul associativity (the adjoint valley) ----
         yield rewrite((a @ b) @ c).to(a @ (b @ c))
         yield rewrite(a @ (b @ c)).to((a @ b) @ c)
@@ -165,7 +179,7 @@ def _lang() -> dict[str, Any]:
         yield rewrite(Scale(p, q, a) + Scale(p, q, b)).to(Scale(p, q, a + b))
         yield rewrite(Tr(Scale(p, q, a))).to(Scale(p, q, Tr(a)))
 
-    _LANG.update(T=T, Leaf=Leaf, Tr=Tr, Scale=Scale, rows=rows, cols=cols, rules=rules)
+    _LANG.update(T=T, Leaf=Leaf, BLeaf=BLeaf, Tr=Tr, Scale=Scale, rows=rows, cols=cols, bat=bat, rules=rules)
     return _LANG
 
 
@@ -186,11 +200,17 @@ def _as_rational(w: Any) -> Optional[Fraction]:
 
 
 class _Encoder:
+    """IR -> egglog. Decode-side values carry role axes (batch, row, col)
+    into node.dims; leaves used with a batch role encode as BLeaf(idx,
+    batch_axis) — the same node under different views is legitimately a
+    different term. Tr is the (row, col) swap; batch is untouched by Tr."""
+
     def __init__(self, lang: dict[str, Any], dims: dict):
         self.lang = lang
         self.dims = dims
         self.leaves: list[Node] = []
         self.leaf_ids: dict[int, int] = {}
+        self.views: set[tuple[int, int]] = set()  # (leaf_idx, batch_pos or -1)
         self.memo: dict[int, Any] = {}
         self.composites = 0
 
@@ -201,93 +221,147 @@ class _Encoder:
             raise ValueError(f"dim {d} unresolved")
         return int(v)
 
-    def leaf(self, node: Node) -> Any:
+    def _leaf_idx(self, node: Node) -> int:
         i = self.leaf_ids.get(id(node))
         if i is None:
             i = len(self.leaves)
             self.leaves.append(node)
             self.leaf_ids[id(node)] = i
-        return self.lang["Leaf"](i)
+        return i
 
-    def leaf_shape(self, node: Node) -> tuple[int, int]:
-        """(rows, cols) in the MNF convention: order-2 = (d0, d1); order-1 =
-        column (d0, 1); order-0 = (1, 1); order>2 = (numel, 1) — such leaves
-        never enter matmuls (the recognizer rejects order>2 operands) but may
-        ride in Add chains, where only the element count matters."""
+    def leaf(self, node: Node, batch_axis: Optional[int] = None) -> Any:
+        i = self._leaf_idx(node)
+        if batch_axis is None:
+            self.views.add((i, -1))
+            return self.lang["Leaf"](i)
+        self.views.add((i, batch_axis))
+        return self.lang["BLeaf"](i, batch_axis)
+
+    def view_shape(self, node: Node, batch_pos: int) -> tuple[int, int, int]:
+        """(bat, rows, cols) for a leaf view. batch_pos = -1 means no batch
+        role: order-2 = (1, d0, d1); order-1 = column (1, d0, 1); order-0 =
+        (1, 1, 1); order>2 without a batch role = (1, numel, 1) (Add-only).
+        With a batch role, that axis is the batch and the remaining axes
+        (ascending) are (row, col)."""
         ds = [self._dim(d) for d in node.dims]
+        if batch_pos >= 0:
+            b = ds[batch_pos]
+            rest = [d for a, d in enumerate(ds) if a != batch_pos]
+            if len(rest) == 2:
+                return b, rest[0], rest[1]
+            if len(rest) == 1:
+                return b, rest[0], 1
+            return b, 1, 1
         if len(ds) == 2:
-            return ds[0], ds[1]
+            return 1, ds[0], ds[1]
         if len(ds) == 1:
-            return ds[0], 1
+            return 1, ds[0], 1
         if not ds:
-            return 1, 1
+            return 1, 1, 1
         n = 1
         for d in ds:
             n *= d
-        return n, 1
+        return 1, n, 1
 
     def encode(self, node: Node) -> Any:
-        """Egglog term for `node`, treating unrecognized structure as leaves.
-        Every RECOGNIZED composite increments self.composites (coverage)."""
+        return self._enc(node)[0]
+
+    def _enc(self, node: Node) -> tuple[Any, tuple]:
+        """(term, roles): roles = (batch_axis, row_axis, col_axis) into the
+        ORIGINAL node's axes for the tensor the term denotes. Leaves use the
+        canonical identity view; composites carry their true arrangement so
+        parents (and root restoration) never have to guess."""
         hit = self.memo.get(id(node))
         if hit is not None:
             return hit
-        term = self._encode_matmul(node) if isinstance(node, EinsumNode) else None
-        if term is None and isinstance(node, LinearNode):
-            term = self._encode_linear(node)
-        if term is None:
+        res = self._encode_matmul(node) if isinstance(node, EinsumNode) else None
+        if res is None and isinstance(node, LinearNode):
+            res = self._encode_linear(node)
+        if res is None:
             term = self.leaf(node)
+            if node.order == 2:
+                roles: tuple = (None, 0, 1)
+            elif node.order == 1:
+                roles = (None, 0, None)
+            else:
+                roles = (None, None, None)
+            res = (term, roles)
         else:
             self.composites += 1
-        self.memo[id(node)] = term
-        return term
+        self.memo[id(node)] = res
+        return res
+
+    # ---- einsum chains (batched or not) --------------------------------
 
     def _encode_matmul(self, n: EinsumNode) -> Optional[Any]:
         """Path-shaped einsums (n-ary chains included: lowering flattens
-        whole @-chains into ONE einsum) decompose into binary MNF hops; the
-        rules then own the reassociation. Anything non-path (stars, cycles,
-        hyperedge wires, diagonals, constraints) stays a leaf."""
+        whole @-chains into ONE einsum) decompose into binary MNF hops. At
+        most ONE wire may ride as a broadcast batch role: it must surface in
+        the output and every operand carrying it treats it as its batch
+        axis. Anything non-path (stars, cycles, extra hyperedge wires,
+        diagonals, constraints) stays a leaf."""
         if len(n.ops) < 2 or n.constraints:
             return None
         w = _as_rational(n.weight)
         if w is None:
             return None
-        for subs, op in zip(n.in_subs, n.ops):
-            if len(set(subs)) != len(subs) or len(subs) not in (1, 2):
-                return None
-        if len(set(n.out_subs)) != len(n.out_subs) or len(n.out_subs) > 2:
-            return None
-        # wire degrees over operands
         deg: dict[int, int] = {}
         for subs in n.in_subs:
+            if len(set(subs)) != len(subs):
+                return None  # diagonal
             for wr in subs:
                 deg[wr] = deg.get(wr, 0) + 1
-        if any(d > 2 for d in deg.values()):
-            return None  # hyperedge wire
         outw = set(n.out_subs)
+        if len(set(n.out_subs)) != len(n.out_subs):
+            return None
+        hyper = [wr for wr, d in deg.items() if d > 2]
+        wb: Optional[int] = None
+        if hyper:
+            if len(hyper) > 1 or hyper[0] not in outw:
+                return None
+            wb = hyper[0]
+        elif len(n.ops) == 2:
+            # a 2-operand einsum can carry a degree-2 batch wire (shared and
+            # surfacing): detect it so bmm-shaped einsums encode
+            shared_out = [wr for wr, d in deg.items() if d == 2 and wr in outw]
+            if len(shared_out) == 1:
+                wb = shared_out[0]
+            elif len(shared_out) > 1:
+                return None
+        # non-batch structure
+        def nb(subs: tuple) -> list:
+            return [wr for wr in subs if wr != wb]
+
+        for subs in n.in_subs:
+            if len(nb(subs)) > 2:
+                return None
+        free_out = [wr for wr in n.out_subs if wr != wb]
+        if len(free_out) > 2:
+            return None
         for wr, d in deg.items():
+            if wr == wb:
+                continue
             if (d == 1) != (wr in outw):
-                return None  # free wires must surface; shared wires must not
+                return None
         if any(wr not in deg for wr in outw):
             return None  # broadcast-only output wire
-        # operand adjacency via shared wires: must form one simple path
+        # operand adjacency via shared non-batch wires: one simple path
         m = len(n.ops)
         adj: dict[int, list[int]] = {i: [] for i in range(m)}
         holders: dict[int, list[int]] = {}
         for i, subs in enumerate(n.in_subs):
-            for wr in subs:
+            for wr in nb(subs):
                 holders.setdefault(wr, []).append(i)
         for wr, hs in holders.items():
             if len(hs) == 2:
                 a, b = hs
                 if a == b:
-                    return None  # self-contraction (trace)
+                    return None
                 adj[a].append(b)
                 adj[b].append(a)
         ends = [i for i in range(m) if len(adj[i]) == 1]
         if any(len(adj[i]) not in (1, 2) for i in range(m)) or len(ends) != 2:
-            return None  # not a single simple path
-        # walk the path from one end
+            return None
         order = [ends[0]]
         prev = -1
         while len(order) < m:
@@ -297,10 +371,10 @@ class _Encoder:
             prev = order[-1]
             order.append(nxt[0])
         if len(set(order)) != m:
-            return None  # cycle
-        # contracted wire per hop
+            return None
+
         def hop_wire(i: int, j: int) -> int:
-            (wr,) = set(n.in_subs[i]) & set(n.in_subs[j])
+            (wr,) = set(nb(n.in_subs[i])) & set(nb(n.in_subs[j]))
             return wr
 
         term = None
@@ -308,63 +382,95 @@ class _Encoder:
             i, j = order[pos], order[pos + 1]
             kw = hop_wire(i, j)
             if term is None:
-                left = self._oriented(n.ops[i], n.in_subs[i], kw, want_role_first=True)
+                left = self._oriented(n.ops[i], n.in_subs[i], kw, wb, role_first=True)
                 if left is None:
                     return None
                 term = left
-            right = self._oriented(n.ops[j], n.in_subs[j], kw, want_role_first=False)
+            right = self._oriented(n.ops[j], n.in_subs[j], kw, wb, role_first=False)
             if right is None:
                 return None
             term = term @ right
-        # output order: MNF yields (first end's free wire, last end's free wire)
-        free_first = [wr for wr in n.in_subs[order[0]] if deg[wr] == 1]
-        free_last = [wr for wr in n.in_subs[order[-1]] if deg[wr] == 1]
+        free_first = [wr for wr in nb(n.in_subs[order[0]]) if deg[wr] == 1]
+        free_last = [wr for wr in nb(n.in_subs[order[-1]]) if deg[wr] == 1]
         mnf_out = free_first + free_last
-        out = list(n.out_subs)
-        if out != mnf_out:
-            if len(out) == 2 and out == list(reversed(mnf_out)):
+        if free_out != mnf_out:
+            if len(free_out) == 2 and free_out == list(reversed(mnf_out)):
                 term = self.lang["Tr"](term)
+                mnf_out = free_out
             else:
                 return None
         if w != 1:
             term = self.lang["Scale"](w.numerator, w.denominator, term)
-        return term
+        # roles into n's own output axes
+        out_list = list(n.out_subs)
+        b_ax = out_list.index(wb) if wb is not None and wb in out_list else None
+        r_ax = out_list.index(mnf_out[0]) if len(mnf_out) >= 1 else None
+        c_ax = out_list.index(mnf_out[1]) if len(mnf_out) >= 2 else None
+        return term, (b_ax, r_ax, c_ax)
 
-    def _oriented(self, op: Node, subs: tuple, kw: int, want_role_first: bool) -> Optional[Any]:
-        """Encode operand `op` oriented for MNF: left operands want (row, k),
-        right operands want (k, col). A leaf in the wrong axis order is
-        wrapped in Tr (free); vectors orient by construction."""
-        t = self.encode(op)
-        if len(subs) == 1:
-            # pure-k vector: row vector on the left (Tr of the canonical
-            # column), plain column on the right
-            return self.lang["Tr"](t) if want_role_first else t
-        k_pos = subs.index(kw)
-        good = (k_pos == 1) if want_role_first else (k_pos == 0)
+    def _oriented(self, op: Node, subs: tuple, kw: int, wb: Optional[int], role_first: bool) -> Optional[Any]:
+        """Operand oriented for MNF: left operands want (row, k), right want
+        (k, col); the batch axis (if the operand carries wb) rides outside
+        the orientation. Batched operands take a leaf VIEW (BLeaf); plain
+        operands encode recursively, and the child's own role arrangement is
+        consulted — a composite whose term is role-swapped relative to its
+        node axes orients through its roles, never through axis positions."""
+        if wb is not None and wb in subs:
+            batch_axis = subs.index(wb)
+            t = self.leaf(op, batch_axis)
+            rest = [a for a in range(len(subs)) if a != batch_axis]
+            roles = (batch_axis, rest[0] if rest else None, rest[1] if len(rest) > 1 else None)
+        else:
+            t, roles = self._enc(op)
+        nbsubs = [wr for wr in subs if wr != wb]
+        if len(nbsubs) == 1:
+            return self.lang["Tr"](t) if role_first else t
+        # which of the operand's axes carries the contraction wire?
+        k_axis = subs.index(kw)
+        if roles[1] == k_axis:
+            k_role_is_row = True
+        elif roles[2] == k_axis:
+            k_role_is_row = False
+        else:
+            return None  # k rides on the batch axis: not a contraction
+        # left wants k in the col role; right wants k in the row role
+        good = (not k_role_is_row) if role_first else k_role_is_row
         return t if good else self.lang["Tr"](t)
 
-    def _encode_linear(self, n: LinearNode) -> Optional[Any]:
+    # ---- linear combinations -------------------------------------------
+
+    def _encode_linear(self, n: LinearNode) -> Optional[tuple[Any, tuple]]:
         idperm = tuple(range(len(n.dims)))
         term_out = None
+        out_roles: Optional[tuple] = None
         for t, pm, w in zip(n.terms, n.perms, n.weights):
             wr = _as_rational(w)
             if wr is None:
                 return None
-            enc = self.encode(t)
+            enc, roles = self._enc(t)
             if tuple(pm) == (1, 0):
-                enc = self.lang["Tr"](enc)  # transposed term: free bookkeeping
+                enc = self.lang["Tr"](enc)
+                roles = (roles[0], roles[2], roles[1])
             elif tuple(pm) != idperm:
                 return None
             if wr != 1:
                 enc = self.lang["Scale"](wr.numerator, wr.denominator, enc)
-            term_out = enc if term_out is None else term_out + enc
-        return term_out
-
+            if term_out is None:
+                term_out = enc
+                # the linear's output axis j is the base term's axis pm[j];
+                # with identity/Tr-normalized perms that is axis j, so the
+                # base roles ARE the linear's roles
+                out_roles = roles
+            else:
+                term_out = term_out + enc
+        if term_out is None or out_roles is None:
+            return None
+        return term_out, out_roles
 
 # --------------------------------------------------------------------------
-# Decode: extracted egglog term -> IR nodes via the Builder (inheriting its
-# smart-constructor algebra). Values are (node, axes) with axes = (row_axis,
-# col_axis) into node.dims, None for absent roles.
+# Decode: extracted term -> IR through the Builder. Values are
+# (node, roles, scale) with roles = (batch_axis, row_axis, col_axis) into
+# node.dims (None = absent role) and a pending rational scale.
 # --------------------------------------------------------------------------
 
 
@@ -373,38 +479,37 @@ class _Decoder:
         self.b = builder
         self.leaves = leaves
 
-    def decode(self, expr: Any) -> tuple[Node, tuple, Fraction]:
-        """Returns (node, axes, scale): the IR node, the MNF role->axis map,
-        and a pending rational scale (folded into the enclosing einsum or
-        linear rather than materialized)."""
-        from egglog import expr_parts
-
-        return self._walk(expr_parts(expr).expr)
-
     def _name(self, call: Any) -> str:
         c = call.callable
         n = getattr(c, "method_name", None) or getattr(getattr(c, "ident", None), "name", None)
-        if n is None:
-            n = str(c)
-        return n
+        return n if n is not None else str(c)
 
     def _walk(self, call: Any) -> tuple[Node, tuple, Fraction]:
         name = self._name(call)
         args = call.args
         if name == "Leaf":
             node = self.leaves[args[0].expr.value]
-            axes = (0, 1) if node.order == 2 else ((0, None) if node.order == 1 else (None, None))
-            if node.order > 2:
-                axes = (None, None)  # rides in Adds only; roles unused
-            return node, axes, Fraction(1)
+            if node.order == 2:
+                roles = (None, 0, 1)
+            elif node.order == 1:
+                roles = (None, 0, None)
+            else:
+                roles = (None, None, None)
+            return node, roles, Fraction(1)
+        if name == "BLeaf":
+            node = self.leaves[args[0].expr.value]
+            bp = args[1].expr.value
+            rest = [a for a in range(node.order) if a != bp]
+            roles = (bp, rest[0] if rest else None, rest[1] if len(rest) > 1 else None)
+            return node, roles, Fraction(1)
         if name == "Tr":
-            node, axes, s = self._walk(args[0].expr)
-            return node, (axes[1], axes[0]), s
+            node, roles, s = self._walk(args[0].expr)
+            return node, (roles[0], roles[2], roles[1]), s
         if name == "Scale":
-            p = args[0].expr.value
-            q = args[1].expr.value
-            node, axes, s = self._walk(args[2].expr)
-            return node, axes, s * Fraction(p, q)
+            pv = args[0].expr.value
+            qv = args[1].expr.value
+            node, roles, s = self._walk(args[2].expr)
+            return node, roles, s * Fraction(pv, qv)
         if name == "__matmul__":
             return self._matmul(args[0].expr, args[1].expr)
         if name == "__add__":
@@ -412,43 +517,65 @@ class _Decoder:
         raise ValueError(f"egraph decode: unknown constructor {name}")
 
     def _matmul(self, ca: Any, cb: Any) -> tuple[Node, tuple, Fraction]:
-        A, aax, sa = self._walk(ca)
-        B, bax, sb = self._walk(cb)
-        ra, ka = aax  # row role axis, contract role axis (A's col IS k)
-        kb, cbx = bax
-        if ka is None or kb is None:
+        A, ra_, sa = self._walk(ca)
+        B, rb_, sb = self._walk(cb)
+        ab, ar, ak = ra_  # A roles: batch, row, k(=A's col)
+        bb, bk, bc = rb_  # B roles: batch, k(=B's row), col
+        if ak is None or bk is None:
             raise ValueError("matmul on scalar-role operand")
-        wires_a: list[Optional[int]] = [None] * A.order
-        wires_b: list[Optional[int]] = [None] * B.order
-        wires_a[ka] = 1
-        wires_b[kb] = 1
+        # wires: batch=3, row=0, k=1, col=2
+        wa: list = [None] * A.order
+        wb_: list = [None] * B.order
+        wa[ak] = 1
+        wb_[bk] = 1
+        if ar is not None:
+            wa[ar] = 0
+        if ab is not None:
+            wa[ab] = 3
+        if bc is not None:
+            wb_[bc] = 2
+        if bb is not None:
+            wb_[bb] = 3
         out_subs = []
-        out_axes: list[Optional[int]] = [None, None]
-        if ra is not None:
-            wires_a[ra] = 0
+        if ab is not None or bb is not None:
+            out_subs.append(3)
+        if ar is not None:
             out_subs.append(0)
-        if cbx is not None:
-            wires_b[cbx] = 2
+        if bc is not None:
             out_subs.append(2)
-        wire_dims = {1: A.dims[ka]}
-        if ra is not None:
-            wire_dims[0] = A.dims[ra]
-        if cbx is not None:
-            wire_dims[2] = B.dims[cbx]
+        wire_dims = {1: A.dims[ak]}
+        if ar is not None:
+            wire_dims[0] = A.dims[ar]
+        if bc is not None:
+            wire_dims[2] = B.dims[bc]
+        if ab is not None:
+            wire_dims[3] = A.dims[ab]
+        elif bb is not None:
+            wire_dims[3] = B.dims[bb]
         node = self.b.einsum(
             [A, B],
-            [tuple(w for w in wires_a if w is not None), tuple(w for w in wires_b if w is not None)],
+            [tuple(w for w in wa if w is not None), tuple(w for w in wb_ if w is not None)],
             tuple(out_subs),
             wire_dims,
             sympy.Rational((sa * sb).numerator, (sa * sb).denominator),
         )
-        n_out = len(out_subs)
-        axes = (0, 1) if n_out == 2 else ((0, None) if ra is not None else (None, 0) if cbx is not None else (None, None))
-        return node, axes, Fraction(1)
+        # result axes: canonical output order is (batch?, row?, col?)
+        pos = 0
+        roles: list = [None, None, None]
+        if 3 in out_subs:
+            roles[0] = pos
+            pos += 1
+        if 0 in out_subs:
+            roles[1] = pos
+            pos += 1
+        if 2 in out_subs:
+            roles[2] = pos
+        return node, tuple(roles), Fraction(1)
 
     def _add(self, call: Any) -> tuple[Node, tuple, Fraction]:
-        """Flatten the whole +-chain and rebuild ONE n-ary LinearNode (the
-        IR-canonical form, avoiding the binary-chain cost skew)."""
+        """Flatten the +-chain and rebuild ONE n-ary LinearNode; per-term
+        perms map through the ROLE correspondence, so transposed or
+        batch-permuted twins combine without materialized views."""
         terms: list[tuple[Node, tuple, Fraction]] = []
 
         def flat(c: Any) -> None:
@@ -457,39 +584,31 @@ class _Decoder:
                 flat(c.args[1].expr)
             else:
                 terms.append(self._walk(c))
+
         flat(call)
-        base_node, base_axes, _ = terms[0]
-        base_order = base_node.order
-        base_roles = [a for a in base_axes if a is not None]
+        base_node, base_roles, _ = terms[0]
+        order = base_node.order
+        # output axis j corresponds to the role that the BASE term carries on
+        # its j-th axis (base perm = identity)
+        role_of_axis = {a: r for r, a in enumerate(base_roles) if a is not None}
+        if len(role_of_axis) != order:
+            raise ValueError("add with unassigned axes")
+        out_role_seq = [role_of_axis[a] for a in range(order)]
         nodes, perms, weights = [], [], []
-        for node, axes, s in terms:
-            if node.order != base_order:
+        for node, roles, s in terms:
+            if node.order != order:
                 raise ValueError("add of mismatched orders")
-            # perm[j] = term axis providing output axis j; output axis order
-            # follows the FIRST term's own axis order.
-            if base_order == 2:
-                # base output axes in base's natural order; map through roles
-                role_of_base = {base_axes[0]: 0, base_axes[1]: 1}  # axis -> role
-                pm = [0, 1]
-                for out_pos, base_axis in enumerate(sorted(role_of_base)):
-                    role = role_of_base[base_axis]
-                    pm[out_pos] = axes[role] if axes[role] is not None else out_pos
-                perms.append(tuple(pm))
-            else:
-                perms.append(tuple(range(base_order)))
+            pm = []
+            for role in out_role_seq:
+                ax = roles[role]
+                if ax is None:
+                    raise ValueError("add of mismatched roles")
+                pm.append(ax)
             nodes.append(node)
+            perms.append(tuple(pm))
             weights.append(sympy.Rational(s.numerator, s.denominator))
         out = self.b.linear(nodes, perms, weights)
-        # output axes follow the base term's natural (sorted-axis) order
-        if base_order == 2:
-            first, second = sorted([base_axes[0], base_axes[1]])
-            role_first = 0 if base_axes[0] == first else 1
-            axes = (0, 1) if role_first == 0 else (1, 0)
-        elif base_order == 1:
-            axes = ((0, None) if base_axes[0] is not None else (None, 0))
-        else:
-            axes = (None, None)
-        return out, axes, Fraction(1)
+        return out, base_roles, Fraction(1)
 
 
 # --------------------------------------------------------------------------
@@ -500,42 +619,41 @@ class _Decoder:
 def _saturate_extract(builder: Builder, outputs: list, dims: dict) -> Optional[list]:
     """Encode -> saturate -> extract -> decode. Returns None for 'no change'
     (nothing recognized, caps hit, or extraction reproduced the input)."""
-    from egglog import EGraph, set_cost as _set_cost  # noqa: F401
+    from egglog import EGraph, i64, set_
 
     lang = _lang()
     enc = _Encoder(lang, dims)
-    roots = []
-    for node, order in outputs:
-        roots.append(enc.encode(node))
+    encoded = [enc._enc(node) for node, order in outputs]
+    roots = [t for t, _ in encoded]
+    expected_roles = [r for _, r in encoded]
     if enc.composites == 0 or enc.composites > MAX_ENCODED:
         return None
 
     egraph = EGraph()
     let_roots = [egraph.let(f"r{i}", t) for i, t in enumerate(roots)]
-    # seed leaf shapes and zero leaf costs
-    from egglog import set_, i64  # noqa: F401
-
-    for i, node in enumerate(enc.leaves):
-        r, c = enc.leaf_shape(node)
-        leaf = lang["Leaf"](i)
-        egraph.register(set_(lang["rows"](leaf)).to(i64(r)))
-        egraph.register(set_(lang["cols"](leaf)).to(i64(c)))
+    for i, bp in sorted(enc.views):
+        node = enc.leaves[i]
+        b_, r_, c_ = enc.view_shape(node, bp)
+        leaf = lang["Leaf"](i) if bp < 0 else lang["BLeaf"](i, bp)
+        egraph.register(set_(lang["rows"](leaf)).to(i64(r_)))
+        egraph.register(set_(lang["cols"](leaf)).to(i64(c_)))
+        egraph.register(set_(lang["bat"](leaf)).to(i64(b_)))
     egraph.run(lang["rules"].saturate())
 
     dec = _Decoder(builder, enc.leaves)
     new_outputs = []
     changed = False
-    for (node, order), lroot in zip(outputs, let_roots):
+    for (node, order), lroot, want in zip(outputs, let_roots, expected_roles):
         best = egraph.extract(lroot)
-        out_node, axes, scale = dec._walk(_expr_decl(best))
+        out_node, roles, scale = dec._walk(_expr_decl(best))
+        out_node = _restore_axis_order(builder, out_node, roles, want)
+        if out_node is None or tuple(out_node.dims) != tuple(node.dims):
+            return None  # decode must reproduce dims exactly
         if scale != 1:
             out_node = builder.linear(
                 [out_node], [tuple(range(out_node.order))],
                 [sympy.Rational(scale.numerator, scale.denominator)],
             )
-        out_node = _restore_axis_order(builder, out_node, axes, node)
-        if tuple(out_node.dims) != tuple(node.dims):
-            return None  # decode must reproduce dims exactly
         changed |= out_node is not node
         new_outputs.append((out_node, order))
     return new_outputs if changed else None
@@ -547,15 +665,34 @@ def _expr_decl(expr: Any) -> Any:
     return expr_parts(expr).expr
 
 
-def _restore_axis_order(builder: Builder, node: Node, axes: tuple, original: Node) -> Node:
-    """The decoded node's axis order may be role-permuted relative to the
-    original root; restore with a free view einsum when needed."""
-    if node.order != original.order or node.order != 2:
+def _restore_axis_order(builder: Builder, node: Node, roles: tuple, want: tuple) -> Optional[Node]:
+    """Permute the decoded node so each ROLE lands on the axis the original
+    root carried it on (`want`, recorded by the encoder). Exact by
+    construction — no dims-based guessing, so repeated sizes (square
+    matrices) can never silently accept a transposed arrangement."""
+    def canon(t: tuple) -> tuple:
+        # with a single non-batch role, row vs col is pure matrix-space
+        # bookkeeping over the SAME node axis: normalize it to the row slot
+        if (t[1] is None) != (t[2] is None):
+            return (t[0], t[1] if t[1] is not None else t[2], None)
+        return t
+
+    roles = canon(roles)
+    want = canon(want)
+    present = [i for i in range(3) if want[i] is not None]
+    if [i for i in range(3) if roles[i] is not None] != present:
+        return None
+    order = len(present)
+    if node.order != order:
+        return None
+    perm = [0] * order  # perm[j] = decoded axis providing original axis j
+    for i in present:
+        perm[want[i]] = roles[i]
+    if perm == list(range(order)):
         return node
-    if tuple(node.dims) == tuple(original.dims) and axes == (0, 1):
-        return node
-    if axes == (1, 0):
-        return builder.einsum(
-            [node], [(1, 0)], (0, 1), {0: node.dims[1], 1: node.dims[0]}
-        )
-    return node
+    return builder.einsum(
+        [node],
+        [tuple(perm.index(a) for a in range(order))],
+        tuple(range(order)),
+        {j: node.dims[perm[j]] for j in range(order)},
+    )

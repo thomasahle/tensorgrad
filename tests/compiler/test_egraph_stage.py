@@ -152,3 +152,54 @@ def test_compiled_end_to_end_matches():
         out_on.rename(None), out_off.align_to(*out_on.names).rename(None),
         rtol=1e-12, atol=1e-12,
     )
+
+
+def test_batched_chain_reassociates():
+    """The batch role (BMM normal form): a batched Jacobian chain applied to
+    a batched vector must reassociate to reverse-mode just like the
+    unbatched case — the fragment real programs live in."""
+    b, n = symbols("b n")
+    ms = [Variable(f"bm{i}", **{"b": b, f"a{i}": n, f"a{i+1}": n}) for i in range(5)]
+    g = Variable("bg", b=b, a5=n)
+    expr = ms[0]
+    for i in range(1, 5):
+        expr = F.dot(expr, ms[i], dim=f"a{i}")
+    expr = F.dot(expr, g, dim="a5")
+    bld, outs = lower_program([expr.full_simplify()])
+    dims = {b: 4, n: 24}
+    before = _flops(outs, dims)
+    rewritten = eg.egraph_outputs(bld, outs, dims)
+    assert rewritten is not outs, "stage did not fire on a batched chain"
+    assert szfp.outputs_equal(outs, rewritten)
+    after = _flops(rewritten, dims)
+    assert after < before / 3, f"no batched reverse-mode collapse: {before} -> {after}"
+
+
+def test_batched_fuzz_exact():
+    """Random batched/unbatched mixed chains: exactness everywhere the
+    stage fires, healthy fire rate."""
+    rng = random.Random(7)
+    bsym, n, m = symbols("B n m")
+    sizes = {bsym: 3, n: 5, m: 4}
+    syms = [n, m]
+    names = iter(f"bv{i}" for i in range(10_000))
+    fired = 0
+    for trial in range(20):
+        hops = rng.randrange(2, 5)
+        seq = [rng.choice(syms) for _ in range(hops + 1)]
+        expr = None
+        for i in range(hops):
+            edges = {f"h{i}": seq[i], f"h{i+1}": seq[i + 1]}
+            if rng.random() < 0.5:
+                edges["b"] = bsym  # this hop is batched
+            w = Variable(next(names), **edges)
+            if rng.random() < 0.25:
+                w = w * rng.choice([2, -1])
+            expr = w if expr is None else F.dot(expr, w, dim=f"h{i}")
+        bld, outs = lower_program([expr.full_simplify()])
+        rewritten = eg.egraph_outputs(bld, outs, dict(sizes))
+        if rewritten is not outs:
+            fired += 1
+            assert szfp.outputs_equal(outs, rewritten), f"trial {trial} value break"
+            assert tuple(rewritten[0][0].dims) == tuple(outs[0][0].dims)
+    assert fired >= 4, f"stage fired on only {fired}/20 batched fuzz programs"
