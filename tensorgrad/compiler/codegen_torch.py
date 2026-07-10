@@ -291,6 +291,33 @@ class TorchCodegen:
         outputs = linalg_peepholes(self.builder, outputs)
         outputs = consolidate_outputs(self.builder, outputs)
 
+        # Strip pure permutation-view roots (consolidate's output-order
+        # restorers): their rho composes into the return permute below, so
+        # every planner and matcher sees clean roots instead of having to
+        # special-case another pass's artifact shape (task #67 — this is
+        # what let _match_sdpa's alias-hop be deleted). Machine behavior is
+        # identical: the view einsum was emitted as the same free permute.
+        out_rho: dict[int, tuple] = {}
+        stripped = []
+        for node, o_ in outputs:
+            if (
+                isinstance(node, EinsumNode)
+                and len(node.ops) == 1
+                and not node.constraints
+                and node.weight == 1
+                and len(node.out_subs) == len(node.in_subs[0])
+                and len(set(node.in_subs[0])) == len(node.in_subs[0])
+                and set(node.out_subs) == set(node.in_subs[0])
+            ):
+                inner = node.ops[0]
+                subs = list(node.in_subs[0])
+                rho = tuple(subs.index(w) for w in node.out_subs)
+                out_rho[len(stripped)] = rho
+                stripped.append((inner, o_))
+            else:
+                stripped.append((node, o_))
+        outputs = stripped
+
         order = toposort([node for node, _ in outputs])
         output_ids = {id(node) for node, _ in outputs}
         # Global layout assignment: physical axis order per node ({} = logical
@@ -423,13 +450,14 @@ class TorchCodegen:
         # Scalars must come back as tensors for a consistent API. Outputs are
         # returned in logical (edge) order: un-permute assigned layouts.
         rets = []
-        for node, _ in outputs:
+        for pos, (node, _) in enumerate(outputs):
             n = names[id(node)]
             if node.order == 0:
                 rets.append(f"torch.as_tensor({n}, dtype={self._dtype_str})")
             else:
                 phys = self._phys_of(node)
-                inv = tuple(phys.index(j) for j in range(node.order))
+                rho = out_rho.get(pos, tuple(range(node.order)))
+                inv = tuple(phys.index(rho[j]) for j in range(node.order))
                 rets.append(self._perm_str(n, inv))
 
         # Dead-const elimination: build only constants whose alias name is
@@ -1921,27 +1949,12 @@ class TorchCodegen:
         if len(set(e2.out_subs)) != len(e2.out_subs):
             return None
         for i, op in enumerate(e2.ops):
-            S, alias = op, None
+            # (No alias-hopping here: consolidate folds permutations into
+            # interior consumers, and specialize strips its output-view
+            # roots before planning — task #67 — so a pure permutation
+            # einsum between the softmax and e2 no longer exists to hop.)
+            S = op
             att_subs = list(e2.in_subs[i])
-            if (
-                isinstance(S, EinsumNode)
-                and len(S.ops) == 1
-                and not S.constraints
-                and S.weight == 1
-                and len(S.out_subs) == len(S.in_subs[0])
-                and len(set(S.in_subs[0])) == len(S.in_subs[0])
-                and set(S.out_subs) == set(S.in_subs[0])
-                and isinstance(S.ops[0], ReduceNode)
-            ):
-                # Pure permutation alias between the softmax and e2: hop
-                # through it, composing its permutation into the att-axis
-                # bookkeeping (softmax axis j sits on alias wire
-                # in_subs[0][j], i.e. alias output axis out_subs.index(...),
-                # i.e. that axis's e2 wire).
-                alias, S = S, S.ops[0]
-                att_subs = [
-                    e2.in_subs[i][alias.out_subs.index(w)] for w in alias.in_subs[0]
-                ]
             if not (isinstance(S, ReduceNode) and S.op == "softmax" and len(S.axes) == 1):
                 continue
             if len(set(att_subs)) != len(att_subs):
@@ -2093,7 +2106,7 @@ class TorchCodegen:
             # first shared node keeps being emitted for its other consumers
             # and the SDPA call recomputes that stage internally.
             suppress: set[int] = set()
-            for nid in ([id(alias)] if alias is not None else []) + [id(S)] + chain_ids + [id(e1)]:
+            for nid in [id(S)] + chain_ids + [id(e1)]:
                 if consumers.get(nid) != 1 or nid in output_ids:
                     break
                 suppress.add(nid)
