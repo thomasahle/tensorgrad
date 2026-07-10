@@ -140,6 +140,11 @@ class CompiledProgram:
         # Last-call fast path (see __call__): (shapes-dict ref, shapes copy,
         # per-var (var, names, shape, dtype, unnamed), specialized fn).
         self._call_plan: Optional[tuple] = None
+        # Identity map from last call's named output views to their unnamed
+        # bases (#65a): round-tripped state tensors skip aten::rename. Holds
+        # (view, base) pairs — strong refs pin the views' ids; lookups verify
+        # `is` identity so id reuse can never alias.
+        self._last_out_map: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
         for (node, edge_order), declared in zip(self.outputs, self._declared_edges):
             tie_orders = {tuple(v.edges) for v in self.vars if set(edge_order) == set(v.edges)}
             if tuple(edge_order) not in tie_orders and len(tie_orders) == 1:
@@ -248,6 +253,13 @@ class CompiledProgram:
         plan = self._call_plan
         # (contents comparison, not identity: the caller may mutate its dict)
         if plan is not None and plan[1] == shapes:
+            # Identity-cached views (#65a): a training loop feeds our own
+            # last outputs straight back as the next state. The strong-ref
+            # map from each named output view to its unnamed base (strong
+            # refs also pin ids, so no id-reuse aliasing) lets round-tripped
+            # tensors skip aten::rename — measured ~0.5us x ~40 renames plus
+            # the alias churn per step on the sub-ms rows.
+            out_map = self._last_out_map
             args = []
             ok = True
             for var, want_names, want_shape, want_dtype, unnamed in plan[2]:
@@ -260,15 +272,29 @@ class CompiledProgram:
                 ):
                     ok = False
                     break
-                args.append(t if unnamed else t.rename(None))
+                if unnamed:
+                    args.append(t)
+                else:
+                    hit = out_map.get(id(t))
+                    if hit is not None and hit[0] is t:
+                        args.append(hit[1])
+                    else:
+                        args.append(t.rename(None))
             if ok:
                 with torch.no_grad():
                     outs = plan[3](*args)
                 wrapped = []
+                new_map: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
                 for out, (perm, names_t) in zip(outs, self._wrap_plans):
-                    if perm is not None:
-                        out = out.permute(perm)
-                    wrapped.append(out.refine_names(*names_t))
+                    base = out if perm is None else out.permute(perm)
+                    w = base.refine_names(*names_t)
+                    # Key by id but STORE the view too: the `is` check at
+                    # lookup makes id reuse (a dropped output's id recycled
+                    # by an unrelated tensor) impossible to confuse — the
+                    # bug class shows up as wrong-shape einsum errors.
+                    new_map[id(w)] = (w, base)
+                    wrapped.append(w)
+                self._last_out_map = new_map
                 return wrapped[0] if len(wrapped) == 1 else tuple(wrapped)
 
         dims = self._resolve_dims(values, shapes)
