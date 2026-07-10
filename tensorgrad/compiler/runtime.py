@@ -73,6 +73,15 @@ class CompiledProgram:
             # the reverse sweep differentiates THROUGH the fused cells' VJPs.
             # Value-gated with fallback; see compiler/fold.py.
             originals = tensors
+            # Zero-gradient pruning FIRST, on the pristine trees: gradients
+            # that are provably zero by symmetry (szfp-certified on the
+            # unfolded algebra — fused cells are opaque atoms) compile to
+            # Zero, deleting their whole cotangent chains. Must precede
+            # folding for provability; see compiler/zerograd.py.
+            from tensorgrad.compiler.zerograd import prune_zero_gradients
+
+            tensors = prune_zero_gradients(tensors)
+            originals = tensors
             if fold:
                 from tensorgrad.compiler.fold import fold_program
 
