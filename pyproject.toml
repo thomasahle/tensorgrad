@@ -11,7 +11,8 @@ dependencies = [
    "torch",
    "sympy",
    "opt_einsum",
-   "pdf2image",  # diagram rendering (tensorgrad.imgtools); needs system poppler
+   "pdf2image", # diagram rendering (tensorgrad.imgtools); needs system poppler
+   "egglog>=11.4.0",
 ]
 requires-python = ">=3.10"
 authors = [
