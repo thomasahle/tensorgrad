@@ -43,6 +43,7 @@ from tensorgrad.compiler.cells import CELLS
 from tensorgrad.compiler.peepholes import linalg_peepholes
 from tensorgrad.compiler.consolidate import consolidate_outputs
 from tensorgrad.compiler.factor import factor_outputs
+from tensorgrad.compiler.egraph import egraph_outputs
 from tensorgrad.compiler.gather import form_gathers
 from tensorgrad.compiler.gemm_batch import batch_shared_gemms
 from tensorgrad.compiler.layout import assign_layouts, matmul_groups
@@ -253,6 +254,11 @@ class TorchCodegen:
         # unchanged. Not szfp-gated: forming a GatherNode changes the atom
         # vocabulary (the documented false-negative class).
         outputs = form_gathers(self.builder, self.outputs)
+        # Equality-saturation stage (compiler/egraph.py, EGRAPH-flagged,
+        # szfp-gated internally): when enabled it takes over the SEARCH the
+        # factoring pass performs greedily; the classical passes below remain
+        # as the safety net and for what the e-graph vocabulary doesn't cover.
+        outputs = egraph_outputs(self.builder, outputs, dims)
         # Factoring pass: per-shape rewrite of the DAG (un-distribution /
         # distribution / delta absorption) before any emission planning.
         outputs = gated("factor", outputs, factor_outputs(self.builder, outputs, dims))
