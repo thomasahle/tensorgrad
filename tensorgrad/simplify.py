@@ -226,6 +226,7 @@ def _delta_pair_step(tensors: list[Tensor]) -> tuple[list[Tensor], bool]:
             merge_copy_tensors,
             remove_identity_matrix,
             apply_variable_equation,
+            sum_one_hot,
         ]:
             if (new := simplification(t1, t2, e)) is not None:
                 return other + new, False
@@ -278,6 +279,31 @@ def remove_identity_matrix(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tens
         if other_edge not in t2.edges:
             return [t2.rename(**{e: other_edge})]
     return None
+
+
+def sum_one_hot(t1: Tensor, t2: Tensor, e: str) -> Optional[list[Tensor]]:
+    """Partition of unity for the gather primitive (#42): contracting a
+    one_hot's class edge with a ones vector sums the indicator over all
+    classes — 1 wherever idx holds a valid class id, the precondition the
+    gather/scatter lowering already relies on (index_select traps on
+    out-of-range data). This is what makes cross-entropy gradients of
+    IN-PROGRAM one_hot targets target-free (grad = softmax - y needs
+    sum_v y[b, v] = 1), the same elimination Variable.with_eq_constraint
+    provides for declared simplex variables. Shrinks: the pair becomes
+    order(one_hot) - 1 ones vectors."""
+    if not (isinstance(t1, Delta) and t1.order == 1):
+        t1, t2 = t2, t1
+    if not (isinstance(t1, Delta) and t1.order == 1):
+        return None
+    inner, outer = t2, {}
+    if isinstance(inner, Rename):
+        outer, inner = inner.mapping, inner.tensor
+    if not (isinstance(inner, Function) and inner.signature.name == "one_hot"):
+        return None
+    (cls,) = inner.shape_out
+    if outer.get(cls, cls) != e:
+        return None
+    return [Delta(s, f) for f, s in t2.shape.items() if f != e]
 
 
 _CVARS_ATTR = "_has_cvars_v1"
