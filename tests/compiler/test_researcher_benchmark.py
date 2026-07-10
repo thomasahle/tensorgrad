@@ -28,9 +28,9 @@ Tier 2 — the founding problem: the CE∘softmax Hessian wrt logits, batched.
                    targets, via Variable.with_eq_constraint), the compiled H has no
                    InputNode for y — with a *general* y the Hessian provably
                    retains the factor sum_v y[b,v]                      [passes]
-      HVP FAST     compiled HVP beats torch double-backward, B=64 V=256 [needs #17:
-                   today the HVP program materializes a (B,B,B,V,V,V) intermediate]
-      BLOCK-DIAG   HVP program has no batch x batch intermediate        [needs #17]
+      HVP FAST     compiled HVP beats torch double-backward, B=64 V=256
+                   [passes via nested grads + reverse-over-reverse, #49]
+      BLOCK-DIAG   HVP program has no batch x batch intermediate        [passes]
     Secondary: bare softmax 3-index Hessian H_ijk correctness           [passes]
 
 Every stage runs in a spawned subprocess with a HARD 120s timeout: a hang or an
@@ -419,10 +419,23 @@ def _stage_tier2_hessian_simplex():
 
 
 def _stage_tier2_hvp():
-    """Hessian-vector product: correctness, block-diagonal structure, speed."""
-    b, v, x, y, Hs = _ce_hessian()
+    """Hessian-vector product: correctness, block-diagonal structure, speed.
+
+    Built the way the torch reference computes it -- nested gradients,
+    grad of <grad(L), u> (reverse-over-reverse, task #49) -- NOT by
+    contracting the explicit Hessian, which materialized a 6-index
+    (B,B,B,V,V,V) intermediate and measured 50x slower even at tiny dims.
+    Structure is probed on the eager build (intermediates visible; the
+    Inductor build fuses everything into one opaque region); the perf gate
+    times the Inductor tier -- the shipped fast configuration -- against
+    eager double-backward, which is torch's best (torch.compile cannot
+    trace create_graph autograd)."""
+    b, v = symbols("b v")
+    x, y = Variable("x", b, v), Variable("y", b, v)
+    s_ = primitive_softmax(x, "v")
+    L = -F.sum(y * F.log(s_)) / Delta(b)  # mean over the batch
     u = Variable("u", b, v)
-    hvp = F.sum(Hs * u.rename(b="b2", v="v2"), dim=("b2", "v2")).simplify()
+    hvp = F.sum(L.grad(x) * u).grad(x)
     fn = compile_to_callable(hvp)
 
     def vals(B, V, dtype=torch.float32):
@@ -455,15 +468,17 @@ def _stage_tier2_hvp():
         shp for shp in shapes if sum(1 for d in shp if d == B) >= 2
     )
     # An efficient HVP materializes only O(B*V) tensors. Refuse to time a
-    # program that scales worse (at B=64,V=256 the current 6-index intermediate
-    # would be (B*V)^3 ~ 4e12 elements).
+    # program that scales worse (the old Hessian-contraction form's 6-index
+    # intermediate would be (B*V)^3 ~ 4e12 elements at B=64,V=256).
     if max_numel > 8 * B * V:
         res["ratio"] = None
         return res
 
     B, V = 64, 256
     vv = vals(B, V)
-    t_ours = _median_ms(lambda: fn(vv, {b: B, v: V}))
+    fn_fast = compile_to_callable(hvp, torch_compile=True)
+    fn_fast(vv, {b: B, v: V})  # Inductor warmup outside the timed region
+    t_ours = _median_ms(lambda: fn_fast(vv, {b: B, v: V}))
     t_torch = _median_ms(lambda: torch_hvp(vv, B))
     res.update(ratio=t_ours / t_torch, ours_ms=t_ours, torch_ms=t_torch)
     return res
@@ -594,11 +609,6 @@ def test_tier2_ce_hvp_correct():
     assert res["correct"]
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="needs the IR factoring pass (#17): the HVP program materializes a "
-    "6-index (B,B,B,V,V,V) intermediate, so eye(B) blocks survive contraction",
-)
 def test_tier2_ce_hvp_block_diagonal():
     """H is block-diagonal over the batch: the compiled HVP program must not
     materialize any batch x batch tensor (not even an eye(B) helper)."""
@@ -609,12 +619,6 @@ def test_tier2_ce_hvp_block_diagonal():
     )
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="needs the IR factoring pass (#17): at (B=64, V=256) the current HVP "
-    "would materialize ~(B*V)^3 elements; measured 50x slower than torch "
-    "double-backward even at tiny dims",
-)
 def test_tier2_ce_hvp_perf_vs_double_backward():
     """Compiled HVP must beat torch double-backward at (B=64, V=256) on CPU."""
     res = _staged_cached("_stage_tier2_hvp")
