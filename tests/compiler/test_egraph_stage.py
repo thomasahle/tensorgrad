@@ -1,4 +1,13 @@
 """The equality-saturation stage (compiler/egraph.py, task #66): IR bridge,
+saturate-and-extract, szfp self-gate — including the two founding datapoints
+(formerly a separate probe file with its own toy Mat language, consolidated
+here onto the REAL vocabulary): the adjoint valley (chain reassociation
+greedy provably misses: <2% per step; the engine finds the exact optimum)
+and the residual diamond (fully-expanded (I+J)^d @ g collapses back to the
+Horner recursion; the naive ruleset with free add-commutativity measured
+>5min at D=4 — rules stay factoring-directed, the design law).
+
+Original header:
 saturate-and-extract, szfp self-gate. EGRAPH is default-off; these tests
 force it on and pin (a) the stage rewrites what it recognizes (the adjoint
 valley on real IR), (b) factoring-directed collapse fires, (c) unrecognized
@@ -203,3 +212,54 @@ def test_batched_fuzz_exact():
             assert szfp.outputs_equal(outs, rewritten), f"trial {trial} value break"
             assert tuple(rewritten[0][0].dims) == tuple(outs[0][0].dims)
     assert fired >= 4, f"stage fired on only {fired}/20 batched fuzz programs"
+
+
+def test_expanded_residual_diamond_collapses_on_real_ir():
+    """The factoring money-shot on genuine IR: the fully EXPANDED residual
+    Jacobian sum (2^D chain terms) must collapse toward the Horner-form
+    recursion — measured 78592 -> 1536 flops (51x) at D=3, N=16, mod-P
+    exact. This is the search factor.py's greedy sweeps need DIST_MARGIN
+    hysteresis for; the e-graph does it with four factoring-directed
+    rules."""
+    from itertools import product as iproduct
+
+    from tensorgrad.tensor import Sum
+
+    D = 3
+    n = symbols("n")
+    Js = [Variable(f"dJ{i}", r=n, c=n) for i in range(D)]
+    g = Variable("dg", c=n)
+    terms = []
+    for bits in iproduct([0, 1], repeat=D):
+        t = g
+        for i in reversed(range(D)):
+            if bits[i]:
+                t = F.dot(Js[i], t, dim="c").rename(r="c")
+        terms.append(t)
+    expr = Sum(terms)
+    b, outs = lower_program([expr.full_simplify()])
+    dims = {n: 16}
+    before = _flops(outs, dims)
+    rewritten = eg.egraph_outputs(b, outs, dims)
+    assert rewritten is not outs
+    assert szfp.outputs_equal(outs, rewritten)
+    after = _flops(rewritten, dims)
+    assert after < before / 10, f"no diamond collapse: {before} -> {after}"
+
+
+def test_deep_chain_scales():
+    """Depth-24 chain on real IR: saturate+extract stays fast and exact
+    (the toy-language probe measured depth 96 in ~10s; real-IR depth 24 is
+    the practical pin)."""
+    import time
+
+    n = symbols("n")
+    expr, ms, g = _chain_expr(24, n)
+    b, outs = lower_program([expr.full_simplify()])
+    dims = {n: 16}
+    t0 = time.perf_counter()
+    rewritten = eg.egraph_outputs(b, outs, dims)
+    assert time.perf_counter() - t0 < 30
+    assert rewritten is not outs
+    assert szfp.outputs_equal(outs, rewritten)
+    assert _flops(rewritten, dims) < _flops(outs, dims) / 5

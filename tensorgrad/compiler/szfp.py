@@ -410,17 +410,28 @@ def _eval_einsum(node: EinsumNode, vals: dict, assign: dict, ctx: Any) -> np.nda
         # Pure broadcast of the weight (e.g. a Ones vector: Delta order 1).
         return np.full(out_shape, wres, dtype=np.int64) if out_shape else np.array(wres, dtype=np.int64)
 
-    def keep_after(i: int) -> set:
+    # Greedy connectivity order: always fold in an operand sharing wires
+    # with the accumulator. Left-to-right on a chain-shaped einsum (25-op
+    # flattened @-chains reach the gate PRE-factoring) builds outer-product
+    # intermediates whose axis count explodes one np.einsum call past any
+    # budget; connectivity keeps intermediates as thin as the program
+    # allows. Order does not affect values — Z_P is an exact semiring —
+    # so fingerprints are unchanged.
+    remaining = list(range(1, len(operands)))
+
+    def keep_for(rest: list) -> set:
         k = set(out_subs)
-        for _, s in operands[i + 1 :]:
-            k |= set(s)
+        for j in rest:
+            k |= set(operands[j][1])
         return k
 
     acc, acc_subs = operands[0]
-    acc, acc_subs = _contract(acc, acc_subs, None, None, keep_after(0), wire_sz)
-    for i in range(1, len(operands)):
-        arr, subs = operands[i]
-        acc, acc_subs = _contract(acc, acc_subs, arr, subs, keep_after(i), wire_sz)
+    acc, acc_subs = _contract(acc, acc_subs, None, None, keep_for(remaining), wire_sz)
+    while remaining:
+        pick = max(remaining, key=lambda i: len(set(operands[i][1]) & set(acc_subs)))
+        remaining.remove(pick)
+        arr, subs = operands[pick]
+        acc, acc_subs = _contract(acc, acc_subs, arr, subs, keep_for(remaining), wire_sz)
 
     # acc_subs is now a distinct subset of out_subs. Multiply the weight,
     # reorder to output order, and broadcast wires that never touched an

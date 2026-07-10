@@ -167,10 +167,13 @@ def _lang() -> dict[str, Any]:
         #      commutativity — the encoder's canonical order stands in) ----
         yield rewrite((a + b) + c).to(a + (b + c))
         yield rewrite(a + (b + c)).to((a + b) + c)
-        # ---- transpose algebra (free views) ----
+        # ---- transpose algebra (free views), DIRECTED toward leaves:
+        #      bidirectional Tr-through-matmul measured a saturation blowup
+        #      between chain depths 20 and 24 (Tr-mirrored e-classes multiply
+        #      against reassociation); pushing Tr down leaves the matmul
+        #      spine Tr-free, which is all associativity needs ----
         yield rewrite(Tr(Tr(a))).to(a)
         yield rewrite(Tr(a @ b)).to(Tr(b) @ Tr(a))
-        yield rewrite(Tr(b) @ Tr(a)).to(Tr(a @ b))
         yield rewrite(Tr(a) + Tr(b)).to(Tr(a + b))
         # ---- scale movement (weights ride to where they fold away) ----
         yield rewrite(Scale(p, q, a) @ b).to(Scale(p, q, a @ b))
@@ -474,6 +477,14 @@ class _Encoder:
 # --------------------------------------------------------------------------
 
 
+def _canon_roles(t: tuple) -> tuple:
+    """With a single non-batch role, row vs col is pure matrix-space
+    bookkeeping over the SAME node axis: normalize it to the row slot."""
+    if (t[1] is None) != (t[2] is None):
+        return (t[0], t[1] if t[1] is not None else t[2], None)
+    return t
+
+
 class _Decoder:
     def __init__(self, builder: Builder, leaves: list[Node]):
         self.b = builder
@@ -521,6 +532,14 @@ class _Decoder:
         B, rb_, sb = self._walk(cb)
         ab, ar, ak = ra_  # A roles: batch, row, k(=A's col)
         bb, bk, bc = rb_  # B roles: batch, k(=B's row), col
+        # Vector operands: with a single non-batch axis, row-vs-col naming
+        # is bookkeeping (the third place this lesson bites); the CONTRACT
+        # position decides — a left vector contracts its only axis, ditto a
+        # right vector.
+        if ak is None and ar is not None:
+            ak, ar = ar, None
+        if bk is None and bc is not None:
+            bk, bc = bc, None
         if ak is None or bk is None:
             raise ValueError("matmul on scalar-role operand")
         # wires: batch=3, row=0, k=1, col=2
@@ -586,6 +605,7 @@ class _Decoder:
                 terms.append(self._walk(c))
 
         flat(call)
+        terms = [(nd, _canon_roles(rl), sc) for nd, rl, sc in terms]
         base_node, base_roles, _ = terms[0]
         order = base_node.order
         # output axis j corresponds to the role that the BASE term carries on
@@ -638,7 +658,12 @@ def _saturate_extract(builder: Builder, outputs: list, dims: dict) -> Optional[l
         egraph.register(set_(lang["rows"](leaf)).to(i64(r_)))
         egraph.register(set_(lang["cols"](leaf)).to(i64(c_)))
         egraph.register(set_(lang["bat"](leaf)).to(i64(b_)))
-    egraph.run(lang["rules"].saturate())
+    # Bounded schedule, NOT .saturate(): egglog's saturation detector
+    # thrashes on the shape/cost analysis actions (measured: depth-24 chain
+    # >120s under saturate, 0.06s and already at fixpoint under rules*30).
+    # Reassociation closure needs ~O(spine length) rounds; leaves bound it.
+    iters = min(64, 2 * len(enc.leaves) + 8)
+    egraph.run(lang["rules"] * iters)
 
     dec = _Decoder(builder, enc.leaves)
     new_outputs = []
@@ -670,15 +695,8 @@ def _restore_axis_order(builder: Builder, node: Node, roles: tuple, want: tuple)
     root carried it on (`want`, recorded by the encoder). Exact by
     construction — no dims-based guessing, so repeated sizes (square
     matrices) can never silently accept a transposed arrangement."""
-    def canon(t: tuple) -> tuple:
-        # with a single non-batch role, row vs col is pure matrix-space
-        # bookkeeping over the SAME node axis: normalize it to the row slot
-        if (t[1] is None) != (t[2] is None):
-            return (t[0], t[1] if t[1] is not None else t[2], None)
-        return t
-
-    roles = canon(roles)
-    want = canon(want)
+    roles = _canon_roles(roles)
+    want = _canon_roles(want)
     present = [i for i in range(3) if want[i] is not None]
     if [i for i in range(3) if roles[i] is not None] != present:
         return None
