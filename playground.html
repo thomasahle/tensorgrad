@@ -6,6 +6,9 @@
     <script>
        window.dataLayer = window.dataLayer || [];
        function gtag(){dataLayer.push(arguments);}
+       // No cookie banner on this site: deny all storage up front, so GA4 sets no
+       // cookies and sends cookieless pings (a per-page-load client id).
+       gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
        gtag('js', new Date());
        gtag('config', 'G-E8JHF8QM6N');
     </script>
